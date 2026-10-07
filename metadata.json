@@ -1,0 +1,8 @@
+{
+  "name": "Remix SubTrack Pro - Digital Subscription \u0026 Sales Manager",
+  "description": "Professional personal dashboard for managing digital subscription sales, customer accounts, profiles, expiry tracking, and revenue.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
