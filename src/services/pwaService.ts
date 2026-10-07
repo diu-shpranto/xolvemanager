@@ -164,8 +164,9 @@ export const registerPwa = (): void => {
       window.location.reload();
     });
   }
-  if (!import.meta.env.PROD || !('serviceWorker' in navigator) || !window.isSecureContext) {
-    if (!import.meta.env.PROD) {
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (!isProduction || !('serviceWorker' in navigator) || !window.isSecureContext) {
+    if (!isProduction) {
       void clearDevelopmentServiceWorker().catch(error => console.error('Could not disable the XolveManager development service worker.', error));
     }
     return;

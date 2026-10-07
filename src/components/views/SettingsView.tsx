@@ -61,7 +61,7 @@ const sections: { id: SettingsSection; label: string; icon: React.FC<{ className
 ];
 
 interface SettingsViewProps {
-  initialSection?: 'data';
+  initialSection?: 'data' | 'messages';
   onOpenIntegrity: () => void;
 }
 

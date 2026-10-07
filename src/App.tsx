@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+'use client';
+
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { AppProvider } from './context/AppContext';
 import { ToastProvider } from './components/common/Toast';
@@ -16,8 +18,8 @@ import { recordRecentSearchItem } from './services/globalSearch';
 import type { GlobalSearchResult } from './services/globalSearch';
 import type { QuickAction } from './components/navigation/CommandCenter';
 import { useApp } from './context/AppContext';
-import { productBrand } from './config/brand';
 import { WhatsAppCommunicationProvider } from './components/whatsapp/WhatsAppCommunication';
+import { registerPwa } from './services/pwaService';
 
 const CustomersView = lazy(() => import('./components/views/CustomersView').then(module => ({ default: module.CustomersView })));
 const ServicesView = lazy(() => import('./components/views/ServicesView').then(module => ({ default: module.ServicesView })));
@@ -62,16 +64,65 @@ const sectionPaths: Record<NavSection, string> = {
   reminders: '/reminders',
   search: '/search',
 };
-const getSectionForPath = (pathname: string): NavSection =>
-  (Object.entries(sectionPaths).find(([, path]) => path === pathname.replace(/\/+$/, '') || path === pathname)?.[0] as NavSection | undefined)
-  || 'dashboard';
+type RecordSection = 'customers' | 'services' | 'accounts' | 'subscriptions' | 'sales' | 'payments' | 'invoices';
+type SettingsStartSection = 'data' | 'messages';
+
+interface AppLocation {
+  section: NavSection;
+  recordSection?: RecordSection;
+  recordId?: string;
+  settingsStartSection?: SettingsStartSection;
+}
+
+const recordSections: Record<RecordSection, NavSection> = {
+  customers: 'customers',
+  services: 'services',
+  accounts: 'accounts',
+  subscriptions: 'subscriptions',
+  sales: 'sales',
+  payments: 'payments',
+  invoices: 'invoices',
+};
+
+const routeAliases: Record<string, NavSection> = {
+  '/': 'dashboard',
+  '/transfers': 'cashbook',
+  '/profitability': 'reports',
+  '/communications': 'settings',
+  '/audit-log': 'history',
+  '/backup': 'settings',
+};
+
+const getAppLocation = (pathname: string): AppLocation => {
+  const normalizedPath = pathname.replace(/\/+$/, '') || '/';
+  const segments = normalizedPath.split('/').filter(Boolean);
+
+  if (segments.length === 2 && Object.hasOwn(recordSections, segments[0])) {
+    const recordSection = segments[0] as RecordSection;
+    return {
+      section: recordSections[recordSection],
+      recordSection,
+      recordId: segments[1],
+    };
+  }
+
+  const section = routeAliases[normalizedPath]
+    || (Object.entries(sectionPaths).find(([, path]) => path === normalizedPath)?.[0] as NavSection | undefined)
+    || 'dashboard';
+  const settingsStartSection = normalizedPath === '/backup'
+    ? 'data'
+    : normalizedPath === '/communications' ? 'messages' : undefined;
+
+  return { section, settingsStartSection };
+};
 
 const MainAppLayout: React.FC = () => {
   const { currentBusiness } = useApp();
+  const initialLocation = typeof window === 'undefined'
+    ? { section: 'dashboard' as NavSection }
+    : getAppLocation(window.location.pathname);
   // Navigation State
-  const [currentSection, setCurrentSectionState] = useState<NavSection>(() =>
-    typeof window === 'undefined' ? 'dashboard' : getSectionForPath(window.location.pathname)
-  );
+  const [currentSection, setCurrentSectionState] = useState<NavSection>(initialLocation.section);
   const setCurrentSection = (section: NavSection) => {
     setCurrentSectionState(section);
     const nextPath = sectionPaths[section];
@@ -79,7 +130,7 @@ const MainAppLayout: React.FC = () => {
       window.history.pushState({ section }, '', nextPath);
     }
   };
-  const [settingsStartSection, setSettingsStartSection] = useState<'data' | undefined>();
+  const [settingsStartSection, setSettingsStartSection] = useState<SettingsStartSection | undefined>(initialLocation.settingsStartSection);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
@@ -91,18 +142,32 @@ const MainAppLayout: React.FC = () => {
   const [paymentPreselectedSaleId, setPaymentPreselectedSaleId] = useState<string | undefined>();
 
   // Selected customer for customer details drawer/modal
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(() =>
+    initialLocation.recordSection === 'customers' ? initialLocation.recordId ?? null : null
+  );
   const [customerQuickFilter, setCustomerQuickFilter] = useState<CustomerCrmQuickFilter | undefined>();
-  const [focusedAccountId, setFocusedAccountId] = useState<string | undefined>();
+  const [focusedAccountId, setFocusedAccountId] = useState<string | undefined>(() =>
+    initialLocation.recordSection === 'accounts' ? initialLocation.recordId : undefined
+  );
   const [accountServiceFilterId, setAccountServiceFilterId] = useState<string | undefined>();
   const [profileServiceFilterId, setProfileServiceFilterId] = useState<string | undefined>();
   const [subscriptionServiceFilterId, setSubscriptionServiceFilterId] = useState<string | undefined>();
   const [customerServiceFilterId, setCustomerServiceFilterId] = useState<string | undefined>();
-  const [focusedServiceId, setFocusedServiceId] = useState<string | undefined>();
-  const [focusedSubscriptionId, setFocusedSubscriptionId] = useState<string | undefined>();
-  const [focusedSaleId, setFocusedSaleId] = useState<string | undefined>();
-  const [focusedInvoiceId, setFocusedInvoiceId] = useState<string | undefined>();
-  const [focusedPaymentId, setFocusedPaymentId] = useState<string | undefined>();
+  const [focusedServiceId, setFocusedServiceId] = useState<string | undefined>(() =>
+    initialLocation.recordSection === 'services' ? initialLocation.recordId : undefined
+  );
+  const [focusedSubscriptionId, setFocusedSubscriptionId] = useState<string | undefined>(() =>
+    initialLocation.recordSection === 'subscriptions' ? initialLocation.recordId : undefined
+  );
+  const [focusedSaleId, setFocusedSaleId] = useState<string | undefined>(() =>
+    initialLocation.recordSection === 'sales' ? initialLocation.recordId : undefined
+  );
+  const [focusedInvoiceId, setFocusedInvoiceId] = useState<string | undefined>(() =>
+    initialLocation.recordSection === 'invoices' ? initialLocation.recordId : undefined
+  );
+  const [focusedPaymentId, setFocusedPaymentId] = useState<string | undefined>(() =>
+    initialLocation.recordSection === 'payments' ? initialLocation.recordId : undefined
+  );
   const [cashbookTarget, setCashbookTarget] = useState<{ accountId?: string; action?: CashbookAction }>({});
   const [expenseCreateRequest, setExpenseCreateRequest] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -110,36 +175,21 @@ const MainAppLayout: React.FC = () => {
   const lastRecentView = useRef('');
 
   useEffect(() => {
-    const handlePopState = () => setCurrentSectionState(getSectionForPath(window.location.pathname));
+    const handlePopState = () => {
+      const location = getAppLocation(window.location.pathname);
+      setCurrentSectionState(location.section);
+      setSettingsStartSection(location.settingsStartSection);
+      setSelectedCustomerId(location.recordSection === 'customers' ? location.recordId ?? null : null);
+      setFocusedServiceId(location.recordSection === 'services' ? location.recordId : undefined);
+      setFocusedAccountId(location.recordSection === 'accounts' ? location.recordId : undefined);
+      setFocusedSubscriptionId(location.recordSection === 'subscriptions' ? location.recordId : undefined);
+      setFocusedSaleId(location.recordSection === 'sales' ? location.recordId : undefined);
+      setFocusedPaymentId(location.recordSection === 'payments' ? location.recordId : undefined);
+      setFocusedInvoiceId(location.recordSection === 'invoices' ? location.recordId : undefined);
+    };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
-
-  useEffect(() => {
-    const pageNames: Record<NavSection, string> = {
-      dashboard: 'Dashboard',
-      customers: 'Customers',
-      services: 'Services',
-      accounts: 'Accounts',
-      profiles: 'Profiles',
-      subscriptions: 'Subscriptions',
-      sales: 'Sales',
-      payments: 'Payments',
-      cashbook: 'Cashbook',
-      'financial-control': 'Financial Control',
-      'data-integrity': 'Data Integrity & Recovery',
-      expenses: 'Expenses',
-      'daily-closing': 'Daily Closing',
-      invoices: 'Invoices',
-      history: 'History',
-      reports: 'Reports',
-      settings: 'Settings',
-      notifications: 'Notifications',
-      reminders: 'Smart Reminders',
-      search: 'Search',
-    };
-    document.title = `${productBrand.name} — ${pageNames[currentSection]}`;
-  }, [currentSection]);
 
   // Direct Renewal Target
   const [renewTargetSub, setRenewTargetSub] = useState<Subscription | null>(null);
@@ -663,6 +713,10 @@ const MainAppLayout: React.FC = () => {
 };
 
 export default function App() {
+  useEffect(() => {
+    registerPwa();
+  }, []);
+
   return (
     <AppProvider>
       <ToastProvider>
