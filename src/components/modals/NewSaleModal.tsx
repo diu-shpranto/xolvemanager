@@ -435,60 +435,60 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     }
     const selectedServicePlan = selectedService.planDetails?.find(item => item.id === planId);
     if (!selectedServicePlan || selectedServicePlan.status !== 'active' || selectedServicePlan.name !== plan) {
-      reportValidationError('The selected plan is no longer available. Choose a plan for this service.', 1);
+      reportValidationError('The selected plan is no longer available. Choose a plan for this service.', 2);
       return;
     }
     if (Number(durationDays) !== selectedServicePlan.durationDays || Number(price) !== selectedServicePlan.price || currency !== selectedServicePlan.currency) {
-      reportValidationError('Price and duration must match the selected plan. Select the correct active plan.', 1);
+      reportValidationError('Price and duration must match the selected plan. Select the correct active plan.', 2);
       return;
     }
     if (!startDate || !Number.isFinite(Date.parse(`${startDate}T00:00:00`)) || !Number.isSafeInteger(Number(durationDays)) || Number(durationDays) < 1 || calculatedExpiryDate <= startDate) {
-      reportValidationError('Enter a valid start date and duration.', 2);
+      reportValidationError('Enter a valid start date and duration.', 3);
       return;
     }
     if (!Number.isFinite(Number(price)) || Number(price) < 0) {
-      reportValidationError('Enter a valid sale price.', 2);
+      reportValidationError('Enter a valid sale price.', 3);
       return;
     }
     if (!Number.isFinite(totalAmount) || totalAmount <= 0 || discountValue < 0 || (discountMode === 'fixed' && discountValue > subtotal) || (discountMode === 'percentage' && discountValue > 100)) {
-      reportValidationError('Enter a valid price and discount.', 2);
+      reportValidationError('Enter a valid price and discount.', 3);
       return;
     }
     if (serviceUsesAccounts && !accountId) {
-      reportValidationError('Select an account for this service.', 2);
+      reportValidationError('Select an account for this service.', 3);
       return;
     }
     if (accountId && !availableAccounts.some(account => account.id === accountId)) {
-      reportValidationError('The selected account is no longer available. Choose another account or use manual fulfillment.', 2);
+      reportValidationError('The selected account is no longer available. Choose another account or use manual fulfillment.', 3);
       return;
     }
     if (profileRequired && !profileId) {
-      reportValidationError('Select an available profile for this service.', 2);
+      reportValidationError('Select an available profile for this service.', 3);
       return;
     }
     if (profileId && !availableProfiles.some(profile => profile.id === profileId)) {
-      reportValidationError('The selected profile is no longer available. Choose another profile or use manual fulfillment.', 2);
+      reportValidationError('The selected profile is no longer available. Choose another profile or use manual fulfillment.', 3);
       return;
     }
 
     if (paymentStatus === 'partial' && !(amountPaid > 0 && amountPaid < totalAmount)) {
-      reportValidationError('Partial payment must be greater than zero and less than the total.', 3);
+      reportValidationError('Partial payment must be greater than zero and less than the total.', 4);
       return;
     }
     if (amountPaid > totalAmount || amountPaid < 0) {
-      reportValidationError('Amount paid cannot exceed the total.', 3);
+      reportValidationError('Amount paid cannot exceed the total.', 4);
       return;
     }
     if ((settings.paymentPreferences?.methods ?? ['bKash', 'Nagad', 'Rocket', 'Bank', 'Card', 'Cash', 'Other']).length === 0) {
-      reportValidationError('Enable at least one payment method in Settings before creating a sale.', 3);
+      reportValidationError('Enable at least one payment method in Settings before creating a sale.', 4);
       return;
     }
     if (!paymentMethods.includes(paymentMethod)) {
-      reportValidationError('Choose an enabled payment method.', 3);
+      reportValidationError('Choose an enabled payment method.', 4);
       return;
     }
     if (paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) && !transactionId.trim()) {
-      reportValidationError('Enter the required transaction ID.', 3);
+      reportValidationError('Enter the required transaction ID.', 4);
       return;
     }
 
@@ -671,51 +671,51 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       reportValidationError('Choose an active service before continuing.');
       return;
     }
-    if (step === 1 && !selectedService?.planDetails?.some(item => item.id === planId && item.status === 'active')) {
+    if (step === 2 && !selectedService?.planDetails?.some(item => item.id === planId && item.status === 'active')) {
       reportValidationError('Choose an active plan before continuing.');
       return;
     }
-    if (step === 1 && selectedPlan && (Number(durationDays) !== selectedPlan.durationDays || Number(price) !== selectedPlan.price || currency !== selectedPlan.currency)) {
+    if (step === 2 && selectedPlan && (Number(durationDays) !== selectedPlan.durationDays || Number(price) !== selectedPlan.price || currency !== selectedPlan.currency)) {
       reportValidationError('Price and duration must match the selected plan.');
       return;
     }
-    if (step === 2 && accountId && !availableProfiles.some(profile => profile.id === profileId)) {
+    if (step === 3 && accountId && !availableProfiles.some(profile => profile.id === profileId)) {
       reportValidationError('Choose an available profile, or switch to manual fulfillment.');
       return;
     }
-    if (step === 2 && serviceUsesAccounts && !accountId) {
+    if (step === 3 && serviceUsesAccounts && !accountId) {
       reportValidationError('Select an account for this service.');
       return;
     }
-    if (step === 2 && profileRequired && !profileId) {
+    if (step === 3 && profileRequired && !profileId) {
       reportValidationError('Select an available profile for this service.');
       return;
     }
-    if (step === 2 && (!startDate || !Number.isFinite(Date.parse(`${startDate}T00:00:00`)) || !Number.isSafeInteger(Number(durationDays)) || Number(durationDays) < 1 || calculatedExpiryDate <= startDate)) {
+    if (step === 3 && (!startDate || !Number.isFinite(Date.parse(`${startDate}T00:00:00`)) || !Number.isSafeInteger(Number(durationDays)) || Number(durationDays) < 1 || calculatedExpiryDate <= startDate)) {
       reportValidationError('Enter a valid start date and duration.');
       return;
     }
-    if (step === 2 && (!Number.isFinite(subtotal) || subtotal <= 0 || discountValue < 0 || (discountMode === 'fixed' && discountValue > subtotal) || (discountMode === 'percentage' && discountValue > 100) || totalAmount <= 0)) {
+    if (step === 3 && (!Number.isFinite(subtotal) || subtotal <= 0 || discountValue < 0 || (discountMode === 'fixed' && discountValue > subtotal) || (discountMode === 'percentage' && discountValue > 100) || totalAmount <= 0)) {
       reportValidationError('Enter a valid price and discount.');
       return;
     }
-    if (step === 3 && paymentStatus === 'partial' && !(amountPaid > 0 && amountPaid < totalAmount)) {
+    if (step === 4 && paymentStatus === 'partial' && !(amountPaid > 0 && amountPaid < totalAmount)) {
       reportValidationError('Partial payment must be greater than zero and less than the total.');
       return;
     }
-    if (step === 3 && (totalAmount <= 0 || amountPaid > totalAmount || !paymentMethods.includes(paymentMethod))) {
+    if (step === 4 && (totalAmount <= 0 || amountPaid > totalAmount || !paymentMethods.includes(paymentMethod))) {
       reportValidationError('Check the sale total and amount paid before continuing.');
       return;
     }
-    if (step === 3 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) && !transactionId.trim()) {
+    if (step === 4 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) && !transactionId.trim()) {
       reportValidationError('Enter the required transaction ID.');
       return;
     }
-    if (step === 3 && paymentStatus === 'paid' && amountPaid !== totalAmount) {
+    if (step === 4 && paymentStatus === 'paid' && amountPaid !== totalAmount) {
       reportValidationError('Paid amount must equal the total.');
       return;
     }
-    setStep(current => Math.min(current + 1, 4));
+    setStep(current => Math.min(current + 1, 5));
   };
 
   const handleChooseCustomer = (id: string) => {
@@ -788,9 +788,10 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   }, [paymentMethods, paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.defaultMethodId]);
   const steps = [
     { label: 'Customer', icon: UserRound },
-    { label: 'Service & Plan', icon: Layers },
+    { label: 'Service', icon: Layers },
+    { label: 'Plan', icon: Layers },
     { label: 'Account & Profile', icon: CalendarDays },
-    { label: 'Payment', icon: CreditCard },
+    { label: 'Payment Details', icon: CreditCard },
     { label: 'Review', icon: Receipt },
   ];
   const orderSummary = (
@@ -1122,7 +1123,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
                 {step === 1 && (
                   <section aria-labelledby="sale-service-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
-                    <div><h2 id="sale-service-title" className="text-base font-bold text-slate-900 dark:text-white">Choose a service</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Select an active service; plans and default pricing come from its existing record.</p></div>
+                    <div><h2 id="sale-service-title" className="text-base font-bold text-slate-900 dark:text-white">Choose a service</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Select an active service for the sale.</p></div>
                     <label className="relative block"><span className="sr-only">Search services</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="search" value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} placeholder="Search services..." className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
                     {filteredServices.length ? <div className="grid gap-2.5 sm:grid-cols-2">{filteredServices.map(service => {
                       const isSelected = service.id === serviceId;
@@ -1136,11 +1137,25 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                       const defaultPrice = currency === 'BDT' ? service.defaultPriceBDT ?? service.defaultPrice ?? 0 : service.defaultPriceUSD ?? service.defaultPrice ?? 0;
                       return <button key={service.id} type="button" onClick={() => hasActivePlans && handleServiceChange(service.id)} disabled={!hasActivePlans} aria-pressed={isSelected} title={hasActivePlans ? undefined : 'No active plans; manage this service to add a plan'} className={`flex min-w-0 items-center gap-3 rounded-xl border p-3.5 text-left transition-all focus-visible:outline-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-60 ${isSelected ? 'border-emerald-500 bg-emerald-50/70 ring-1 ring-emerald-500/20 dark:border-emerald-700 dark:bg-emerald-950/30' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600'}`} style={service.color ? { borderLeftWidth: 3, borderLeftColor: service.color } : undefined}><span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-sm font-bold dark:bg-slate-800">{service.logoUrl ? <img src={service.logoUrl} alt="" className="h-6 w-6 object-contain" /> : <span aria-hidden="true">{service.name.trim().charAt(0).toUpperCase() || '?'}</span>}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-900 dark:text-white">{service.name}</span><span className="block truncate text-xs text-slate-500 dark:text-slate-400">{service.description || service.category} · {service.planDetails?.filter(item => item.status === 'active').length || 0} active plans</span></span><span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${!hasActivePlans ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' : capacity ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : service.settings?.usesAccounts ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>{!hasActivePlans ? 'No active plans' : capacity ? `${capacity} available` : service.settings?.usesAccounts ? 'No account' : 'Available'}</span></button>;
                     })}</div> : eligibleServices.length ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">No services match your search.</p> : <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><p>There are no active services available for sale.</p><button type="button" onClick={onAddService} className="mt-3 inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-amber-700 px-3 text-xs font-semibold text-white hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"><Plus className="h-3.5 w-3.5" />Add Service</button></div>}
-                    {selectedService && <div className="border-t border-slate-200 pt-4 dark:border-slate-700"><h3 className="mb-2 text-sm font-semibold text-slate-900 dark:text-white">Select a plan</h3>{selectedService.planDetails?.some(item => item.status === 'active') ? <div className="grid gap-2 sm:grid-cols-2">{selectedService.planDetails.filter(item => item.status === 'active').map(servicePlan => <button key={servicePlan.id} type="button" onClick={() => handlePlanChange(servicePlan)} aria-pressed={planId === servicePlan.id} className={`flex min-h-12 items-center justify-between gap-3 rounded-lg border px-3.5 py-3 text-left text-sm font-medium focus-visible:outline-2 focus-visible:outline-emerald-600 ${planId === servicePlan.id ? 'border-emerald-500 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200' : 'border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'}`}><span><span className="block">{servicePlan.name}</span><span className="mt-0.5 block text-xs font-normal text-slate-500">{formatCurrency(servicePlan.price, servicePlan.currency)} · {servicePlan.duration ?? servicePlan.durationDays} {servicePlan.durationUnit || 'Days'}{servicePlan.profileCapacity ? ` · ${servicePlan.profileCapacity} profiles` : ''}</span></span>{planId === servicePlan.id && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />}</button>)}</div> : <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><p>No active plans are available for this service.</p><button type="button" onClick={onAddService} className="mt-2 font-semibold underline">Manage services and plans</button></div>}</div>}
                   </section>
                 )}
 
                 {step === 2 && (
+                  <section aria-labelledby="sale-plan-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
+                    <div><h2 id="sale-plan-title" className="text-base font-bold text-slate-900 dark:text-white">Choose a plan</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Only plans for the selected service are shown here.</p></div>
+                    {selectedService && <div className="space-y-3">{selectedService.planDetails?.some(item => item.status === 'active') ? <div className="grid gap-2 sm:grid-cols-2">{selectedService.planDetails.filter(item => item.status === 'active').map(servicePlan => <button key={servicePlan.id} type="button" onClick={() => handlePlanChange(servicePlan)} aria-pressed={planId === servicePlan.id} className={`flex min-h-12 items-center justify-between gap-3 rounded-lg border px-3.5 py-3 text-left text-sm font-medium focus-visible:outline-2 focus-visible:outline-emerald-600 ${planId === servicePlan.id ? 'border-emerald-500 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200' : 'border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'}`}><span><span className="block">{servicePlan.name}</span><span className="mt-0.5 block text-xs font-normal text-slate-500">{formatCurrency(servicePlan.price, servicePlan.currency)} · {servicePlan.duration ?? servicePlan.durationDays} {servicePlan.durationUnit || 'Days'}{servicePlan.profileCapacity ? ` · ${servicePlan.profileCapacity} profiles` : ''}</span></span>{planId === servicePlan.id && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />}</button>)}</div> : <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><p>No active plans are available for this service.</p><button type="button" onClick={onAddService} className="mt-2 font-semibold underline">Manage services and plans</button></div>}</div>}
+                    {selectedPlan && <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
+                      <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">{t('price')} · {t('currency')}</span><p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-base font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{selectedPlan ? formatCurrency(selectedPlan.price, selectedPlan.currency) : 'Choose an active plan'}</p><span className="block text-[11px] font-normal">Price and currency are set by the selected plan.</span></div>
+                      <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">Duration</span><p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{selectedPlan ? `${selectedPlan.durationDays} days` : 'Choose a plan'}</p></div>
+                    </div>}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Discount</span><div className="flex gap-2"><input aria-label="Discount amount" type="number" min={0} max={discountMode === 'percentage' ? 100 : subtotal} step={currency === 'USD' ? '0.01' : '1'} value={discountValue} onChange={event => setDiscountValue(Number(event.target.value))} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /><select aria-label="Discount type" value={discountMode} onChange={event => setDiscountMode(event.target.value as 'fixed' | 'percentage')} className="rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="fixed">Fixed</option><option value="percentage">Percent</option></select></div></label>
+                      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800/60"><div className="flex justify-between"><span className="text-slate-500">Plan Price</span><span>{formatCurrency(subtotal || 0, currency)}</span></div><div className="flex justify-between"><span className="text-slate-500">Discount</span><span>−{formatCurrency(discountAmount, currency)}</span></div><div className="flex justify-between border-t border-slate-200 pt-2 font-bold dark:border-slate-700"><span>Total</span><span className="text-emerald-700 dark:text-emerald-300">{formatCurrency(totalAmount, currency)}</span></div></div>
+                    </div>
+                  </section>
+                )}
+
+                {step === 3 && (
                   <section aria-labelledby="sale-fulfillment-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
                     <div><h2 id="sale-fulfillment-title" className="text-base font-bold text-slate-900 dark:text-white">Account and profile</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose active inventory for this service. Account credentials and profile PINs are never displayed.</p></div>
                     {serviceUsesAccounts && <div className="space-y-3">
@@ -1213,7 +1228,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
             <details className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-900 lg:hidden"><summary className="cursor-pointer text-sm font-semibold text-slate-900 dark:text-white">Order summary · {formatCurrency(Number(price) || 0, currency)}</summary><div className="pt-3">{orderSummary}</div></details>
             <div className="sticky bottom-[-20px] z-10 -mx-6 flex items-center justify-between gap-3 border-t border-slate-200/90 bg-white/95 px-6 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
               {step > 0 ? <button type="button" onClick={() => setStep(current => Math.max(current - 1, 0))} className="inline-flex min-h-10 items-center gap-1 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-300 dark:hover:bg-slate-800"><ChevronLeft className="h-4 w-4" />Back</button> : <button type="button" onClick={handleModalClose} className="inline-flex min-h-10 items-center rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-300 dark:hover:bg-slate-800">{t('cancel')}</button>}
-              {step < 4 ? <button type="button" onClick={handleContinue} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">Continue<ChevronRight className="h-4 w-4" /></button> : <button type="submit" disabled={isSubmitting || !selectedCustomer || !selectedService || !Number.isFinite(totalAmount) || totalAmount <= 0 || !Number.isFinite(amountPaid) || amountPaid < 0 || amountPaid > totalAmount || Number(durationDays) < 1} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">{isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{isSubmitting ? 'Completing Sale…' : `Complete Sale · ${formatCurrency(totalAmount, currency)}`}</button>}
+              {step < steps.length - 1 ? <button type="button" onClick={handleContinue} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">Continue<ChevronRight className="h-4 w-4" /></button> : <button type="submit" disabled={isSubmitting || !selectedCustomer || !selectedService || !selectedPlan || !Number.isFinite(totalAmount) || totalAmount <= 0 || !Number.isFinite(amountPaid) || amountPaid < 0 || amountPaid > totalAmount || Number(durationDays) < 1} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">{isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{isSubmitting ? 'Completing Sale…' : 'Confirm & Create Sale'}</button>}
             </div>
           </form>
         )}

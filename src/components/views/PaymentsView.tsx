@@ -578,6 +578,43 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         <Metric label="Pending" value={String(pendingCount)} />
         <Metric label="Failed" value={String(failedCount)} tone="rose" />
       </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Payment follow-up</p>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedStatus('all');
+              setSelectedMethod('all');
+              setSelectedDate('all');
+              setSearchInput('');
+              setActiveTab('payments');
+            }}
+            className="text-[11px] font-semibold text-slate-500 hover:text-emerald-700 dark:text-slate-400 dark:hover:text-emerald-300"
+          >
+            Clear
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { label: 'Due now', action: () => { setActiveTab('outstanding'); setSelectedDate('month'); setSelectedStatus('all'); setSelectedMethod('all'); setSearchInput(''); } },
+            { label: 'Partial', action: () => { setActiveTab('payments'); setSelectedStatus('partial'); setSelectedDate('month'); setSelectedMethod('all'); setSearchInput(''); } },
+            { label: 'Pending', action: () => { setActiveTab('payments'); setSelectedStatus('pending'); setSelectedDate('month'); setSelectedMethod('all'); setSearchInput(''); } },
+            { label: 'Today', action: () => { setActiveTab('payments'); setSelectedDate('today'); setSelectedStatus('all'); setSelectedMethod('all'); setSearchInput(''); } },
+          ].map(action => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={action.action}
+              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-emerald-700 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300"
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section aria-label="Payment methods summary" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div><h2 className="text-sm font-bold text-slate-900 dark:text-white">Received by method</h2><p className="text-xs text-slate-500">Received and partial payments matching the current filters.</p></div>

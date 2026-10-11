@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { Building2 } from 'lucide-react';
+import React from 'react';
 import { productBrand } from '../../config/brand';
 
 interface ProductLogoProps {
@@ -17,8 +16,6 @@ export const ProductLogo: React.FC<ProductLogoProps> = ({
   markOnly = false,
   showTagline = false,
 }) => {
-  const [logoFailed, setLogoFailed] = useState(false);
-
   return (
     <div
       className={`brand-lockup brand-lockup--${size} brand-lockup--${tone} ${markOnly ? 'brand-lockup--mark-only' : ''} ${className}`.trim()}
@@ -27,11 +24,7 @@ export const ProductLogo: React.FC<ProductLogoProps> = ({
       title={productBrand.name}
     >
       <div className="brand-lockup__mark" aria-hidden="true">
-        {productBrand.logoUrl && !logoFailed ? (
-          <img className="brand-lockup__uploaded-mark" src={productBrand.logoUrl} alt="" onError={() => setLogoFailed(true)} />
-        ) : (
-          <Building2 className="brand-lockup__icon" />
-        )}
+        <img className="brand-lockup__uploaded-mark" src={productBrand.faviconUrl} alt="" />
       </div>
       {!markOnly && (
         <div className="brand-lockup__copy">

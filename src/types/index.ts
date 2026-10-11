@@ -686,6 +686,7 @@ export type ActivityType =
   | 'customer_note_updated'
   | 'customer_note_deleted'
   | 'whatsapp_opened'
+  | 'demo_communication_recorded'
   | 'whatsapp_template_updated'
   | 'reminder_created'
   | 'reminder_completed'

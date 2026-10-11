@@ -931,6 +931,25 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         ))}
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        {[
+          { label: 'All customers', onClick: () => { setFilterCrmStatus('all'); setFilterPayment('all'); setFilterRenewal('all'); setFilterSubscription('all'); setFilterActivity('all'); setCurrentPage(1); } },
+          { label: 'Active', onClick: () => { setFilterCrmStatus('active'); setCurrentPage(1); } },
+          { label: 'New', onClick: () => { setFilterActivity('new'); setFilterCrmStatus('all'); setCurrentPage(1); } },
+          { label: 'Due', onClick: () => { setFilterPayment('due'); setFilterRenewal('due'); setCurrentPage(1); } },
+          { label: 'At risk', onClick: () => { setFilterCrmStatus('at_risk'); setCurrentPage(1); } },
+        ].map(filter => (
+          <button
+            key={filter.label}
+            type="button"
+            onClick={filter.onClick}
+            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-emerald-700 dark:hover:text-emerald-300"
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
+
       {/* 2. SEARCH + FILTER TOOLBAR */}
       <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
         {/* Search input (Name, Phone, Email, Facebook ID) */}

@@ -1,13 +1,13 @@
 {
   "name": "XolveManager — Business Management Platform",
   "short_name": "XolveManager",
-  "description": "Business Management Platform",
+  "description": "Business management dashboard for customer records, subscriptions, sales, payments, service accounts, renewals, notifications, and reports.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "theme_color": "#059669",
-  "background_color": "#f6f8f7",
+  "theme_color": "#7C3AED",
+  "background_color": "#F8FAFC",
   "icons": [
     {
       "src": "/icons/xolve-manager-192.png",

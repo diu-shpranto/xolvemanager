@@ -274,8 +274,8 @@ export const initialAccounts: Account[] = [
   {
     id: 'acc-nf-01',
     serviceId: 'srv-netflix',
-    email: 'shopique.nf01@streamhub.net',
-    username: 'shopique_nf01',
+    email: 'demo.nf01@example.invalid',
+    username: 'demo_nf01',
     password: 'NfPremiumPass#2026',
     plan: 'Premium UHD 4K (5 Profiles)',
     status: 'Assigned',
@@ -321,7 +321,7 @@ export const initialAccounts: Account[] = [
   {
     id: 'acc-prime-01',
     serviceId: 'srv-prime',
-    email: 'shopique.prime@streamhub.net',
+    email: 'demo.prime@example.invalid',
     username: 'prime_store_bd',
     password: 'PrimeAmazonPass!2026',
     plan: 'Amazon Prime Video HD (6 Profiles)',
@@ -362,8 +362,8 @@ export const initialAccounts: Account[] = [
   {
     id: 'acc-canva-01',
     serviceId: 'srv-canva',
-    email: 'shopique.team@designhub.org',
-    username: 'canva_admin_shopique',
+    email: 'demo.team@example.invalid',
+    username: 'canva_admin_demo',
     password: 'CanvaProMaster2026$',
     plan: 'Canva Pro Enterprise (50 Seats)',
     status: 'Available',
@@ -391,7 +391,7 @@ export const initialAccounts: Account[] = [
   {
     id: 'acc-chatgpt-01',
     serviceId: 'srv-chatgpt',
-    email: 'shopique.gpt@aihub.cc',
+    email: 'demo.gpt@example.invalid',
     username: 'gpt_plus_bd01',
     password: 'GptPlusOpenAI#9988',
     plan: 'ChatGPT Plus (2 Users Slot)',
@@ -419,7 +419,7 @@ export const initialAccounts: Account[] = [
   {
     id: 'acc-spotify-01',
     serviceId: 'srv-spotify',
-    email: 'shopique.sp@musichub.net',
+    email: 'demo.spotify@example.invalid',
     username: 'spotify_bd_prime',
     password: 'SpotifyFamilyBD2026!',
     plan: 'Spotify Family (6 Members)',

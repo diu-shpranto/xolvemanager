@@ -522,6 +522,43 @@ export const SalesView: React.FC<SalesViewProps> = ({
         ))}
       </section>
 
+      <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Quick follow-up</p>
+          <button
+            type="button"
+            onClick={() => {
+              setSearchInput('');
+              setSelectedPaymentStatus('all');
+              setSelectedCustomer('all');
+              setSelectedServiceId('all');
+              setDateFilter('all');
+              setSortOrder('newest');
+            }}
+            className="text-[11px] font-semibold text-slate-500 hover:text-emerald-700 dark:text-slate-400 dark:hover:text-emerald-300"
+          >
+            Clear
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { label: 'Due now', action: () => { setSelectedPaymentStatus('pending'); setSortOrder('highest_due'); setDateFilter('month'); setSearchInput(''); } },
+            { label: 'Partial', action: () => { setSelectedPaymentStatus('partial'); setSortOrder('highest_due'); setDateFilter('month'); setSearchInput(''); } },
+            { label: 'This month', action: () => { setDateFilter('month'); setSelectedPaymentStatus('all'); setSortOrder('newest'); setSearchInput(''); } },
+            { label: 'Paid today', action: () => { setDateFilter('today'); setSelectedPaymentStatus('paid'); setSortOrder('newest'); setSearchInput(''); } },
+          ].map(action => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={action.action}
+              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-emerald-700 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300"
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
       {/* Filters Strip */}
       <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
         <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">

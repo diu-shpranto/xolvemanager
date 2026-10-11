@@ -326,7 +326,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   isCollapsedDesktop ? 'lg:justify-center lg:px-0' : ''
                 } ${
                   isActive
-                    ? 'is-active bg-emerald-50/90 font-semibold text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300 lg:border-emerald-200/60 lg:shadow-2xs dark:lg:border-emerald-800/50'
+                    ? 'is-active bg-violet-50/90 font-semibold text-violet-900 dark:bg-violet-950/40 dark:text-violet-300 lg:border-violet-200/60 lg:shadow-2xs dark:lg:border-violet-800/50'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800/50'
                 }`}
                 aria-current={isActive ? 'page' : undefined}
@@ -337,7 +337,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <Icon
                     className={`h-[18px] w-[18px] shrink-0 transition-colors lg:h-4 lg:w-4 ${
                       isActive
-                        ? 'text-emerald-600 dark:text-emerald-400'
+                        ? 'text-violet-600 dark:text-violet-400'
                         : 'text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300'
                     }`}
                   />

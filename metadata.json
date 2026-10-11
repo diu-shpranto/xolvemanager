@@ -1,6 +1,6 @@
 {
-  "name": "Remix SubTrack Pro - Digital Subscription \u0026 Sales Manager",
-  "description": "Professional personal dashboard for managing digital subscription sales, customer accounts, profiles, expiry tracking, and revenue.",
+  "name": "XolveManager — Business Management Platform",
+  "description": "Business management dashboard for customer records, subscriptions, sales, payments, service accounts, renewals, notifications, and reports.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

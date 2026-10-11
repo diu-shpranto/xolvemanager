@@ -97,7 +97,7 @@ export const Modal: React.FC<ModalProps> = ({
         ref={dialogRef}
         tabIndex={-1}
         aria-labelledby={titleId}
-        className={`relative z-10 my-0 max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-full ${maxWidthClasses} overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-xl transition-all dark:border-slate-800 dark:bg-slate-900 motion-reduce:transition-none sm:my-8 sm:max-h-[calc(100dvh-4rem)] sm:rounded-2xl`}
+        className={`app-modal relative z-10 my-0 max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-full ${maxWidthClasses} overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-xl transition-all dark:border-slate-800 dark:bg-slate-900 motion-reduce:transition-none sm:my-8 sm:max-h-[calc(100dvh-4rem)] sm:rounded-2xl`}
         role="dialog"
         aria-modal="true"
       >

@@ -190,8 +190,8 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
               const Icon = item.icon;
               return <button id={`command-option-${position}`} key={item.action} type="button" onMouseEnter={() => setSelectedIndex(position)}
                 aria-current={selectedIndex === position ? 'true' : undefined}
-                onClick={() => { onQuickAction(item.action); onClose(); }} className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm ${selectedIndex === position ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-                <Icon className="h-4 w-4 text-emerald-700 dark:text-emerald-300" />{item.label}
+                onClick={() => { onQuickAction(item.action); onClose(); }} className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm ${selectedIndex === position ? 'bg-violet-50 text-violet-900 dark:bg-violet-950/40 dark:text-violet-100' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                <Icon className="h-4 w-4 text-violet-700 dark:text-violet-300" />{item.label}
               </button>;
             })}
             {recentResults.length > 0 && <div className="mt-5">
@@ -202,7 +202,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
                 const selected = selectedIndex === optionIndex;
                 return <button id={`command-option-${optionIndex}`} key={`${item.entity}:${item.id}`} type="button" onMouseEnter={() => setSelectedIndex(optionIndex)} onClick={() => selectResult(item)}
                   aria-current={selected ? 'true' : undefined}
-                  className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left ${selected ? 'bg-emerald-50 dark:bg-emerald-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                  className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left ${selected ? 'bg-violet-50 dark:bg-violet-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                   <Icon className="h-4 w-4 text-slate-500" /><span className="min-w-0"><span className="block truncate text-sm font-medium">{item.title}</span><span className="block truncate text-xs text-slate-500">{SEARCH_ENTITY_LABELS[item.entity]} · {item.subtitle}</span></span>
                 </button>;
               })}
@@ -216,7 +216,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
               const selected = selectedIndex === optionIndex;
               return <button id={`command-option-${optionIndex}`} key={item.section} type="button" onMouseEnter={() => setSelectedIndex(optionIndex)} onClick={() => { onNavigate(item.section); onClose(); }}
                 aria-current={selected ? 'true' : undefined}
-                className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm ${selected ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm ${selected ? 'bg-violet-50 text-violet-900 dark:bg-violet-950/40 dark:text-violet-100' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                 <Icon className="h-4 w-4 text-slate-500" />{item.label}
               </button>;
             })}
@@ -228,8 +228,8 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
             <h3 className="mb-1 px-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">Commands</h3>
             {commands.map((command, position) => <button key={`${command.kind}:${command.label}`} id={`command-option-${position}`} type="button" onMouseEnter={() => setSelectedIndex(position)} onClick={() => runCommand(command)}
               aria-current={selectedIndex === position ? 'true' : undefined}
-              className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm ${selectedIndex === position ? 'bg-emerald-50 dark:bg-emerald-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-              <Plus className="h-4 w-4 text-emerald-700" />{command.label}
+              className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm ${selectedIndex === position ? 'bg-violet-50 dark:bg-violet-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+              <Plus className="h-4 w-4 text-violet-700" />{command.label}
             </button>)}
           </section>}
           {groupedResults.map(group => <section key={group.entity} className="mb-3" aria-label={`${SEARCH_ENTITY_LABELS[group.entity]} ${group.count} results`}>
@@ -239,14 +239,14 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
               const Icon = searchResultIcon[item.entity];
               return <button key={`${item.entity}:${item.id}`} id={`command-option-${position}`} type="button" onMouseEnter={() => setSelectedIndex(position)} onClick={() => selectResult(item)}
                 aria-current={selectedIndex === position ? 'true' : undefined}
-                className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left ${selectedIndex === position ? 'bg-emerald-50 dark:bg-emerald-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left ${selectedIndex === position ? 'bg-violet-50 dark:bg-violet-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                 <Icon className="h-4 w-4 shrink-0 text-slate-500" />
                 <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.title}</span><span className="block truncate text-xs text-slate-500">{item.subtitle}{item.detail ? ` · ${item.detail}` : ''}</span></span>
               </button>;
             })}
           </section>)}
           {results.length === 0 && commands.length === 0 && <p className="px-3 py-8 text-center text-sm text-slate-500">No results found. Try a name, phone, invoice number, or service.</p>}
-          {results.length > 0 && <button type="button" onClick={() => { onViewAll(query); onClose(); }} className="mt-1 flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-950/30">View all results ({results.length})</button>}
+          {results.length > 0 && <button type="button" onClick={() => { onViewAll(query); onClose(); }} className="mt-1 flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 text-sm font-semibold text-violet-700 hover:bg-violet-50 dark:border-slate-700 dark:text-violet-300 dark:hover:bg-violet-950/30">View all results ({results.length})</button>}
           <span className="sr-only" aria-live="polite">{results.length} search results</span>
         </div>
       )}

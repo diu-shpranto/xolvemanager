@@ -20,6 +20,7 @@ import type { QuickAction } from './components/navigation/CommandCenter';
 import { useApp } from './context/AppContext';
 import { WhatsAppCommunicationProvider } from './components/whatsapp/WhatsAppCommunication';
 import { registerPwa } from './services/pwaService';
+import type { CurrentAdminUser } from './context/AppContext';
 
 const CustomersView = lazy(() => import('./components/views/CustomersView').then(module => ({ default: module.CustomersView })));
 const ServicesView = lazy(() => import('./components/views/ServicesView').then(module => ({ default: module.ServicesView })));
@@ -116,7 +117,7 @@ const getAppLocation = (pathname: string): AppLocation => {
   return { section, settingsStartSection };
 };
 
-const MainAppLayout: React.FC = () => {
+const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const { currentBusiness } = useApp();
   const initialLocation = typeof window === 'undefined'
     ? { section: 'dashboard' as NavSection }
@@ -312,6 +313,7 @@ const MainAppLayout: React.FC = () => {
       <div className={`flex min-w-0 flex-1 flex-col transition-[padding] duration-200 ${isSidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64'}`}>
         {/* Sticky Top Navigation */}
         <TopNav
+          onLogout={onLogout}
           onOpenMobile={() => setIsMobileSidebarOpen(true)}
           isMobileNavOpen={isMobileSidebarOpen}
           onOpenNewSale={() => handleOpenNewSale()}
@@ -712,16 +714,16 @@ const MainAppLayout: React.FC = () => {
   );
 };
 
-export default function App() {
+export default function App({ currentUser, onLogout }: { currentUser: CurrentAdminUser; onLogout: () => void }) {
   useEffect(() => {
     registerPwa();
   }, []);
 
   return (
-    <AppProvider>
+    <AppProvider currentUser={currentUser}>
       <ToastProvider>
         <WhatsAppCommunicationProvider>
-          <MainAppLayout />
+          <MainAppLayout onLogout={onLogout} />
         </WhatsAppCommunicationProvider>
       </ToastProvider>
     </AppProvider>

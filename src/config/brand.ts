@@ -5,17 +5,16 @@ export const productBrand = {
   shortName: 'XolveManager',
   tagline: 'Business Management Platform',
   description: 'Business Management Platform',
-  logoUrl: undefined as string | undefined,
   faviconUrl: '/favicon.svg',
-  primaryColor: '#059669',
-  primaryHoverColor: '#047857',
-  accentColor: '#34d399',
+  primaryColor: '#7C3AED',
+  primaryHoverColor: '#6D28D9',
+  accentColor: '#A78BFA',
   surfaceColor: '#ffffff',
-  backgroundColor: '#f6f8f7',
+  backgroundColor: '#F8FAFC',
   version: packageJson.version,
 } as const;
 
 export const APP_BRAND = productBrand;
 
-export const DEFAULT_INVOICE_BUSINESS_NAME = 'ShopiQue Prime Store';
+export const DEFAULT_INVOICE_BUSINESS_NAME = 'XolveManager';
 export const DEFAULT_INVOICE_SUPPORT_NUMBER = '01614661521';

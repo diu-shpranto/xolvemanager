@@ -21,7 +21,7 @@ export const InstallAppPrompt: React.FC = () => {
     try {
       await installPwa();
     } catch (installError) {
-      console.error('XolveManager installation could not be started.', installError);
+      console.error(`${productBrand.name} installation could not be started.`, installError);
       setError(installError instanceof Error ? installError.message : 'The install prompt could not be opened.');
     } finally {
       setInstalling(false);
@@ -32,13 +32,13 @@ export const InstallAppPrompt: React.FC = () => {
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h3 className="font-semibold text-slate-900 dark:text-white">App Installation</h3>
-        <p className="mt-1 text-xs text-slate-500">Install XolveManager for a standalone app window. Business data remains stored locally on this device.</p>
+        <p className="mt-1 text-xs text-slate-500">Install {productBrand.name} for a standalone app window. Business data remains stored locally on this device.</p>
         <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Installation status: <strong>{installStatusLabel[installStatus]}</strong></p>
         <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">App version: <strong>{productBrand.version}</strong></p>
       </div>
       {installStatus === 'installable' && <div className="flex shrink-0 gap-2">
         <button type="button" onClick={() => void handleInstall()} disabled={installing} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
-          <Download className="h-4 w-4" />{installing ? 'Opening…' : 'Install XolveManager'}
+          <Download className="h-4 w-4" />{installing ? 'Opening…' : `Install ${productBrand.shortName}`}
         </button>
         {!installDismissed && <button type="button" onClick={dismissPwaInstallPrompt} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium dark:border-slate-600">
           <X className="h-4 w-4" />Not now

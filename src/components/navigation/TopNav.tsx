@@ -33,6 +33,7 @@ import { usePwaState } from '../../hooks/usePwaState';
 const CommandCenter = lazy(() => import('./CommandCenter').then(module => ({ default: module.CommandCenter })));
 
 interface TopNavProps {
+  onLogout: () => void;
   onOpenMobile: () => void;
   isMobileNavOpen: boolean;
   onOpenNewSale: () => void;
@@ -44,6 +45,7 @@ interface TopNavProps {
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
+  onLogout,
   onOpenMobile,
   isMobileNavOpen,
   onOpenNewSale,
@@ -213,8 +215,9 @@ export const TopNav: React.FC<TopNavProps> = ({
         <button
           type="button"
           onClick={() => setShowCommandCenter(true)}
-          className="app-icon-button lg:hidden"
-          aria-label={language === 'bn' ? 'সার্চ খুলুন' : 'Search'}
+          className="app-icon-button global-search-trigger"
+          aria-label={`${language === 'bn' ? 'সার্চ খুলুন' : 'Open search'} (${searchShortcut})`}
+          title={`${language === 'bn' ? 'সার্চ খুলুন' : 'Open search'} (${searchShortcut})`}
           aria-expanded={showCommandCenter}
           aria-haspopup="dialog"
         >
@@ -299,7 +302,7 @@ export const TopNav: React.FC<TopNavProps> = ({
             onClick={() => setCurrency('BDT')}
             className={`px-2 py-1 rounded-md transition-all cursor-pointer text-xs font-mono ${
               currency === 'BDT'
-                ? 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 shadow-2xs font-bold'
+                ? 'bg-white dark:bg-slate-800 text-violet-700 dark:text-violet-400 shadow-2xs font-bold'
                 : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 font-medium'
             }`}
             aria-pressed={currency === 'BDT'}
@@ -310,7 +313,7 @@ export const TopNav: React.FC<TopNavProps> = ({
             onClick={() => setCurrency('USD')}
             className={`px-2 py-1 rounded-md transition-all cursor-pointer text-xs font-mono ${
               currency === 'USD'
-                ? 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 shadow-2xs font-bold'
+                ? 'bg-white dark:bg-slate-800 text-violet-700 dark:text-violet-400 shadow-2xs font-bold'
                 : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 font-medium'
             }`}
             aria-pressed={currency === 'USD'}
@@ -517,6 +520,16 @@ export const TopNav: React.FC<TopNavProps> = ({
                   role="menuitem"
                 >
                   {t('nav_settings')}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowUserMenu(false);
+                    onLogout();
+                  }}
+                  className="app-profile-option w-full text-rose-600 dark:text-rose-300"
+                  role="menuitem"
+                >
+                  {language === 'bn' ? 'সাইন আউট' : 'Sign out'}
                 </button>
               </div>
             </div>

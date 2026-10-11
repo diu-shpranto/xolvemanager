@@ -167,7 +167,7 @@ export const registerPwa = (): void => {
   const isProduction = process.env.NODE_ENV === 'production';
   if (!isProduction || !('serviceWorker' in navigator) || !window.isSecureContext) {
     if (!isProduction) {
-      void clearDevelopmentServiceWorker().catch(error => console.error('Could not disable the XolveManager development service worker.', error));
+      void clearDevelopmentServiceWorker().catch(error => console.error('Could not disable the development service worker.', error));
     }
     return;
   }
@@ -188,12 +188,12 @@ export const registerPwa = (): void => {
     if (updatePoll === undefined) {
       updatePoll = window.setInterval(() => {
         if (document.visibilityState === 'visible') {
-          void registration?.update().catch(error => console.error('Could not check for a XolveManager app update.', error));
+          void registration?.update().catch(error => console.error('Could not check for an app update.', error));
         }
       }, 60 * 60 * 1000);
     }
   }).catch(error => {
-    console.error('XolveManager offline application support could not be initialized.', error);
+    console.error('Offline application support could not be initialized.', error);
   });
 };
 

@@ -3,6 +3,7 @@ import {
   Bell, BellRing, Building2, Check, CreditCard, Database, FileText, Image, Palette,
   Save, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, Download,
   AlertTriangle, FileSpreadsheet, RotateCcw, Trash2, Image as ImageIcon, ChevronDown, ChevronUp, MessageCircle,
+  Eye, Sparkles,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useToast } from '../common/Toast';
@@ -26,6 +27,7 @@ import { getWhatsAppTemplates, supportedWhatsAppVariables, validateWhatsAppTempl
 import { DEFAULT_REMINDER_PREFERENCES } from '../../services/reminderEngine';
 import { getLastDataIntegrityResult } from '../../utils/dataIntegrity';
 import { usePwaState } from '../../hooks/usePwaState';
+import { getDemoDataPreview } from '../../services/demoDataService';
 
 type SettingsSection =
   | 'business' | 'branding' | 'invoice' | 'payments' | 'subscriptions'
@@ -74,6 +76,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
     financialAccounts, expenses, otherIncome, financialTransfers, financialAdjustments,
     logActivity,
     currentBusiness,
+    demoDataStatus, demoDataCounts, installDemoData, removeDemoData,
     isDark, toggleDarkMode, currency, setCurrency, language, setLanguage,
   } = useApp();
   const { installStatus } = usePwaState();
@@ -92,6 +95,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   const [storageBytes, setStorageBytes] = useState<number | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [selectedWhatsAppTemplateId, setSelectedWhatsAppTemplateId] = useState<WhatsAppTemplateId>('renewal_reminder');
+  const [demoDialog, setDemoDialog] = useState<'preview' | 'remove' | null>(null);
+  const [isDemoDataBusy, setIsDemoDataBusy] = useState(false);
 
   useEffect(() => setDraft(settings), [settings]);
   useEffect(() => {
@@ -136,6 +141,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   };
 
   const updateDraft = (updates: Partial<AppSettings>) => setDraft(previous => ({ ...previous, ...updates }));
+  const addDemoRecords = () => {
+    setIsDemoDataBusy(true);
+    try {
+      const counts = installDemoData();
+      setDemoDialog(null);
+      showToast(`Demo data added: ${counts.customers} customers, ${counts.sales} sales, and ${counts.expenses} expenses.`, 'success');
+    } catch (error) {
+      console.error('Could not install demo data.', error);
+      showToast(error instanceof Error ? error.message : 'Could not install demo data.', 'error');
+    } finally {
+      setIsDemoDataBusy(false);
+    }
+  };
+  const removeDemoRecords = () => {
+    setIsDemoDataBusy(true);
+    try {
+      removeDemoData();
+      setDemoDialog(null);
+      showToast('Demo data was removed. Your other business data was preserved.', 'success');
+    } catch (error) {
+      console.error('Could not remove demo data.', error);
+      showToast(error instanceof Error ? error.message : 'Could not remove demo data.', 'error');
+    } finally {
+      setIsDemoDataBusy(false);
+    }
+  };
   const setBusinessProfile = (updates: NonNullable<AppSettings['businessProfile']>) =>
     updateDraft({ businessProfile: { ...draft.businessProfile, ...updates } });
   const setInvoicePreferences = (updates: NonNullable<AppSettings['invoicePreferences']>) =>
@@ -144,6 +175,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
     updateDraft({ paymentPreferences: { ...draft.paymentPreferences, ...updates } });
   const expenseCategories = draft.financialPreferences?.expenseCategories || initialSettings.financialPreferences?.expenseCategories || [];
   const incomeCategories = draft.financialPreferences?.incomeCategories || initialSettings.financialPreferences?.incomeCategories || [];
+  const demoPreview = getDemoDataPreview();
   const setFinancialPreferences = (updates: NonNullable<AppSettings['financialPreferences']>) =>
     updateDraft({ financialPreferences: { ...draft.financialPreferences, ...updates } });
   const whatsappTemplates = getWhatsAppTemplates(draft);
@@ -832,6 +864,86 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
               </select>
             </Field>
           </section>
+
+          <section className={cardClass}>
+            <SectionHeading title="Demo Data" description="Add realistic sample business data for testing and development." />
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="max-w-2xl">
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  Demo records use reserved IDs and are linked through the same customers, services, subscriptions, sales, payments, invoices, and financial reports used by the rest of XolveManager.
+                </p>
+                <p className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                  Demo data will be added to your existing data. Existing data will not be deleted or overwritten.
+                </p>
+                <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                  Demo data status: <span className="font-semibold text-slate-800 dark:text-slate-200">{demoDataStatus}</span>
+                  {demoDataStatus === 'Partially installed' && ' · Remove the marked records to recover before adding another set.'}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button type="button" onClick={() => setDemoDialog('preview')} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+                  <Eye className="h-4 w-4" /> Preview Demo Data
+                </button>
+                <button type="button" disabled={demoDataStatus === 'Installed' || demoDataStatus === 'Partially installed'} onClick={() => setDemoDialog('preview')} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+                  <Sparkles className="h-4 w-4" /> Add Demo Data
+                </button>
+                <button type="button" disabled={demoDataStatus === 'Not installed'} onClick={() => setDemoDialog('remove')} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-rose-300 px-3.5 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/30">
+                  <Trash2 className="h-4 w-4" /> Remove Demo Data
+                </button>
+              </div>
+            </div>
+            {demoDataStatus !== 'Not installed' && <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4 lg:grid-cols-6">
+              {[
+                ['Customers', demoDataCounts.customers],
+                ['Services', demoDataCounts.services],
+                ['Plans', demoDataCounts.plans],
+                ['Accounts', demoDataCounts.accounts],
+                ['Subscriptions', demoDataCounts.subscriptions],
+                ['Sales', demoDataCounts.sales],
+                ['Payments', demoDataCounts.payments],
+                ['Invoices', demoDataCounts.invoices],
+                ['Expenses', demoDataCounts.expenses],
+                ['Reminders', demoDataCounts.reminders],
+                ['Communications', demoDataCounts.communications],
+                ['Notifications', demoDataCounts.notifications],
+              ].map(([label, count]) => <div key={label} className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/70">
+                <span className="text-slate-500 dark:text-slate-400">{label}</span>
+                <strong className="ml-2 text-slate-900 dark:text-white">{count}</strong>
+              </div>)}
+            </div>}
+          </section>
+
+          {demoDialog && <div className="fixed inset-0 z-[120] grid place-items-center bg-slate-950/60 p-4" onClick={() => !isDemoDataBusy && setDemoDialog(null)}>
+            <div role="dialog" aria-modal="true" aria-labelledby="demo-data-dialog-title" className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:p-6" onClick={event => event.stopPropagation()}>
+              {demoDialog === 'preview' ? <>
+                <h2 id="demo-data-dialog-title" className="text-lg font-bold text-slate-900 dark:text-white">Demo Data Preview</h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{demoPreview.description} Existing data will not be deleted.</p>
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {Object.entries(demoPreview.counts).map(([label, count]) => <div key={label} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                    <span className="block text-xs capitalize text-slate-500 dark:text-slate-400">{label.replace(/([A-Z])/g, ' $1')}</span>
+                    <strong className="mt-1 block text-lg text-slate-900 dark:text-white">{count}</strong>
+                  </div>)}
+                </div>
+                <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                  Demo data will be added to your existing data. Existing data will not be deleted or overwritten.
+                </div>
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                  <button type="button" disabled={isDemoDataBusy} onClick={() => setDemoDialog(null)} className="min-h-10 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold dark:border-slate-700">Cancel</button>
+                  <button type="button" disabled={isDemoDataBusy || demoDataStatus !== 'Not installed'} onClick={addDemoRecords} className="min-h-10 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{isDemoDataBusy ? 'Adding…' : 'Add Demo Data'}</button>
+                </div>
+              </> : <>
+                <h2 id="demo-data-dialog-title" className="text-lg font-bold text-slate-900 dark:text-white">Remove Demo Data?</h2>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">This will remove only records marked as demo data. Your existing real data will remain unchanged.</p>
+                <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                  If a real record now depends on a demo customer, service, account, or plan, removal will stop and explain the dependency rather than break your data.
+                </div>
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                  <button type="button" disabled={isDemoDataBusy} onClick={() => setDemoDialog(null)} className="min-h-10 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold dark:border-slate-700">Cancel</button>
+                  <button type="button" disabled={isDemoDataBusy} onClick={removeDemoRecords} className="min-h-10 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{isDemoDataBusy ? 'Removing…' : 'Remove Demo Data'}</button>
+                </div>
+              </>}
+            </div>
+          </div>}
 
           <section className={cardClass}>
             <SectionHeading title="Backup and restore" description="Backups include this business, settings, records, relationships, and notifications." />

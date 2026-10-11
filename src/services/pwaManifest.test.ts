@@ -18,13 +18,14 @@ const manifest = JSON.parse(readFileSync(new URL('../../public/manifest.webmanif
 test('PWA manifest has the product identity and standalone launch configuration', () => {
   assert.equal(manifest.name, 'XolveManager — Business Management Platform');
   assert.equal(manifest.short_name, 'XolveManager');
-  assert.equal(manifest.description, 'Business Management Platform');
+  assert.match(manifest.description, /customer records, subscriptions, sales, payments/);
   assert.equal(manifest.start_url, '/');
   assert.equal(manifest.scope, '/');
   assert.equal(manifest.display, 'standalone');
   assert.equal(manifest.orientation, 'portrait-primary');
-  assert.equal(manifest.theme_color, '#059669');
-  assert.equal(manifest.background_color, '#f6f8f7');
+  assert.equal(manifest.theme_color, '#7C3AED');
+  assert.equal(manifest.background_color, '#F8FAFC');
+  assert.ok(manifest.icons.every(icon => icon.src.startsWith('/icons/xolve-manager-')));
 });
 
 test('manifest icons exist as PNG assets with their declared dimensions', () => {
