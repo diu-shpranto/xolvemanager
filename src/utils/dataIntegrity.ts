@@ -112,6 +112,7 @@ const isValidDateOnly = (value: string): boolean => {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 };
 const normalizedKey = (value?: string): string => value?.trim().toLocaleLowerCase() || '';
+const normalizedPhoneKey = (value?: string): string => value?.replace(/\D/g, '') || '';
 const isFiniteAmount = (value: number): boolean => Number.isFinite(value);
 
 export function runDataIntegrityCheck(
@@ -227,7 +228,7 @@ export function runDataIntegrityCheck(
       else firstByValue.set(key, item.id);
     });
   };
-  checkUniqueValues(customers, item => normalizedKey(item.phone), 'phone', 'customer');
+  checkUniqueValues(customers, item => normalizedPhoneKey(item.phone), 'phone', 'customer');
   checkUniqueValues(customers, item => normalizedKey(item.email), 'email', 'customer');
   checkUniqueValues(invoices.map(item => ({ id: item.invoiceId, invoiceNumber: item.invoiceNumber })),
     item => normalizedKey(item.invoiceNumber), 'invoice number', 'invoice');

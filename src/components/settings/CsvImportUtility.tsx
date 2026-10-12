@@ -35,6 +35,7 @@ export const CsvImportUtility: React.FC = () => {
     customers,
     services,
     addCustomer,
+    updateCustomer,
     addSubscription,
     logActivity,
     language,
@@ -176,10 +177,11 @@ export const CsvImportUtility: React.FC = () => {
           return;
         }
 
-        const customersToSave = validRecords.map(r => r.customer);
-
-        for (const [index, cust] of customersToSave.entries()) {
-          addCustomer({
+        let createdCount = 0;
+        let updatedCount = 0;
+        for (const [index, record] of validRecords.entries()) {
+          const cust = record.customer;
+          const customerData = {
             name: cust.name,
             phone: cust.phone,
             email: cust.email,
@@ -188,20 +190,29 @@ export const CsvImportUtility: React.FC = () => {
             facebookId: cust.facebookId,
             address: cust.address,
             notes: cust.notes,
-          });
-          setUploadProgress({ processed: index + 1, total: customersToSave.length });
+          };
+          if (record.isExisting) {
+            await updateCustomer(cust.id, customerData);
+            updatedCount += 1;
+          } else {
+            await addCustomer(customerData);
+            createdCount += 1;
+          }
+          setUploadProgress({ processed: index + 1, total: validRecords.length });
         }
 
         logActivity({
           type: 'customer_added',
           title: 'Bulk Customer CSV Import',
-          description: `Imported ${customersToSave.length} customers from CSV.`,
+          description: `Imported ${createdCount} new customers and updated ${updatedCount} existing customers from CSV.`,
         });
 
+        const skippedDuplicates = parsedCustomerRecords.filter(record => record.isDuplicate).length;
+        const skippedInvalid = parsedCustomerRecords.filter(record => !record.isValid && !record.isDuplicate).length;
         const summary =
           language === 'bn'
-            ? `সফলভাবে ${customersToSave.length} জন কাস্টমার যোগ করা হয়েছে!`
-            : `Successfully imported ${customersToSave.length} customers!`;
+            ? `${createdCount} জন নতুন কাস্টমার যোগ এবং ${updatedCount} জন আপডেট হয়েছে। ${skippedDuplicates} টি ডুপ্লিকেট এবং ${skippedInvalid} টি ভুল সারি বাদ দেওয়া হয়েছে।`
+            : `Imported ${createdCount} new customers and updated ${updatedCount} existing customers. Skipped ${skippedDuplicates} duplicate and ${skippedInvalid} invalid rows.`;
 
         setUploadCompleteSummary(summary);
         showToast(summary, 'success');
@@ -568,10 +579,20 @@ export const CsvImportUtility: React.FC = () => {
                               <CheckCircle2 className="w-3 h-3" />
                               <span>{record.isExisting ? 'Update' : 'New'}</span>
                             </span>
+                          ) : record.isDuplicate ? (
+                            <span title={record.warnings.join('; ')} className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+                              <AlertTriangle className="h-3 w-3" />
+                              <span>Duplicate · skipped</span>
+                            </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-full border border-rose-200 dark:border-rose-800">
+                            <span title={record.warnings.join('; ')} className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-full border border-rose-200 dark:border-rose-800">
                               <XCircle className="w-3 h-3" />
                               <span>Invalid</span>
+                            </span>
+                          )}
+                          {record.warnings.length > 0 && (
+                            <span className="mt-1 block max-w-48 text-[10px] leading-4 text-amber-700 dark:text-amber-300">
+                              {record.warnings.join('; ')}
                             </span>
                           )}
                         </td>

@@ -1,5 +1,6 @@
 import type {
   AppCurrency,
+  Account,
   Customer,
   Expense,
   ProfitabilityAllocationMethod,
@@ -396,6 +397,95 @@ export function getCustomerProfitability(data: ProfitabilityData): Profitability
       refunds: 0, lowMargin: revenue > 0 && grossProfit / revenue * 100 < (data.lowMarginWarningPercent ?? 20), isLoss: grossProfit < 0,
     };
   });
+}
+
+export function getAccountProfitability(
+  data: ProfitabilityData,
+  accounts: Pick<Account, 'id' | 'name'>[],
+): ProfitabilityRow[] {
+  const sales = getFilteredSales(data);
+  const serviceRows = getServiceProfitability(data);
+  const accountById = new Map(accounts.map(account => [account.id, account]));
+  const subscriptionsById = new Map(data.subscriptions.map(subscription => [subscription.id, subscription]));
+  const subscriptionsBySaleId = new Map(data.subscriptions.flatMap(subscription =>
+    subscription.saleId ? [[subscription.saleId, subscription] as const] : []
+  ));
+  const rowsByAccount = new Map<string, Sale[]>();
+
+  sales.forEach(sale => {
+    const accountId = sale.accountId
+      || (sale.subscriptionId ? subscriptionsById.get(sale.subscriptionId)?.accountId : undefined)
+      || subscriptionsBySaleId.get(sale.id)?.accountId
+      || 'unassigned';
+    const accountSales = rowsByAccount.get(accountId) ?? [];
+    accountSales.push(sale);
+    rowsByAccount.set(accountId, accountSales);
+  });
+
+  const revenueByService = new Map<string, number>();
+  sales.forEach(sale => {
+    revenueByService.set(
+      sale.serviceId,
+      (revenueByService.get(sale.serviceId) ?? 0) + convertAmount(sale.amount, sale.currency, data.currency)
+    );
+  });
+
+  return [...rowsByAccount.entries()].map(([accountId, accountSales]) => {
+    const revenue = accountSales.reduce(
+      (sum, sale) => sum + convertAmount(sale.amount, sale.currency, data.currency),
+      0
+    );
+    let directCost = 0;
+    let operatingCost = 0;
+    serviceRows.forEach(serviceRow => {
+      const serviceRevenue = revenueByService.get(serviceRow.id) ?? 0;
+      if (!serviceRevenue) return;
+      const accountServiceRevenue = accountSales
+        .filter(sale => sale.serviceId === serviceRow.id)
+        .reduce((sum, sale) => sum + convertAmount(sale.amount, sale.currency, data.currency), 0);
+      const share = accountServiceRevenue / serviceRevenue;
+      directCost += serviceRow.directCost * share;
+      operatingCost += serviceRow.operatingCost * share;
+    });
+    const grossProfit = revenue - directCost;
+    const netContribution = grossProfit - operatingCost;
+    const accountSubscriptionIds = new Set(accountSales.flatMap(sale => {
+      const subscriptionId = sale.subscriptionId
+        || subscriptionsBySaleId.get(sale.id)?.id;
+      return subscriptionId ? [subscriptionId] : [];
+    }));
+    const accountSubscriptions = [...accountSubscriptionIds]
+      .map(subscriptionId => subscriptionsById.get(subscriptionId))
+      .filter(subscription => subscription && subscription.status !== 'cancelled');
+    const account = accountById.get(accountId);
+
+    return {
+      id: accountId,
+      name: accountId === 'unassigned'
+        ? 'Unassigned account'
+        : account?.name || `Account ${accountId.slice(0, 8)}`,
+      salesCount: accountSales.length,
+      subscriptionCount: accountSubscriptions.length,
+      revenue,
+      directCost,
+      grossProfit,
+      grossMargin: revenue > 0 ? grossProfit / revenue * 100 : null,
+      operatingCost,
+      netContribution,
+      netMargin: revenue > 0 ? netContribution / revenue * 100 : null,
+      due: accountSales.reduce(
+        (sum, sale) => sum + convertAmount(getSaleDueAmount(sale, data.payments), sale.currency, data.currency),
+        0
+      ),
+      discounts: accountSales.reduce(
+        (sum, sale) => sum + convertAmount(sale.discount || 0, sale.currency, data.currency),
+        0
+      ),
+      refunds: 0,
+      lowMargin: revenue > 0 && grossProfit / revenue * 100 < (data.lowMarginWarningPercent ?? 20),
+      isLoss: netContribution < 0,
+    };
+  }).sort((first, second) => second.revenue - first.revenue);
 }
 
 export function getProfitabilitySummary(data: ProfitabilityData): ProfitabilitySummary {

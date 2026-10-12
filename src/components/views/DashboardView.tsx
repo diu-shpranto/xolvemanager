@@ -112,29 +112,31 @@ interface DashboardViewProps {
   onNavigateToCustomers?: (filter: CustomerCrmQuickFilter) => void;
 }
 
-const dashboardPanelClass = 'dashboard-panel rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-5';
-const dashboardSelectClass = 'rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200';
+const dashboardPanelClass = 'dashboard-panel rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4';
+const dashboardSelectClass = 'rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-medium text-slate-700 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200';
 
 function DashboardPanel({
   title,
   description,
   action,
   children,
+  className = '',
 }: {
   title: string;
   description?: string;
   action?: { label: string; onClick: () => void };
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <section className={`${dashboardPanelClass} space-y-4`}>
+    <section className={`${dashboardPanelClass} space-y-3 ${className}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold text-slate-900 dark:text-white">{title}</h2>
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white">{title}</h2>
           {description && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{description}</p>}
         </div>
         {action && (
-          <button type="button" onClick={action.onClick} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-emerald-300 dark:hover:bg-emerald-950/40">
+          <button type="button" onClick={action.onClick} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40">
             {action.label}<ChevronRight className="h-3.5 w-3.5" />
           </button>
         )}
@@ -152,25 +154,26 @@ function DashboardMetric({
   onClick,
 }: {
   label: string;
-  value: string | number;
+  value: React.ReactNode;
   hint?: string;
-  tone?: 'slate' | 'green' | 'amber' | 'blue';
+  tone?: 'slate' | 'green' | 'amber' | 'blue' | 'violet';
   onClick?: () => void;
 }) {
   const toneClass = {
     slate: 'text-slate-900 dark:text-white',
+    violet: 'text-violet-700 dark:text-violet-300',
     green: 'text-emerald-700 dark:text-emerald-300',
     amber: 'text-amber-700 dark:text-amber-300',
     blue: 'text-blue-700 dark:text-blue-300',
   }[tone];
   const content = <>
-      <div className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</div>
-      <div className={`mt-1 font-mono text-xl font-bold tabular-nums ${toneClass}`}>{value}</div>
-      {hint && <div className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">{hint}</div>}
+      <div className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">{label}</div>
+      <div className={`mt-1 break-words font-mono text-lg font-bold tabular-nums sm:text-xl ${toneClass}`}>{value}</div>
+      {hint && <div className="mt-1 text-[10px] leading-4 text-slate-400 dark:text-slate-500">{hint}</div>}
   </>;
   return onClick
-    ? <button type="button" onClick={onClick} className={`${dashboardPanelClass} dashboard-metric w-full text-left transition-colors hover:border-violet-300 focus-visible:outline-2 focus-visible:outline-violet-600`}>{content}</button>
-    : <div className={`${dashboardPanelClass} dashboard-metric`}>{content}</div>;
+    ? <button type="button" onClick={onClick} className={`${dashboardPanelClass} dashboard-metric min-w-0 w-full text-left transition-colors hover:border-violet-300 focus-visible:outline-2 focus-visible:outline-violet-600`}>{content}</button>
+    : <div className={`${dashboardPanelClass} dashboard-metric min-w-0`}>{content}</div>;
 }
 
 function PaymentStatusBadge({ status }: { status: string }) {
@@ -213,7 +216,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     accounts,
     activityLogs,
     reminders,
-    notifications,
     settings,
     currentBusiness,
     currentBusinessName,
@@ -404,9 +406,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     () => sumPaymentRecords(filteredPayments, currency),
     [filteredPayments, currency]
   );
+  const receivedByCurrency = useMemo(() => ({
+    BDT: sumPaymentRecords(filteredPayments.filter(payment => payment.currency === 'BDT'), 'BDT'),
+    USD: sumPaymentRecords(filteredPayments.filter(payment => payment.currency === 'USD'), 'USD'),
+  }), [filteredPayments]);
+  const salesSummaryByCurrency = useMemo(() => ({
+    BDT: calculateSalesFinancialSummary(filteredSales.filter(sale => sale.currency === 'BDT'), scopedPayments, 'BDT'),
+    USD: calculateSalesFinancialSummary(filteredSales.filter(sale => sale.currency === 'USD'), scopedPayments, 'USD'),
+  }), [filteredSales, scopedPayments]);
   const paymentMethodSummary = useMemo(
     () => getPaymentMethodSummary(
-      filteredPayments,
+      filteredPayments.filter(payment => payment.currency === currency),
       normalizePaymentMethods(settings.paymentPreferences?.methods),
       currency,
       getTodayDateString()
@@ -498,6 +508,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   })).filter(item => item.financial.due > 0).sort((left, right) => outstandingSort === 'oldest'
     ? left.sale.date.localeCompare(right.sale.date)
     : right.financial.due - left.financial.due), [filteredSales, scopedPayments, currency, invoiceBySaleId, outstandingSort]);
+  const allDashboardAttentionSales = useMemo(() => scopedSales
+    .filter(sale => sale.paymentStatus !== 'refunded' && Number.isFinite(Number(sale.amount)))
+    .map(sale => ({
+      sale,
+      due: getSalePaymentSummary(sale, scopedPayments, sale.currency).due,
+      dueDate: invoiceBySaleId.get(sale.id)?.dueDate || sale.date,
+    }))
+    .filter(item => item.due > 0)
+    .sort((left, right) => getDaysDifference(left.dueDate) - getDaysDifference(right.dueDate) || right.due - left.due),
+  [scopedSales, scopedPayments, invoiceBySaleId]);
+  const dashboardAttentionSales = allDashboardAttentionSales.slice(0, 2);
   const filteredInvoices = useMemo(() => validReportRange
     ? scopedInvoices.filter(invoice => isWithinDateBounds(invoice.invoiceDate, reportBounds) && saleById.has(invoice.saleId))
     : [], [scopedInvoices, validReportRange, reportBounds, saleById]);
@@ -521,18 +542,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const recentActivities = [...scopedActivity].sort((left, right) =>
     (right.timestamp || '').localeCompare(left.timestamp || '')
   ).slice(0, 6);
-  const needsAttentionNotifications = useMemo(() => notifications
-    .filter(notification => {
-      if (!notification.expiresAt) return true;
-      const expiry = Date.parse(notification.expiresAt);
-      return !Number.isFinite(expiry) || expiry > Date.now();
-    })
-    .sort((left, right) => {
-      const priority = { critical: 0, warning: 1, info: 2, success: 3 };
-      return priority[left.priority] - priority[right.priority]
-        || right.createdAt.localeCompare(left.createdAt);
-    })
-    .slice(0, 6), [notifications]);
   const currentStatus = (subscription: Subscription) => {
     return getSubscriptionStatus(subscription, serviceById.get(subscription.serviceId), settings.reminderNoticeDays);
   };
@@ -581,7 +590,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       }
       return dateValue;
     };
-    filteredSales.forEach(sale => {
+    filteredSales.filter(sale => sale.currency === currency).forEach(sale => {
       const key = keyFor(sale.date);
       if (!key) return;
       const group = groups.get(key) || { key, sales: 0, revenue: 0, paid: 0, due: 0 };
@@ -592,7 +601,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       groups.set(key, group);
     });
     filteredPayments.forEach(payment => {
-      if (payment.paymentStatus !== 'paid' && payment.paymentStatus !== 'partial') return;
+      if ((payment.paymentStatus !== 'paid' && payment.paymentStatus !== 'partial') || payment.currency !== currency) return;
       const key = keyFor(payment.paymentDate);
       if (!key) return;
       const group = groups.get(key) || { key, sales: 0, revenue: 0, paid: 0, due: 0 };
@@ -1282,6 +1291,125 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
+  const subscriptionHealthData = [
+    { name: 'Active', value: subscriptionCounts.active, color: '#7c3aed' },
+    { name: 'Ending soon', value: subscriptionCounts.ending, color: '#d97706' },
+    { name: 'Expired', value: subscriptionCounts.expired, color: '#64748b' },
+    { name: 'Cancelled', value: subscriptionCounts.cancelled, color: '#cbd5e1' },
+  ].filter(item => item.value > 0);
+  const attentionCount = allDashboardAttentionSales.length
+    + endingSoonSubscriptions.length
+    + (resourceMetrics.expiringAssignments > 0 ? 1 : 0)
+    + (financialIntegrityErrors > 0 || storageWarning ? 1 : 0);
+  const dashboardCopy = language === 'bn' ? {
+    overview: 'ব্যবসার সারসংক্ষেপ',
+    title: 'ড্যাশবোর্ড',
+    context: 'বিক্রয়, নবায়ন ও আদায় এক নজরে',
+    dateRange: 'তারিখের সীমা',
+    receivedRevenue: 'প্রাপ্ত আয়',
+    receivedContext: 'নির্বাচিত সময়ে আদায়',
+    customers: 'গ্রাহক',
+    activeSubscriptions: 'সক্রিয় সাবস্ক্রিপশন',
+    expiringSoon: 'শিগগির মেয়াদ শেষ',
+    outstanding: 'বকেয়া',
+    activeRecords: 'সক্রিয় রেকর্ড',
+    currentStatus: 'বর্তমান অবস্থা',
+    withinDays: (days: number) => `${days} দিনের মধ্যে`,
+    dueSelected: 'নির্বাচিত বিক্রয়ের বকেয়া',
+    quickActions: 'দ্রুত কাজ',
+    commonTasks: 'নিয়মিত কাজ',
+    addCustomer: 'গ্রাহক যোগ',
+    receivePayment: 'পেমেন্ট গ্রহণ',
+    renewSubscription: 'সাবস্ক্রিপশন নবায়ন',
+    actionRequired: 'করণীয়',
+    actionDescription: 'যে পেমেন্ট ও সাবস্ক্রিপশনে মনোযোগ প্রয়োজন।',
+    allClear: 'সবকিছু ঠিক আছে। এখন জরুরি কোনো কাজ নেই।',
+    paymentDue: 'পেমেন্ট বাকি',
+    daysOverdue: (days: number) => `${days} দিন বকেয়া`,
+    dueDate: 'বকেয়ার তারিখ',
+    morePayments: (count: number) => `আরও ${count}টি বকেয়া পেমেন্ট`,
+    expiresToday: 'আজ মেয়াদ শেষ',
+    daysRemaining: (days: number) => `${days} দিন বাকি`,
+    moreSubscriptions: (count: number) => `আরও ${count}টি সাবস্ক্রিপশন শিগগির শেষ হবে`,
+    viewSale: 'বিক্রয় দেখুন',
+    renew: 'নবায়ন',
+    profileExpiry: (count: number, days: number) => `${count}টি বরাদ্দ প্রোফাইল ${days} দিনের মধ্যে মেয়াদ শেষ হবে`,
+    integrityIssues: (count: number) => `${count}টি আর্থিক তথ্যের সমস্যা পর্যালোচনা করুন`,
+    storageWarning: 'স্টোরেজ সতর্কতা পর্যালোচনা করুন',
+    revenueTrend: 'আয়ের প্রবণতা',
+    revenueLegend: 'আয় · আদায় · বকেয়া',
+    noRevenue: 'এই সময়ে আয়ের তথ্য নেই।',
+    subscriptionHealth: 'সাবস্ক্রিপশনের অবস্থা',
+    subscriptionHealthDescription: 'সব সাবস্ক্রিপশনের বর্তমান অবস্থা।',
+    noSubscriptions: 'সারাংশ দেখানোর মতো সাবস্ক্রিপশন নেই।',
+    active: 'সক্রিয়',
+    ending: 'শিগগির মেয়াদ শেষ',
+    expired: 'মেয়াদ শেষ',
+    cancelled: 'বাতিল',
+    recentSales: 'সাম্প্রতিক বিক্রয়',
+    viewAllSales: 'সব বিক্রয় দেখুন',
+    noSales: 'নির্বাচিত সময়ে কোনো বিক্রয় নেই।',
+    moreReports: 'আরও ব্যবসায়িক প্রতিবেদন',
+    moreReportsDescription: 'আর্থিক হিসাব, নগদ প্রবাহ, পেমেন্ট ও গ্রাহক কার্যকারিতা',
+    advancedReports: 'পুনরাবৃত্ত আয় ও নবায়ন বিশ্লেষণ',
+    advancedReportsDescription: 'MRR, সাবস্ক্রিপশন বণ্টন ও আয়ের পূর্বাভাস',
+  } : {
+    overview: 'BUSINESS OVERVIEW',
+    title: 'Dashboard',
+    context: 'Sales, renewals, and collections at a glance',
+    dateRange: 'Date range',
+    receivedRevenue: 'Received revenue',
+    receivedContext: 'Payments received',
+    customers: 'Customers',
+    activeSubscriptions: 'Active subscriptions',
+    expiringSoon: 'Expiring soon',
+    outstanding: 'Outstanding',
+    activeRecords: 'Active records',
+    currentStatus: 'Current status',
+    withinDays: (days: number) => `Within ${days} days`,
+    dueSelected: 'Due across selected sales',
+    quickActions: 'Quick actions',
+    commonTasks: 'Common tasks',
+    addCustomer: 'Add Customer',
+    receivePayment: 'Receive Payment',
+    renewSubscription: 'Renew Subscription',
+    actionRequired: 'Action required',
+    actionDescription: 'Payments and subscriptions that may need attention.',
+    allClear: 'Everything is up to date. No urgent actions right now.',
+    paymentDue: 'Payment due',
+    daysOverdue: (days: number) => `${days}d overdue`,
+    dueDate: 'Due',
+    morePayments: (count: number) => `${count} more outstanding payments`,
+    expiresToday: 'Expires today',
+    daysRemaining: (days: number) => `${days}d remaining`,
+    moreSubscriptions: (count: number) => `${count} more subscriptions ending soon`,
+    viewSale: 'View sale',
+    renew: 'Renew',
+    profileExpiry: (count: number, days: number) => `${count} assigned ${count === 1 ? 'profile expires' : 'profiles expire'} within ${days} days`,
+    integrityIssues: (count: number) => `${count} financial integrity issue${count === 1 ? '' : 's'} to review`,
+    storageWarning: 'Storage warning to review',
+    revenueTrend: 'Revenue trend',
+    revenueLegend: 'Revenue · received · outstanding',
+    noRevenue: 'No revenue data for this period.',
+    subscriptionHealth: 'Subscription health',
+    subscriptionHealthDescription: 'Current status across all subscriptions.',
+    noSubscriptions: 'No subscriptions to summarize.',
+    active: 'Active',
+    ending: 'Ending soon',
+    expired: 'Expired',
+    cancelled: 'Cancelled',
+    recentSales: 'Recent sales',
+    viewAllSales: 'View all sales',
+    noSales: 'No sales in the selected date range.',
+    moreReports: 'More business reports',
+    moreReportsDescription: 'Financial accounts, cash flow, payments, and customer performance',
+    advancedReports: 'Recurring revenue and renewal analytics',
+    advancedReportsDescription: 'MRR, subscription distribution, and revenue forecasts',
+  };
+  const reportRangeLabel = validReportRange
+    ? `${formatAppDate(reportBounds.start, language)} – ${formatAppDate(reportBounds.end, language)}`
+    : language === 'bn' ? 'সঠিক তারিখের সীমা নির্বাচন করুন' : 'Select a valid date range';
+
   const handleDownloadInvoice = async (invoice: Invoice) => {
     if (downloadTask.current) return;
     const sale = saleById.get(invoice.saleId);
@@ -1303,7 +1431,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       );
       const generated = await generateInvoiceJpg(details);
       downloadInvoiceJpg(generated.blob, generated.fileName);
-      showToast(`Downloaded ${generated.fileName}`, 'success');
+      showToast(`Download requested · ${generated.fileName}`, 'info');
     } catch (error) {
       console.error('Dashboard invoice download failed:', error);
       showToast('Unable to download invoice. Please try again.', 'error');
@@ -1323,56 +1451,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  const priorityActions = [
-    {
-      label: 'Renewals due',
-      value: overdueReminders.length + dueTodayReminders.length + upcomingReminders.length,
-      hint: 'Review next 7 days',
-      tone: 'violet',
-      onClick: () => onNavigate('reminders'),
-    },
-    {
-      label: 'Payments due',
-      value: sales.filter(sale => getSalePaymentStatus(sale, payments) !== 'paid').length,
-      hint: 'Open balances',
-      tone: 'amber',
-      onClick: () => onNavigate('payments'),
-    },
-    {
-      label: 'New customers',
-      value: customers.filter(customer => isCustomerNew(customer.createdAt || '')).length,
-      hint: 'This month',
-      tone: 'emerald',
-      onClick: () => {
-        if (onNavigateToCustomers) {
-          onNavigateToCustomers('new');
-          return;
-        }
-        onNavigate('customers');
-      },
-    },
-  ];
-
   return (
-    <div className="dashboard-view max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex flex-col gap-5 sm:gap-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">Welcome back</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-            {currentBusinessName || currentBusiness?.name || settings.storeName || 'Your Business'}
+    <div className="dashboard-view mx-auto flex max-w-[1600px] flex-col gap-5 px-4 py-5 sm:gap-6 sm:px-6 sm:py-6 xl:px-8">
+      <header className="dashboard-page-header flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-bold tracking-wide text-violet-700 dark:text-violet-300">{dashboardCopy.overview}</p>
+          <h1 className="mt-1 break-words text-3xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-4xl">
+            {dashboardCopy.title}
           </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Business overview · {formatAppDate(getTodayDateString(), language)}
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+            {currentBusinessName || currentBusiness?.name || settings.storeName || 'Your Business'}
+            <span className="mx-2 text-slate-300 dark:text-slate-600">·</span>
+            {dashboardCopy.context}
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="min-w-40 text-xs font-semibold text-slate-600 dark:text-slate-300">
-            Date Range
+        <div className="grid w-full grid-cols-1 items-end gap-2 sm:w-auto sm:flex">
+          <label className="min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-200 sm:min-w-44">
+            {dashboardCopy.dateRange}
             <select
               aria-label="Dashboard date range"
               value={datePreset}
               onChange={event => setDatePreset(event.target.value as ReportDatePreset)}
-              className={`${dashboardSelectClass} mt-1 w-full`}
+              className={`${dashboardSelectClass} mt-0.5 w-full`}
             >
               <option value="today">Today</option>
               <option value="yesterday">Yesterday</option>
@@ -1385,20 +1485,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <option value="custom">Custom Range</option>
             </select>
           </label>
-          <button type="button" onClick={() => onRequestCreate('customers')} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-            <UserPlus className="h-4 w-4" /> Add Customer
-          </button>
-          <button type="button" onClick={() => onOpenNewSale()} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">
-            <Plus className="h-4 w-4" /> Add Sale
-          </button>
         </div>
-        {datePreset === 'custom' && (
-          <div className="grid w-full grid-cols-2 gap-2 sm:w-auto">
-            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Start date<input type="date" aria-label="Dashboard start date" value={customStartDate} onChange={event => setCustomStartDate(event.target.value)} className={`${dashboardSelectClass} mt-1 w-full`} /></label>
-            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">End date<input type="date" aria-label="Dashboard end date" value={customEndDate} onChange={event => setCustomEndDate(event.target.value)} className={`${dashboardSelectClass} mt-1 w-full`} /></label>
-          </div>
-        )}
       </header>
+      {datePreset === 'custom' && (
+        <div className="grid w-full grid-cols-2 gap-2 sm:ml-auto sm:max-w-md">
+          <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Start date<input type="date" aria-label="Dashboard start date" value={customStartDate} onChange={event => setCustomStartDate(event.target.value)} className={`${dashboardSelectClass} mt-0.5 w-full`} /></label>
+          <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">End date<input type="date" aria-label="Dashboard end date" value={customEndDate} onChange={event => setCustomEndDate(event.target.value)} className={`${dashboardSelectClass} mt-0.5 w-full`} /></label>
+        </div>
+      )}
       {!validReportRange && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">{customStartDate && customEndDate ? 'End date must be on or after the start date.' : 'Select a start and end date.'}</p>}
       {dashboardDataError && (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
@@ -1407,12 +1501,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       )}
       {!dashboardDataLoading && scopedSales.length === 0 && scopedCustomers.length === 0 && scopedServices.length === 0 && scopedAccounts.length === 0 && scopedSubscriptions.length === 0 && scopedPayments.length === 0 && scopedExpenses.length === 0 && scopedOtherIncome.length === 0 && scopedFinancialTransfers.length === 0 && scopedFinancialAdjustments.length === 0 && scopedFinancialAccounts.length === 0 && (
-        <section className={`${dashboardPanelClass} flex flex-col items-center gap-4 py-8 text-center`}>
+        <section className={`${dashboardPanelClass} flex flex-col items-center gap-3 py-6 text-center`}>
           <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
             <Sparkles className="h-3.5 w-3.5" /> Quick start
           </div>
           <div className="max-w-2xl space-y-2">
-            <p className="text-xl font-bold text-slate-900 dark:text-white">Start your business setup in one click</p>
+            <p className="text-lg font-bold text-slate-900 dark:text-white">Start your business setup in one click</p>
             <p className="text-sm text-slate-600 dark:text-slate-300">
               {demoDataStatus === 'Not installed'
                 ? 'No records have been added yet. Load a ready-made demo, or create your first customer, service, and sale.'
@@ -1430,26 +1524,211 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </section>
       )}
 
-      <section className={`${dashboardPanelClass} space-y-4`}>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-white">Daily focus</h2>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">High-impact actions for today</p>
-          </div>
-          <button type="button" onClick={() => onOpenNewSale()} className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-violet-700">New Sale <Plus className="h-3.5 w-3.5" /></button>
+      {dashboardDataLoading ? <div aria-label="Loading dashboard metrics" className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+        {Array.from({ length: 5 }, (_, index) => <div key={index} className="h-28 animate-pulse rounded-2xl bg-slate-200/70 dark:bg-slate-800" />)}
+      </div> : <section aria-label="Business performance" className="dashboard-kpi-grid">
+        <button type="button" onClick={() => onNavigate('payments')} className="dashboard-revenue-kpi">
+          <span className="dashboard-kpi-eyebrow">{dashboardCopy.receivedRevenue}</span>
+          <span className="dashboard-revenue-values">
+            <span><small>BDT</small><strong>{formatCurrency(receivedByCurrency.BDT, 'BDT')}</strong></span>
+            <span><small>USD</small><strong>{formatCurrency(receivedByCurrency.USD, 'USD')}</strong></span>
+          </span>
+          <span className="dashboard-revenue-context">{dashboardCopy.receivedContext} · {reportRangeLabel}</span>
+          <ArrowUpRight className="dashboard-revenue-arrow" aria-hidden="true" />
+        </button>
+        <button type="button" onClick={() => onNavigate('customers')} className="dashboard-kpi dashboard-kpi--customers">
+          <span className="dashboard-kpi-label"><Users aria-hidden="true" /> {dashboardCopy.customers}</span>
+          <strong>{scopedCustomers.filter(customer => !customer.isArchived && customer.status !== 'archived').length}</strong>
+          <span className="dashboard-kpi-note">{dashboardCopy.activeRecords}</span>
+        </button>
+        <button type="button" onClick={() => onNavigate('subscriptions')} className="dashboard-kpi dashboard-kpi--subscriptions">
+          <span className="dashboard-kpi-label"><CreditCard aria-hidden="true" /> {dashboardCopy.activeSubscriptions}</span>
+          <strong>{activeBusinessSubscriptions.length}</strong>
+          <span className="dashboard-kpi-note">{dashboardCopy.currentStatus}</span>
+        </button>
+        <button type="button" onClick={() => onNavigate('subscriptions')} className={`dashboard-kpi dashboard-kpi--ending${endingSoonSubscriptions.length ? ' is-attention' : ''}`}>
+          <span className="dashboard-kpi-label"><Calendar aria-hidden="true" /> {dashboardCopy.expiringSoon}</span>
+          <strong>{endingSoonSubscriptions.length}</strong>
+          <span className="dashboard-kpi-note">{dashboardCopy.withinDays(settings.reminderNoticeDays)}</span>
+        </button>
+        <button type="button" onClick={() => onNavigate('payments')} className={`dashboard-kpi dashboard-kpi--outstanding${salesSummaryByCurrency.BDT.due > 0 || salesSummaryByCurrency.USD.due > 0 ? ' is-attention' : ''}`}>
+          <span className="dashboard-kpi-label"><Wallet aria-hidden="true" /> {dashboardCopy.outstanding}</span>
+          <span className="dashboard-kpi-currencies">
+            <span><small>BDT</small><strong>{formatCurrency(salesSummaryByCurrency.BDT.due, 'BDT')}</strong></span>
+            <span><small>USD</small><strong>{formatCurrency(salesSummaryByCurrency.USD.due, 'USD')}</strong></span>
+          </span>
+          <span className="dashboard-kpi-note">{dashboardCopy.dueSelected}</span>
+        </button>
+      </section>}
+
+      <section className="dashboard-quick-actions" aria-label="Quick actions">
+        <div className="dashboard-quick-actions-heading">
+          <h2>{dashboardCopy.quickActions}</h2>
+          <span>{dashboardCopy.commonTasks}</span>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {priorityActions.map(action => (
-            <button key={action.label} type="button" onClick={action.onClick} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-violet-300 hover:bg-violet-50/60 dark:border-slate-700 dark:bg-slate-800/80 dark:hover:border-violet-700 dark:hover:bg-violet-950/30">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">{action.label}</div>
-              <div className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{action.value}</div>
-              <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{action.hint}</div>
-            </button>
-          ))}
+        <div className="dashboard-quick-actions-list">
+          <button type="button" onClick={() => onRequestCreate('customers')} className="dashboard-quick-action"><UserPlus aria-hidden="true" /> {dashboardCopy.addCustomer}</button>
+          <button type="button" onClick={() => onRequestCreate('payments')} className="dashboard-quick-action"><Wallet aria-hidden="true" /> {dashboardCopy.receivePayment}</button>
+          <button type="button" onClick={() => endingSoonSubscriptions[0] ? onRenewSubscription(endingSoonSubscriptions[0]) : onNavigate('subscriptions')} className="dashboard-quick-action"><RefreshCw aria-hidden="true" /> {dashboardCopy.renewSubscription}</button>
         </div>
       </section>
 
-      <DashboardPanel title="Needs Attention" action={{ label: 'View All', onClick: () => onNavigate('reminders') }}>
+      <div className="dashboard-core-grid">
+        <DashboardPanel
+          title={dashboardCopy.actionRequired}
+          description={dashboardCopy.actionDescription}
+          className="dashboard-attention-panel"
+        >
+          {attentionCount === 0 ? (
+            <div className="dashboard-attention-empty"><CheckCircle aria-hidden="true" /><span>{dashboardCopy.allClear}</span></div>
+          ) : <div className="dashboard-attention-list">
+            {dashboardAttentionSales.map(({ sale, due, dueDate }) => {
+              const customer = customerById.get(sale.customerId);
+              const service = serviceById.get(sale.serviceId);
+              const daysLate = Math.max(0, -getDaysDifference(dueDate));
+              return <article key={`payment-${sale.id}`} className="dashboard-attention-item">
+                <span className="dashboard-attention-icon dashboard-attention-icon--payment"><Wallet aria-hidden="true" /></span>
+                <div className="dashboard-attention-copy">
+                  <strong>{getCustomerDisplayName(customer)}</strong>
+                  <span>{service?.name || 'Service unavailable'} · {sale.plan}</span>
+                </div>
+                <div className="dashboard-attention-meta">
+                  <strong>{formatCurrency(due, sale.currency)}</strong>
+                  <span className={`dashboard-attention-status ${daysLate > 0 ? 'dashboard-attention-status--overdue' : 'dashboard-attention-status--upcoming'}`}>
+                    {daysLate > 0 ? dashboardCopy.daysOverdue(daysLate) : dashboardCopy.paymentDue}
+                  </span>
+                  <span>{dashboardCopy.dueDate} {formatAppDate(dueDate, language)}</span>
+                </div>
+                <button type="button" onClick={() => onViewSale(sale.id)} className="dashboard-attention-action">{dashboardCopy.viewSale}</button>
+              </article>;
+            })}
+            {allDashboardAttentionSales.length > dashboardAttentionSales.length && (
+              <button type="button" onClick={() => onNavigate('payments')} className="dashboard-attention-summary">
+                <Wallet aria-hidden="true" />
+                <span>{dashboardCopy.morePayments(allDashboardAttentionSales.length - dashboardAttentionSales.length)}</span>
+                <ArrowUpRight aria-hidden="true" />
+              </button>
+            )}
+            {endingSoonSubscriptions.slice(0, 2).map(subscription => {
+              const customer = customerById.get(subscription.customerId);
+              const service = serviceById.get(subscription.serviceId);
+              const days = Math.max(0, daysUntilExpiry(subscription));
+              return <article key={`subscription-${subscription.id}`} className="dashboard-attention-item">
+                <span className="dashboard-attention-icon dashboard-attention-icon--renewal"><RefreshCw aria-hidden="true" /></span>
+                <div className="dashboard-attention-copy">
+                  <strong>{getCustomerDisplayName(customer)}</strong>
+                  <span>{service?.name || 'Service unavailable'} · {subscription.plan}</span>
+                </div>
+                <div className="dashboard-attention-meta">
+                  <strong>{formatAppDate(subscription.expiryDate, language)}</strong>
+                  <span className="dashboard-attention-status dashboard-attention-status--upcoming">{days === 0 ? dashboardCopy.expiresToday : dashboardCopy.daysRemaining(days)}</span>
+                </div>
+                <button type="button" onClick={() => onRenewSubscription(subscription)} className="dashboard-attention-action">{dashboardCopy.renew}</button>
+              </article>;
+            })}
+            {endingSoonSubscriptions.length > 2 && (
+              <button type="button" onClick={() => onNavigate('subscriptions')} className="dashboard-attention-summary">
+                <RefreshCw aria-hidden="true" />
+                <span>{dashboardCopy.moreSubscriptions(endingSoonSubscriptions.length - 2)}</span>
+                <ArrowUpRight aria-hidden="true" />
+              </button>
+            )}
+            {resourceMetrics.expiringAssignments > 0 && (
+              <button type="button" onClick={() => onNavigate('profiles')} className="dashboard-attention-summary">
+                <AlertTriangle aria-hidden="true" />
+                <span>{dashboardCopy.profileExpiry(resourceMetrics.expiringAssignments, RESOURCE_CAPACITY_THRESHOLDS.expiringSoonDays)}</span>
+                <ArrowUpRight aria-hidden="true" />
+              </button>
+            )}
+            {(financialIntegrityErrors > 0 || storageWarning) && (
+              <button type="button" onClick={() => onNavigate('data-integrity')} className="dashboard-attention-summary dashboard-attention-summary--warning">
+                <AlertTriangle aria-hidden="true" />
+                <span>{financialIntegrityErrors ? dashboardCopy.integrityIssues(financialIntegrityErrors) : dashboardCopy.storageWarning}</span>
+                <ArrowUpRight aria-hidden="true" />
+              </button>
+            )}
+          </div>}
+        </DashboardPanel>
+
+        <DashboardPanel title={dashboardCopy.revenueTrend} description={`${reportRangeLabel} · ${currency}`} className="dashboard-revenue-panel">
+          <div className="dashboard-chart-controls">
+            <span>{dashboardCopy.revenueLegend}</span>
+            <select aria-label="Revenue trend grouping" value={trendGrouping} onChange={event => setTrendGrouping(event.target.value as 'daily' | 'weekly' | 'monthly')} className={dashboardSelectClass}>
+              <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+            </select>
+          </div>
+          {trendData.length === 0 ? <p className="dashboard-empty-state">{dashboardCopy.noRevenue}</p> : (
+            <div className="dashboard-revenue-chart" role="img" aria-label="Revenue, paid, and due trend chart">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trendData} margin={{ top: 12, right: 12, left: 0, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e8e5ef'} vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : '#64748b' }} axisLine={false} tickLine={false} minTickGap={20} />
+                  <YAxis tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : '#64748b' }} axisLine={false} tickLine={false} width={62} />
+                  <Tooltip formatter={(value, name) => [formatCurrency(Number(value), currency), String(name)]} />
+                  <Legend />
+                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#7c3aed" strokeWidth={2.5} fill="#7c3aed" fillOpacity={0.12} />
+                  <Area type="monotone" dataKey="paid" name="Paid" stroke="#059669" strokeWidth={2} fill="#059669" fillOpacity={0.08} />
+                  <Area type="monotone" dataKey="due" name="Due" stroke="#d97706" strokeWidth={2} fill="#d97706" fillOpacity={0.07} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </DashboardPanel>
+
+        <DashboardPanel title={dashboardCopy.subscriptionHealth} description={dashboardCopy.subscriptionHealthDescription} className="dashboard-health-panel">
+          {subscriptionHealthData.length === 0 ? <p className="dashboard-empty-state">{dashboardCopy.noSubscriptions}</p> : (
+            <div className="dashboard-health-layout">
+              <div className="dashboard-health-chart" role="img" aria-label={`Subscription status distribution: ${subscriptionHealthData.map(item => `${item.name} ${item.value}`).join(', ')}`}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={subscriptionHealthData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius="66%" outerRadius="92%" paddingAngle={2} stroke="none">
+                      {subscriptionHealthData.map(item => <Cell key={item.name} fill={item.color} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="dashboard-health-center"><strong>{subscriptionCounts.active}</strong><span>active</span></div>
+              </div>
+              <ul className="dashboard-health-legend">
+                {[
+                  { label: dashboardCopy.active, value: subscriptionCounts.active, color: '#7c3aed' },
+                  { label: dashboardCopy.ending, value: subscriptionCounts.ending, color: '#d97706' },
+                  { label: dashboardCopy.expired, value: subscriptionCounts.expired, color: '#64748b' },
+                  { label: dashboardCopy.cancelled, value: subscriptionCounts.cancelled, color: '#cbd5e1' },
+                ].map(item => <li key={item.label}><span><i style={{ backgroundColor: item.color }} />{item.label}</span><strong>{item.value}</strong></li>)}
+              </ul>
+            </div>
+          )}
+        </DashboardPanel>
+      </div>
+
+      <DashboardPanel title={dashboardCopy.recentSales} action={{ label: dashboardCopy.viewAllSales, onClick: () => onNavigate('sales') }} className="dashboard-recent-sales-panel">
+        {centralRecentSales.length === 0 ? <p className="dashboard-empty-state">{dashboardCopy.noSales}</p> : (
+          <div className="dashboard-recent-sales">
+            {centralRecentSales.slice(0, 5).map(sale => {
+              const customer = customerById.get(sale.customerId);
+              const service = serviceById.get(sale.serviceId);
+              const financial = getSalePaymentSummary(sale, scopedPayments, sale.currency);
+              return <article key={sale.id} className="dashboard-recent-sale">
+                <div className="dashboard-recent-sale-customer">
+                  <strong>{getCustomerDisplayName(customer)}</strong>
+                  <span>{service?.name || 'Service unavailable'} · {sale.plan}</span>
+                </div>
+                <span className="dashboard-recent-sale-date">{formatAppDate(sale.date, language)}</span>
+                <span className="dashboard-recent-sale-amount">{formatCurrency(financial.revenue, sale.currency)}</span>
+                <PaymentStatusBadge status={getSalePaymentStatus(sale, scopedPayments)} />
+                <button type="button" onClick={() => onViewSale(sale.id)} className="dashboard-recent-sale-action">{dashboardCopy.viewSale}</button>
+              </article>;
+            })}
+          </div>
+        )}
+      </DashboardPanel>
+
+      <details className="dashboard-more-reports">
+        <summary><span>{dashboardCopy.moreReports}</span><span>{dashboardCopy.moreReportsDescription}</span></summary>
+        <div className="dashboard-more-reports-content">
+
+      <DashboardPanel title="Reminders" action={{ label: 'View All', onClick: () => onNavigate('reminders') }}>
         <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
           <span className="rounded-full bg-rose-50 px-2.5 py-1 font-semibold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">{overdueReminders.length} overdue</span>
           <span className="rounded-full bg-blue-50 px-2.5 py-1 font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">{dueTodayReminders.length} due today</span>
@@ -1463,22 +1742,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>}
       </DashboardPanel>
 
-      {dashboardDataLoading ? <div aria-label="Loading dashboard metrics" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        {Array.from({ length: 6 }, (_, index) => <div key={index} className={`${dashboardPanelClass} h-24 animate-pulse`} />)}
-      </div> : <section aria-label="Business performance" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        <DashboardMetric label="Total Sales" value={formatCurrency(financialSummary.revenue, currency)} hint={`${calculateSalesCount(filteredSales)} sales in selected dates`} />
-        <DashboardMetric label="Amount Received" value={formatCurrency(receivedInRange, currency)} tone="green" hint="Payments recorded in selected dates" />
-        <DashboardMetric label="Total Due" value={formatCurrency(financialSummary.due, currency)} tone="amber" hint="Outstanding on selected sales" />
-        <DashboardMetric label="Expenses" value={formatCurrency(expenseSummary.total, currency)} tone="amber" hint={`${expenseSummary.count} recorded expenses`} />
-        <DashboardMetric label="Net Cash Flow" value={formatCurrency(cashbookFlow.netCashFlow, currency)} tone={cashbookFlow.netCashFlow >= 0 ? 'green' : 'amber'} hint="Ledger movement · adjustments included" />
-        <DashboardMetric label="Active Subscriptions" value={activeBusinessSubscriptions.length} hint="Current status" onClick={() => onNavigate('subscriptions')} />
-      </section>}
       <DashboardPanel title="Financial Overview" description={`Current recorded balances · Cash flow ${reportBounds.start} – ${reportBounds.end}`} action={{ label: 'Financial Control', onClick: () => onNavigate('financial-control') }}>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <DashboardMetric label="Total Recorded Balance" value={formatCurrency(cashbookBalance, currency)} hint="Current account balances" />
           <DashboardMetric label="Money In" value={formatCurrency(cashbookFlow.moneyIn, currency)} tone="green" hint="Received payments + other income" />
           <DashboardMetric label="Money Out" value={formatCurrency(cashbookFlow.moneyOut, currency)} tone="amber" hint="Expenses + refunds" />
-          <DashboardMetric label="Net Cash Flow" value={formatCurrency(cashbookFlow.netCashFlow, currency)} tone={cashbookFlow.netCashFlow >= 0 ? 'green' : 'amber'} hint="Transfers excluded · adjustments included" />
         </div>
         {accountSummaries.length > 0 ? <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {accountSummaries.map(({ account, balance, todayChange, monthChange }) => <button key={account.id} type="button" onClick={() => onNavigate('cashbook', account.id)} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50/60 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30">
@@ -1496,7 +1764,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <button type="button" onClick={() => onNavigate('financial-control')} className="rounded-lg border border-slate-200 p-3 text-left text-xs focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700"><span className="block text-slate-500">Financial Period</span><span className="mt-1 block font-semibold text-slate-800 dark:text-slate-200">{currentPeriodClosed ? 'Closed' : 'Open'} · Receivable {formatCurrency(financialSummary.due, currency)}</span></button>
         </div>
       </DashboardPanel>
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-3 xl:grid-cols-2">
       <DashboardPanel title="Payment Methods" description={`Received payments · ${reportBounds.start} – ${reportBounds.end}`} action={{ label: 'View Payments', onClick: () => onNavigate('payments') }}>
         {paymentMethodSummary.length ? <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {paymentMethodSummary.map(method => <div key={method.methodId} className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50">
@@ -1520,43 +1788,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </DashboardPanel>
       </div>
 
-      <DashboardPanel title="Resource Overview" description="Account and profile allocation across your service catalog.">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-          {[
-            { label: 'Accounts', value: resourceMetrics.accounts, section: 'accounts' as const },
-            { label: 'Profiles', value: resourceMetrics.profiles, section: 'profiles' as const },
-            { label: 'Available Profiles', value: resourceMetrics.availableProfiles, section: 'profiles' as const },
-            { label: 'Full Accounts', value: resourceMetrics.fullAccounts, section: 'accounts' as const },
-            { label: 'Expiring Assignments', value: resourceMetrics.expiringAssignments, section: 'profiles' as const },
-          ].map(metric => (
-            <button key={metric.label} type="button" onClick={() => onNavigate(metric.section)} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30">
-              <span className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400">{metric.label}</span>
-              <span className="mt-1 block font-mono text-xl font-black text-slate-900 dark:text-white">{metric.value}</span>
-            </button>
-          ))}
-        </div>
-      </DashboardPanel>
-
-      <section aria-label="Customers and subscriptions" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        <DashboardMetric label="Total Customers" value={scopedCustomers.filter(customer => !customer.isArchived && customer.status !== 'archived').length} hint={`${inactiveCustomerCount} inactive`} onClick={() => onNavigate('customers')} />
-        <DashboardMetric label="New Customers" value={newCustomerCount} hint={`Last ${CUSTOMER_CRM_THRESHOLDS.recentActivityDays} days`} tone="blue" onClick={() => onNavigateToCustomers?.('new')} />
-        <DashboardMetric label="Active Customers" value={activeCustomerCount} hint={`${subscriptionPerformance.activeCustomerCount} with active subscriptions`} onClick={() => onNavigateToCustomers?.('active')} />
-        <DashboardMetric label="At Risk" value={atRiskCustomerCount} tone="amber" hint="Due, failed payment, or renewal risk" onClick={() => onNavigateToCustomers?.('at_risk')} />
-        <DashboardMetric label="Active Subscriptions" value={calculateActiveSubscriptions(scopedSubscriptions, isSubscriptionActiveNow)} hint={`${subscriptionCounts.ending} ending soon`} />
-        <DashboardMetric label="Renewals Due" value={dueSoonCount} tone="amber" hint={`Notice period: ${settings.reminderNoticeDays} days`} onClick={() => onNavigateToCustomers?.('renewals')} />
-      </section>
-
       <div className="grid gap-4 xl:grid-cols-2">
         <DashboardPanel title="Revenue Overview" description={`${reportBounds.start} – ${reportBounds.end}`} action={{ label: 'View Reports', onClick: () => onNavigate('reports') }}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-slate-500">Revenue and due by sale date; paid by recorded payment date.</p>
+            <p className="text-xs text-slate-500">Revenue and due by sale date; paid by payment date · {currency} only.</p>
             <label className="sr-only" htmlFor="dashboard-trend-grouping">Trend grouping</label>
             <select id="dashboard-trend-grouping" value={trendGrouping} onChange={event => setTrendGrouping(event.target.value as 'daily' | 'weekly' | 'monthly')} className={dashboardSelectClass}>
               <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
             </select>
           </div>
           {trendData.length === 0 ? <p className="py-12 text-center text-xs text-slate-500">No revenue data for this period.</p> : (
-            <div className="h-64 w-full" role="img" aria-label="Revenue, paid, and due trend chart">
+            <div className="h-52 w-full min-w-0 sm:h-60" role="img" aria-label="Revenue, paid, and due trend chart">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={trendData} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -1564,7 +1806,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <YAxis tick={{ fontSize: 10 }} width={58} />
                   <Tooltip formatter={(value, name) => [formatCurrency(Number(value), currency), String(name)]} />
                   <Legend />
-                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#059669" fill="#d1fae5" />
+                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#7c3aed" fill="#ede9fe" />
                   <Area type="monotone" dataKey="paid" name="Paid" stroke="#2563eb" fill="#dbeafe" />
                   <Area type="monotone" dataKey="due" name="Due" stroke="#d97706" fill="#fef3c7" />
                 </AreaChart>
@@ -1572,30 +1814,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           )}
         </DashboardPanel>
-        <DashboardPanel title="Sales Trend" description="Number of sales and revenue in the selected dates." action={{ label: 'View All Sales', onClick: () => onNavigate('sales') }}>
-          {trendData.length === 0 ? <p className="py-12 text-center text-xs text-slate-500">No sales data for this period.</p> : (
-            <div className="h-64 w-full" role="img" aria-label="Sales and revenue trend chart">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={trendData} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="label" tick={{ fontSize: 10 }} minTickGap={20} />
-                  <YAxis yAxisId="sales" tick={{ fontSize: 10 }} width={36} />
-                  <YAxis yAxisId="revenue" orientation="right" tick={{ fontSize: 10 }} width={58} />
-                  <Tooltip formatter={(value, name) => name === 'Revenue' ? formatCurrency(Number(value), currency) : value} />
-                  <Legend />
-                  <Bar yAxisId="sales" dataKey="sales" name="Sales" fill="#64748b" radius={[4, 4, 0, 0]} />
-                  <Line yAxisId="revenue" type="monotone" dataKey="revenue" name="Revenue" stroke="#059669" strokeWidth={2} dot={false} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </DashboardPanel>
-      </div>
-
-      <DashboardPanel title="Cash Flow Trend" description={`Actual ledger money in, money out, and net cash flow · ${reportBounds.start} – ${reportBounds.end}`} action={{ label: 'Open Cashbook', onClick: () => onNavigate('cashbook') }}>
+        <DashboardPanel title="Cash Flow Trend" description={`Ledger money in, money out, and net cash flow · ${reportBounds.start} – ${reportBounds.end}`} action={{ label: 'Open Cashbook', onClick: () => onNavigate('cashbook') }}>
         {cashFlowTrend.length === 0 ? <p className="py-8 text-center text-xs text-slate-500">No cash flow entries in this date range.</p> : <>
           <p className="sr-only">For this period, money in was {formatCurrency(cashbookFlow.moneyIn, currency)}, money out was {formatCurrency(cashbookFlow.moneyOut, currency)}, and net cash flow was {formatCurrency(cashbookFlow.netCashFlow, currency)}. Internal transfers are excluded.</p>
-          <div className="h-56 w-full sm:h-64" role="img" aria-label={`Cash flow trend, grouped ${trendGrouping}; money in ${formatCurrency(cashbookFlow.moneyIn, currency)}, money out ${formatCurrency(cashbookFlow.moneyOut, currency)}, net ${formatCurrency(cashbookFlow.netCashFlow, currency)}.`}>
+          <div className="h-52 w-full min-w-0 sm:h-60" role="img" aria-label={`Cash flow trend, grouped ${trendGrouping}; money in ${formatCurrency(cashbookFlow.moneyIn, currency)}, money out ${formatCurrency(cashbookFlow.moneyOut, currency)}, net ${formatCurrency(cashbookFlow.netCashFlow, currency)}.`}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={cashFlowTrend.map(point => ({
                 ...point,
@@ -1616,7 +1838,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </ResponsiveContainer>
           </div>
         </>}
-      </DashboardPanel>
+        </DashboardPanel>
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <DashboardPanel title="Recent Sales" action={{ label: 'View All Sales', onClick: () => onNavigate('sales') }}>
@@ -1715,31 +1938,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <DashboardPanel title="Top Services" action={{ label: 'View Services', onClick: () => onNavigate('services') }}>
           {servicePerformance.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No service performance data.</p> : <div className="space-y-2">{servicePerformance.slice(0, 6).map(item => <div key={item.serviceId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 text-xs dark:border-slate-800"><div><button type="button" onClick={() => onNavigate('services', item.serviceId)} className="font-semibold text-slate-800 hover:text-emerald-700 dark:text-slate-100">{item.serviceName}</button><p className="mt-0.5 text-slate-500">{item.salesCount} sales · {item.activeSubscriptions} active · {serviceCustomerCounts.get(item.serviceId) || 0} customers</p><p className="mt-0.5 text-[10px] text-slate-500">Received {formatCurrency(item.paid, currency)}</p></div><span className="font-mono font-bold">{formatCurrency(item.revenue, currency)}<span className="block text-right font-sans text-[10px] font-normal text-slate-500">sales value</span></span></div>)}</div>}
         </DashboardPanel>
-        <DashboardPanel title="Top Plans" action={{ label: 'View Services', onClick: () => onNavigate('services') }}>
-          {planPerformance.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No plan performance data.</p> : <div className="space-y-2">{planPerformance.slice(0, 6).map(item => <div key={`${item.serviceId}-${item.planId}`} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 text-xs dark:border-slate-800"><div><p className="font-semibold text-slate-800 dark:text-slate-100">{item.planName}</p><p className="mt-0.5 text-slate-500">{item.serviceName} · {item.salesCount} sales · {item.activeSubscriptions} active</p><p className="mt-0.5 text-[10px] text-slate-500">Received {formatCurrency(item.paid, currency)}</p></div><span className="font-mono font-bold">{formatCurrency(item.revenue, currency)}<span className="block text-right font-sans text-[10px] font-normal text-slate-500">sales value</span></span></div>)}</div>}
-        </DashboardPanel>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
         <DashboardPanel title="Top Customers" action={{ label: 'View Customers', onClick: () => onNavigate('customers') }}>
           {customerSales.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No customer sales in this period.</p> : <div className="space-y-2">{customerSales.slice(0, 6).map(item => <div key={item.customerId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 text-xs dark:border-slate-800"><button type="button" onClick={() => onSelectCustomer(item.customerId)} className="text-left font-semibold text-slate-800 hover:text-emerald-700 dark:text-slate-100">{item.customerName}<span className="block font-normal text-slate-500">{item.salesCount} sales · {item.activeSubscriptions} active</span></button><div className="text-right"><p className="font-mono font-bold">{formatCurrency(item.spent, currency)} spent</p><p className="text-slate-500">{formatCurrency(item.paid, currency)} paid · {formatCurrency(item.due, currency)} due</p></div></div>)}</div>}
-        </DashboardPanel>
-        <DashboardPanel title="Customer Summary" action={{ label: 'View Customers', onClick: () => onNavigate('customers') }}>
-          <div className="grid grid-cols-2 gap-3">
-            <DashboardMetric label="Total Customers" value={scopedCustomers.filter(customer => !customer.isArchived && customer.status !== 'archived').length} />
-            <DashboardMetric label="Active" value={activeCustomerCount} tone="green" />
-            <DashboardMetric label="Inactive" value={inactiveCustomerCount} />
-            <DashboardMetric label="With Active Subscription" value={subscriptionPerformance.activeCustomerCount} />
-            <DashboardMetric label="With Due Balance" value={subscriptionPerformance.withDueCount} tone="amber" />
-            <DashboardMetric label="New in Period" value={filteredCustomers.length} />
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <DashboardMetric label="Active Subs" value={subscriptionCounts.active} tone="green" />
-            <DashboardMetric label="Ending Soon" value={subscriptionCounts.ending} tone="amber" />
-            <DashboardMetric label="Expired" value={subscriptionCounts.expired} />
-            <DashboardMetric label="Cancelled" value={subscriptionCounts.cancelled} />
-            <DashboardMetric label="Renewed Sales" value={subscriptionCounts.renewed} tone="blue" />
-          </div>
         </DashboardPanel>
       </div>
 
@@ -1764,36 +1964,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <DashboardPanel title="Recent Activity" action={{ label: 'View All Activity', onClick: () => onNavigate('history') }}>
           {recentActivities.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No recent activity.</p> : <ol className="space-y-3">{recentActivities.map(activity => <li key={activity.id} className="flex gap-3"><span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><Activity className="h-3.5 w-3.5" /></span><div className="min-w-0"><p className="text-xs font-semibold text-slate-800 dark:text-slate-100">{activity.title}</p><p className="mt-0.5 text-xs text-slate-500">{activity.description}</p><p className="mt-1 text-[10px] text-slate-400">{formatAppDateTime(activity.timestamp, language)}</p></div></li>)}</ol>}
         </DashboardPanel>
-        <DashboardPanel title="Needs Attention" action={{ label: 'View Notifications', onClick: () => onNavigate('notifications') }}>
-          {needsAttentionNotifications.length ? <div className="space-y-2">{needsAttentionNotifications.map(notification => {
-            const targetId = notification.accountId || notification.invoiceId || notification.subscriptionId
-              || notification.saleId || notification.paymentId || notification.customerId || notification.entityId;
-            const tone = notification.priority === 'critical'
-              ? 'border-rose-200 dark:border-rose-900/60'
-              : notification.priority === 'warning'
-                ? 'border-amber-200 dark:border-amber-900/60'
-                : 'border-slate-200 dark:border-slate-800';
-            return <article key={notification.id} className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${tone}`}>
-              <div className="min-w-0"><p className="text-xs font-semibold text-slate-800 dark:text-slate-100">{notification.title}<span className="ml-2 text-[10px] font-medium capitalize text-slate-500">{notification.priority}</span></p><p className="mt-1 text-[11px] text-slate-500">{notification.message}</p></div>
-              <button type="button" aria-label={`View ${notification.title}`} onClick={() => onNavigate(notification.section, targetId)} className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:text-emerald-300">View</button>
-            </article>;
-          })}</div> : <p className="py-6 text-center text-xs text-slate-500">Nothing needs attention right now.</p>}
-        </DashboardPanel>
       </div>
 
-      <DashboardPanel title="Quick Actions">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
-          {[
-            { label: 'Add Customer', icon: <UserPlus className="h-4 w-4" />, action: () => onRequestCreate('customers') },
-            { label: 'Add Sale', icon: <Plus className="h-4 w-4" />, action: () => onOpenNewSale() },
-            { label: 'Add Service', icon: <PackagePlus className="h-4 w-4" />, action: () => onRequestCreate('services') },
-            { label: 'Add Payment', icon: <Wallet className="h-4 w-4" />, action: () => onRequestCreate('payments') },
-            { label: 'Add Expense', icon: <TrendingDown className="h-4 w-4" />, action: () => onNavigate('expenses', 'action:create') },
-            { label: 'Add Income', icon: <TrendingUp className="h-4 w-4" />, action: () => onNavigate('cashbook', 'action:income') },
-            { label: 'Transfer Money', icon: <RefreshCw className="h-4 w-4" />, action: () => onNavigate('cashbook', 'action:transfer') },
-          ].map(action => <button key={action.label} type="button" onClick={action.action} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30">{action.icon}{action.label}</button>)}
         </div>
-      </DashboardPanel>
+      </details>
 
       <div className="hidden">
       {/* Page Header */}
@@ -1937,6 +2111,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       </div>
+
+      <details className="dashboard-more-reports dashboard-advanced-reports">
+        <summary><span>{dashboardCopy.advancedReports}</span><span>{dashboardCopy.advancedReportsDescription}</span></summary>
+        <div className="dashboard-more-reports-content">
 
       {/* Additional recurring-revenue and renewal analytics retained from the original dashboard. */}
       {/* Row 2: Recharts Visualizations (MRR Trends & Subscription Distribution by Service) */}
@@ -3326,6 +3504,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         )}
       </div>
+
+        </div>
+      </details>
 
       <section className="hidden" aria-label="Dashboard priorities and quick actions">
         <div className="lg:col-span-8 rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-2xs dark:border-slate-800 dark:bg-[#111726]">

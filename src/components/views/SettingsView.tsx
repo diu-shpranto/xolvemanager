@@ -28,6 +28,7 @@ import { DEFAULT_REMINDER_PREFERENCES } from '../../services/reminderEngine';
 import { getLastDataIntegrityResult } from '../../utils/dataIntegrity';
 import { usePwaState } from '../../hooks/usePwaState';
 import { getDemoDataPreview } from '../../services/demoDataService';
+import { inspectStorageDurability, requestStoragePersistence, type StorageDurabilityInfo } from '../../services/storageDurability';
 
 type SettingsSection =
   | 'business' | 'branding' | 'invoice' | 'payments' | 'subscriptions'
@@ -93,6 +94,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   const [customerCsvRows, setCustomerCsvRows] = useState<CustomerImportRow[] | null>(null);
   const [backupMetadata, setBackupMetadata] = useState<Record<string, string>>({});
   const [storageBytes, setStorageBytes] = useState<number | null>(null);
+  const [storageDurability, setStorageDurability] = useState<StorageDurabilityInfo | null>(null);
+  const [storagePersistenceError, setStoragePersistenceError] = useState<string | null>(null);
+  const [isRequestingStoragePersistence, setIsRequestingStoragePersistence] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [selectedWhatsAppTemplateId, setSelectedWhatsAppTemplateId] = useState<WhatsAppTemplateId>('renewal_reminder');
   const [demoDialog, setDemoDialog] = useState<'preview' | 'remove' | null>(null);
@@ -119,6 +123,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
       setStorageBytes(null);
     }
   }, [metadataKey]);
+  useEffect(() => {
+    let isCurrent = true;
+    void inspectStorageDurability().then(info => {
+      if (isCurrent) setStorageDurability(info);
+    }).catch(error => {
+      console.error('Could not inspect browser storage durability.', error);
+      if (isCurrent) {
+        setStoragePersistenceError('Browser storage protection status could not be checked.');
+      }
+    });
+    return () => { isCurrent = false; };
+  }, []);
+
+  const requestPersistentStorage = async () => {
+    setIsRequestingStoragePersistence(true);
+    setStoragePersistenceError(null);
+    try {
+      const granted = await requestStoragePersistence();
+      const info = await inspectStorageDurability();
+      setStorageDurability(info);
+      showToast(granted
+        ? 'This browser will protect XolveManager data from automatic storage cleanup.'
+        : 'The browser did not grant persistent storage. Keep regular backups.',
+      granted ? 'success' : 'error');
+    } catch (error) {
+      console.error('Could not request persistent browser storage.', error);
+      const message = error instanceof Error
+        ? error.message
+        : 'Could not request persistent browser storage.';
+      setStoragePersistenceError(message);
+      showToast(message, 'error');
+    } finally {
+      setIsRequestingStoragePersistence(false);
+    }
+  };
 
   const saveMetadata = (
     key: 'lastBackupAt' | 'lastRestoreAt' | 'lastExportAt' | 'lastImportAt',
@@ -822,6 +861,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
         const prettyBytes = storageBytes === null ? 'Unavailable' :
           storageBytes < 1024 ? `${storageBytes} B` :
             storageBytes < 1024 * 1024 ? `${(storageBytes / 1024).toFixed(1)} KB` : `${(storageBytes / 1024 / 1024).toFixed(2)} MB`;
+        const prettyQuota = storageDurability?.quotaBytes == null ? 'Unavailable' :
+          storageDurability.quotaBytes < 1024 * 1024
+            ? `${(storageDurability.quotaBytes / 1024).toFixed(1)} KB`
+            : `${(storageDurability.quotaBytes / 1024 / 1024).toFixed(2)} MB`;
+        const persistenceLabel = storageDurability?.persisted === true ? 'Protected from automatic cleanup' :
+          storageDurability?.persisted === false ? 'Not protected' : 'Status unavailable';
         return <div className="space-y-5">
           <section className={cardClass}>
             <SectionHeading title="Storage overview" description="Manage local business data, backups, imports, exports, and integrity checks." />
@@ -830,10 +875,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
               <AboutItem label="Current business" value={currentBusinessName || settings.storeName || 'Not set'} />
               <AboutItem label="Storage mode" value="Local browser storage" />
               <AboutItem label="Approximate storage usage" value={prettyBytes} />
+              <AboutItem label="Browser storage quota" value={prettyQuota} />
               <AboutItem label="Last backup" value={formatMetadataDate(backupMetadata.lastBackupAt)} />
               <AboutItem label="Last restore" value={formatMetadataDate(backupMetadata.lastRestoreAt)} />
               <AboutItem label="Last import" value={formatMetadataDate(backupMetadata.lastImportAt)} />
               <AboutItem label="Last export" value={formatMetadataDate(backupMetadata.lastExportAt)} />
+            </div>
+            <div className="mb-4 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">Local data protection: {persistenceLabel}</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {storageDurability?.persisted
+                      ? 'This browser granted protection from automatic storage cleanup. This is not a backup; keep exporting backups regularly.'
+                      : 'Ask this browser to protect local data from automatic cleanup. Browser support and approval vary; this does not replace regular backups.'}
+                  </p>
+                  {storagePersistenceError && <p role="alert" className="mt-2 text-xs text-rose-700 dark:text-rose-300">{storagePersistenceError}</p>}
+                </div>
+                {storageDurability?.supported && storageDurability.persisted !== true && <button
+                  type="button"
+                  disabled={isRequestingStoragePersistence}
+                  onClick={() => void requestPersistentStorage()}
+                  className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {isRequestingStoragePersistence ? 'Requesting…' : 'Protect local data'}
+                </button>}
+                {storageDurability && !storageDurability.supported && <span className="text-xs text-slate-500 dark:text-slate-400">Not supported by this browser</span>}
+              </div>
             </div>
             <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               <Metric label="Customers" count={customers.length} /><Metric label="Services" count={services.length} />
@@ -964,6 +1032,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
               {backupPreview && counts && <div role="dialog" aria-modal="true" aria-labelledby="restore-preview-title" className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/20">
                 <h4 id="restore-preview-title" className="text-base font-bold">Restore Backup preview</h4>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Backup date: {formatMetadataDate(backupPreview.exportedAt)} · Business: {getBusinessNameFromBackup(backupPreview) || 'Unknown'} · Version: {backupPreview.backupVersion}</p>
+                {backupPreview.integrityChecksum
+                  ? <p className="mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">Backup integrity checksum verified.</p>
+                  : <p className="mt-1 rounded-lg border border-amber-300 bg-amber-100/70 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">This older backup has no integrity checksum. Its structure was validated, but file corruption cannot be checked.</p>}
                 <div className="mt-3 grid gap-4 sm:grid-cols-2"><CountPreview title="Current data" counts={currentCounts} /><CountPreview title="Backup data" counts={counts} /></div>
                 <p className="mt-3 text-sm font-semibold text-rose-800 dark:text-rose-300">Restoring this backup will replace the current business data.</p>
                 {getBusinessNameFromBackup(backupPreview) && currentBusinessName && getBusinessNameFromBackup(backupPreview).toLowerCase() !== currentBusinessName.toLowerCase() && <p className="mt-1 text-sm text-rose-800 dark:text-rose-300">Business name differs. Restore will replace the current business context.</p>}
@@ -1034,17 +1105,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
             </div>
           </section>
 
-          <section className="rounded-2xl border-2 border-rose-300 bg-rose-50 p-5 dark:border-rose-900/70 dark:bg-rose-950/20 sm:p-6">
+          <section className="min-w-0 rounded-2xl border-2 border-rose-300 bg-rose-50 p-5 dark:border-rose-900/70 dark:bg-rose-950/20 sm:p-6">
             <div className="mb-4 flex items-center gap-2 text-rose-800 dark:text-rose-300"><AlertTriangle className="h-5 w-5" /><h2 className="font-bold">Danger Zone</h2></div>
             <p className="text-sm text-rose-800 dark:text-rose-200">Clearing business data permanently removes financial and historical records; a downloadable safety backup is required first.</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <button type="button" onClick={() => { if (window.confirm('Clear all notifications for this business?')) { clearNotifications(); showToast('Notifications cleared.', 'success'); } }} className="rounded-xl border border-rose-400 px-3 py-2 text-sm font-semibold text-rose-800 dark:text-rose-200"><Trash2 className="mr-1 inline h-4 w-4" />Clear Notifications</button>
               <button type="button" onClick={() => void resetBusinessSettings()} className="rounded-xl border border-rose-400 px-3 py-2 text-sm font-semibold text-rose-800 dark:text-rose-200"><RotateCcw className="mr-1 inline h-4 w-4" />Reset Settings</button>
             </div>
-            <div className="mt-4 rounded-xl border border-rose-300 p-4 dark:border-rose-900">
+            <div className="mt-4 min-w-0 rounded-xl border border-rose-300 p-4 dark:border-rose-900">
               <h3 className="font-semibold text-rose-900 dark:text-rose-200">Clear Business Data</h3>
-              <p className="mt-1 text-xs text-rose-800 dark:text-rose-300">Removes customers, services, accounts and profiles, subscriptions, sales, payments, invoices, history, and notifications. Business identity and settings remain.</p>
-              <label className="mt-3 block text-xs font-semibold text-rose-900 dark:text-rose-200">Type DELETE to enable deletion<input className={`${inputClass} mt-1 max-w-xs`} value={deleteConfirmation} onChange={event => setDeleteConfirmation(event.target.value)} autoComplete="off" /></label>
+              <p className="mt-1 break-words text-xs text-rose-800 dark:text-rose-300">Removes customers, services, accounts and profiles, subscriptions, sales, payments, invoices, history, and notifications. Business identity and settings remain.</p>
+              <label className="mt-3 block min-w-0 text-xs font-semibold text-rose-900 dark:text-rose-200">
+                <span>Type DELETE to enable deletion</span>
+                <input className={`${inputClass} mt-1 block max-w-xs`} value={deleteConfirmation} onChange={event => setDeleteConfirmation(event.target.value)} autoComplete="off" />
+              </label>
               <button type="button" disabled={deleteConfirmation !== 'DELETE'} onClick={clearData} className="mt-3 rounded-xl bg-rose-700 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Delete Business Data</button>
             </div>
           </section>

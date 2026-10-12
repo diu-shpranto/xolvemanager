@@ -22,6 +22,7 @@ import { buildCustomerCrmMetrics } from '../utils/customerCrm';
 import { getAccountCapacity } from '../utils/resourceManagement';
 import { getInvoiceDisplayStatus } from '../utils/invoiceUtils';
 import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus, getSalePayments } from '../utils/saleUtils';
+import { createBackupChecksum, verifyBackupChecksum } from '../utils/backupIntegrity';
 
 export const DATA_VERSION = 1;
 const REQUIRED_COLLECTIONS = [
@@ -42,6 +43,7 @@ export interface BackupDocument {
   dataVersion: number;
   appVersion: string;
   exportedAt: string;
+  integrityChecksum?: string;
   business: unknown;
   settings: AppSettings;
   records: BackupRecords;
@@ -99,6 +101,7 @@ export function createVersionedBackup(json: string, appVersion: string): BackupD
       ])),
     },
   } as BackupDocument;
+  document.integrityChecksum = createBackupChecksum(document);
   const validation = validateBackup(document);
   if (!validation.valid) throw new Error(validation.errors.slice(0, 3).join(' '));
   return document;
@@ -107,6 +110,9 @@ export function createVersionedBackup(json: string, appVersion: string): BackupD
 export function validateBackup(input: unknown): BackupValidation {
   const errors: string[] = [];
   if (!isRecord(input)) return { valid: false, errors: ['Backup must contain a JSON object.'] };
+  if (verifyBackupChecksum(input) === 'invalid') {
+    errors.push('Backup integrity checksum is invalid. The file may be incomplete or modified.');
+  }
   const version = input.backupVersion ?? input.schemaVersion;
   if (version !== 1) errors.push('Unsupported or missing backup version.');
   if (input.backupVersion !== undefined && input.dataVersion !== DATA_VERSION) {

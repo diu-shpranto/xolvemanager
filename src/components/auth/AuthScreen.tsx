@@ -27,10 +27,12 @@ import { LocalAuthError } from '../../services/localAuthService';
 import {
   createOwnerAccount,
   getPasswordStrength,
+  hasLocalAccount,
   isValidAuthEmail,
   localAuthMessages,
   resetLocalPassword,
   signInLocally,
+  signInWithDemoAccount,
 } from '../../services/localAuthService';
 
 type AuthMode = 'login' | 'signup' | 'forgot-password';
@@ -109,6 +111,8 @@ const copy = {
     recoveryEyebrow: 'Account recovery',
     loading: 'Working…',
     language: 'বাংলা',
+    demoLogin: 'One-click demo login',
+    demoLoginSubtitle: 'Use the demo owner account instantly.',
   },
   bn: {
     loginTitle: 'আপনার কর্মক্ষেত্রে সাইন ইন করুন',
@@ -174,6 +178,8 @@ const copy = {
     recoveryEyebrow: 'অ্যাকাউন্ট পুনরুদ্ধার',
     loading: 'অপেক্ষা করুন…',
     language: 'English',
+    demoLogin: 'ওয়ান-ক্লিক ডেমো লগইন',
+    demoLoginSubtitle: 'দ্রুত ডেমো মালিক অ্যাকাউন্টে ঢুকুন।',
   },
 } as const;
 
@@ -269,6 +275,19 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
         const result = await resetLocalPassword(email, recoveryKey, password, confirmation);
         setResultKey(result.recoveryKey);
       }
+    } catch (caught) {
+      setError(getErrorMessage(caught, language));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDemoLogin = async () => {
+    setError('');
+    setBusy(true);
+    try {
+      const user = await signInWithDemoAccount();
+      onAuthenticated(user);
     } catch (caught) {
       setError(getErrorMessage(caught, language));
     } finally {
@@ -456,12 +475,22 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                     <button type="submit" disabled={busy || (mode === 'signup' && hasAccount)} className="auth-primary-button">{busy && <LoaderCircle className="auth-spinner" aria-hidden="true" />}{busy ? text.loading : mode === 'login' ? <>{text.signIn}<ArrowRight aria-hidden="true" /></> : mode === 'signup' ? text.create : text.recover}</button>
                   </form>
 
-                  {mode === 'login' ? (
+                  {mode === 'login' && (
                     <>
                       <div className="auth-divider"><span />{text.divider}<span /></div>
+                      <button type="button" onClick={handleDemoLogin} disabled={busy} className="auth-account-button auth-demo-button">
+                        <ShieldCheck aria-hidden="true" />
+                        <span>
+                          <strong>{text.demoLogin}</strong>
+                          <small>{text.demoLoginSubtitle}</small>
+                        </span>
+                        <ChevronRight aria-hidden="true" />
+                      </button>
                       <button type="button" onClick={() => navigate('/signup')} className="auth-account-button"><UserRound aria-hidden="true" /><span>{text.createNewAccount}</span><ChevronRight aria-hidden="true" /></button>
                     </>
-                  ) : (
+                  )}
+
+                  {mode !== 'login' && (
                     <div className="auth-links">
                       <span>{mode === 'signup' ? text.haveAccount : text.loginLink}</span>
                       <button type="button" onClick={() => navigate('/login')} className="auth-text-link">{text.signIn}</button>

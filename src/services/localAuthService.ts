@@ -258,7 +258,18 @@ const signalOtherTabs = (): void => {
   }
 };
 
+export const DEMO_OWNER_EMAIL = 'demo@xolvemanager.com';
+export const DEMO_OWNER_PASSWORD = 'Demo@1234';
+
 export const hasLocalAccount = (): boolean => Boolean(readDatabase());
+
+export const signInWithDemoAccount = async (): Promise<LocalAuthUser> => {
+  const database = readDatabase();
+  if (!database) {
+    await createOwnerAccount('Demo Owner', DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD, DEMO_OWNER_PASSWORD);
+  }
+  return signInLocally(DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD);
+};
 
 export const restoreLocalSession = (): LocalAuthUser | null => {
   const session = readSession();

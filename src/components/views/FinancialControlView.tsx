@@ -18,7 +18,7 @@ import {
 } from '../../utils/accountingControls';
 import type { FinancialAccount } from '../../types';
 
-const cardClass = 'surface-card p-4 sm:p-5';
+const cardClass = 'surface-card min-w-0 p-4 sm:p-5';
 const inputClass = 'control-field w-full px-3 py-2 text-sm';
 const labelClass = 'mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300';
 const csvCell = (value: string | number) => {
@@ -177,7 +177,7 @@ export const FinancialControlView: React.FC = () => {
         </div>
       </header>
 
-      <section aria-label="Financial overview" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7">
+      <section aria-label="Financial overview" className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7">
         <Metric label="Business Balance" value={formatCurrency(totalBalance, currency)} />
         <Metric label="Money In (MTD)" value={formatCurrency(periodLedger.moneyIn, currency)} tone="good" />
         <Metric label="Money Out (MTD)" value={formatCurrency(periodLedger.moneyOut, currency)} tone="warn" />
@@ -242,7 +242,7 @@ export const FinancialControlView: React.FC = () => {
         </div>
       </section>
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-2">
         <section className={`${cardClass} space-y-3`} aria-labelledby="receivables-heading">
           <div><h2 id="receivables-heading" className="text-base font-bold text-slate-900 dark:text-white">Receivables Aging</h2><p className="mt-1 text-xs text-slate-500">Outstanding amounts use linked sale payments, not raw payment totals. If an invoice due date is unavailable, sale date is used as the aging date.</p></div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">

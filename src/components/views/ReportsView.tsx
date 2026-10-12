@@ -51,6 +51,7 @@ import { buildCustomerCrmMetrics } from '../../utils/customerCrm';
 import { getServiceResourceSummary, getAccountCapacity, RESOURCE_CAPACITY_THRESHOLDS } from '../../utils/resourceManagement';
 import {
   getCustomerProfitability,
+  getAccountProfitability,
   getPlanProfitability,
   getProfitabilitySummary,
   getProfitabilityTrend,
@@ -222,7 +223,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [customerSort, setCustomerSort] = useState<CustomerSort>('spent');
   const [dueSort, setDueSort] = useState<DueSort>('due');
   const [tableSearch, setTableSearch] = useState('');
-  const [profitabilityBreakdown, setProfitabilityBreakdown] = useState<'services' | 'plans' | 'customers'>('services');
+  const [profitabilityBreakdown, setProfitabilityBreakdown] = useState<'services' | 'plans' | 'customers' | 'accounts'>('services');
   const [showProfitabilityForm, setShowProfitabilityForm] = useState(false);
   const [selectedProfitabilityExpenseId, setSelectedProfitabilityExpenseId] = useState('');
   const [profitabilityDraft, setProfitabilityDraft] = useState({
@@ -311,6 +312,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const profitabilityServiceRows = useMemo(() => getServiceProfitability(profitabilityData), [profitabilityData]);
   const profitabilityPlanRows = useMemo(() => getPlanProfitability(profitabilityData), [profitabilityData]);
   const profitabilityCustomerRows = useMemo(() => getCustomerProfitability(profitabilityData), [profitabilityData]);
+  const profitabilityAccountRows = useMemo(
+    () => getAccountProfitability(profitabilityData, businessAccounts),
+    [profitabilityData, businessAccounts]
+  );
   const profitabilityTrend = useMemo(() => getProfitabilityTrend(profitabilityData, grouping), [profitabilityData, grouping]);
   const accountingReceivableAging = useMemo(
     () => getReceivableAging({
@@ -323,7 +328,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   );
   const profitabilityRows: ProfitabilityRow[] = profitabilityBreakdown === 'services'
     ? profitabilityServiceRows
-    : profitabilityBreakdown === 'plans' ? profitabilityPlanRows : profitabilityCustomerRows;
+    : profitabilityBreakdown === 'plans' ? profitabilityPlanRows
+      : profitabilityBreakdown === 'customers' ? profitabilityCustomerRows : profitabilityAccountRows;
   const expenseById = useMemo(() => new Map(businessExpenses.map(expense => [expense.id, expense])), [businessExpenses]);
   const paymentMethodConfigs = useMemo(
     () => normalizePaymentMethods(settings.paymentPreferences?.methods),
@@ -1493,7 +1499,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
       <Section
         title="Service & Plan Profitability"
-        description={`Revenue and estimated/recorded costs for ${bounds.start} – ${bounds.end}. Sales revenue uses sale totals; payment receipts are not counted again.`}
+        description={`Revenue and estimated/recorded costs for ${bounds.start} – ${bounds.end}. Sales revenue uses sale totals; payment receipts are not counted again.${profitabilityBreakdown === 'accounts' ? ' Account costs are allocated from each service by account revenue share.' : ''}`}
       >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <MetricCard label="Sales Revenue" value={boundsAreValid ? formatCurrency(profitabilitySummary.revenue, currency) : '—'} tone="green" />
@@ -1505,7 +1511,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2" role="group" aria-label="Profitability breakdown">
-            {(['services', 'plans', 'customers'] as const).map(mode => (
+            {(['services', 'plans', 'customers', 'accounts'] as const).map(mode => (
               <button
                 key={mode}
                 type="button"

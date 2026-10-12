@@ -243,7 +243,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     try {
       const result = await generateInvoiceJpg(invoiceData(invoice, sale));
       downloadInvoiceJpg(result.blob, result.fileName);
-      showToast(`Downloaded ${result.fileName}`, 'success');
+      showToast(`Download requested · ${result.fileName}`, 'info');
     } catch (error) {
       console.error('Invoice download failed:', error);
       showToast('Unable to download invoice. Please try again.', 'error');
@@ -264,7 +264,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
       else if (shareResult === 'cancelled') showToast('Invoice sharing was cancelled.', 'info');
       else {
         downloadInvoiceJpg(result.blob, result.fileName);
-        showToast('File sharing is unavailable here. The JPG invoice was downloaded.', 'info');
+        showToast('File sharing is unavailable here. A JPG download was requested.', 'info');
       }
     } catch (error) {
       console.error('Invoice sharing failed:', error);

@@ -10,6 +10,7 @@ import { AppProvider } from './context/AppContext';
 import { ToastProvider } from './components/common/Toast';
 import { Sidebar, NavSection } from './components/navigation/Sidebar';
 import { TopNav } from './components/navigation/TopNav';
+import { MobileQuickNav } from './components/navigation/MobileQuickNav';
 import { DashboardView } from './components/views/DashboardView';
 import type { CashbookAction } from './components/views/CashbookView';
 import type { Subscription } from './types';
@@ -215,6 +216,13 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     setCreateRequests(previous => ({ ...previous, payment: previous.payment + 1 }));
   };
 
+  const handleQuickAddPayment = () => {
+    setPaymentPreselectedCustomerId(undefined);
+    setPaymentPreselectedSaleId(undefined);
+    setCurrentSection('payments');
+    setCreateRequests(previous => ({ ...previous, payment: previous.payment + 1 }));
+  };
+
   const handleAddServiceFromSale = () => {
     setIsNewSaleOpen(false);
     setNewSalePreselectedCustomer(undefined);
@@ -284,6 +292,10 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       handleOpenNewSale();
       return;
     }
+    if (action === 'payment') {
+      setCurrentSection('payments');
+      return;
+    }
     const section = action === 'customer' ? 'customers'
       : action === 'service' ? 'services'
         : action === 'account' ? 'accounts' : 'payments';
@@ -336,7 +348,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         />
 
         {/* View Content */}
-        <main className="app-main flex-1 overflow-y-auto">
+        <main className="app-main flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-[env(safe-area-inset-bottom)]">
           <Suspense fallback={
             <div className="page-container" role="status" aria-live="polite">
               <div className="surface-card flex min-h-32 items-center justify-center gap-3 p-5 text-sm text-slate-500">
@@ -680,6 +692,14 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           )}
         </main>
       </div>
+
+      <MobileQuickNav
+        currentSection={currentSection}
+        onNavigate={setCurrentSection}
+        onOpenNewSale={() => handleOpenNewSale()}
+        onAddPayment={handleQuickAddPayment}
+        onQuickAction={handleSearchQuickAction}
+      />
 
       {/* Global New Sale Workflow Modal */}
       {isNewSaleOpen && (

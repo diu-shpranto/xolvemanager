@@ -192,7 +192,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
     if (!invoiceResult) return;
     try {
       downloadInvoiceJpg(invoiceResult.blob, invoiceResult.fileName);
-      showToast(`Downloaded ${invoiceResult.fileName}`, 'success');
+      showToast(`Download requested · ${invoiceResult.fileName}`, 'info');
     } catch (error) {
       console.error('Invoice download failed:', error);
       showToast('Unable to download invoice. Please try again.', 'error');
@@ -234,7 +234,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
         showToast('Invoice sharing was cancelled.', 'info');
       } else {
         downloadInvoiceJpg(invoiceResult.blob, invoiceResult.fileName);
-        showToast('File sharing is unavailable here. The JPG invoice was downloaded.', 'info');
+        showToast('File sharing is unavailable here. A JPG download was requested.', 'info');
       }
     } catch (error) {
       console.error('Invoice sharing failed:', error);
@@ -286,7 +286,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
       maxWidth="4xl"
     >
       <div className="space-y-4">
-        <div className="relative max-h-[68vh] overflow-auto rounded-xl border border-slate-200 bg-slate-100 p-2 dark:border-slate-800 dark:bg-slate-950/80 sm:p-4">
+        <div className="min-w-0 w-full overflow-x-hidden rounded-xl border border-slate-200 bg-slate-100 p-2 dark:border-slate-800 dark:bg-slate-950/80 sm:p-4">
           {isGenerating ? (
             <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 py-12 text-slate-500">
               <RefreshCw className="w-8 h-8 text-emerald-600 animate-spin" />
@@ -301,7 +301,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
               />
             </div>
           ) : (
-            <article className="invoice-preview mx-auto max-w-[900px] overflow-hidden rounded-2xl border border-white bg-white text-slate-900 shadow-xl">
+            <article className="invoice-preview mx-auto w-full min-w-0 max-w-[900px] overflow-hidden rounded-2xl border border-white bg-white text-slate-900 shadow-xl">
               <div className="h-1.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500" />
               <div className="p-5 sm:p-8">
                 <header className="flex flex-col justify-between gap-6 border-b border-slate-200 pb-6 sm:flex-row sm:items-start">

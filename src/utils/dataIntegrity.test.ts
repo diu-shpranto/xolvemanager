@@ -67,6 +67,19 @@ test('reports duplicate IDs and orphan relationships as errors', () => {
   assert.ok(result.errors.some(issue => issue.category === 'RELATIONSHIPS' && issue.message.includes('missing service')));
 });
 
+test('detects duplicate customer phone numbers despite formatting differences', () => {
+  const result = runDataIntegrityCheck(makeRecords({
+    customers: [
+      { id: 'customer-1', name: 'One', phone: '+880 1711-223344', email: 'one@example.com', createdAt: '2025-01-01' },
+      { id: 'customer-2', name: 'Two', phone: '880-1711-223344', email: 'two@example.com', createdAt: '2025-01-02' },
+    ],
+  }));
+
+  assert.ok(result.warnings.some(issue =>
+    issue.category === 'DUPLICATES' && issue.entityId === 'customer-2' && issue.message.includes('Duplicate phone')
+  ));
+});
+
 test('surfaces storage warnings and never offers automatic repair', () => {
   const result = runDataIntegrityCheck(makeRecords({
     storageWarnings: ['A corrupt recovery copy was preserved.'],

@@ -133,17 +133,27 @@ export interface ParsedCustomerRecord {
   warnings: string[];
   customer: Customer;
   isExisting: boolean;
+  isDuplicate: boolean;
 }
 
 export function processCustomerRows(
   rows: Record<string, string>[],
   existingCustomers: Customer[]
 ): ParsedCustomerRecord[] {
-  const existingMap = new Map<string, Customer>();
+  const existingByEmail = new Map<string, Customer[]>();
+  const existingByPhone = new Map<string, Customer[]>();
+  const addToMap = (map: Map<string, Customer[]>, key: string, customer: Customer) => {
+    if (!key) return;
+    const matches = map.get(key) ?? [];
+    matches.push(customer);
+    map.set(key, matches);
+  };
   existingCustomers.forEach(c => {
-    if (c.email) existingMap.set(c.email.toLowerCase().trim(), c);
-    if (c.phone) existingMap.set(c.phone.replace(/[^0-9]/g, ''), c);
+    addToMap(existingByEmail, c.email.toLowerCase().trim(), c);
+    addToMap(existingByPhone, c.phone.replace(/[^0-9]/g, ''), c);
   });
+  const importedByEmail = new Map<string, number>();
+  const importedByPhone = new Map<string, number>();
 
   return rows.map((row, index) => {
     const warnings: string[] = [];
@@ -178,21 +188,43 @@ export function processCustomerRows(
       warnings.push('Requires at least a Phone or Email');
     }
 
-    const cleanPhone = phone ? phone.replace(/[^0-9]/g, '') : '';
-    const cleanEmail = email.toLowerCase().trim();
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const cleanEmail = email.toLowerCase();
+    let isDuplicate = false;
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      isValid = false;
+      warnings.push('Email address is not valid');
+    }
+    if (phone && (cleanPhone.length < 8 || cleanPhone.length > 15)) {
+      isValid = false;
+      warnings.push('Phone number must contain 8 to 15 digits');
+    }
 
-    // Check if customer already exists in database
-    const existing = (cleanEmail ? existingMap.get(cleanEmail) : undefined) ||
-                     (cleanPhone ? existingMap.get(cleanPhone) : undefined);
+    const existingMatches = new Map<string, Customer>();
+    (cleanEmail ? existingByEmail.get(cleanEmail) ?? [] : []).forEach(customer => existingMatches.set(customer.id, customer));
+    (cleanPhone ? existingByPhone.get(cleanPhone) ?? [] : []).forEach(customer => existingMatches.set(customer.id, customer));
+    const importedMatches = new Set<number>();
+    if (cleanEmail && importedByEmail.has(cleanEmail)) importedMatches.add(importedByEmail.get(cleanEmail)!);
+    if (cleanPhone && importedByPhone.has(cleanPhone)) importedMatches.add(importedByPhone.get(cleanPhone)!);
 
-    const customerId = existing ? existing.id : `cust-csv-${Date.now()}-${index}`;
+    const existing = existingMatches.size === 1 ? [...existingMatches.values()][0] : undefined;
+    if (existingMatches.size > 1) {
+      isValid = false;
+      warnings.push('Email and phone match different existing customers; review the contact details');
+    }
+    if (importedMatches.size > 0) {
+      isValid = false;
+      isDuplicate = true;
+      const matchingRows = [...importedMatches].map(rowIndex => rowIndex + 2).join(', ');
+      warnings.push(`Duplicate contact details found in CSV row${importedMatches.size > 1 ? 's' : ''} ${matchingRows}`);
+    }
 
     const customer: Customer = {
-      id: customerId,
+      id: existing?.id ?? `cust-csv-${Date.now()}-${index}`,
       name: name || 'Unnamed Customer',
-      phone: phone || existing?.phone || '+880 1700-000000',
+      phone: phone || existing?.phone || '',
       whatsapp: whatsapp || existing?.whatsapp,
-      email: email || existing?.email || `customer_${Date.now()}_${index}@example.invalid`,
+      email: cleanEmail || existing?.email || '',
       facebookUrl: facebookUrl || existing?.facebookUrl,
       facebookId: facebookId || existing?.facebookId,
       address: address || existing?.address,
@@ -201,11 +233,15 @@ export function processCustomerRows(
       updatedAt: getTodayDateString(),
     };
 
+    if (cleanEmail) importedByEmail.set(cleanEmail, index);
+    if (cleanPhone) importedByPhone.set(cleanPhone, index);
+
     return {
       isValid,
       warnings,
       customer,
       isExisting: !!existing,
+      isDuplicate,
     };
   });
 }

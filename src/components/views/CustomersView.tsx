@@ -34,8 +34,8 @@ import {
   History,
   CalendarDays,
   Download,
-  UserPlus,
   Copy,
+  MoreVertical,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useToast } from '../common/Toast';
@@ -444,7 +444,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     try {
       const result = await generateInvoiceJpg(invoiceDetailsForSale(sale));
       downloadInvoiceJpg(result.blob, result.fileName);
-      showToast(`Downloaded ${result.fileName}`, 'success');
+      showToast(`Download requested · ${result.fileName}`, 'info');
     } catch (error) {
       console.error('Customer invoice download failed:', error);
       showToast('Unable to download invoice. Please try again.', 'error');
@@ -714,8 +714,81 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const hasCustomerFilters = Boolean(
     searchQuery || filterServiceId !== 'all' || filterRenewal !== 'all'
     || filterCrmStatus !== 'all' || filterSubscription !== 'all' || filterPayment !== 'all'
-    || filterActivity !== 'all' || createdFrom || createdTo || lastActivityFrom || lastActivityTo
+    || filterActivity !== 'all' || filterStatus === 'archived'
+    || createdFrom || createdTo || lastActivityFrom || lastActivityTo
   );
+  const activeFilterCount = [
+    searchQuery,
+    filterStatus === 'archived',
+    filterCrmStatus !== 'all',
+    filterServiceId !== 'all',
+    filterRenewal !== 'all',
+    filterSubscription !== 'all',
+    filterPayment !== 'all',
+    filterActivity !== 'all',
+    createdFrom,
+    createdTo,
+    lastActivityFrom,
+    lastActivityTo,
+  ].filter(Boolean).length;
+  const activeFilterSummary = [
+    searchQuery ? `${language === 'bn' ? 'অনুসন্ধান' : 'Search'}: ${searchQuery}` : null,
+    filterStatus === 'archived' ? (language === 'bn' ? 'আর্কাইভকৃত' : 'Archived') : null,
+    filterCrmStatus !== 'all'
+      ? ({
+          active: language === 'bn' ? 'সক্রিয়' : 'Active',
+          at_risk: language === 'bn' ? 'ঝুঁকিতে' : 'At risk',
+          inactive: language === 'bn' ? 'নিষ্ক্রিয়' : 'Inactive',
+        } as const)[filterCrmStatus]
+      : null,
+    filterServiceId !== 'all' ? services.find(service => service.id === filterServiceId)?.name || null : null,
+    filterRenewal !== 'all'
+      ? ({
+          due: language === 'bn' ? 'নবায়ন বাকি' : 'Renewal due',
+          expired: language === 'bn' ? 'মেয়াদোত্তীর্ণ' : 'Expired',
+          none: language === 'bn' ? 'সাবস্ক্রিপশন নেই' : 'No subscription',
+        } as const)[filterRenewal]
+      : null,
+    filterSubscription !== 'all'
+      ? ({
+          active: language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Has active subscription',
+          none: language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন নেই' : 'No active subscription',
+          expiring: language === 'bn' ? 'মেয়াদ শেষ হচ্ছে' : 'Expiring soon',
+          expired: language === 'bn' ? 'মেয়াদোত্তীর্ণ সাবস্ক্রিপশন' : 'Expired subscription',
+        } as const)[filterSubscription]
+      : null,
+    filterPayment !== 'all'
+      ? ({
+          paid: language === 'bn' ? 'সম্পূর্ণ পরিশোধিত' : 'Fully paid',
+          due: language === 'bn' ? 'বকেয়া আছে' : 'Has due',
+          failed: language === 'bn' ? 'পেমেন্ট ব্যর্থ' : 'Failed payment',
+        } as const)[filterPayment]
+      : null,
+    filterActivity !== 'all'
+      ? ({
+          new: language === 'bn' ? 'নতুন গ্রাহক' : 'New customers',
+          recent: language === 'bn' ? 'সাম্প্রতিক কার্যক্রম' : 'Recently active',
+          inactive: language === 'bn' ? 'নিষ্ক্রিয় কার্যক্রম' : 'Inactive activity',
+        } as const)[filterActivity]
+      : null,
+    createdFrom || createdTo ? `${language === 'bn' ? 'তৈরির তারিখ' : 'Created'}: ${createdFrom || '…'}–${createdTo || '…'}` : null,
+    lastActivityFrom || lastActivityTo ? `${language === 'bn' ? 'সর্বশেষ কার্যক্রম' : 'Last activity'}: ${lastActivityFrom || '…'}–${lastActivityTo || '…'}` : null,
+  ].filter((label): label is string => Boolean(label));
+  const clearCustomerFilters = () => {
+    setSearchQuery('');
+    setFilterStatus('all');
+    setFilterCrmStatus('all');
+    setFilterServiceId('all');
+    setFilterRenewal('all');
+    setFilterSubscription('all');
+    setFilterPayment('all');
+    setFilterActivity('all');
+    setCreatedFrom('');
+    setCreatedTo('');
+    setLastActivityFrom('');
+    setLastActivityTo('');
+    setCurrentPage(1);
+  };
 
   // Selected customer for detailed view
   const detailedCustomer = customers.find(c => c.id === detailedCustomerId);
@@ -782,7 +855,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     sub => getSubscriptionStatus(sub, serviceById.get(sub.serviceId), settings.reminderNoticeDays) === 'expiring_soon'
   );
   const detailedTotalSales = detailedCrmMetrics?.totalSpent || 0;
-  const detailedTotalPaid = detailedCrmMetrics?.totalPaid || 0;
   const detailedTotalDue = detailedCrmMetrics?.totalDue || 0;
   const detailedDueSale = [...detailedSales]
     .filter(sale => getSaleDueAmount(sale, payments) > 0)
@@ -815,62 +887,84 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   };
 
   return (
-    <div className="max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-5">
-      <div className={detailedCustomerId ? 'hidden' : 'space-y-5'}>
+    <div className="customers-view mx-auto max-w-[1440px] px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
+      <div className={detailedCustomerId ? 'hidden' : 'customer-list-page space-y-3 sm:space-y-4'}>
       {/* 1. PAGE HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/60 dark:border-emerald-800/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
-              <Users className="w-5 h-5" />
-            </div>
-            <span>{language === 'bn' ? 'কাস্টমার' : 'Customers'}</span>
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {language === 'bn'
-              ? 'গ্রাহক, সাবস্ক্রিপশন, পেমেন্ট ও যোগাযোগ এক জায়গায় পরিচালনা করুন।'
-              : 'Manage customers, subscriptions, payments and customer activity.'}
-          </p>
+      <div className="customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:flex-nowrap sm:gap-4 sm:pb-4">
+        <div className="customer-heading flex min-w-0 flex-1 items-start gap-3">
+          <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11">
+            <Users className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">
+              {language === 'bn' ? 'গ্রাহক সম্পর্ক' : 'Customer relationship management'}
+            </p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">
+              {language === 'bn' ? 'কাস্টমার' : 'Customers'}
+            </h1>
+            <p className="mt-0.5 max-w-[28rem] text-sm leading-5 text-slate-600 dark:text-slate-400">
+              {language === 'bn'
+                ? 'গ্রাহক, নবায়ন ও বকেয়া'
+                : 'Customers, renewals & balances.'}
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+        <div className="customer-header-actions flex shrink-0 items-center gap-1.5">
+          <details className="customer-page-actions relative">
+            <summary
+              aria-label={language === 'bn' ? 'আরও কাস্টমার অ্যাকশন' : 'More customer actions'}
+              className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-[#151C28] dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <MoreVertical className="h-5 w-5" />
+            </summary>
+            <div className="absolute right-0 z-20 mt-2 grid w-48 gap-1 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+              <button
+                type="button"
+                onClick={event => {
+                  event.currentTarget.closest('details')?.removeAttribute('open');
+                  onOpenNewSaleForCustomer();
+                }}
+                className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-slate-700 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <CreditCard className="h-4 w-4" />
+                New Sale
+              </button>
+              <button
+                type="button"
+                onClick={event => {
+                  event.currentTarget.closest('details')?.removeAttribute('open');
+                  const content = exportCustomersCSV(customers, sales, payments, subscriptions, invoices, activityLogs, services, currency);
+                  downloadCSV('customers.csv', content);
+                  logActivity({
+                    type: 'data_exported',
+                    title: 'Customers Exported',
+                    description: `${customers.filter(customer => !customer.isArchived).length} customer records were exported.`,
+                  });
+                  showToast('Customers exported successfully.', 'success');
+                }}
+                disabled={!customers.length}
+                className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-slate-700 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <Download className="h-4 w-4" />
+                Export Customers
+              </button>
+            </div>
+          </details>
           <button
             type="button"
-            onClick={() => onOpenNewSaleForCustomer()}
-            className="hidden items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 sm:inline-flex"
-          >
-            <CreditCard className="h-4 w-4" />
-            New Sale
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const content = exportCustomersCSV(customers, sales, payments, subscriptions, invoices, activityLogs, services, currency);
-              downloadCSV('customers.csv', content);
-              logActivity({
-                type: 'data_exported',
-                title: 'Customers Exported',
-                description: `${customers.filter(customer => !customer.isArchived).length} customer records were exported.`,
-              });
-              showToast('Customers exported successfully.', 'success');
-            }}
-            disabled={!customers.length}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
-            <Download className="h-4 w-4" />
-            <span className="hidden sm:inline">Export Customers</span>
-          </button>
-          <button
             onClick={openAddModal}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-xs transition-all cursor-pointer"
+            aria-label={t('addCustomer')}
+            title={t('addCustomer')}
+            className="customer-primary-action inline-flex h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-violet-700 px-3 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-violet-600 active:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:gap-2 sm:px-4"
           >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <Plus className="h-4 w-4 shrink-0 stroke-[2.5]" />
             <span>{t('addCustomer')}</span>
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
+      <div className="customer-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
         {[
           {
             label: language === 'bn' ? 'মোট গ্রাহক' : 'Total Customers',
@@ -887,15 +981,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             isCurrency: false,
           },
           {
-            label: language === 'bn' ? 'নতুন গ্রাহক' : 'New Customers',
-            value: customerSummary.newCustomers,
-            icon: UserPlus,
-            color: 'text-blue-600 dark:text-blue-400',
-            isCurrency: false,
-          },
-          {
-            label: language === 'bn' ? 'গ্রাহকের বকেয়া' : 'Customers With Due',
-            value: customers.filter(customer => !customer.isArchived && (customerMetrics.get(customer.id)?.totalDue || 0) > 0).length,
+            label: language === 'bn' ? 'ঝুঁকিতে' : 'At Risk',
+            value: customerSummary.atRiskCount,
             icon: AlertTriangle,
             color: 'text-rose-600 dark:text-rose-400',
             isCurrency: false,
@@ -907,20 +994,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             color: 'text-amber-600 dark:text-amber-400',
             isCurrency: false,
           },
-          {
-            label: language === 'bn' ? 'নিষ্ক্রিয়' : 'Inactive Customers',
-            value: customerSummary.inactiveCount,
-            icon: Clock,
-            color: 'text-slate-600 dark:text-slate-300',
-            isCurrency: false,
-          },
-        ].map(metric => (
-          <div key={metric.label} className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs dark:border-slate-800 dark:bg-[#151C28] sm:p-4">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{metric.label}</span>
-              <metric.icon className={`h-4 w-4 shrink-0 ${metric.color}`} />
+        ].map((metric, index) => (
+          <div key={metric.label} className={`customer-kpi customer-kpi--${index} flex min-h-[100px] min-w-0 flex-col justify-between rounded-xl border p-3 transition-colors sm:min-h-[100px] sm:p-4 ${index === 0 ? 'border-violet-200 bg-violet-50/70 dark:border-violet-900/60 dark:bg-violet-950/25' : index === 3 ? 'border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-[#151C28]'}`}>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className={`customer-kpi-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${index === 0 ? 'bg-violet-100 dark:bg-violet-900/50' : index === 1 ? 'bg-emerald-50 dark:bg-emerald-950/50' : index === 2 ? 'bg-rose-50 dark:bg-rose-950/50' : 'bg-amber-50 dark:bg-amber-950/50'}`}>
+                <metric.icon className={`h-4 w-4 ${metric.color}`} />
+              </span>
+              <span className="min-w-0 text-sm font-semibold leading-5 text-slate-700 dark:text-slate-200">{metric.label}</span>
             </div>
-            <div className="mt-2 text-xl font-bold tabular-nums text-slate-900 dark:text-white">
+            <div className="customer-kpi-value mt-2 pl-10 text-[26px] font-bold tracking-tight tabular-nums text-slate-950 dark:text-white sm:text-[30px]">
               {customersError && customers.length === 0
                 ? '—'
                 : customersLoading && customers.length === 0
@@ -931,29 +1013,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {[
-          { label: 'All customers', onClick: () => { setFilterCrmStatus('all'); setFilterPayment('all'); setFilterRenewal('all'); setFilterSubscription('all'); setFilterActivity('all'); setCurrentPage(1); } },
-          { label: 'Active', onClick: () => { setFilterCrmStatus('active'); setCurrentPage(1); } },
-          { label: 'New', onClick: () => { setFilterActivity('new'); setFilterCrmStatus('all'); setCurrentPage(1); } },
-          { label: 'Due', onClick: () => { setFilterPayment('due'); setFilterRenewal('due'); setCurrentPage(1); } },
-          { label: 'At risk', onClick: () => { setFilterCrmStatus('at_risk'); setCurrentPage(1); } },
-        ].map(filter => (
-          <button
-            key={filter.label}
-            type="button"
-            onClick={filter.onClick}
-            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-emerald-700 dark:hover:text-emerald-300"
-          >
-            {filter.label}
-          </button>
-        ))}
-      </div>
-
       {/* 2. SEARCH + FILTER TOOLBAR */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+      <div className="customer-toolbar grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-3 dark:border-slate-800 dark:bg-[#151C28]">
         {/* Search input (Name, Phone, Email, Facebook ID) */}
-        <div className="relative flex-1 max-w-lg">
+        <div className="relative min-w-0">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <input
             type="text"
@@ -967,7 +1030,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               setSearchQuery(e.target.value);
               setCurrentPage(1);
             }}
-            className="w-full h-11 pl-10 pr-10 bg-white dark:bg-[#151C28] border border-slate-200/80 dark:border-slate-800 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:border-emerald-500 shadow-2xs transition-all"
+            className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm text-slate-900 transition-colors placeholder:text-slate-500 focus:border-violet-500 focus:bg-white focus:outline-hidden dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-400 dark:focus:bg-slate-950"
             aria-label="Search customers"
           />
           {searchQuery && (
@@ -985,37 +1048,30 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         </div>
 
         {/* Customer filters and sorting */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
+        <div className="customer-filter-toolbar grid min-w-0 grid-cols-2 gap-2 sm:flex sm:items-center">
             <select
-              value={filterStatus}
-              onChange={e => {
-                setFilterStatus(e.target.value as typeof filterStatus);
+              value={filterStatus === 'archived' ? 'archived' : filterCrmStatus}
+              onChange={event => {
+                const value = event.target.value;
+                setFilterStatus(value === 'archived' ? 'archived' : 'all');
+                setFilterCrmStatus(value === 'archived' ? 'all' : value as typeof filterCrmStatus);
                 setCurrentPage(1);
               }}
-              className="h-11 px-3.5 bg-white dark:bg-[#151C28] border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
+              aria-label={language === 'bn' ? 'কাস্টমার স্ট্যাটাস ফিল্টার' : 'Filter customers by status'}
+              className="h-11 min-w-0 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-800 focus:border-violet-500 focus:bg-white focus:outline-hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:bg-slate-950 sm:w-auto"
             >
-              <option value="all">
-                {language === 'bn'
-                  ? `সকল গ্রাহক (${customers.filter(c => !c.isArchived && c.status !== 'archived').length})`
-                  : `All Customers (${customers.filter(c => !c.isArchived && c.status !== 'archived').length})`}
-              </option>
-              {customers.some(customer => customer.isArchived) && (
-                <option value="archived">
-                  {language === 'bn'
-                    ? `আর্কাইভকৃত কাস্টমার (${customers.filter(c => c.isArchived).length})`
-                    : `Archived Customers (${customers.filter(c => c.isArchived).length})`}
-                </option>
-              )}
+              <option value="all">{language === 'bn' ? 'সব গ্রাহক' : 'All customers'}</option>
+              <option value="active">{language === 'bn' ? 'সক্রিয়' : 'Active'}</option>
+              <option value="at_risk">{language === 'bn' ? 'ঝুঁকিতে' : 'At risk'}</option>
+              <option value="inactive">{language === 'bn' ? 'নিষ্ক্রিয়' : 'Inactive'}</option>
+              {customers.some(customer => customer.isArchived) && <option value="archived">{language === 'bn' ? 'আর্কাইভকৃত' : 'Archived'}</option>}
             </select>
-          </div>
 
-          {/* Sort By */}
-          <div className="relative">
             <select
               value={sortBy}
               onChange={e => setSortBy(e.target.value as typeof sortBy)}
-              className="h-11 px-3.5 bg-white dark:bg-[#151C28] border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
+              aria-label={language === 'bn' ? 'কাস্টমার সাজান' : 'Sort customers'}
+              className="h-11 min-w-0 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-800 focus:border-violet-500 focus:bg-white focus:outline-hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:bg-slate-950 sm:w-auto"
             >
               <option value="newest">{language === 'bn' ? 'নতুন' : 'Newest'}</option>
               <option value="oldest">{language === 'bn' ? 'পুরনো' : 'Oldest'}</option>
@@ -1023,8 +1079,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               <option value="name_desc">{language === 'bn' ? 'নাম (Z-A)' : 'Name (Z-A)'}</option>
               <option value="spending">{language === 'bn' ? 'সর্বোচ্চ খরচ' : 'Most spent'}</option>
             </select>
-          </div>
 
+          <details className="customer-advanced-filters col-span-2 min-w-0 sm:col-span-1">
+            <summary className="flex h-11 min-w-0 cursor-pointer list-none items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 transition-colors hover:border-violet-300 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 sm:min-w-32">
+              <Filter className="h-3.5 w-3.5 shrink-0" />
+              <span>{language === 'bn' ? 'আরও ফিল্টার' : 'More filters'}</span>
+              {activeFilterCount > 0 && <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-800 dark:bg-violet-950 dark:text-violet-200">{activeFilterCount}</span>}
+              <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+            </summary>
+            <div className="customer-advanced-filter-panel mt-2 flex flex-wrap items-center gap-2">
           {services.length > 0 && <select
             value={filterServiceId}
             onChange={e => {
@@ -1053,17 +1116,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             <option value="none">{language === 'bn' ? 'সাবস্ক্রিপশন নেই' : 'No Subscription'}</option>
           </select>}
 
-          <select
-            value={filterCrmStatus}
-            onChange={event => { setFilterCrmStatus(event.target.value as typeof filterCrmStatus); setCurrentPage(1); }}
-            aria-label="Filter by customer status"
-            className="h-11 max-w-full rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs focus:border-emerald-500 focus:outline-hidden dark:border-slate-800 dark:bg-[#151C28] dark:text-slate-300"
-          >
-            <option value="all">All CRM statuses</option>
-            <option value="active">Active</option>
-            <option value="at_risk">At Risk</option>
-            <option value="inactive">Inactive</option>
-          </select>
           <select
             value={filterSubscription}
             onChange={event => { setFilterSubscription(event.target.value as typeof filterSubscription); setCurrentPage(1); }}
@@ -1096,7 +1148,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             <option value="all">All activity</option>
             <option value="new">New customers</option>
             <option value="recent">Recently active</option>
-            <option value="inactive">Inactive</option>
           </select>
           <details className="relative">
             <summary className="flex h-11 cursor-pointer list-none items-center gap-2 rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:bg-[#151C28] dark:text-slate-300">
@@ -1136,6 +1187,35 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               <option value={50}>50 / page</option>
             </select>
           </div>
+            </div>
+          </details>
+
+          <div className="col-span-full flex min-h-9 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-1 text-xs">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+              <p className="shrink-0 font-medium text-slate-600 dark:text-slate-300" aria-live="polite">
+                {customersLoading && customers.length === 0
+                  ? (language === 'bn' ? 'গ্রাহক লোড হচ্ছে…' : 'Loading customers…')
+                  : language === 'bn'
+                    ? `${filteredCustomers.length} জন গ্রাহক`
+                    : `${filteredCustomers.length} ${filteredCustomers.length === 1 ? 'customer' : 'customers'}`}
+              </p>
+              {activeFilterSummary.length > 0 && (
+                <p className="min-w-0 break-words text-slate-500 dark:text-slate-400">
+                  <span className="sr-only">{language === 'bn' ? 'সক্রিয় ফিল্টার: ' : 'Active filters: '}</span>
+                  {activeFilterSummary.join(' · ')}
+                </p>
+              )}
+            </div>
+            {hasCustomerFilters && (
+              <button
+                type="button"
+                onClick={clearCustomerFilters}
+                className="min-h-9 rounded-md px-2 font-semibold text-violet-700 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/50"
+              >
+                {language === 'bn' ? 'ফিল্টার মুছুন' : 'Clear filters'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1156,9 +1236,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       )}
 
       {/* 4. CUSTOMER TABLE & CARD LIST CONTAINER */}
-      <div className="space-y-3">
+      <div className="customer-list-section space-y-3">
         {/* Desktop Table View */}
-        <div className="hidden overflow-x-auto">
+        <div className="customer-desktop-table hidden overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#151C28] xl:block">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -1375,10 +1455,12 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                           ><CreditCard className="h-4 w-4" /></button>}
                           <button
                             onClick={() => openCustomerDetails(cust.id)}
+                            aria-label={language === 'bn' ? `বিস্তারিত দেখুন: ${cust.name}` : `View details for ${cust.name}`}
+                            title={language === 'bn' ? 'বিস্তারিত দেখুন' : 'View customer'}
                             className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
                           >
                             <Eye className="h-3.5 w-3.5" />
-                            {language === 'bn' ? 'দেখুন' : 'View'}
+                            <span className="sr-only">{language === 'bn' ? 'দেখুন' : 'View'}</span>
                           </button>
                           {cust.isArchived ? (
                             <button
@@ -1415,7 +1497,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         </div>
 
         {/* Mobile Card List View */}
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="customer-card-grid grid gap-3 sm:grid-cols-2 xl:hidden">
           {customersLoading && customers.length === 0 ? (
             <div className="contents" aria-label="Loading customers">
               {Array.from({ length: 4 }).map((_, index) => (
@@ -1498,76 +1580,67 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               return (
                 <article
                   key={cust.id}
-                  className="group min-w-0 rounded-xl border border-slate-200/80 bg-white p-4 shadow-xs transition-[border-color,box-shadow] hover:border-emerald-300 hover:shadow-sm dark:border-slate-800 dark:bg-[#151C28] dark:hover:border-emerald-800"
+                  className="customer-card group min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-sm dark:border-slate-800 dark:bg-[#151C28] dark:hover:border-violet-800"
                 >
-                  <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="customer-card-header flex min-w-0 items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
                       <div
-                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border text-sm font-bold ${avatarColor}`}
+                        className={`customer-card-avatar flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-sm font-bold ${avatarColor}`}
                       >
                         {initials}
                       </div>
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-1.5">
-                          <button type="button" onClick={() => openCustomerDetails(cust.id)} className="min-w-0 truncate text-left text-[15px] font-bold text-slate-900 hover:text-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-white dark:hover:text-emerald-300">
+                          <button type="button" onClick={() => openCustomerDetails(cust.id)} aria-label={`View customer details for ${cust.name}`} className="customer-card-name min-h-10 min-w-0 truncate text-left text-[15px] font-bold text-slate-900 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-white dark:hover:text-violet-300">
                             {cust.name}
                           </button>
                           {valueTag && <span className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-violet-50 px-1.5 py-0.5 text-[9px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"><Sparkles className="h-2.5 w-2.5" />{valueTag}</span>}
                         </div>
-                        <div className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
-                          {cust.phone || cust.id}
-                          {cust.facebookId && <span className="text-blue-600 dark:text-blue-400"> · @{cust.facebookId}</span>}
-                        </div>
                       </div>
                     </div>
-                    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-semibold ${statusClass}`}>
+                    <span className={`customer-card-status inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-semibold ${statusClass}`}>
                       <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${cust.isArchived || metrics?.status === 'inactive' ? 'bg-slate-400' : metrics?.status === 'at_risk' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                       {customerStatus}
                     </span>
                   </div>
 
-                  <div className="mt-3 flex min-w-0 flex-wrap gap-x-4 gap-y-1.5 text-[11px]">
-                    {cust.phone && <a href={`tel:${cust.phone}`} onClick={event => event.stopPropagation()} className="inline-flex max-w-full items-center gap-1.5 truncate text-slate-600 hover:text-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-300 dark:hover:text-emerald-300"><Phone className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{cust.phone}</span></a>}
-                    {cust.email && <a href={`mailto:${cust.email}`} onClick={event => event.stopPropagation()} className="inline-flex min-w-0 max-w-full items-center gap-1.5 truncate text-slate-600 hover:text-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-300 dark:hover:text-emerald-300"><Mail className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{cust.email}</span></a>}
-                    {cust.facebookUrl && <a href={cust.facebookUrl.startsWith('http') ? cust.facebookUrl : `https://${cust.facebookUrl}`} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()} aria-label={`Facebook profile for ${cust.name}`} className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-blue-400"><Facebook className="h-3.5 w-3.5" /><span>Facebook</span></a>}
+                  <div className="customer-card-contacts mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0 text-xs">
+                    {cust.phone && <a href={`tel:${cust.phone}`} onClick={event => event.stopPropagation()} className="customer-contact-link inline-flex min-h-9 min-w-0 items-center gap-2 text-slate-700 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-200 dark:hover:text-violet-300"><Phone className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="min-w-0">{cust.phone}</span></a>}
+                    {cust.email && <a href={`mailto:${cust.email}`} onClick={event => event.stopPropagation()} title={cust.email} className="customer-contact-link inline-flex min-h-9 min-w-0 items-center gap-2 text-slate-700 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-200 dark:hover:text-violet-300"><Mail className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="min-w-0">{cust.email}</span></a>}
+                    {cust.facebookUrl && <a href={cust.facebookUrl.startsWith('http') ? cust.facebookUrl : `https://${cust.facebookUrl}`} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()} aria-label={`Facebook profile for ${cust.name}`} className="customer-contact-link inline-flex min-h-9 min-w-0 items-center gap-2 text-blue-700 hover:text-blue-800 focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-blue-300"><Facebook className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Facebook</span></a>}
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-3 border-y border-slate-100 py-3.5 dark:border-slate-800 md:grid-cols-4">
-                    <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Active Subscriptions</p><p className="mt-1 text-lg font-semibold tabular-nums text-slate-900 dark:text-white">{activeCount}</p></div>
-                    <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Total Spent</p><p className="mt-1 truncate text-base font-semibold tabular-nums text-slate-900 dark:text-white">{formatCurrency(spending, currency)}</p></div>
-                    <div className={`min-w-0 rounded-lg px-2 py-1.5 ${metrics?.totalDue ? 'bg-amber-50/80 dark:bg-amber-950/25' : ''}`}><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Due</p><p className={`mt-1 truncate text-base font-semibold tabular-nums ${metrics?.totalDue ? 'text-amber-800 dark:text-amber-300' : 'text-slate-700 dark:text-slate-200'}`}>{formatCurrency(metrics?.totalDue || 0, currency)}</p></div>
-                    <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Last Activity</p><p className="mt-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">{metrics?.lastActivity ? formatAppDate(metrics.lastActivity, language) : '—'}</p></div>
+                  <div className="customer-card-metrics mt-3 grid grid-cols-2 gap-x-4 gap-y-3 border-y border-slate-100 py-3 dark:border-slate-800">
+                    <div className="customer-card-metric min-w-0"><p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Active Subscriptions</p><p className="mt-1 text-base font-semibold tabular-nums text-slate-900 dark:text-white">{activeCount}</p></div>
+                    <div className="customer-card-metric min-w-0"><p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Total Spent</p><p className="mt-1 truncate text-base font-semibold tabular-nums text-slate-900 dark:text-white">{formatCurrency(spending, currency)}</p></div>
+                    <div className={`customer-card-metric customer-card-due min-w-0 rounded-lg ${metrics?.totalDue ? 'bg-amber-50/80 dark:bg-amber-950/25' : ''}`}><p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Due Amount</p><p className={`mt-1 truncate text-base font-semibold tabular-nums ${metrics?.totalDue ? 'text-amber-800 dark:text-amber-300' : 'text-slate-700 dark:text-slate-200'}`}>{formatCurrency(metrics?.totalDue || 0, currency)}</p></div>
+                    <div className="customer-card-metric min-w-0"><p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Last Activity</p><p className="mt-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">{metrics?.lastActivity ? formatAppDate(metrics.lastActivity, language) : '—'}</p></div>
                   </div>
 
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
-                    <span className={`inline-flex items-center gap-1.5 font-medium ${metrics?.status === 'at_risk' ? 'text-amber-700 dark:text-amber-300' : metrics?.status === 'inactive' ? 'text-slate-500 dark:text-slate-400' : 'text-emerald-700 dark:text-emerald-300'}`}>
-                      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${metrics?.status === 'at_risk' ? 'bg-amber-500' : metrics?.status === 'inactive' ? 'bg-slate-400' : 'bg-emerald-500'}`} />
-                      {customerStatus}
-                    </span>
-                    <span className="text-slate-300 dark:text-slate-600">·</span>
-                    <span className="text-slate-500 dark:text-slate-400">Last activity {metrics?.lastActivity ? formatAppDate(metrics.lastActivity, language) : 'not recorded'}</span>
-                    {renewalSubscription && <button type="button" onClick={() => onViewSubscription(renewalSubscription.id)} className="rounded-md px-1.5 py-0.5 font-medium text-amber-700 hover:bg-amber-50 focus-visible:outline-2 focus-visible:outline-amber-600 dark:text-amber-300 dark:hover:bg-amber-950/40">{renewalDays === 0 ? 'Renewal due today' : `Renewal due in ${renewalDays} day${renewalDays === 1 ? '' : 's'}`}</button>}
-                  </div>
+                  {renewalSubscription && (
+                    <div className="customer-card-renewal mt-3">
+                      <button type="button" onClick={() => onViewSubscription(renewalSubscription.id)} className="inline-flex min-h-10 items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-amber-600 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950/70">
+                        {renewalDays === 0 ? 'Renewal due today' : `Renewal due in ${renewalDays} day${renewalDays === 1 ? '' : 's'}`}
+                      </button>
+                    </div>
+                  )}
 
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-                    {canWhatsApp ? <button type="button" onClick={() => openMessage({ customerId: cust.id })} aria-label={`Compose WhatsApp message for ${cust.name}`} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-emerald-300 dark:hover:bg-emerald-950/40"><MessageCircle className="h-3.5 w-3.5" /><span>WhatsApp</span></button> : <span />}
-
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {!cust.isArchived && <button type="button" onClick={() => onOpenNewSaleForCustomer(cust.id)} aria-label={`New sale for ${cust.name}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"><Plus className="h-3.5 w-3.5" />New Sale</button>}
-                      {!cust.isArchived && onAddPaymentForCustomer && <button type="button" onClick={() => onAddPaymentForCustomer(cust.id)} aria-label={`Add payment for ${cust.name}${metrics?.totalDue ? `, ${formatCurrency(metrics.totalDue, currency)} due` : ''}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><CreditCard className="h-3.5 w-3.5" />Payment{metrics?.totalDue ? ` · ${formatCurrency(metrics.totalDue, currency)} Due` : ''}</button>}
-                      <button type="button" onClick={() => openCustomerDetails(cust.id)} aria-label={`View ${cust.name}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-emerald-300 dark:hover:bg-emerald-950/40"><Eye className="h-3.5 w-3.5" /><span className="hidden sm:inline">View customer</span><span className="sm:hidden">View</span></button>
+                  <div className="customer-card-actions mt-3 flex flex-wrap items-center justify-end gap-1.5 border-t border-slate-100 pt-3 dark:border-slate-800">
+                      {!cust.isArchived && <button type="button" onClick={() => onOpenNewSaleForCustomer(cust.id)} aria-label={`New sale for ${cust.name}`} className="customer-new-sale inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-violet-700 px-3 text-xs font-semibold text-white hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"><Plus className="h-3.5 w-3.5" />New Sale</button>}
+                      {!cust.isArchived && onAddPaymentForCustomer && <button type="button" onClick={() => onAddPaymentForCustomer(cust.id)} aria-label={`Add payment for ${cust.name}${metrics?.totalDue ? `, ${formatCurrency(metrics.totalDue, currency)} due` : ''}`} title={metrics?.totalDue ? `Due ${formatCurrency(metrics.totalDue, currency)}` : 'Add payment'} className="customer-payment-action inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><CreditCard className="h-4 w-4" /></button>}
+                      {canWhatsApp && <button type="button" onClick={() => openMessage({ customerId: cust.id })} aria-label={`Compose WhatsApp message for ${cust.name}`} title="WhatsApp" className="customer-whatsapp-action inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><MessageCircle className="h-4 w-4" /></button>}
+                      <button type="button" onClick={() => openCustomerDetails(cust.id)} aria-label={`View ${cust.name}`} title="View customer" className="customer-view-action inline-flex min-h-10 items-center justify-center rounded-lg text-violet-700 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40"><Eye className="h-4 w-4" /></button>
                       <div className="relative">
-                        <button type="button" onClick={() => setOpenMoreCustomerId(openMoreCustomerId === cust.id ? null : cust.id)} aria-haspopup="menu" aria-expanded={openMoreCustomerId === cust.id} aria-label={`More actions for ${cust.name}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-200 px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"><span>More</span><ChevronDown className="h-3.5 w-3.5" /></button>
+                        <button type="button" onClick={() => setOpenMoreCustomerId(openMoreCustomerId === cust.id ? null : cust.id)} aria-haspopup="menu" aria-expanded={openMoreCustomerId === cust.id} aria-label={`More actions for ${cust.name}`} title="More actions" className="customer-more-action inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"><ChevronDown className="h-4 w-4" /></button>
                         {openMoreCustomerId === cust.id && <div className="absolute bottom-full right-0 z-20 mb-1 min-w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-800">
-                          <button type="button" onClick={() => { setOpenMoreCustomerId(null); openCustomerDetails(cust.id); }} className="w-full rounded-md px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-200 dark:hover:bg-slate-700">View customer</button>
-                          {!cust.isArchived && <button type="button" onClick={() => { setOpenMoreCustomerId(null); openEditModal(cust); }} className="w-full rounded-md px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-200 dark:hover:bg-slate-700">Edit</button>}
-                          {!cust.isArchived && <button type="button" onClick={() => { setOpenMoreCustomerId(null); onOpenNewSaleForCustomer(cust.id); }} className="w-full rounded-md px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-200 dark:hover:bg-slate-700">New Sale</button>}
-                          {!cust.isArchived && onAddPaymentForCustomer && <button type="button" onClick={() => { setOpenMoreCustomerId(null); onAddPaymentForCustomer(cust.id); }} className="w-full rounded-md px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-200 dark:hover:bg-slate-700">Add Payment</button>}
-                          {cust.isArchived && <button type="button" onClick={() => { setOpenMoreCustomerId(null); void handleRestore(cust.id, cust.name); }} className="w-full rounded-md px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-emerald-300 dark:hover:bg-emerald-950/40">Restore</button>}
-                          <button type="button" onClick={() => { setOpenMoreCustomerId(null); setCustomerToDelete(cust); }} className="w-full rounded-md px-3 py-2 text-left text-xs text-rose-600 hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-rose-600 dark:text-rose-300 dark:hover:bg-rose-950/40">{cust.isArchived ? 'Permanently delete' : 'Archive or delete'}</button>
+                          <button type="button" onClick={() => { setOpenMoreCustomerId(null); openCustomerDetails(cust.id); }} className="min-h-10 w-full rounded-md px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-200 dark:hover:bg-slate-700">View customer</button>
+                          {!cust.isArchived && <button type="button" onClick={() => { setOpenMoreCustomerId(null); openEditModal(cust); }} className="min-h-10 w-full rounded-md px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-200 dark:hover:bg-slate-700">Edit</button>}
+                          {!cust.isArchived && <button type="button" onClick={() => { setOpenMoreCustomerId(null); onOpenNewSaleForCustomer(cust.id); }} className="min-h-10 w-full rounded-md px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-200 dark:hover:bg-slate-700">New Sale</button>}
+                          {!cust.isArchived && onAddPaymentForCustomer && <button type="button" onClick={() => { setOpenMoreCustomerId(null); onAddPaymentForCustomer(cust.id); }} className="min-h-10 w-full rounded-md px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-200 dark:hover:bg-slate-700">Add Payment</button>}
+                          {cust.isArchived && <button type="button" onClick={() => { setOpenMoreCustomerId(null); void handleRestore(cust.id, cust.name); }} className="min-h-10 w-full rounded-md px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-emerald-300 dark:hover:bg-emerald-950/40">Restore</button>}
+                          <button type="button" onClick={() => { setOpenMoreCustomerId(null); setCustomerToDelete(cust); }} className="min-h-10 w-full rounded-md px-3 py-2 text-left text-xs text-rose-600 hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-rose-600 dark:text-rose-300 dark:hover:bg-rose-950/40">{cust.isArchived ? 'Permanently delete' : 'Archive or delete'}</button>
                         </div>}
                       </div>
-                    </div>
                   </div>
                 </article>
               );
@@ -1595,7 +1668,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 disabled={currentPage <= 1}
                 onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
                 aria-label="Previous customers page"
-                className="rounded-md p-1 text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-30 dark:text-slate-400 dark:hover:bg-slate-800"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-30 dark:text-slate-400 dark:hover:bg-slate-800"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -1608,7 +1681,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 disabled={currentPage >= totalPages}
                 onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
                 aria-label="Next customers page"
-                className="rounded-md p-1 text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-30 dark:text-slate-400 dark:hover:bg-slate-800"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-30 dark:text-slate-400 dark:hover:bg-slate-800"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -1710,34 +1783,34 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </button>
           </div>
         ) : (
-        <div className="mx-auto w-full max-w-[1400px] space-y-5">
+        <div className="customer-detail-workspace mx-auto w-full max-w-[1400px] space-y-4">
           <button
             type="button"
             onClick={() => {
               setDetailedCustomerId(null);
               onClearSelectedCustomer?.();
             }}
-            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-emerald-700 dark:text-slate-300 dark:hover:text-emerald-400"
+            className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-slate-600 hover:text-violet-700 dark:text-slate-300 dark:hover:text-violet-300"
           >
             <ChevronLeft className="h-4 w-4" />
             Back to Customers
           </button>
-          <div className="space-y-6">
+          <div className="customer-detail-content space-y-5">
             {/* Header info card */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
-              <div className="flex items-center gap-3">
+            <section className="customer-profile-header flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-violet-100 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-[#171622] sm:p-5">
+              <div className="flex min-w-0 items-center gap-3">
                 <div
-                  className={`w-12 h-12 rounded-xl font-bold text-sm flex items-center justify-center shrink-0 border ${getAvatarColorClass(
+                  className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border text-base font-bold ${getAvatarColorClass(
                     detailedCustomer.name
                   )}`}
                 >
                   {getInitials(detailedCustomer.name)}
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                    <h1 className="min-w-0 break-words text-xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-2xl">
                       {detailedCustomer.name?.trim() || '—'}
-                    </h3>
+                    </h1>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                       detailedCrmMetrics?.status === 'at_risk'
                         ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
@@ -1749,70 +1822,109 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     </span>
                   </div>
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                    <span>{detailedCustomer.phone?.trim() || '—'}</span>
-                    <span className="break-all">{detailedCustomer.email?.trim() || '—'}</span>
+                    {detailedCustomer.phone?.trim()
+                      ? <a href={`tel:${detailedCustomer.phone}`} className="break-all hover:text-violet-700 dark:hover:text-violet-300">{detailedCustomer.phone}</a>
+                      : <span>—</span>}
+                    {detailedCustomer.email?.trim() && <a href={`mailto:${detailedCustomer.email}`} className="break-all hover:text-violet-700 dark:hover:text-violet-300">{detailedCustomer.email}</a>}
                   </div>
                 </div>
               </div>
 
               {/* Action buttons */}
-              <div className="flex flex-wrap items-center gap-2">
-                {canContact(detailedCustomer.id) ? (
-                  <button type="button"
-                    onClick={() => openMessage({ customerId: detailedCustomer.id })}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
-                  >
-                    <MessageCircle className="h-3.5 w-3.5" />
-                    WhatsApp Customer
-                  </button>
-                ) : <span className="text-xs text-slate-500">No phone number available · <button type="button" onClick={() => openEditModal(detailedCustomer)} className="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">Add Phone Number</button></span>}
+              <div className="customer-profile-actions flex flex-wrap items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => {
                     onOpenNewSaleForCustomer(detailedCustomer.id);
                   }}
-                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>New Sale</span>
+                  <Plus className="h-4 w-4" />
+                  New Sale
                 </button>
-                {onAddPaymentForCustomer && <button
-                  type="button"
-                  onClick={() => onAddPaymentForCustomer(detailedCustomer.id)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300"
-                ><CreditCard className="h-3.5 w-3.5" />Add Payment</button>}
-                {detailedSales.length > 0 && (() => {
-                  const latestSale = [...detailedSales].sort((a, b) => b.date.localeCompare(a.date))[0];
-                  const hasInvoice = invoices.some(invoice => invoice.saleId === latestSale.id);
-                  return <button
-                    type="button"
-                    onClick={() => handleOpenInvoice(latestSale)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
-                  ><Receipt className="h-3.5 w-3.5" />{hasInvoice ? 'View Invoice' : 'Create Invoice'}</button>;
-                })()}
-
+                {canContact(detailedCustomer.id) && <button type="button"
+                  onClick={() => openMessage({ customerId: detailedCustomer.id })}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-violet-300"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  WhatsApp
+                </button>}
                 <button
-                  onClick={() => {
-                    openEditModal(detailedCustomer);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
+                  type="button"
+                  onClick={() => openEditModal(detailedCustomer)}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
-                  <Edit2 className="h-3.5 w-3.5" />
-                  Edit Customer
+                  <Edit2 className="h-4 w-4" />
+                  Edit
                 </button>
+                <details className="customer-profile-more relative">
+                  <summary aria-label={language === 'bn' ? 'আরও কাস্টমার অ্যাকশন' : 'More customer actions'} title={language === 'bn' ? 'আরও অ্যাকশন' : 'More actions'} className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+                    <MoreVertical className="h-5 w-5" />
+                  </summary>
+                  <div className="absolute right-0 z-20 mt-2 grid min-w-48 gap-1 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                    {onAddPaymentForCustomer && <button type="button" onClick={event => {
+                      event.currentTarget.closest('details')?.removeAttribute('open');
+                      onAddPaymentForCustomer(detailedCustomer.id);
+                    }} className="flex min-h-10 items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-slate-700 hover:bg-violet-50 dark:text-slate-200 dark:hover:bg-slate-800"><CreditCard className="h-4 w-4" />{language === 'bn' ? 'পেমেন্ট গ্রহণ' : 'Receive Payment'}</button>}
+                    {detailedSales.length > 0 && (() => {
+                      const latestSale = [...detailedSales].sort((a, b) => b.date.localeCompare(a.date))[0];
+                      const hasInvoice = invoices.some(invoice => invoice.saleId === latestSale.id);
+                      return <button type="button" onClick={event => {
+                        event.currentTarget.closest('details')?.removeAttribute('open');
+                        handleOpenInvoice(latestSale);
+                      }} className="flex min-h-10 items-center gap-2 rounded-lg px-3 text-left text-sm font-medium text-slate-700 hover:bg-violet-50 dark:text-slate-200 dark:hover:bg-slate-800"><Receipt className="h-4 w-4" />{hasInvoice ? (language === 'bn' ? 'ইনভয়েস দেখুন' : 'View Invoice') : (language === 'bn' ? 'ইনভয়েস তৈরি' : 'Create Invoice')}</button>;
+                    })()}
+                  </div>
+                </details>
               </div>
-            </div>
+            </section>
 
-            {canContact(detailedCustomer.id) && <section aria-label="Customer WhatsApp actions" className="rounded-xl border border-emerald-200/70 bg-emerald-50/50 p-3 dark:border-emerald-900/60 dark:bg-emerald-950/20">
-              <div className="mb-2 flex items-center gap-2"><MessageCircle className="h-4 w-4 text-emerald-700 dark:text-emerald-300" /><h3 className="text-xs font-bold text-slate-800 dark:text-slate-100">WhatsApp · {detailedCustomer.whatsapp?.trim() || detailedCustomer.phone}</h3></div>
+            <nav aria-label="Customer sections" className="customer-detail-nav flex min-w-0 gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-[#171622]">
+              <a href="#customer-overview" className="customer-detail-nav-link">{language === 'bn' ? 'সারসংক্ষেপ' : 'Overview'}</a>
+              <a href="#customer-subscriptions" className="customer-detail-nav-link">{language === 'bn' ? 'সাবস্ক্রিপশন' : 'Subscriptions'} <span>{detailedSubs.length}</span></a>
+              <a href="#customer-purchases" className="customer-detail-nav-link">{language === 'bn' ? 'পেমেন্ট ও কেনাকাটা' : 'Payments & Purchases'}</a>
+              <a href="#customer-activity" className="customer-detail-nav-link">{language === 'bn' ? 'কার্যকলাপ' : 'Activity'} <span>{detailedActivities.length}</span></a>
+            </nav>
+
+            <section id="customer-overview" aria-label="Customer overview" className="customer-overview-grid grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="customer-overview-metric">
+                <span>{language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Active subscriptions'}</span>
+                <strong>{currentActiveSubsForDetailed.length}</strong>
+              </div>
+              <div className={`customer-overview-metric ${detailedTotalDue > 0 ? 'customer-overview-metric--due' : ''}`}>
+                <span>{language === 'bn' ? `বকেয়া · ${currency}` : `Outstanding balance · ${currency}`}</span>
+                <strong>{formatCurrency(detailedTotalDue, currency)}</strong>
+              </div>
+              <div className="customer-overview-metric">
+                <span>{language === 'bn' ? `মোট ব্যয় · ${currency}` : `Total spent · ${currency}`}</span>
+                <strong>{formatCurrency(detailedTotalSales, currency)}</strong>
+              </div>
+              <div className="customer-overview-metric">
+                <span>{language === 'bn' ? 'পরবর্তী সাবস্ক্রিপশনের মেয়াদ' : 'Next subscription expiry'}</span>
+                <strong>
+                  {customerMetrics.get(detailedCustomer.id)?.nextRenewal
+                    ? formatAppDate(customerMetrics.get(detailedCustomer.id)?.nextRenewal || '', language)
+                    : (language === 'bn' ? 'আসন্ন মেয়াদ শেষ হওয়ার তারিখ নেই' : 'No upcoming expiry')}
+                </strong>
+              </div>
+            </section>
+
+            {canContact(detailedCustomer.id) && <details className="customer-message-templates rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#171622]">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-4 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                <span className="inline-flex items-center gap-2"><MessageCircle className="h-4 w-4 text-violet-600 dark:text-violet-300" />{language === 'bn' ? 'হোয়াটসঅ্যাপ মেসেজ টেমপ্লেট' : 'WhatsApp message templates'}</span>
+                <ChevronDown className="h-4 w-4 text-slate-500" />
+              </summary>
+              <div className="border-t border-slate-100 p-3 dark:border-slate-800">
+              <div className="mb-2 flex items-center gap-2"><span className="text-xs text-slate-500 dark:text-slate-400">{detailedCustomer.whatsapp?.trim() || detailedCustomer.phone}</span></div>
               <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => openMessage({ customerId: detailedCustomer.id })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold dark:border-slate-700 dark:bg-slate-900">Custom Message</button>
-                {detailedDueSale && <button type="button" onClick={() => openMessage({ customerId: detailedCustomer.id, saleId: detailedDueSale.id, templateId: 'payment_reminder' })} className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-900 dark:bg-slate-900 dark:text-amber-300">Payment Reminder</button>}
+                {detailedDueSale && <button type="button" onClick={() => openMessage({ customerId: detailedCustomer.id, saleId: detailedDueSale.id, templateId: 'payment_reminder' })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-violet-200 hover:text-violet-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">Payment Reminder</button>}
                 {nearestRenewalSubscription && <button type="button" onClick={() => openMessage({ customerId: detailedCustomer.id, subscriptionId: nearestRenewalSubscription.id, templateId: getExpiryWhatsAppTemplateId(getDaysDifference(nearestRenewalSubscription.expiryDate)) })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold dark:border-slate-700 dark:bg-slate-900">Renewal Reminder</button>}
                 {detailedLatestInvoice && <button type="button" onClick={() => openMessage({ customerId: detailedCustomer.id, invoiceId: detailedLatestInvoice.invoiceId, templateId: 'invoice_ready' })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold dark:border-slate-700 dark:bg-slate-900">Send Invoice</button>}
                 {detailedSuccessfulPayment && <button type="button" onClick={() => openMessage({ customerId: detailedCustomer.id, paymentId: detailedSuccessfulPayment.id, templateId: 'payment_received' })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold dark:border-slate-700 dark:bg-slate-900">Payment Confirmation</button>}
                 {nearestRenewalSubscription && <button type="button" onClick={() => openMessage({ customerId: detailedCustomer.id, subscriptionId: nearestRenewalSubscription.id, templateId: 'subscription_details' })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold dark:border-slate-700 dark:bg-slate-900">Subscription Details</button>}
               </div>
-            </section>}
+              </div>
+            </details>}
 
             <section aria-label="Customer reminders" className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
               <h3 className="mb-2 text-xs font-bold text-slate-800 dark:text-slate-100">Reminders ({detailedReminders.length})</h3>
@@ -1827,109 +1939,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               </div>}
             </section>
 
-            {/* Quick KPI stats grid */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-5">
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-center">
-                <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">
-                  {language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Active Subscriptions'}
-                </div>
-                <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                  {currentActiveSubsForDetailed.length}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-center">
-                <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">
-                  Total Spent
-                </div>
-                <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-0.5 font-mono">
-                  {formatCurrency(detailedTotalSales, currency)}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-center">
-                <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Total Due</div>
-                <div className="text-lg font-bold text-amber-700 dark:text-amber-300 mt-0.5 font-mono">
-                  {formatCurrency(detailedTotalDue, currency)}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-center">
-                <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Purchases</div>
-                <div className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
-                  {detailedCrmMetrics?.salesCount || 0}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-center">
-                <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Last Purchase</div>
-                <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
-                  {detailedCrmMetrics?.lastPurchase ? formatAppDate(detailedCrmMetrics.lastPurchase, language) : '—'}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-center">
-                <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">
-                  Total Paid
-                </div>
-                <div className="text-lg font-bold text-slate-900 dark:text-white mt-0.5 font-mono">
-                  {formatCurrency(detailedTotalPaid, currency)}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-center">
-                <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">
-                  {language === 'bn' ? 'পরবর্তী নবায়ন' : 'Next renewal'}
-                </div>
-                <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
-                  {customerMetrics.get(detailedCustomer.id)?.nextRenewal
-                    ? formatAppDate(customerMetrics.get(detailedCustomer.id)?.nextRenewal || '', language)
-                    : '—'}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-center">
-                <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">First Purchase</div>
-                <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
-                  {detailedCrmMetrics?.firstPurchase ? formatAppDate(detailedCrmMetrics.firstPurchase, language) : '—'}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-center">
-                <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Renewals</div>
-                <div className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
-                  {detailedCrmMetrics?.renewals || 0}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-center">
-                <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Average Sale</div>
-                <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
-                  {formatCurrency(detailedCrmMetrics?.averageSale || 0, currency)}
-                </div>
-              </div>
-            </div>
-
             {/* Customer Information */}
-            <div className="p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 space-y-3 text-xs">
+            <div className="customer-detail-information rounded-xl border border-slate-200/80 bg-white p-4 text-xs dark:border-slate-800 dark:bg-slate-800">
               <div className="text-sm font-semibold text-slate-900 dark:text-white">Customer Information</div>
               <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <dt className="text-slate-500 dark:text-slate-400">Full Name</dt>
-                  <dd className="mt-1 font-medium text-slate-900 dark:text-white">{detailedCustomer.name?.trim() || '—'}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500 dark:text-slate-400">Phone</dt>
-                  <dd className="mt-1 font-medium text-slate-900 dark:text-white">{detailedCustomer.phone?.trim() || '—'}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500 dark:text-slate-400">Email</dt>
-                  <dd className="mt-1 break-all font-medium text-slate-900 dark:text-white">
-                    {detailedCustomer.email?.trim()
-                      ? <a href={`mailto:${detailedCustomer.email}`} className="hover:underline">{detailedCustomer.email}</a>
-                      : '—'}
-                  </dd>
-                </div>
                 <div>
                   <dt className="text-slate-500 dark:text-slate-400">Customer Since</dt>
                   <dd className="mt-1 font-medium text-slate-900 dark:text-white">
@@ -1941,10 +1954,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <dd className="mt-1 font-medium text-slate-900 dark:text-white">
                     {detailedCustomer.updatedAt ? formatAppDateTime(detailedCustomer.updatedAt, language) : '—'}
                   </dd>
-                </div>
-                <div className="sm:col-span-2">
-                  <dt className="text-slate-500 dark:text-slate-400">Notes</dt>
-                  <dd className="mt-1 whitespace-pre-wrap font-medium text-slate-900 dark:text-white">{safeCustomerNote(detailedCustomer.notes).trim() || '—'}</dd>
                 </div>
                 <div>
                   <dt className="text-slate-500 dark:text-slate-400">Preferred Contact</dt>
@@ -2027,7 +2036,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </section>
 
             {/* Subscriptions */}
-            <div>
+            <div id="customer-subscriptions" className="customer-detail-section">
               <div className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2.5 flex items-center justify-between">
                 <span>
                   Subscriptions ({detailedSubs.length}) · Active {currentActiveSubsForDetailed.length}
@@ -2059,9 +2068,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     return (
                       <div
                         key={sub.id}
-                        className="p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-3"
+                        className="customer-subscription-row p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between"
                       >
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <div className="truncate font-semibold text-sm text-slate-900 dark:text-white">
                             {srv?.name || 'Subscription Service'}
                           </div>
@@ -2082,7 +2091,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                             </div>
                           )}
                         </div>
-                        <div className="flex shrink-0 items-center gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 sm:shrink-0 sm:justify-end">
                           <div className="text-right">
                             <span
                               className={`text-xs font-semibold px-2 py-0.5 rounded ${
@@ -2200,7 +2209,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             )}
 
             {/* Sales History */}
-            <div>
+            <div id="customer-purchases" className="customer-detail-section">
               <div className="mb-2.5 flex items-center justify-between">
                 <div className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
                   Sales ({detailedSales.length})
@@ -2353,7 +2362,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </div>
 
             {/* Activity & History Trail */}
-            <div>
+            <div id="customer-activity" className="customer-detail-section">
               <div className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2.5 flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <History className="w-3.5 h-3.5 text-slate-400" />
@@ -2416,8 +2425,36 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               : 'Add New Customer'
           }
           maxWidth="lg"
+          footer={(
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddModalOpen(false);
+                  setEditingCustomer(null);
+                  setFormErrors({});
+                }}
+                className="min-h-11 rounded-lg px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                type="submit"
+                form="customer-profile-form"
+                disabled={isSubmitting}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-emerald-600 px-5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                <span>
+                  {allowDuplicate && !editingCustomer
+                    ? language === 'bn' ? 'তবুও তৈরি করুন' : 'Create customer anyway'
+                    : editingCustomer ? t('save') : t('addCustomer')}
+                </span>
+              </button>
+            </div>
+          )}
         >
-          <form onSubmit={handleSaveCustomer} className="space-y-4">
+          <form id="customer-profile-form" onSubmit={handleSaveCustomer} className="space-y-4">
             {duplicateCustomer && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
                 <div className="font-semibold">
@@ -2636,32 +2673,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               </div>
             </fieldset>
 
-            {/* Modal Actions */}
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsAddModalOpen(false);
-                  setEditingCustomer(null);
-                  setFormErrors({});
-                }}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
-              >
-                {t('cancel')}
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>
-                  {allowDuplicate && !editingCustomer
-                    ? language === 'bn' ? 'তবুও তৈরি করুন' : 'Create customer anyway'
-                    : editingCustomer ? t('save') : t('addCustomer')}
-                </span>
-              </button>
-            </div>
           </form>
         </Modal>
       )}

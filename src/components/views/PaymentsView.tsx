@@ -28,7 +28,7 @@ import { createRecordId } from '../../services/localStorageStore';
 import { downloadCSV } from '../../utils/csvParser';
 import { exportPaymentsCSV } from '../../services/dataBackupService';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
-import type { Payment, PaymentMethod, PaymentStatus, Sale } from '../../types';
+import type { AppCurrency, Payment, PaymentMethod, PaymentStatus, Sale } from '../../types';
 
 interface PaymentsViewProps {
   focusPaymentId?: string;
@@ -109,7 +109,6 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     ensureInvoiceForSale,
     recordSalePayment,
     logActivity,
-    currency: globalCurrency,
     language,
     t,
   } = useApp();
@@ -322,20 +321,38 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         : convertReportCurrency(right.due, right.sale.currency, 'BDT') - convertReportCurrency(left.due, left.sale.currency, 'BDT'));
   }, [outstandingSales, paymentsBySaleId, searchQuery, customersById, servicesById, selectedMethod, selectedStatus, selectedService, selectedCustomer, dateRange, selectedAmount, sortOrder]);
 
-  const receivedTotal = useMemo(() => visiblePayments.reduce((total, payment) => {
-    if (payment.paymentStatus !== 'paid' && payment.paymentStatus !== 'partial') return total;
-    return total + convertReportCurrency(Number(payment.amount) || 0, payment.currency, globalCurrency);
-  }, 0), [visiblePayments, globalCurrency]);
-  const dueTotal = useMemo(() => visibleOutstanding.reduce(
-    (total, item) => total + convertReportCurrency(item.due, item.sale.currency, globalCurrency), 0
-  ), [visibleOutstanding, globalCurrency]);
+  const currencyTotals = useMemo(() => {
+    const totals: Record<AppCurrency, { received: number; due: number; refunded: number }> = {
+      BDT: { received: 0, due: 0, refunded: 0 },
+      USD: { received: 0, due: 0, refunded: 0 },
+    };
+    visiblePayments.forEach(payment => {
+      if (payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial') {
+        totals[payment.currency].received += Number(payment.amount) || 0;
+      } else if (payment.paymentStatus === 'refunded') {
+        totals[payment.currency].refunded += Number(payment.amount) || 0;
+      }
+    });
+    visibleOutstanding.forEach(item => {
+      totals[item.sale.currency].due += item.due;
+    });
+    return totals;
+  }, [visiblePayments, visibleOutstanding]);
   const partialCount = useMemo(() => visiblePayments.filter(payment => payment.paymentStatus === 'partial').length, [visiblePayments]);
   const pendingCount = useMemo(() => visiblePayments.filter(payment => payment.paymentStatus === 'pending').length, [visiblePayments]);
   const failedCount = useMemo(() => visiblePayments.filter(payment => payment.paymentStatus === 'failed').length, [visiblePayments]);
   const today = getTodayDateString();
   const paymentMethodSummaries = useMemo(
-    () => getPaymentMethodSummary(visiblePayments, paymentMethods, globalCurrency, today),
-    [visiblePayments, paymentMethods, globalCurrency, today]
+    () => (['BDT', 'USD'] as const).map(currency => ({
+      currency,
+      methods: getPaymentMethodSummary(
+        visiblePayments.filter(payment => payment.currency === currency),
+        paymentMethods,
+        currency,
+        today
+      ),
+    })).filter(group => group.methods.length > 0),
+    [visiblePayments, paymentMethods, today]
   );
   const totalPages = Math.max(1, Math.ceil((activeTab === 'payments' ? visiblePayments.length : visibleOutstanding.length) / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -380,8 +397,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     ) || null;
   }, [newSale, newAmount, newPaymentDate, newMethod, payments, paymentSales]);
 
-  const openAddPayment = (customerId?: string) => {
-    setNewSaleId('');
+  const openAddPayment = (customerId?: string, saleId?: string) => {
+    setNewSaleId(saleId || '');
     setSaleSearch('');
     setNewAmount('');
     setNewStatus('paid');
@@ -549,37 +566,33 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     || (isValidDate(customStart) && isValidDate(customEnd) && customStart <= customEnd);
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-5 px-4 py-6 sm:px-6 lg:px-8">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
-              <Wallet className="h-5 w-5" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">Payments</h1>
-          </div>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Track payments, outstanding balances and payment history.</p>
+    <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-3 py-4 sm:gap-5 sm:px-6 sm:py-5 xl:px-8">
+      <header className="dashboard-page-header flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-bold tracking-wide text-violet-700 dark:text-violet-300">Finance</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-3xl">Payments</h1>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Track collections, outstanding balances and payment history.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={exportPayments} disabled={!visiblePayments.length} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+          <button type="button" onClick={exportPayments} disabled={!visiblePayments.length} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
             <ArrowDownToLine className="h-4 w-4" /> Export
           </button>
-          <button type="button" onClick={() => openAddPayment()} disabled={!activePaymentMethods.length || !outstandingSales.length} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" onClick={() => openAddPayment()} disabled={!activePaymentMethods.length || !outstandingSales.length} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-bold text-white shadow-xs hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">
             <CreditCard className="h-4 w-4" /> Add Payment
           </button>
         </div>
       </header>
 
       <section aria-label="Payment summary" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Metric label="Matching Payments" value={String(visiblePayments.length)} />
-        <Metric label="Received (filtered)" value={formatCurrency(receivedTotal, globalCurrency)} tone="emerald" />
-        <Metric label="Outstanding Due" value={formatCurrency(dueTotal, globalCurrency)} tone="amber" />
+        <Metric label="Received" value={<CurrencyAmounts amounts={currencyTotals} field="received" />} tone="emerald" />
+        <Metric label="Outstanding Due" value={<CurrencyAmounts amounts={currencyTotals} field="due" />} tone="amber" />
         <Metric label="Partial" value={String(partialCount)} tone="amber" />
         <Metric label="Pending" value={String(pendingCount)} />
+        <Metric label="Refunds" value={<CurrencyAmounts amounts={currencyTotals} field="refunded" />} tone="rose" />
         <Metric label="Failed" value={String(failedCount)} tone="rose" />
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+      <section className="dashboard-panel rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Payment follow-up</p>
           <button
@@ -591,7 +604,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               setSearchInput('');
               setActiveTab('payments');
             }}
-            className="text-[11px] font-semibold text-slate-500 hover:text-emerald-700 dark:text-slate-400 dark:hover:text-emerald-300"
+            className="text-[11px] font-semibold text-slate-500 hover:text-violet-700 dark:text-slate-400 dark:hover:text-violet-300"
           >
             Clear
           </button>
@@ -607,7 +620,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               key={action.label}
               type="button"
               onClick={action.action}
-              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-emerald-700 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300"
+              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-violet-700 dark:hover:bg-violet-950/40 dark:hover:text-violet-300"
             >
               {action.label}
             </button>
@@ -615,17 +628,22 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </div>
       </section>
 
-      <section aria-label="Payment methods summary" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+      <section aria-label="Payment methods summary" className="dashboard-panel space-y-3 rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div><h2 className="text-sm font-bold text-slate-900 dark:text-white">Received by method</h2><p className="text-xs text-slate-500">Received and partial payments matching the current filters.</p></div>
           {selectedMethod !== 'all' && <span className="text-xs text-slate-500">Filtered to {selectedMethod}</span>}
         </div>
-        {paymentMethodSummaries.length ? <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          {paymentMethodSummaries.map(item => <div key={item.methodId} className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50">
-            <div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold">{item.methodName}</span><span className="text-[10px] capitalize text-slate-500">{item.category.replace('_', ' ')}</span></div>
-            <p className="mt-1 font-mono text-base font-bold">{formatCurrency(item.received, globalCurrency)}</p>
-            <p className="mt-1 text-[11px] text-slate-500">{item.transactionCount} payments · Avg {formatCurrency(item.average, globalCurrency)}</p>
-            <p className="mt-1 text-[10px] text-slate-500">Today {formatCurrency(item.today, globalCurrency)} · Month {formatCurrency(item.thisMonth, globalCurrency)}</p>
+        {paymentMethodSummaries.length ? <div className="space-y-4">
+          {paymentMethodSummaries.map(group => <div key={group.currency}>
+            <h3 className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{group.currency}</h3>
+            <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+              {group.methods.map(item => <div key={`${group.currency}-${item.methodId}`} className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 p-2.5 dark:border-slate-800 dark:bg-slate-800/50 sm:p-3">
+                <div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold">{item.methodName}</span><span className="text-[10px] capitalize text-slate-500">{item.category.replace('_', ' ')}</span></div>
+                <p className="mt-1 font-mono text-base font-bold">{formatCurrency(item.received, group.currency)}</p>
+                <p className="mt-1 text-[11px] text-slate-500">{item.transactionCount} payments · Avg {formatCurrency(item.average, group.currency)}</p>
+                <p className="mt-1 text-[10px] text-slate-500">Today {formatCurrency(item.today, group.currency)} · Month {formatCurrency(item.thisMonth, group.currency)}</p>
+              </div>)}
+            </div>
           </div>)}
         </div> : <p className="py-4 text-center text-xs text-slate-500">No received payments match the current filters.</p>}
       </section>
@@ -635,19 +653,19 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         <TabButton active={activeTab === 'outstanding'} onClick={() => setActiveTab('outstanding')}>Outstanding <span>{outstandingSales.length}</span></TabButton>
       </div>
 
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
+      <section className="dashboard-panel space-y-3 rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
         <div className="flex flex-col gap-2 lg:flex-row">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">Search payments and receivables</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Search payment, transaction, customer, invoice, sale, service or plan" className="min-h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+            <input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Search payment, transaction, customer, invoice, sale, service or plan" className="min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
           </label>
           <div className="flex gap-2">
             {activeTab === 'payments' && <select aria-label="Filter by payment status" value={selectedStatus} onChange={event => setSelectedStatus(event.target.value)} className="min-h-10 min-w-28 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white">
               <option value="all">All statuses</option>
               <option value="paid">Paid</option><option value="partial">Partial</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="refunded">Refunded</option>
             </select>}
-            <button type="button" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+            <button type="button" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
               <Filter className="h-4 w-4" /> Filters
             </button>
           </div>
@@ -689,14 +707,14 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           </div>}
           <div className="flex items-end justify-between gap-3 text-xs text-slate-500 sm:col-span-2 lg:col-span-4">
             <span>{activeTab === 'payments' ? `${visiblePayments.length} payments` : `${visibleOutstanding.length} outstanding invoices`}</span>
-            <button type="button" onClick={() => { setSelectedMethod('all'); setSelectedStatus('all'); setSelectedDate('all'); setCustomStart(''); setCustomEnd(''); setSelectedService('all'); setSelectedCustomer('all'); setSelectedAmount('all'); setSearchInput(''); }} className="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">Clear filters</button>
+            <button type="button" onClick={() => { setSelectedMethod('all'); setSelectedStatus('all'); setSelectedDate('all'); setCustomStart(''); setCustomEnd(''); setSelectedService('all'); setSelectedCustomer('all'); setSelectedAmount('all'); setSearchInput(''); }} className="font-semibold text-violet-700 hover:underline dark:text-violet-300">Clear filters</button>
           </div>
           {!validCustomRange && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300 sm:col-span-2 lg:col-span-4">Enter a valid custom date range.</p>}
         </div>}
       </section>
 
       {activeTab === 'payments' ? (
-        <section aria-label="Payments table" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
+        <section aria-label="Payments table" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
           <div className="hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[980px] text-left text-xs">
               <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
@@ -718,7 +736,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     <td className="whitespace-nowrap px-3 py-3 font-mono font-bold">{formatCurrency(payment.amount, payment.currency)}</td>
                     <td className="px-3 py-3"><PaymentStatusBadge status={payment.paymentStatus} className={statusStyle(payment.paymentStatus)} icon={statusIcon(payment.paymentStatus)} /></td>
                     <td className="max-w-32 truncate px-3 py-3 font-mono text-slate-500" title={payment.transactionId || ''}>{payment.transactionId || '—'}</td>
-                    <td className="px-3 py-3"><button type="button" onClick={() => openPaymentDetails(payment)} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"><Eye className="h-3.5 w-3.5" /> View</button></td>
+                    <td className="px-3 py-3"><button type="button" onClick={() => openPaymentDetails(payment)} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/40"><Eye className="h-3.5 w-3.5" /> View</button></td>
                   </tr>;
                 })}
               </tbody>
@@ -732,17 +750,17 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               return <article id={`payment-${payment.id}`} key={payment.id} className={`space-y-2 p-4 ${focusedPaymentIdState === payment.id ? 'bg-emerald-50 dark:bg-emerald-950/30' : ''}`}>
                 <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-mono text-xs text-slate-500">{payment.id}</p><h3 className="mt-1 truncate text-sm font-bold text-slate-900 dark:text-white">{getCustomerDisplayName(customer)}</h3><p className="text-xs text-slate-500">{service?.name || 'Payment'}{sale?.plan ? ` · ${sale.plan}` : ''}</p></div><span className="shrink-0 font-mono font-bold">{formatCurrency(payment.amount, payment.currency)}</span></div>
                 <div className="flex flex-wrap items-center justify-between gap-2"><PaymentStatusBadge status={payment.paymentStatus} className={statusStyle(payment.paymentStatus)} icon={statusIcon(payment.paymentStatus)} /><span className="text-xs text-slate-500">{methodLabel(payment.paymentMethodName || payment.paymentMethod)} · {formatAppDate(payment.paymentDate, language)}</span></div>
-                <div className="flex items-center justify-between gap-2"><span className="truncate font-mono text-[11px] text-slate-500">{payment.transactionId || 'No transaction ID'}</span><button type="button" onClick={() => openPaymentDetails(payment)} className="min-h-9 shrink-0 rounded-lg px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40">View details</button></div>
+                <div className="flex items-center justify-between gap-2"><span className="truncate font-mono text-[11px] text-slate-500">{payment.transactionId || 'No transaction ID'}</span><button type="button" onClick={() => openPaymentDetails(payment)} className="min-h-9 shrink-0 rounded-lg px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/40">View details</button></div>
               </article>;
             })}
           </div>
           {pagePayments.length === 0 && <EmptyState title={payments.length ? selectedStatus === 'failed' ? 'No failed payments' : 'No payments found' : 'No payments yet'} description={payments.length ? 'Try changing your search or filters.' : 'Payments will appear here after transactions are recorded.'} />}
         </section>
       ) : (
-        <section aria-label="Outstanding receivables" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
+        <section aria-label="Outstanding receivables" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
           <div className="hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[850px] text-left text-xs">
-              <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400"><tr><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Invoice / Sale</th><th className="px-4 py-3">Service</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Paid</th><th className="px-4 py-3">Due</th><th className="px-4 py-3">Last payment</th><th className="px-4 py-3">Days outstanding</th><th className="px-4 py-3">Actions</th></tr></thead>
+              <thead className="bg-violet-50/60 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-violet-950/20 dark:text-slate-400"><tr><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Invoice / Sale</th><th className="px-4 py-3">Service</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Paid</th><th className="px-4 py-3">Due</th><th className="px-4 py-3">Last payment</th><th className="px-4 py-3">Days outstanding</th><th className="px-4 py-3">Actions</th></tr></thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {pageOutstanding.map(({ sale, invoice, due, paid, lastPayment, dueReferenceDate }) => {
                   const customer = customersById.get(sale.customerId);
@@ -756,7 +774,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     <td className="px-4 py-3 font-bold text-amber-700 dark:text-amber-300">{formatCurrency(due, sale.currency)}</td>
                     <td className="px-4 py-3">{lastPayment ? formatAppDate(lastPayment.paymentDate, language) : '—'}</td>
                     <td className="px-4 py-3"><span>{days} days</span><div className="text-[10px] text-slate-500">{getAgingBucket(days)}</div></td>
-                    <td className="px-4 py-3"><div className="flex gap-1"><button type="button" onClick={() => openAddPayment(sale.customerId)} className="rounded-lg bg-emerald-600 px-2.5 py-1.5 font-semibold text-white hover:bg-emerald-700">Add Payment</button>{customer && canContact(customer.id) && <button type="button" title="Compose payment reminder" aria-label={`Compose payment reminder for ${customer.name}`} onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })} className="rounded-lg p-1.5 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30"><MessageCircle className="h-4 w-4" /></button>}<button type="button" aria-label="View sale" onClick={() => onNavigateSection?.('sales', sale.id)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Eye className="h-4 w-4" /></button><button type="button" aria-label="View invoice" onClick={() => openInvoice(sale)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><FileText className="h-4 w-4" /></button></div></td>
+                    <td className="px-4 py-3"><div className="flex gap-1"><button type="button" onClick={() => openAddPayment(sale.customerId, sale.id)} className="rounded-lg bg-violet-600 px-2.5 py-1.5 font-semibold text-white hover:bg-violet-700">Add Payment</button>{customer && canContact(customer.id) && <button type="button" title="Compose payment reminder" aria-label={`Compose payment reminder for ${customer.name}`} onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })} className="rounded-lg p-1.5 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30"><MessageCircle className="h-4 w-4" /></button>}<button type="button" aria-label="View sale" onClick={() => onNavigateSection?.('sales', sale.id)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Eye className="h-4 w-4" /></button><button type="button" aria-label="View invoice" onClick={() => openInvoice(sale)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><FileText className="h-4 w-4" /></button></div></td>
                   </tr>;
                 })}
               </tbody>
@@ -769,7 +787,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               return <article key={sale.id} className="space-y-3 p-4">
                 <div className="flex items-start justify-between gap-2"><div><h3 className="font-bold">{getCustomerDisplayName(customer)}</h3><p className="text-xs text-slate-500">{servicesById.get(sale.serviceId)?.name || 'Service'} · {sale.plan}</p><p className="mt-1 text-[11px] text-slate-500">{invoice?.invoiceNumber || sale.invoiceNo}</p></div><p className="font-mono font-bold text-amber-700 dark:text-amber-300">{formatCurrency(due, sale.currency)} due</p></div>
                 <dl className="grid grid-cols-2 gap-2 text-xs"><div><dt className="text-slate-500">Total / Paid</dt><dd>{formatCurrency(sale.amount, sale.currency)} / {formatCurrency(paid, sale.currency)}</dd></div><div><dt className="text-slate-500">Outstanding</dt><dd>{days} days · {getAgingBucket(days)}</dd></div><div><dt className="text-slate-500">Last payment</dt><dd>{lastPayment ? formatAppDate(lastPayment.paymentDate, language) : 'None'}</dd></div></dl>
-                <div className="flex flex-wrap gap-2"><button type="button" onClick={() => openAddPayment(sale.customerId)} className="min-h-9 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white">Add Payment</button>{customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-emerald-200 px-3 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp Reminder</button>}<button type="button" onClick={() => onNavigateSection?.('sales', sale.id)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Sale</button><button type="button" onClick={() => openInvoice(sale)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Invoice</button><button type="button" onClick={() => onNavigateSection?.('customers', sale.customerId)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">Customer</button></div>
+                <div className="flex flex-wrap gap-2"><button type="button" onClick={() => openAddPayment(sale.customerId, sale.id)} className="min-h-9 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white hover:bg-violet-700">Add Payment</button>{customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-emerald-200 px-3 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp Reminder</button>}<button type="button" onClick={() => onNavigateSection?.('sales', sale.id)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Sale</button><button type="button" onClick={() => openInvoice(sale)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Invoice</button><button type="button" onClick={() => onNavigateSection?.('customers', sale.customerId)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">Customer</button></div>
               </article>;
             })}
           </div>
@@ -785,7 +803,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       <Modal isOpen={isAddPaymentOpen} onClose={() => { if (!isSaving) setIsAddPaymentOpen(false); }} title="Record Payment" subtitle="Select an outstanding sale and record a received payment." maxWidth="lg">
         <form onSubmit={handleRecordPayment} className="space-y-4">
           <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Find sale or invoice
-            <span className="relative mt-1.5 block"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input autoFocus value={saleSearch} onChange={event => setSaleSearch(event.target.value)} placeholder="Invoice, customer, phone, service or sale ID" className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></span>
+            <span className="relative mt-1.5 block"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input autoFocus value={saleSearch} onChange={event => setSaleSearch(event.target.value)} placeholder="Invoice, customer, phone, service or sale ID" className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></span>
           </label>
           <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Outstanding sale *
             <select required value={newSaleId} onChange={event => { setNewSaleId(event.target.value); setNewAmount(''); setNewTransactionId(''); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white">
@@ -798,7 +816,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             </select>
           </label>
           {!eligibleSales.length && <p role="status" className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">No sales with an outstanding balance were found.</p>}
-          {newSale && <section aria-label="Selected sale balance" className="grid gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-sm dark:border-emerald-900 dark:bg-emerald-950/20 sm:grid-cols-2">
+          {newSale && <section aria-label="Selected sale balance" className="grid gap-3 rounded-xl border border-violet-200 bg-violet-50/60 p-3 text-sm dark:border-violet-900 dark:bg-violet-950/20 sm:grid-cols-2">
             <div><p className="text-xs text-slate-500">Customer</p><p className="font-semibold">{getCustomerDisplayName(newSaleCustomer)}</p><p className="text-xs text-slate-500">{newSaleCustomer?.phone || newSaleCustomer?.email || ''}</p></div>
             <div><p className="text-xs text-slate-500">Sale</p><p className="font-semibold">{newSaleService?.name || 'Service'} · {newSale.plan}</p><p className="text-xs text-slate-500">{newSaleInvoice?.invoiceNumber || newSale.invoiceNo}</p></div>
             <div><p className="text-xs text-slate-500">Total · Previously paid</p><p className="font-semibold">{formatCurrency(newSale.amount, newSale.currency)} · {formatCurrency(getSalePaidAmount(newSale, newSalePayments), newSale.currency)}</p></div>
@@ -908,18 +926,32 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   );
 };
 
-function Metric({ label, value, tone = 'slate' }: { label: string; value: string; tone?: 'slate' | 'emerald' | 'amber' | 'rose' }) {
+function Metric({ label, value, tone = 'slate' }: { label: string; value: React.ReactNode; tone?: 'slate' | 'emerald' | 'amber' | 'rose' }) {
   const tones = {
-    slate: 'border-slate-200 dark:border-slate-800',
-    emerald: 'border-emerald-200 dark:border-emerald-900',
-    amber: 'border-amber-200 dark:border-amber-900',
-    rose: 'border-rose-200 dark:border-rose-900',
+    slate: 'text-slate-900 dark:text-white',
+    emerald: 'text-emerald-700 dark:text-emerald-300',
+    amber: 'text-amber-700 dark:text-amber-300',
+    rose: 'text-rose-700 dark:text-rose-300',
   };
-  return <div className={`min-w-0 rounded-2xl border bg-white p-3 shadow-xs dark:bg-slate-900 sm:p-4 ${tones[tone]}`}><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 truncate text-lg font-bold tabular-nums text-slate-900 dark:text-white sm:text-xl">{value}</p></div>;
+  return <div className="dashboard-panel dashboard-metric min-w-0 rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-3.5"><p className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">{label}</p><div className={`mt-1 min-w-0 break-words font-mono text-lg font-bold tabular-nums sm:text-xl ${tones[tone]}`}>{value}</div></div>;
+}
+
+function CurrencyAmounts({ amounts, field }: {
+  amounts: Record<AppCurrency, { received: number; due: number; refunded: number }>;
+  field: 'received' | 'due' | 'refunded';
+}) {
+  return <span className="block space-y-0.5">
+    {(['BDT', 'USD'] as const).map(currency => (
+      <span key={currency} className="flex items-center justify-between gap-1 text-xs">
+        <span className="text-[10px] font-semibold text-slate-400">{currency}</span>
+        <span className="truncate">{formatCurrency(amounts[currency][field], currency)}</span>
+      </span>
+    ))}
+  </span>;
 }
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button type="button" onClick={onClick} aria-pressed={active} className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-semibold ${active ? 'border-emerald-600 text-emerald-700 dark:text-emerald-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}>{children}</button>;
+  return <button type="button" onClick={onClick} aria-pressed={active} className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-semibold ${active ? 'border-violet-600 text-violet-700 dark:text-violet-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}>{children}</button>;
 }
 
 function PaymentStatusBadge({ status, className, icon }: { status: PaymentStatus; className: string; icon: React.ReactNode }) {

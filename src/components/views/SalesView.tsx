@@ -29,7 +29,7 @@ import { createRecordId } from '../../services/localStorageStore';
 import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus, getSalePayments } from '../../utils/saleUtils';
 import { getDefaultPaymentMethod, getPaymentBreakdownForSale, normalizePaymentMethods, paymentMethodRequiresTransactionId } from '../../utils/paymentMethods';
 import { buildInvoiceSaleDetails } from '../../utils/invoiceUtils';
-import { calculateSalesFinancialSummary, convertReportCurrency, getReportDateBounds, isWithinDateBounds } from '../../utils/reportMetrics';
+import { convertReportCurrency, getReportDateBounds, isWithinDateBounds } from '../../utils/reportMetrics';
 import type { ReportDatePreset } from '../../utils/reportMetrics';
 import { normalizePhoneDigits, normalizeSearchText } from '../../services/globalSearch';
 import { downloadCSV } from '../../utils/csvParser';
@@ -285,7 +285,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     try {
       const result = await generateInvoiceJpg(invoiceDetailsForSale(sale));
       downloadInvoiceJpg(result.blob, result.fileName);
-      showToast(`Downloaded ${result.fileName}`, 'success');
+      showToast(`Download requested · ${result.fileName}`, 'info');
     } catch (error) {
       console.error('Sale invoice download failed:', error);
       showToast('Unable to download invoice. Please try again.', 'error');
@@ -312,7 +312,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
         showToast('Invoice sharing was cancelled.', 'info');
       } else {
         downloadInvoiceJpg(result.blob, result.fileName);
-        showToast('File sharing is unavailable here. The JPG invoice was downloaded.', 'info');
+        showToast('File sharing is unavailable here. A JPG download was requested.', 'info');
       }
     } catch (error) {
       console.error('Sale invoice sharing failed:', error);
@@ -332,18 +332,42 @@ export const SalesView: React.FC<SalesViewProps> = ({
     [businessSales, dateBounds]
   );
   const salesStats = useMemo(() => {
-    const financial = calculateSalesFinancialSummary(dateSales, businessPayments, currency);
-    const monthStart = `${today.slice(0, 7)}-01`;
+    const statusFor = (sale: Sale) => getSalePaymentStatus(sale, businessPayments);
+    const refundedPayments = Array.from(new Map(businessSales.flatMap(sale =>
+      getSalePayments(sale, businessPayments).filter(payment =>
+        payment.paymentStatus === 'refunded' && isWithinDateBounds(payment.paymentDate, dateBounds)
+      )
+    ).map(payment => [payment.id, payment])).values());
+    const sumSalesByCurrency = (targetCurrency: Sale['currency'], amount: (sale: Sale) => number) =>
+      dateSales
+        .filter(sale => sale.currency === targetCurrency)
+        .reduce((total, sale) => total + amount(sale), 0);
+    const sumRefundsByCurrency = (targetCurrency: Sale['currency']) =>
+      refundedPayments
+        .filter(payment => payment.currency === targetCurrency)
+        .reduce((total, payment) => total + (Number(payment.amount) || 0), 0);
+
     return {
       totalSales: dateSales.length,
-      revenue: financial.revenue,
-      paid: financial.paid,
-      due: financial.due,
-      pending: dateSales.filter(sale => getSalePaymentStatus(sale, businessPayments) === 'pending').length,
-      today: businessSales.filter(sale => sale.date === today).length,
-      month: businessSales.filter(sale => sale.date >= monthStart && sale.date <= today).length,
+      paid: dateSales.filter(sale => statusFor(sale) === 'paid').length,
+      partial: dateSales.filter(sale => statusFor(sale) === 'partial').length,
+      pending: dateSales.filter(sale => statusFor(sale) === 'pending').length,
+      paidSalesAmount: {
+        BDT: dateSales.filter(sale => sale.currency === 'BDT' && statusFor(sale) === 'paid')
+          .reduce((total, sale) => total + (Number(sale.amount) || 0), 0),
+        USD: dateSales.filter(sale => sale.currency === 'USD' && statusFor(sale) === 'paid')
+          .reduce((total, sale) => total + (Number(sale.amount) || 0), 0),
+      },
+      due: {
+        BDT: sumSalesByCurrency('BDT', sale => getSaleDueAmount(sale, businessPayments)),
+        USD: sumSalesByCurrency('USD', sale => getSaleDueAmount(sale, businessPayments)),
+      },
+      refunded: {
+        BDT: sumRefundsByCurrency('BDT'),
+        USD: sumRefundsByCurrency('USD'),
+      },
     };
-  }, [dateSales, businessPayments, businessSales, currency, today]);
+  }, [dateSales, businessSales, businessPayments, dateBounds]);
 
   const filteredSales = useMemo(() => {
     const query = normalizeSearchText(searchQuery);
@@ -470,22 +494,22 @@ export const SalesView: React.FC<SalesViewProps> = ({
   };
 
   return (
-    <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="mx-auto max-w-[1400px] space-y-4 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between sm:p-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/60 dark:border-emerald-800/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
-              <Receipt className="w-5 h-5" />
+          <h1 className="flex items-center gap-2.5 text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-2xl">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300">
+              <Receipt className="h-4 w-4" />
             </div>
             <span>{language === 'bn' ? 'বিক্রয়' : 'Sales'}</span>
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Manage sales, payments, subscriptions, and invoices.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={exportCSV}
             className="px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-[#151C28] border border-slate-200/80 dark:border-slate-700/80 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
@@ -495,7 +519,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
           </button>
           <button
             onClick={() => onOpenNewSale()}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-xs transition-all cursor-pointer"
+            className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-violet-700"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
             <span>+ New Sale</span>
@@ -503,21 +527,31 @@ export const SalesView: React.FC<SalesViewProps> = ({
         </div>
       </div>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7" aria-label="Sales summary">
+      <section className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6" aria-label="Sales summary">
         {[
-          ['Total Sales', String(salesStats.totalSales)],
-          ['Total Revenue', formatCurrency(salesStats.revenue, currency)],
-          ['Paid', formatCurrency(salesStats.paid, currency)],
-          ['Due', formatCurrency(salesStats.due, currency)],
-          ['Pending', String(salesStats.pending)],
-          ['This Month', String(salesStats.month)],
-          ['Today', String(salesStats.today)],
-        ].map(([label, value]) => (
-          <article key={label} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-            <h2 className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">{label}</h2>
-            <p className="mt-1 truncate text-lg font-bold tabular-nums text-slate-900 dark:text-white">{value}</p>
-            {(label === 'Total Sales' || label === 'Total Revenue' || label === 'Paid' || label === 'Due' || label === 'Pending')
-              && <span className="text-[10px] text-slate-400">{dateFilter === 'all' ? 'All time' : 'Selected period'}</span>}
+          { label: 'Total Sales', value: String(salesStats.totalSales), context: 'Selected period' },
+          { label: 'Paid Sales', value: String(salesStats.paid), amounts: salesStats.paidSalesAmount, context: 'Fully received' },
+          { label: 'Partial Payments', value: String(salesStats.partial), context: 'Partially received' },
+          { label: 'Pending Payments', value: String(salesStats.pending), context: 'No amount received' },
+          { label: 'Outstanding', amounts: salesStats.due, context: 'Balance due' },
+          { label: 'Refunded', amounts: salesStats.refunded, context: 'Recorded refunds' },
+        ].map(item => (
+          <article key={item.label} className="flex min-h-[86px] min-w-0 items-start justify-between gap-2 rounded-xl border border-slate-200/80 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:p-3.5">
+            <div className="min-w-0">
+              <h2 className="text-[11px] font-medium leading-tight text-slate-500 dark:text-slate-400">{item.label}</h2>
+              {item.value !== undefined && <p className="mt-1 text-xl font-bold tabular-nums text-slate-900 dark:text-white">{item.value}</p>}
+              {item.amounts && (
+                <div className="mt-1 space-y-0.5">
+                  {(['BDT', 'USD'] as const).map(unit => (
+                    <p key={unit} className="truncate text-[11px] font-semibold tabular-nums text-slate-700 dark:text-slate-200">
+                      <span className="mr-1 text-[9px] font-semibold text-slate-400">{unit}</span>
+                      {formatCurrency(item.amounts[unit], unit)}
+                    </p>
+                  ))}
+                </div>
+              )}
+              <span className="mt-0.5 block text-[10px] text-slate-400">{item.context}</span>
+            </div>
           </article>
         ))}
       </section>
@@ -570,7 +604,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
             placeholder="Customer, phone, email, sale, invoice, service, plan, account or transaction"
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-100/80 dark:bg-slate-800/80 border border-transparent focus:border-emerald-500 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-10 pr-4 text-xs text-slate-900 placeholder-slate-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-white sm:text-sm"
           />
         </div>
 
@@ -877,51 +911,87 @@ export const SalesView: React.FC<SalesViewProps> = ({
           isOpen={Boolean(receiptSale)}
           onClose={() => setReceiptSale(null)}
           title="Sale Details"
-          subtitle={`${receiptSale.invoiceNo} · ${settings.storeName || 'My Business'}`}
+          subtitle={settings.storeName || 'My Business'}
           maxWidth="2xl"
         >
-          <div className="space-y-5 text-xs">
-            <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-4 text-sm">
+            <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-3.5 dark:border-violet-900/60 dark:bg-violet-950/20 sm:p-4" aria-label="Sale summary">
+              <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">Invoice</p>
+                  <p className="mt-1 break-all font-mono text-sm font-bold text-slate-900 dark:text-white">
+                    {receiptInvoice?.invoiceNumber || receiptSale.invoiceNo}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Sale date · {formatAppDate(receiptSale.date, language)}</p>
+                </div>
+                <span className="shrink-0 rounded-full border border-violet-200 bg-white px-2.5 py-1 text-xs font-semibold capitalize text-violet-800 dark:border-violet-800 dark:bg-slate-900 dark:text-violet-200">
+                  {getSalePaymentStatus(receiptSale, businessPayments)}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <div className="min-w-0 rounded-xl bg-white/80 px-3 py-2 dark:bg-slate-900/70">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Total</p>
+                  <p className="mt-0.5 break-words font-semibold tabular-nums text-slate-900 dark:text-white">{formatCurrency(receiptSale.amount, receiptSale.currency)}</p>
+                </div>
+                <div className="min-w-0 rounded-xl bg-white/80 px-3 py-2 dark:bg-slate-900/70">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Paid</p>
+                  <p className="mt-0.5 break-words font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{formatCurrency(getSalePaidAmount(receiptSale, businessPayments), receiptSale.currency)}</p>
+                </div>
+                <div className="col-span-2 min-w-0 rounded-xl bg-white/80 px-3 py-2 dark:bg-slate-900/70 sm:col-span-1">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Balance due</p>
+                  <p className="mt-0.5 break-words font-semibold tabular-nums text-amber-700 dark:text-amber-300">{formatCurrency(getSaleDueAmount(receiptSale, businessPayments), receiptSale.currency)}</p>
+                </div>
+              </div>
+            </section>
+
+            <div className="grid gap-3 sm:grid-cols-2">
               <section className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-                <h3 className="mb-3 font-bold text-slate-900 dark:text-white">Sale</h3>
+                <h3 className="mb-2.5 font-bold text-slate-900 dark:text-white">Sale</h3>
                 <dl className="space-y-2 text-slate-600 dark:text-slate-300">
-                  <div className="flex justify-between gap-3"><dt>Sale ID</dt><dd className="break-all text-right font-mono font-semibold">{receiptSale.id}</dd></div>
-                  <div className="flex justify-between gap-3"><dt>Invoice Number</dt><dd className="font-semibold">{receiptInvoice?.invoiceNumber || receiptSale.invoiceNo}</dd></div>
-                  <div className="flex justify-between gap-3"><dt>Sale Date</dt><dd>{formatAppDate(receiptSale.date, language)}</dd></div>
-                  <div className="flex justify-between gap-3"><dt>Created Date</dt><dd>{formatAppDate((receiptSale.createdAt || receiptSale.date).slice(0, 10), language)}</dd></div>
-                  <div className="flex justify-between gap-3"><dt>Payment Status</dt><dd className="font-semibold capitalize">{getSalePaymentStatus(receiptSale, businessPayments)}</dd></div>
+                  <div className="flex min-w-0 items-start justify-between gap-3"><dt className="shrink-0">Sale ID</dt><dd className="min-w-0 max-w-[68%] break-all text-right font-mono text-xs font-semibold">{receiptSale.id}</dd></div>
+                  <div className="flex min-w-0 items-start justify-between gap-3"><dt className="shrink-0">Created</dt><dd className="min-w-0 text-right">{formatAppDate((receiptSale.createdAt || receiptSale.date).slice(0, 10), language)}</dd></div>
                   {receiptSale.renewalOfSubscriptionId && <div className="rounded-lg bg-emerald-50 px-3 py-2 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">Renewal Sale · linked to previous subscription</div>}
                 </dl>
               </section>
               <section className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-                <h3 className="mb-3 font-bold text-slate-900 dark:text-white">Customer</h3>
-                <div className="font-semibold text-slate-900 dark:text-white">{getCustomerDisplayName(receiptCustomer)}</div>
+                <h3 className="mb-2.5 font-bold text-slate-900 dark:text-white">Customer</h3>
+                <div className="break-words font-semibold text-slate-900 dark:text-white">{getCustomerDisplayName(receiptCustomer)}</div>
                 <div className="mt-1 text-slate-500 dark:text-slate-400">{receiptCustomer?.phone || 'No phone number'}</div>
                 <div className="mt-1 break-all text-slate-500 dark:text-slate-400">{receiptCustomer?.email || 'No email address'}</div>
-                <button
-                  type="button"
-                  disabled={!receiptCustomer}
-                  onClick={() => {
-                    setReceiptSale(null);
-                    if (receiptCustomer) onViewCustomer(receiptCustomer.id);
-                  }}
-                  className="mt-3 inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-1.5 font-semibold text-slate-700 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-200"
-                >
-                  <UserRound className="h-3.5 w-3.5" /> View Customer
-                </button>
-                <button
-                  type="button"
-                  disabled={!receiptCustomer}
-                  onClick={() => {
-                    const customerId = receiptCustomer?.id;
-                    setReceiptSale(null);
-                    if (customerId) onOpenNewSale(customerId);
-                  }}
-                  className="ml-2 mt-3 rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
-                >
-                  New Sale
-                </button>
-                {receiptCustomer && canContact(receiptCustomer.id) && <button type="button" onClick={() => openMessage({ customerId: receiptCustomer.id, saleId: receiptSale.id, templateId: getSaleDueAmount(receiptSale, businessPayments) > 0 ? 'payment_reminder' : 'custom_message' })} className="ml-2 mt-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 px-3 py-1.5 font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp Customer</button>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={!receiptCustomer}
+                    onClick={() => {
+                      setReceiptSale(null);
+                      if (receiptCustomer) onViewCustomer(receiptCustomer.id);
+                    }}
+                    className="inline-flex min-h-10 items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-200"
+                  >
+                    <UserRound className="h-3.5 w-3.5" /> View Customer
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!receiptCustomer}
+                    onClick={() => {
+                      const customerId = receiptCustomer?.id;
+                      setReceiptSale(null);
+                      if (customerId) onOpenNewSale(customerId);
+                    }}
+                    className="min-h-10 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+                  >
+                    New Sale
+                  </button>
+                  {receiptCustomer && canContact(receiptCustomer.id) && (
+                    <button
+                      type="button"
+                      onClick={() => openMessage({ customerId: receiptCustomer.id, saleId: receiptSale.id, templateId: getSaleDueAmount(receiptSale, businessPayments) > 0 ? 'payment_reminder' : 'custom_message' })}
+                      className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                    </button>
+                  )}
+                </div>
               </section>
             </div>
 
@@ -993,12 +1063,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
               <dl className="grid gap-2 text-slate-600 dark:text-slate-300 sm:grid-cols-2">
                 <div><dt className="text-slate-400">Subtotal</dt><dd className="mt-0.5">{formatCurrency(receiptSale.subtotal ?? receiptSale.amount, receiptSale.currency)}</dd></div>
                 <div><dt className="text-slate-400">Discount</dt><dd className="mt-0.5">{formatCurrency(receiptSale.discount || 0, receiptSale.currency)}</dd></div>
-                <div><dt className="text-slate-400">Final Amount</dt><dd className="mt-0.5 font-bold text-slate-900 dark:text-white">{formatCurrency(receiptSale.amount, receiptSale.currency)}</dd></div>
-                <div><dt className="text-slate-400">Amount Paid</dt><dd className="mt-0.5 font-semibold text-emerald-700 dark:text-emerald-300">{formatCurrency(getSalePaidAmount(receiptSale, businessPayments), receiptSale.currency)}</dd></div>
-                <div><dt className="text-slate-400">Due Amount</dt><dd className="mt-0.5 font-semibold text-amber-700 dark:text-amber-300">{formatCurrency(getSaleDueAmount(receiptSale, businessPayments), receiptSale.currency)}</dd></div>
-                <div><dt className="text-slate-400">Payment Status</dt><dd className="mt-0.5 capitalize">{getSalePaymentStatus(receiptSale, businessPayments)}</dd></div>
                 <div><dt className="text-slate-400">Payment Method Breakdown</dt><dd className="mt-0.5">{receiptPaymentBreakdown.length ? receiptPaymentBreakdown.map(item => `${item.methodName}: ${formatCurrency(item.amount, receiptSale.currency)}`).join(' · ') : receiptSale.paymentMethod}</dd></div>
-                <div><dt className="text-slate-400">Transaction Number</dt><dd className="mt-0.5 break-all font-mono">{receiptPayments[0]?.transactionId || receiptSale.transactionId || '—'}</dd></div>
+                <div className="min-w-0"><dt className="text-slate-400">Transaction Number</dt><dd className="mt-0.5 break-all font-mono">{receiptPayments[0]?.transactionId || receiptSale.transactionId || '—'}</dd></div>
                 <div><dt className="text-slate-400">Payment Date</dt><dd className="mt-0.5">{formatAppDate(receiptPayments[0]?.paymentDate || receiptSale.date, language)}</dd></div>
               </dl>
               {getSaleDueAmount(receiptSale, businessPayments) > 0 && (

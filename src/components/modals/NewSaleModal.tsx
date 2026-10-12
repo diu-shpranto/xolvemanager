@@ -591,7 +591,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       recordInvoiceGenerated(completedSaleData);
       if (!canShareInvoiceJpg()) {
         downloadInvoiceJpg(result.blob, result.fileName);
-        showToast('File sharing is unavailable here. The JPG invoice was downloaded.', 'info');
+        showToast('File sharing is unavailable here. A JPG download was requested.', 'info');
         return;
       }
       const shared = await shareInvoiceJpg(

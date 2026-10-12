@@ -224,10 +224,6 @@ export const TopNav: React.FC<TopNavProps> = ({
           <Search className="w-4 h-4" />
         </button>
 
-        <div className="min-w-0 max-w-[145px] lg:hidden">
-          <ProductLogo size="compact" className="max-w-full" />
-        </div>
-
         <div className="hidden min-w-0 shrink-0 items-center gap-3 lg:flex">
           <ProductLogo size="compact" showTagline className="max-w-[180px]" />
           <div className="hidden h-8 w-px bg-slate-200 dark:bg-slate-700 xl:block" aria-hidden="true" />
@@ -266,7 +262,8 @@ export const TopNav: React.FC<TopNavProps> = ({
       {/* Utility controls and primary action */}
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${pwa.isOnline ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`} role="status" aria-label={pwa.isOnline ? 'Online' : 'Working offline'} title={pwa.isOnline ? 'Online' : 'Working offline'}>
-          {pwa.isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+          <img src="/xolve-icon.png" alt="" aria-hidden="true" className="h-6 w-auto max-w-[100px] object-contain lg:hidden" />
+          {pwa.isOnline ? <Wifi className="hidden h-4 w-4 lg:block" /> : <WifiOff className="hidden h-4 w-4 lg:block" />}
           <span className="hidden xl:inline">{pwa.isOnline ? 'Online' : 'Offline'}</span>
           <span className="sr-only">{pwa.isOnline ? 'Online' : 'Offline'}</span>
         </span>

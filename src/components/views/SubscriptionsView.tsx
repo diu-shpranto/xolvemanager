@@ -990,12 +990,14 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     showToast(`Exported ${subscriptionRows.length} subscriptions.`, 'success');
   };
 
+  const pendingPaymentCount = subscriptionRows.filter(row => row.due > 0).length;
+
   return (
-    <div className="mx-auto max-w-[1700px] space-y-5 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+    <div className="mx-auto max-w-[1700px] space-y-4 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
       {/* ========================================================================= */}
       {/* 1. TOP HEADER & ACTIONS                                                   */}
       {/* ========================================================================= */}
-      <div className="flex flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between sm:p-4">
         <div>
           <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300">
             <RefreshCw className="h-3 w-3" />
@@ -1005,7 +1007,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-700 shadow-2xs dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300">
               <CreditCard className="h-4 w-4" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-2xl">
               {language === 'bn' ? 'সাবস্ক্রিপশন' : 'Subscriptions'}
             </h1>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 font-mono text-xs font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
@@ -1037,37 +1039,17 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             <Download className="h-4 w-4" />
             Export CSV
           </button>
-          {selectedSub && canContact(selectedSub.customerId) && <button
-            type="button"
-            onClick={() => openMessage({
-              customerId: selectedSub.customerId,
-              subscriptionId: selectedSub.id,
-              templateId: getExpiryWhatsAppTemplateId(getDaysDifference(selectedSub.expiryDate)),
-            })}
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3.5 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-emerald-300 dark:hover:bg-slate-800"
-          >
-            <MessageCircle className="h-4 w-4" />
-            <span>WhatsApp Reminder</span>
-          </button>}
-          {selectedSub && <button
-            type="button"
-            onClick={() => openRenewDrawer(selectedSub)}
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3.5 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-slate-900 dark:text-emerald-300 dark:hover:bg-slate-800"
-          >
-            <RefreshCw className="w-4 h-4" />
-            <span>Renew Subscription</span>
-          </button>}
         </div>
       </div>
 
-      <section aria-label="Subscription summary" className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      <section aria-label="Subscription summary" className="grid grid-cols-2 gap-2.5 lg:grid-cols-3 xl:grid-cols-6">
         {[
           { label: 'Total Subscriptions', value: statusCounts.all, icon: Layers, tone: 'slate' },
           { label: 'Active', value: statusCounts.active, icon: CheckCircle2, tone: 'emerald' },
           { label: 'Ending Soon', value: statusCounts.expiring, icon: Clock, tone: 'amber' },
           { label: 'Expired', value: statusCounts.expired, icon: AlertCircle, tone: 'rose' },
+          { label: 'Pending Payments', value: pendingPaymentCount, icon: DollarSign, tone: 'amber' },
           { label: 'Renewals Due', value: statusCounts.renewalsDue, icon: RefreshCw, tone: 'violet' },
-          { label: 'Cancelled', value: statusCounts.cancelled, icon: XCircle, tone: 'slate' },
         ].map(item => {
           const toneClasses = {
             slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
@@ -1077,14 +1059,16 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             violet: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300',
           }[item.tone];
           return (
-          <div key={item.label} className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
+          <div key={item.label} className="flex min-h-[82px] items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:p-3.5">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{item.label}</p>
-              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${toneClasses}`}>
-                <item.icon className="h-4 w-4" />
-              </span>
+              <div>
+                <p className="text-[11px] font-medium leading-tight text-slate-500 dark:text-slate-400">{item.label}</p>
+                <p className="mt-1.5 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{item.value}</p>
+              </div>
             </div>
-            <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{item.value}</p>
+            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${toneClasses}`}>
+              <item.icon className="h-3.5 w-3.5" />
+            </span>
           </div>
           );
         })}
@@ -1150,7 +1134,8 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         </div>
       </section>
 
-      <div className="grid grid-cols-5 gap-1.5 rounded-2xl border border-slate-200/80 bg-white p-2 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:gap-2 sm:p-2.5" aria-label="Subscription statuses">
+      <div className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Subscription statuses">
+        <div className="flex w-max min-w-full gap-1.5 rounded-xl border border-slate-200/80 bg-white p-1.5 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:gap-2 sm:p-2">
         {[
           { id: 'all', label: 'All', count: statusCounts.all },
           { id: 'active', label: 'Active', count: statusCounts.active },
@@ -1165,14 +1150,14 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             aria-label={`${tab.label}: ${tab.count}`}
             title={`${tab.label} (${tab.count})`}
             aria-pressed={statusFilter === tab.id}
-            className={`flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[8px] font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-violet-600 sm:gap-2 sm:px-3 sm:text-xs ${
+            className={`flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-violet-600 sm:min-h-9 sm:rounded-xl sm:px-3 sm:text-xs ${
               statusFilter === tab.id
                 ? 'bg-violet-600 text-white shadow-xs dark:bg-violet-500'
                 : 'bg-slate-50 text-slate-600 hover:bg-violet-50 hover:text-violet-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-violet-950/50 dark:hover:text-violet-300'
             }`}
           >
             <span className="whitespace-nowrap">{tab.label}</span>
-            <span className={`hidden shrink-0 rounded-md px-1.5 font-mono text-[10px] sm:inline-flex ${
+            <span className={`shrink-0 rounded-md px-1.5 font-mono text-[10px] ${
               statusFilter === tab.id
                 ? 'bg-white/20 text-white'
                 : 'bg-white text-slate-500 dark:bg-slate-700 dark:text-slate-300'
@@ -1181,12 +1166,13 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             </span>
           </button>
         ))}
+        </div>
       </div>
 
       {/* ========================================================================= */}
       {/* 2. SPLIT WORKSPACE: LEFT LIST BROWSER + RIGHT SELECTED WORKSPACE         */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+      <div className="grid grid-cols-1 items-start gap-3.5 md:grid-cols-12 md:gap-5">
         {/* ===================================================================== */}
         {/* LEFT PANEL: SUBSCRIPTION BROWSER (List view on mobile)                */}
         {/* ===================================================================== */}
@@ -1207,7 +1193,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               }
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-8 py-2.5 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 shadow-2xs"
+              className="w-full pl-9 pr-8 py-2.5 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-violet-500 shadow-2xs"
             />
             {searchQuery && (
               <button
@@ -1332,7 +1318,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
           )}
 
           {/* Subscription List Items */}
-          <div className="space-y-2 max-h-[calc(100vh-270px)] overflow-y-auto pr-1 scrollbar-thin">
+          <div className="space-y-2 overflow-visible pr-1 md:max-h-[calc(100vh-270px)] md:overflow-y-auto md:scrollbar-thin">
             {filteredSubscriptions.length === 0 ? (
               <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 text-slate-400">
                 <CreditCard className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
