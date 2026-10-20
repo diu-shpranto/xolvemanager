@@ -20,6 +20,24 @@ export interface AccountCapacity {
   availableProfiles: number;
 }
 
+export type AccountHealthStatus =
+  | 'Active'
+  | 'Full'
+  | 'Available capacity'
+  | 'Expired'
+  | 'Unavailable'
+  | 'Review required';
+
+export interface AccountInventoryMetrics {
+  capacity: number;
+  configuredProfiles: number;
+  assignedProfiles: number;
+  availableProfiles: number;
+  remainingCapacity: number;
+  dataReviewRequired: boolean;
+  health: AccountHealthStatus;
+}
+
 export interface ServiceResourceSummary {
   serviceId: string;
   accountCount: number;
@@ -38,6 +56,64 @@ export const isAccountOperational = (account: Account, today = new Date()): bool
   return Number.isFinite(expiry.getTime()) && expiry >= current;
 };
 
+export const getAccountInventoryMetrics = (account: Account): AccountInventoryMetrics => {
+  const profiles = Array.isArray(account.profiles) ? account.profiles : [];
+  const capacity = Math.max(0, Number.isFinite(account.maxProfiles) ? Math.floor(account.maxProfiles) : 0);
+  const assignedProfiles = profiles.filter(profile =>
+    profile.status === 'Assigned' || Boolean(profile.assignedCustomerId)
+  ).length;
+  const availableProfiles = isAccountOperational(account)
+    ? profiles.filter(profile =>
+      profile.status === 'Available'
+      && !profile.assignedCustomerId
+      && (!profile.expiryDate || getDaysDifference(profile.expiryDate) >= 0)
+    ).length
+    : 0;
+  const profileIds = new Set<string>();
+  const inconsistentProfiles = profiles.some(profile => {
+    const duplicateOrMissingId = !profile.id || profileIds.has(profile.id);
+    if (profile.id) profileIds.add(profile.id);
+    return duplicateOrMissingId
+      || profile.accountId !== account.id
+      || (profile.status === 'Available' && Boolean(profile.assignedCustomerId))
+      || (profile.status === 'Assigned' && !profile.assignedCustomerId);
+  });
+  const invalidAccountExpiry = Boolean(account.expiryDate
+    && !Number.isFinite(Date.parse(`${account.expiryDate}T00:00:00`)));
+  const dataReviewRequired = !Number.isInteger(account.maxProfiles)
+    || account.maxProfiles < 0
+    || profiles.length > capacity
+    || profiles.length !== capacity
+    || !Array.isArray(account.profiles)
+    || invalidAccountExpiry
+    || inconsistentProfiles;
+  const expired = account.status === 'Expired'
+    || Boolean(account.expiryDate && getDaysDifference(account.expiryDate) < 0);
+  const unavailable = ['Inactive', 'Suspended'].includes(account.status);
+  const full = capacity > 0 && assignedProfiles >= capacity;
+  const health: AccountHealthStatus = dataReviewRequired
+    ? 'Review required'
+    : expired
+      ? 'Expired'
+      : unavailable
+        ? 'Unavailable'
+        : full
+          ? 'Full'
+          : capacity - assignedProfiles > 0 && availableProfiles > 0
+            ? 'Available capacity'
+            : 'Active';
+
+  return {
+    capacity,
+    configuredProfiles: profiles.length,
+    assignedProfiles,
+    availableProfiles,
+    remainingCapacity: Math.max(0, capacity - assignedProfiles),
+    dataReviewRequired,
+    health,
+  };
+};
+
 export const getAccountCapacity = (account: Account): AccountCapacity => {
   const capacity = Math.max(0, Number.isFinite(account.maxProfiles) ? Math.floor(account.maxProfiles) : 0);
   const assignedProfiles = account.profiles.filter(profile =>
@@ -47,13 +123,17 @@ export const getAccountCapacity = (account: Account): AccountCapacity => {
   const availableProfiles = account.profiles.filter(profile =>
     profile.status === 'Available' && !profile.assignedCustomerId
   ).length;
-  const utilization = capacity === 0 ? 1 : used / capacity;
+  const utilization = capacity === 0 ? 0 : used / capacity;
   return {
     capacity,
     used,
     available: Math.max(0, capacity - used),
     utilization,
-    status: used >= capacity ? 'Full' : utilization >= RESOURCE_CAPACITY_THRESHOLDS.almostFull ? 'Almost Full' : 'Available',
+    status: capacity > 0 && used >= capacity
+      ? 'Full'
+      : utilization >= RESOURCE_CAPACITY_THRESHOLDS.almostFull && capacity > 0
+        ? 'Almost Full'
+        : 'Available',
     assignedProfiles,
     availableProfiles,
   };
@@ -115,7 +195,7 @@ export const getServiceResourceSummary = (
 };
 
 export const isSubscriptionCompatibleWithResource = (
-  subscription: Subscription,
+  subscription: Pick<Subscription, 'serviceId' | 'planId'>,
   account: Account,
   serviceId: string,
   planId?: string

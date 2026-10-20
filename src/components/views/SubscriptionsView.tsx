@@ -43,6 +43,7 @@ import {
   Download,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
@@ -68,7 +69,7 @@ import {
   getTodayDateString,
   getSubscriptionReminderDays,
 } from '../../utils/dateUtils';
-import { getCustomerDisplayName, resolveSubscriptionCustomer } from '../../utils/relationships';
+import { getCustomerDisplayName, getCustomerOptionLabel, resolveSubscriptionCustomer } from '../../utils/relationships';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
 import { getExpiryWhatsAppTemplateId } from '../../utils/whatsappService';
 import { createRecordId } from '../../services/localStorageStore';
@@ -93,6 +94,13 @@ interface SubscriptionsViewProps {
 
 type QuickExpiryFilter = 'all' | 'today' | '3days' | '7days' | '15days' | 'expired';
 
+const subscriptionStatusRank: Record<SubscriptionStatus, number> = {
+  expiring_soon: 0,
+  active: 1,
+  expired: 2,
+  cancelled: 3,
+};
+
 export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   onOpenNewSale,
   serviceFilterId,
@@ -103,6 +111,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   onFocusedSubscriptionHandled,
   onAddPaymentForCustomer,
 }) => {
+  const { formatCurrency, formatDate: formatAppDate, formatNumber, formatDurationDays } = useAppFormatting();
   const {
     subscriptions,
     customers,
@@ -255,7 +264,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const subscriptionRows = useMemo(() => {
+  const preparedSubscriptionRows = useMemo(() => {
     const customerById = new Map(customers.map(customer => [customer.id, customer]));
     const serviceById = new Map(services.map(service => [service.id, service]));
     const accountById = new Map(accounts.map(account => [account.id, account]));
@@ -277,7 +286,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         paymentBySubscriptionId.set(payment.subscriptionId, related);
       }
     });
-    const statusRows = subscriptions.map(subscription => {
+    return subscriptions.map(subscription => {
       const customer = customerById.get(subscription.customerId);
       const service = serviceById.get(subscription.serviceId);
       const account = subscription.accountId ? accountById.get(subscription.accountId) : undefined;
@@ -299,23 +308,41 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         service,
         settings.reminderNoticeDays
       );
-      return { subscription, customer, service, account, profile, sale, paymentStatus, paid, due, status };
+      const searchFields = [
+        subscription.id, customer?.name || '', customer?.phone || '', customer?.whatsapp || '',
+        customer?.email || '', service?.name || '', subscription.plan, account?.name || '',
+        account?.email || '', profile?.profileName || '',
+      ].map(normalizeSearchText);
+      const phoneDigits = [customer?.phone, customer?.whatsapp]
+        .filter((value): value is string => Boolean(value))
+        .map(normalizePhoneDigits);
+      return {
+        subscription,
+        customer,
+        service,
+        account,
+        profile,
+        sale,
+        paymentStatus,
+        paid,
+        due,
+        status,
+        searchFields,
+        phoneDigits,
+      };
     });
+  }, [subscriptions, customers, services, accounts, sales, payments, settings.reminderNoticeDays]);
+
+  const subscriptionRows = useMemo(() => {
     const query = normalizeSearchText(debouncedSearchQuery);
     const queryDigits = normalizePhoneDigits(debouncedSearchQuery);
 
-    return statusRows.filter(row => {
+    return preparedSubscriptionRows.filter(row => {
       const { subscription: sub, customer, service, account, profile, status } = row;
       const daysDiff = getDaysDifference(sub.expiryDate);
       const reminderDays = getSubscriptionReminderDays(service, sub.planId, settings.reminderNoticeDays);
-      const textFields = [
-        sub.id, customer?.name || '', customer?.phone || '', customer?.whatsapp || '',
-        customer?.email || '', service?.name || '', sub.plan, account?.name || '',
-        account?.email || '', profile?.profileName || '',
-      ];
-      const matchesText = !query || textFields.some(value => normalizeSearchText(value).includes(query))
-        || (queryDigits.length >= 3 && [customer?.phone, customer?.whatsapp].some(value =>
-          value && normalizePhoneDigits(value).includes(queryDigits)));
+      const matchesText = !query || row.searchFields.some(value => value.includes(query))
+        || (queryDigits.length >= 3 && row.phoneDigits.some(value => value.includes(queryDigits)));
       const matchesQuickExpiry = quickExpiry === 'all'
         || (quickExpiry === 'today' && status !== 'cancelled' && daysDiff === 0)
         || (quickExpiry === '3days' && status !== 'cancelled' && daysDiff >= 0 && daysDiff <= 3)
@@ -354,17 +381,15 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       if (sortBy === 'lowest') return (left.sale?.amount ?? a.price) - (right.sale?.amount ?? b.price);
       if (sortBy === 'customer') return (left.customer?.name || '').localeCompare(right.customer?.name || '');
       if (sortBy === 'service') return (left.service?.name || '').localeCompare(right.service?.name || '');
-      const statusRank: Record<SubscriptionStatus, number> = { expiring_soon: 0, active: 1, expired: 2, cancelled: 3 };
-      const rankDifference = statusRank[left.status] - statusRank[right.status];
+      const rankDifference = subscriptionStatusRank[left.status] - subscriptionStatusRank[right.status];
       if (rankDifference) return rankDifference;
       const daysDifference = getDaysDifference(a.expiryDate) - getDaysDifference(b.expiryDate);
       return left.status === 'expired' ? -daysDifference : daysDifference;
     });
   }, [
-    subscriptions, customers, services, accounts, sales, payments, debouncedSearchQuery,
-    statusFilter, quickExpiry, serviceFilter, planFilter, paymentStatusFilter, currencyFilter,
-    startDateFilter, endDateFilter, dateFilterField, customerFilter, resourceFilter, sortBy,
-    settings.reminderNoticeDays,
+    preparedSubscriptionRows, debouncedSearchQuery, statusFilter, quickExpiry, serviceFilter,
+    planFilter, paymentStatusFilter, currencyFilter, startDateFilter, endDateFilter,
+    dateFilterField, customerFilter, resourceFilter, sortBy, settings.reminderNoticeDays,
   ]);
   const subscriptionRowById = useMemo(() => new Map(subscriptionRows.map(row => [row.subscription.id, row])), [subscriptionRows]);
   const filteredSubscriptions = useMemo(() => subscriptionRows.map(row => row.subscription), [subscriptionRows]);
@@ -785,12 +810,17 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       showToast('Choose a valid cancellation date.', 'error');
       return;
     }
-    updateSubscription(selectedSub.id, {
-      status: 'cancelled',
-      cancelledAt: cancellationDate ? `${cancellationDate}T00:00:00` : new Date().toISOString(),
-      cancelledBy: currentUser?.uid || 'admin',
-      cancellationReason: cancellationReason.trim(),
-    });
+    try {
+      updateSubscription(selectedSub.id, {
+        status: 'cancelled',
+        cancelledAt: cancellationDate ? `${cancellationDate}T00:00:00` : new Date().toISOString(),
+        cancelledBy: currentUser?.uid || 'admin',
+        cancellationReason: cancellationReason.trim(),
+      });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Subscription cancellation could not be saved.', 'error');
+      return;
+    }
 
     showToast(
       language === 'bn' ? 'সাবস্ক্রিপশন বাতিল হিসেবে চিহ্নিত হয়েছে।' : 'Subscription marked as cancelled.',
@@ -993,56 +1023,53 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   const pendingPaymentCount = subscriptionRows.filter(row => row.due > 0).length;
 
   return (
-    <div className="mx-auto max-w-[1700px] space-y-4 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
-      {/* ========================================================================= */}
-      {/* 1. TOP HEADER & ACTIONS                                                   */}
-      {/* ========================================================================= */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between sm:p-4">
-        <div>
-          <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300">
-            <RefreshCw className="h-3 w-3" />
-            {language === 'bn' ? 'গ্রাহক ধরে রাখুন' : 'Customer retention'}
+    <div className="subscriptions-view section-layout-shell mx-auto max-w-[1600px] space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-6 lg:px-8">
+      <div className="customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:flex-nowrap sm:gap-4 sm:pb-4">
+        <div className="customer-heading flex min-w-0 flex-1 items-start gap-3">
+          <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11">
+            <CreditCard className="h-5 w-5" />
           </div>
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-700 shadow-2xs dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300">
-              <CreditCard className="h-4 w-4" />
-            </div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-2xl">
+          <div className="min-w-0">
+            <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">
+              {language === 'bn' ? 'গ্রাহক ধরে রাখুন' : 'Customer retention'}
+            </p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">
               {language === 'bn' ? 'সাবস্ক্রিপশন' : 'Subscriptions'}
             </h1>
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 font-mono text-xs font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              {subscriptions.length}
-            </span>
+            <p className="mt-0.5 max-w-[28rem] text-sm leading-5 text-slate-600 dark:text-slate-400">
+              {language === 'bn'
+                ? 'সাবস্ক্রিপশন, নবায়ন ও মেয়াদ'
+                : 'Plans, renewals & customer access.'}
+            </p>
           </div>
-          <p className="mt-1 max-w-2xl text-xs text-slate-500 dark:text-slate-400">
-            {language === 'bn'
-              ? 'সাবস্ক্রিপশন, রিনিউয়াল এবং মেয়াদ শেষের তারিখ পরিচালনা করুন।'
-              : 'Manage active plans, renewals, expiry dates and customer access.'}
-          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+        <div className="customer-header-actions flex shrink-0 items-center gap-1.5">
           <button
             type="button"
             onClick={() => onOpenNewSale()}
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-violet-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition-colors hover:bg-violet-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
+            aria-label={language === 'bn' ? 'নতুন বিক্রয়' : 'New Sale'}
+            title={language === 'bn' ? 'নতুন বিক্রয়' : 'New Sale'}
+            className="customer-primary-action inline-flex h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-violet-700 px-3 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-violet-600 active:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:gap-2 sm:px-4"
           >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <Plus className="h-4 w-4 shrink-0 stroke-[2.5]" />
             <span>{language === 'bn' ? 'নতুন বিক্রয়' : 'New Sale'}</span>
           </button>
           <button
             type="button"
             onClick={handleExportSubscriptions}
             disabled={subscriptions.length === 0}
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            aria-label={language === 'bn' ? 'সাবস্ক্রিপশন CSV রপ্তানি' : 'Export subscriptions CSV'}
+            title={language === 'bn' ? 'সাবস্ক্রিপশন CSV রপ্তানি' : 'Export subscriptions CSV'}
+            className="subscription-export-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-[#151C28] dark:text-slate-200 dark:hover:bg-slate-800"
           >
-            <Download className="h-4 w-4" />
-            Export CSV
+            <Download className="h-4 w-4 shrink-0" />
+            <span>Export CSV</span>
           </button>
         </div>
       </div>
 
-      <section aria-label="Subscription summary" className="grid grid-cols-2 gap-2.5 lg:grid-cols-3 xl:grid-cols-6">
+      <section aria-label="Subscription summary" className="subscription-summary-grid grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-6">
         {[
           { label: 'Total Subscriptions', value: statusCounts.all, icon: Layers, tone: 'slate' },
           { label: 'Active', value: statusCounts.active, icon: CheckCircle2, tone: 'emerald' },
@@ -1059,12 +1086,10 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             violet: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300',
           }[item.tone];
           return (
-          <div key={item.label} className="flex min-h-[82px] items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:p-3.5">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-[11px] font-medium leading-tight text-slate-500 dark:text-slate-400">{item.label}</p>
-                <p className="mt-1.5 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{item.value}</p>
-              </div>
+          <div key={item.label} className={`subscription-summary-card flex min-h-[76px] min-w-0 items-center justify-between gap-2 rounded-xl border p-3 transition-colors ${item.tone === 'slate' ? 'border-violet-200 bg-violet-50/70 dark:border-violet-900/60 dark:bg-violet-950/25' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-[#151C28]'}`}>
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold leading-tight text-slate-500 dark:text-slate-400">{item.label}</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-slate-950 dark:text-white">{item.value}</p>
             </div>
             <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${toneClasses}`}>
               <item.icon className="h-3.5 w-3.5" />
@@ -1074,16 +1099,16 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         })}
       </section>
 
-      <section aria-label="Quick subscription filters" className="flex flex-col gap-3 rounded-2xl border border-violet-100 bg-violet-50/60 p-3.5 dark:border-violet-950 dark:bg-violet-950/20 sm:flex-row sm:items-center sm:justify-between">
+      <section aria-label="Quick subscription filters" className="subscription-quick-followup flex flex-col gap-2.5 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
             {language === 'bn' ? 'দ্রুত ফলো-আপ' : 'Quick follow-up'}
           </p>
-          <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+          <p className="mt-0.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
             {language === 'bn' ? 'নবায়নের জন্য প্রয়োজনীয় সাবস্ক্রিপশন খুঁজুন' : 'Jump to subscriptions that need attention'}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="subscription-quick-actions flex flex-wrap items-center gap-1.5">
           {[
             {
               label: language === 'bn' ? 'আজ শেষ' : 'Due today',
@@ -1111,7 +1136,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               type="button"
               aria-pressed={action.active}
               onClick={action.action}
-              className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 ${
+              className={`min-h-9 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 ${
                 action.active
                   ? 'border-violet-600 bg-violet-600 text-white dark:border-violet-500 dark:bg-violet-500'
                   : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:text-violet-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-violet-700 dark:hover:text-violet-300'
@@ -1127,7 +1152,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               setStatusFilter('all');
               setResourceFilter('all');
             }}
-            className="px-1 text-[11px] font-semibold text-slate-500 hover:text-violet-700 dark:text-slate-400 dark:hover:text-violet-300"
+            className="min-h-9 px-2 text-[11px] font-semibold text-slate-500 hover:text-violet-700 dark:text-slate-400 dark:hover:text-violet-300"
           >
             {language === 'bn' ? 'পরিষ্কার' : 'Clear'}
           </button>
@@ -1198,6 +1223,8 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             {searchQuery && (
               <button
                 type="button"
+                aria-label={language === 'bn' ? 'অনুসন্ধান মুছুন' : 'Clear search'}
+                title={language === 'bn' ? 'অনুসন্ধান মুছুন' : 'Clear search'}
                 onClick={() => setSearchQuery('')}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer"
               >
@@ -1304,7 +1331,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                   <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Customer</label>
                   <select value={customerFilter} onChange={event => setCustomerFilter(event.target.value)} className="w-full h-8 px-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-200">
                     <option value="all">All customers</option>
-                    {customers.filter(customer => !customer.isArchived).map(customer => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+                    {customers.filter(customer => !customer.isArchived).map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1360,13 +1387,13 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                     }}
                     className={`p-3.5 rounded-2xl border transition-all cursor-pointer relative group ${
                       isSelected
-                        ? 'bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-500/60 dark:border-emerald-500/50 shadow-sm ring-1 ring-emerald-500/20'
+                        ? 'bg-violet-50/70 dark:bg-violet-950/20 border-violet-500/60 dark:border-violet-500/50 shadow-sm ring-1 ring-violet-500/20'
                         : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800/90 hover:border-slate-300 dark:hover:border-slate-700 shadow-2xs'
                     }`}
                   >
                     {/* Left Accent indicator for active selection */}
                     {isSelected && (
-                      <span className="absolute left-0 top-3 bottom-3 w-1 bg-emerald-500 rounded-r-md" />
+                      <span className="absolute left-0 top-3 bottom-3 w-1 bg-violet-500 rounded-r-md" />
                     )}
 
                     <div                     className="flex flex-wrap items-start justify-between gap-2">
@@ -1377,7 +1404,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                             {getCustomerDisplayName(cust)}
                           </span>
                           <span className="text-[10px] text-slate-400 font-mono truncate">
-                            {cust?.phone || ''}
+                            WA: {cust?.whatsapp || cust?.phone || 'Not set'}
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5 mt-0.5">
@@ -1416,12 +1443,16 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                           {isCancelled
                             ? 'Cancelled'
                             : daysDiff < 0
-                            ? `Expired ${Math.abs(daysDiff)}d ago`
+                            ? language === 'bn'
+                              ? `${formatDurationDays(Math.abs(daysDiff))} আগে মেয়াদ শেষ`
+                              : `Expired ${formatNumber(Math.abs(daysDiff))}d ago`
                             : daysDiff === 0
                             ? 'Expires today'
                             : daysDiff === 1
-                              ? '1 day left'
-                              : `${daysDiff} days left`}
+                              ? language === 'bn' ? `${formatDurationDays(1)} বাকি` : '1 day left'
+                              : language === 'bn'
+                                ? `${formatDurationDays(daysDiff)} বাকি`
+                                : `${formatDurationDays(daysDiff)} left`}
                         </span>
                       </div>
 
@@ -1640,12 +1671,14 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                       {selectedSubStatus === 'cancelled'
                         ? 'Cancelled'
                         : getDaysDifference(selectedSub.expiryDate) < 0
-                        ? `Expired ${Math.abs(getDaysDifference(selectedSub.expiryDate))}d ago`
+                        ? language === 'bn'
+                          ? `${formatDurationDays(Math.abs(getDaysDifference(selectedSub.expiryDate)))} আগে মেয়াদ শেষ`
+                          : `Expired ${formatNumber(Math.abs(getDaysDifference(selectedSub.expiryDate)))}d ago`
                         : getDaysDifference(selectedSub.expiryDate) === 0
                         ? 'Expires today'
                         : getDaysDifference(selectedSub.expiryDate) === 1
-                        ? '1 day left'
-                        : `${getDaysDifference(selectedSub.expiryDate)} Days`}
+                        ? language === 'bn' ? `${formatDurationDays(1)} বাকি` : '1 day left'
+                        : formatDurationDays(getDaysDifference(selectedSub.expiryDate))}
                     </span>
                   </div>
 
@@ -1686,7 +1719,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                     <span className="font-bold text-slate-900 dark:text-white">
                       {selectedSubStatus === 'cancelled'
                         ? 'Subscription Status: Cancelled'
-                        : `Subscription ${selectedSubBadge?.label?.toLocaleLowerCase() || `expires in ${getDaysDifference(selectedSub.expiryDate)} days`}`}
+                        : `Subscription ${selectedSubBadge?.label?.toLocaleLowerCase() || `expires in ${formatDurationDays(getDaysDifference(selectedSub.expiryDate))}`}`}
                     </span>
                   </div>
                   <span className="font-mono font-semibold text-slate-400 text-[11px]">
@@ -2598,7 +2631,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               <option value="" disabled>-- Select Customer --</option>
               {customers.map(c => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({c.phone})
+                  {getCustomerOptionLabel(c)}
                 </option>
               ))}
             </select>

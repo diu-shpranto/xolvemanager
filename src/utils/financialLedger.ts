@@ -145,7 +145,9 @@ export function getFinancialLedger(records: FinancialRecords, accountId?: string
       accountId: accountIdForPayment,
       amount: Number(payment.amount) || 0,
       currency: payment.currency,
-      categoryName: payment.paymentStatus === 'refunded' ? 'Refund' : 'Sale Payment',
+      categoryName: payment.paymentStatus === 'refunded'
+        ? 'Refund'
+        : Number(payment.advanceCreditAmount) > 0 ? 'Sale Payment + Customer Advance' : 'Sale Payment',
       customerName,
       saleId: sale?.id || payment.saleId,
       invoiceNumber: invoice?.invoiceNumber || sale?.invoiceNo,

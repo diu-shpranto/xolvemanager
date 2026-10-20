@@ -2,9 +2,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Modal } from '../common/Modal';
 import { useToast } from '../common/Toast';
 import { useApp } from '../../context/AppContext';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
 import { Download, Share2, CheckCircle2, RefreshCw, MessageCircle, Printer, Image } from 'lucide-react';
 import { formatAppDate, formatAppDateTime, formatCurrency } from '../../utils/dateUtils';
+import type { Language } from '../../types';
 import {
   InvoiceSaleDetails,
   GeneratedInvoiceResult,
@@ -38,7 +40,7 @@ const getStatusColors = (status: string): { background: string; foreground: stri
   return { background: '#fffbeb', foreground: '#b45309', border: '#fde68a' };
 };
 
-const buildPrintableInvoice = (data: InvoiceSaleDetails): string => {
+const buildPrintableInvoice = (data: InvoiceSaleDetails, language: Language): string => {
   const statusColors = getStatusColors(data.paymentStatus);
   const currency = data.currency;
   const showPhone = data.invoiceSettings?.showCustomerPhone !== false;
@@ -55,7 +57,7 @@ const buildPrintableInvoice = (data: InvoiceSaleDetails): string => {
   const logo = data.invoiceSettings?.showLogo !== false && data.invoiceLogoUrl
     ? `<img src="${escapeHtml(data.invoiceLogoUrl)}" alt="" style="width:64px;height:64px;object-fit:contain;border:1px solid #e2e8f0;border-radius:16px;padding:6px">`
     : '';
-  const period = [data.startDate && formatAppDate(data.startDate), data.expiryDate && formatAppDate(data.expiryDate)]
+  const period = [data.startDate && formatAppDate(data.startDate, language), data.expiryDate && formatAppDate(data.expiryDate, language)]
     .filter(Boolean)
     .join(' – ');
   const contactLines = [
@@ -72,20 +74,20 @@ const buildPrintableInvoice = (data: InvoiceSaleDetails): string => {
     ? `<div style="margin-top:12px;border-top:1px solid #e2e8f0;padding-top:10px"><small style="color:#94a3b8;text-transform:uppercase">Subscription Period</small><div style="margin-top:4px;font-weight:600">${escapeHtml(period || data.durationLabel || '')}</div>${period && data.durationLabel ? `<div style="margin-top:3px;color:#64748b;font-size:12px">${escapeHtml(data.durationLabel)}</div>` : ''}</div>`
     : '';
   const summaryRows = [
-    ...(discount > 0 ? [`<div class="summary-row"><span>Subtotal</span><strong>${escapeHtml(formatCurrency(subtotal, currency))}</strong></div>`, `<div class="summary-row"><span>Discount</span><strong>− ${escapeHtml(formatCurrency(discount, currency))}</strong></div>`] : []),
-    `<div class="summary-row grand"><span>Total</span><strong>${escapeHtml(formatCurrency(data.amount, currency))}</strong></div>`,
-    `<div class="summary-row"><span>Amount Paid</span><strong class="paid">${escapeHtml(formatCurrency(paid, currency))}</strong></div>`,
-    `<div class="summary-row balance ${due > 0 ? 'due' : 'clear'}"><span>Balance Due</span><strong>${escapeHtml(formatCurrency(due, currency))}</strong></div>`,
+    ...(discount > 0 ? [`<div class="summary-row"><span>Subtotal</span><strong>${escapeHtml(formatCurrency(subtotal, currency, language))}</strong></div>`, `<div class="summary-row"><span>Discount</span><strong>− ${escapeHtml(formatCurrency(discount, currency, language))}</strong></div>`] : []),
+    `<div class="summary-row grand"><span>Total</span><strong>${escapeHtml(formatCurrency(data.amount, currency, language))}</strong></div>`,
+    `<div class="summary-row"><span>Amount Paid</span><strong class="paid">${escapeHtml(formatCurrency(paid, currency, language))}</strong></div>`,
+    `<div class="summary-row balance ${due > 0 ? 'due' : 'clear'}"><span>Balance Due</span><strong>${escapeHtml(formatCurrency(due, currency, language))}</strong></div>`,
   ].join('');
   const paymentDetails = [
-    showPaymentMethod && `<div><small>Method breakdown</small><strong>${escapeHtml(data.paymentMethodBreakdown?.map(item => `${item.methodName}: ${formatCurrency(item.amount, data.currency)}`).join(', ') || data.paymentMethod || 'Not specified')}</strong></div>`,
-    data.paymentDate && `<div><small>Paid At</small><strong>${escapeHtml(formatAppDate(data.paymentDate))}</strong></div>`,
+    showPaymentMethod && `<div><small>Method breakdown</small><strong>${escapeHtml(data.paymentMethodBreakdown?.map(item => `${item.methodName}: ${formatCurrency(item.amount, data.currency, language)}`).join(', ') || data.paymentMethod || 'Not specified')}</strong></div>`,
+    data.paymentDate && `<div><small>Paid At</small><strong>${escapeHtml(formatAppDate(data.paymentDate, language))}</strong></div>`,
     data.invoiceSettings?.showTransactionId !== false && data.transactionId && `<div><small>Transaction ID</small><strong class="break">${escapeHtml(data.transactionId)}</strong></div>`,
     data.senderNumber && `<div><small>Sender</small><strong>${escapeHtml(data.senderNumber)}</strong></div>`,
   ].filter(Boolean).join('');
   const paymentHistory = data.paymentHistory?.length
     ? `<section class="section"><div class="section-title">Payment History</div><div class="item">${data.paymentHistory.map(payment =>
-      `<div style="display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid #f1f5f9"><span>${escapeHtml(formatAppDate(payment.paymentDate))} · ${escapeHtml(payment.paymentMethod)}${data.invoiceSettings?.showTransactionId !== false && payment.transactionId ? `<br><small>${escapeHtml(payment.transactionId)}</small>` : ''}</span><strong>${escapeHtml(formatCurrency(payment.amount, payment.currency))} · ${escapeHtml(payment.paymentStatus)}</strong></div>`
+      `<div style="display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid #f1f5f9"><span>${escapeHtml(formatAppDate(payment.paymentDate, language))} · ${escapeHtml(payment.paymentMethod)}${data.invoiceSettings?.showTransactionId !== false && payment.transactionId ? `<br><small>${escapeHtml(payment.transactionId)}</small>` : ''}</span><strong>${escapeHtml(formatCurrency(payment.amount, payment.currency, language))} · ${escapeHtml(payment.paymentStatus)}</strong></div>`
     ).join('')}</div></section>`
     : '';
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Invoice ${escapeHtml(data.invoiceNo)}</title><style>
@@ -93,9 +95,9 @@ const buildPrintableInvoice = (data: InvoiceSaleDetails): string => {
     @media(max-width:600px){body{padding:12px}.content{padding:20px}.header{flex-direction:column}.invoice-meta{text-align:left}.grid{grid-template-columns:1fr}.item-head{flex-direction:column}.payment-grid{grid-template-columns:1fr 1fr}.summary-wrap{justify-content:stretch}}
     @media print{@page{size:A4 portrait;margin:12mm}body{padding:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.card{border:0;border-radius:0;box-shadow:none}.content{padding:12px}.box,.summary,.item{break-inside:avoid}.section,.grid,.header,.footer{break-inside:avoid}}
   </style></head><body><main class="page"><article class="card"><div class="accent"></div><div class="content">
-    <header class="header"><div class="brand">${logo}<div><div class="brand-name">${escapeHtml(data.storeName || 'Your Business')}</div>${data.tagline ? `<div class="muted" style="margin-top:5px">${escapeHtml(data.tagline)}</div>` : ''}<div class="contact">${contactLines}</div></div></div><div class="invoice-meta"><span class="label">Invoice</span><div style="margin-top:10px"><span class="status">${escapeHtml(getStatusLabel(data.paymentStatus))}</span></div><div class="invoice-number">${escapeHtml(data.invoiceNo)}</div><div class="meta-row">Issued ${escapeHtml(formatAppDate(data.date))}</div></div></header>
+    <header class="header"><div class="brand">${logo}<div><div class="brand-name">${escapeHtml(data.storeName || 'Your Business')}</div>${data.tagline ? `<div class="muted" style="margin-top:5px">${escapeHtml(data.tagline)}</div>` : ''}<div class="contact">${contactLines}</div></div></div><div class="invoice-meta"><span class="label">Invoice</span><div style="margin-top:10px"><span class="status">${escapeHtml(getStatusLabel(data.paymentStatus))}</span></div><div class="invoice-number">${escapeHtml(data.invoiceNo)}</div><div class="meta-row">Issued ${escapeHtml(formatAppDate(data.date, language))}</div></div></header>
     <section class="grid"><div class="box"><div class="box-title">Billed To</div><div class="name">${escapeHtml(data.customerName || 'Customer')}</div>${showPhone && data.customerPhone ? `<p>${escapeHtml(data.customerPhone)}</p>` : ''}${showEmail && data.customerEmail ? `<p>${escapeHtml(data.customerEmail)}</p>` : ''}</div><div class="box"><div class="box-title">Payment</div><div class="payment-grid">${paymentDetails || '<div class="muted">Payment details unavailable</div>'}</div></div></section>
-    <section class="section"><div class="section-title">Service</div><div class="item"><div class="item-head"><div><div class="item-title">${escapeHtml(data.serviceName || 'Service unavailable')}</div>${plan}${serviceDescription}</div><div class="price">${escapeHtml(formatCurrency(data.amount, currency))}</div></div>${periodBlock}</div></section>
+    <section class="section"><div class="section-title">Service</div><div class="item"><div class="item-head"><div><div class="item-title">${escapeHtml(data.serviceName || 'Service unavailable')}</div>${plan}${serviceDescription}</div><div class="price">${escapeHtml(formatCurrency(data.amount, currency, language))}</div></div>${periodBlock}</div></section>
     ${paymentHistory}
     <div class="summary-wrap"><section class="summary"><div class="box-title">Payment Summary</div>${summaryRows}</section></div>
     <footer class="footer"><strong>Thank you for your business.</strong>${data.tagline ? `<p>${escapeHtml(data.tagline)}</p>` : ''}${data.invoiceFooter ? `<p>${escapeHtml(data.invoiceFooter)}</p>` : ''}</footer>
@@ -123,6 +125,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
   onViewPayment,
   onAddPayment,
 }) => {
+  const { formatCurrency, formatDate: formatAppDate, formatDateTime: formatAppDateTime, language } = useAppFormatting();
   const { showToast } = useToast();
   const { openMessage, canContact } = useWhatsAppCommunication();
   const { logActivity, activityLogs } = useApp();
@@ -146,7 +149,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
       const key = JSON.stringify(saleData);
       const task = generationTask.current?.key === key
         ? generationTask.current
-        : { key, promise: generateInvoiceJpg(saleData) };
+        : { key, promise: generateInvoiceJpg(saleData, language) };
       generationTask.current = task;
       task.promise
         .then(result => {
@@ -207,7 +210,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
     }
     printWindow.opener = null;
     printWindow.document.open();
-    printWindow.document.write(buildPrintableInvoice(saleData));
+    printWindow.document.write(buildPrintableInvoice(saleData, language));
     printWindow.onload = () => {
       printWindow.focus();
       printWindow.print();

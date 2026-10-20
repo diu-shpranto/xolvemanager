@@ -8,6 +8,14 @@ export function getCustomerDisplayName(customer?: Customer): string {
     : CUSTOMER_UNAVAILABLE;
 }
 
+export function getCustomerWhatsAppNumber(customer?: Customer): string {
+  return customer?.whatsapp?.trim() || customer?.phone?.trim() || '';
+}
+
+export function getCustomerOptionLabel(customer: Customer): string {
+  return `${getCustomerDisplayName(customer)} · WA: ${getCustomerWhatsAppNumber(customer) || 'Not set'}`;
+}
+
 export function resolveSubscriptionCustomer(
   subscription: Subscription,
   customers: Customer[]

@@ -48,6 +48,18 @@ export const subscribeToPwaState = (listener: () => void): (() => void) => {
 
 export const isPWAInstalled = (): boolean => isStandalone();
 
+export const shouldShowIosSafariInstallInstructions = (
+  userAgent = typeof navigator === 'undefined' ? '' : navigator.userAgent,
+  platform = typeof navigator === 'undefined' ? '' : navigator.platform,
+  maxTouchPoints = typeof navigator === 'undefined' ? 0 : navigator.maxTouchPoints,
+): boolean => {
+  const isIosDevice = /iPad|iPhone|iPod/i.test(userAgent)
+    || (platform === 'MacIntel' && maxTouchPoints > 1);
+  const isSafari = /Safari/i.test(userAgent)
+    && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(userAgent);
+  return isIosDevice && isSafari;
+};
+
 const isSafeToActivateUpdate = (): boolean => {
   for (const form of dirtyForms) {
     if (!form.isConnected) dirtyForms.delete(form);

@@ -5,13 +5,11 @@
 
 'use client';
 
-import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { AppProvider } from './context/AppContext';
 import { ToastProvider } from './components/common/Toast';
 import { Sidebar, NavSection } from './components/navigation/Sidebar';
 import { TopNav } from './components/navigation/TopNav';
-import { MobileQuickNav } from './components/navigation/MobileQuickNav';
-import { DashboardView } from './components/views/DashboardView';
 import type { CashbookAction } from './components/views/CashbookView';
 import type { Subscription } from './types';
 import type { CustomerCrmQuickFilter } from './utils/customerCrm';
@@ -22,7 +20,10 @@ import { useApp } from './context/AppContext';
 import { WhatsAppCommunicationProvider } from './components/whatsapp/WhatsAppCommunication';
 import { registerPwa } from './services/pwaService';
 import type { CurrentAdminUser } from './context/AppContext';
+import { RecoveryScreen } from './components/common/RecoveryScreen';
+import { getAppLocation, sectionPaths, type SettingsStartSection } from './utils/appRoutes';
 
+const DashboardView = lazy(() => import('./components/views/DashboardView').then(module => ({ default: module.DashboardView })));
 const CustomersView = lazy(() => import('./components/views/CustomersView').then(module => ({ default: module.CustomersView })));
 const ServicesView = lazy(() => import('./components/views/ServicesView').then(module => ({ default: module.ServicesView })));
 const AccountsView = lazy(() => import('./components/views/AccountsView').then(module => ({ default: module.AccountsView })));
@@ -44,79 +45,34 @@ const SmartRemindersView = lazy(() => import('./components/views/SmartRemindersV
 const SearchResultsView = lazy(() => import('./components/views/SearchResultsView').then(module => ({ default: module.SearchResultsView })));
 const NewSaleModal = lazy(() => import('./components/modals/NewSaleModal').then(module => ({ default: module.NewSaleModal })));
 
-const sectionPaths: Record<NavSection, string> = {
-  dashboard: '/dashboard',
-  customers: '/customers',
-  services: '/services',
-  accounts: '/accounts',
-  profiles: '/profiles',
-  subscriptions: '/subscriptions',
-  sales: '/sales',
-  payments: '/payments',
-  cashbook: '/cashbook',
-  'financial-control': '/financial-control',
-  'data-integrity': '/data-integrity',
-  expenses: '/expenses',
-  'daily-closing': '/daily-closing',
-  invoices: '/invoices',
-  history: '/history',
-  reports: '/reports',
-  settings: '/settings',
-  notifications: '/notifications',
-  reminders: '/reminders',
-  search: '/search',
-};
-type RecordSection = 'customers' | 'services' | 'accounts' | 'subscriptions' | 'sales' | 'payments' | 'invoices';
-type SettingsStartSection = 'data' | 'messages';
+class LazyViewErrorBoundary extends React.Component<
+  { children: React.ReactNode; onDashboard: () => void },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
 
-interface AppLocation {
-  section: NavSection;
-  recordSection?: RecordSection;
-  recordId?: string;
-  settingsStartSection?: SettingsStartSection;
-}
-
-const recordSections: Record<RecordSection, NavSection> = {
-  customers: 'customers',
-  services: 'services',
-  accounts: 'accounts',
-  subscriptions: 'subscriptions',
-  sales: 'sales',
-  payments: 'payments',
-  invoices: 'invoices',
-};
-
-const routeAliases: Record<string, NavSection> = {
-  '/': 'dashboard',
-  '/transfers': 'cashbook',
-  '/profitability': 'reports',
-  '/communications': 'settings',
-  '/audit-log': 'history',
-  '/backup': 'settings',
-};
-
-const getAppLocation = (pathname: string): AppLocation => {
-  const normalizedPath = pathname.replace(/\/+$/, '') || '/';
-  const segments = normalizedPath.split('/').filter(Boolean);
-
-  if (segments.length === 2 && Object.hasOwn(recordSections, segments[0])) {
-    const recordSection = segments[0] as RecordSection;
-    return {
-      section: recordSections[recordSection],
-      recordSection,
-      recordId: segments[1],
-    };
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
   }
 
-  const section = routeAliases[normalizedPath]
-    || (Object.entries(sectionPaths).find(([, path]) => path === normalizedPath)?.[0] as NavSection | undefined)
-    || 'dashboard';
-  const settingsStartSection = normalizedPath === '/backup'
-    ? 'data'
-    : normalizedPath === '/communications' ? 'messages' : undefined;
+  componentDidCatch(error: Error, info: React.ErrorInfo): void {
+    console.error('Could not load the selected app page.', error, info);
+  }
 
-  return { section, settingsStartSection };
-};
+  render(): React.ReactNode {
+    if (this.state.hasError) {
+      return (
+        <RecoveryScreen
+          variant="error"
+          onDashboard={this.props.onDashboard}
+          onRetry={() => this.setState({ hasError: false })}
+        />
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const { currentBusiness } = useApp();
@@ -125,8 +81,10 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     : getAppLocation(window.location.pathname);
   // Navigation State
   const [currentSection, setCurrentSectionState] = useState<NavSection>(initialLocation.section);
+  const [isNotFound, setIsNotFound] = useState(Boolean(initialLocation.isNotFound));
   const setCurrentSection = (section: NavSection) => {
     setCurrentSectionState(section);
+    setIsNotFound(false);
     const nextPath = sectionPaths[section];
     if (typeof window !== 'undefined' && window.location.pathname !== nextPath) {
       window.history.pushState({ section }, '', nextPath);
@@ -135,11 +93,21 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const [settingsStartSection, setSettingsStartSection] = useState<SettingsStartSection | undefined>(initialLocation.settingsStartSection);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const closeMobileSidebar = useCallback(() => setIsMobileSidebarOpen(false), []);
+
+  useEffect(() => {
+    const desktopViewport = window.matchMedia('(min-width: 768px)');
+    const closeMobileSidebarOnBreakpointChange = () => setIsMobileSidebarOpen(false);
+
+    desktopViewport.addEventListener('change', closeMobileSidebarOnBreakpointChange);
+    return () => desktopViewport.removeEventListener('change', closeMobileSidebarOnBreakpointChange);
+  }, []);
 
   // Global New Sale Modal
   const [isNewSaleOpen, setIsNewSaleOpen] = useState(false);
   const [newSalePreselectedCustomer, setNewSalePreselectedCustomer] = useState<string | undefined>(undefined);
   const [newSalePreselectedService, setNewSalePreselectedService] = useState<string | undefined>(undefined);
+  const [newSaleResourcePreset, setNewSaleResourcePreset] = useState<{ accountId: string; profileId: string; planId?: string }>();
   const [paymentPreselectedCustomerId, setPaymentPreselectedCustomerId] = useState<string | undefined>();
   const [paymentPreselectedSaleId, setPaymentPreselectedSaleId] = useState<string | undefined>();
 
@@ -180,6 +148,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     const handlePopState = () => {
       const location = getAppLocation(window.location.pathname);
       setCurrentSectionState(location.section);
+      setIsNotFound(Boolean(location.isNotFound));
       setSettingsStartSection(location.settingsStartSection);
       setSelectedCustomerId(location.recordSection === 'customers' ? location.recordId ?? null : null);
       setFocusedServiceId(location.recordSection === 'services' ? location.recordId : undefined);
@@ -196,9 +165,14 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   // Direct Renewal Target
   const [renewTargetSub, setRenewTargetSub] = useState<Subscription | null>(null);
 
-  const handleOpenNewSale = (customerId?: string, serviceId?: string) => {
+  const handleOpenNewSale = (
+    customerId?: string,
+    serviceId?: string,
+    resourcePreset?: { accountId: string; profileId: string; planId?: string }
+  ) => {
     setNewSalePreselectedCustomer(customerId);
     setNewSalePreselectedService(serviceId);
+    setNewSaleResourcePreset(resourcePreset);
     setIsNewSaleOpen(true);
   };
 
@@ -216,17 +190,11 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     setCreateRequests(previous => ({ ...previous, payment: previous.payment + 1 }));
   };
 
-  const handleQuickAddPayment = () => {
-    setPaymentPreselectedCustomerId(undefined);
-    setPaymentPreselectedSaleId(undefined);
-    setCurrentSection('payments');
-    setCreateRequests(previous => ({ ...previous, payment: previous.payment + 1 }));
-  };
-
   const handleAddServiceFromSale = () => {
     setIsNewSaleOpen(false);
     setNewSalePreselectedCustomer(undefined);
     setNewSalePreselectedService(undefined);
+    setNewSaleResourcePreset(undefined);
     setCurrentSection('services');
   };
 
@@ -288,17 +256,22 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   };
 
   const handleSearchQuickAction = (action: QuickAction) => {
-    if (action === 'sale' || action === 'invoice' || action === 'subscription') {
+    if (action === 'subscriptions') {
+      setCurrentSection('subscriptions');
+      return;
+    }
+    if (action === 'sale') {
       handleOpenNewSale();
       return;
     }
     if (action === 'payment') {
       setCurrentSection('payments');
+      setCreateRequests(previous => ({ ...previous, payment: previous.payment + 1 }));
       return;
     }
     const section = action === 'customer' ? 'customers'
       : action === 'service' ? 'services'
-        : action === 'account' ? 'accounts' : 'payments';
+        : 'accounts';
     setCurrentSection(section);
     setCreateRequests(previous => ({ ...previous, [action]: previous[action] + 1 }));
   };
@@ -307,28 +280,16 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   };
 
   return (
-    <div className="app-shell">
-      {/* Sidebar Navigation */}
-      <Sidebar
-        currentSection={currentSection}
-        onSelectSection={section => {
-          if (section === 'settings') setSettingsStartSection(undefined);
-          setCurrentSection(section);
-        }}
-        isOpenMobile={isMobileSidebarOpen}
-        onCloseMobile={() => setIsMobileSidebarOpen(false)}
-        isCollapsedDesktop={isSidebarCollapsed}
-        onToggleDesktop={() => setIsSidebarCollapsed(collapsed => !collapsed)}
-      />
-
-      {/* Main Content Area */}
-      <div className={`flex min-w-0 flex-1 flex-col transition-[padding] duration-200 ${isSidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64'}`}>
-        {/* Sticky Top Navigation */}
+    <div className="app-shell" data-sidebar-collapsed={isSidebarCollapsed}>
+      <div className="app-topbar-region" inert={isMobileSidebarOpen}>
         <TopNav
           onLogout={onLogout}
-          onOpenMobile={() => setIsMobileSidebarOpen(true)}
+          onOpenMobile={() => setIsMobileSidebarOpen(open => !open)}
           isMobileNavOpen={isMobileSidebarOpen}
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={() => setIsSidebarCollapsed(collapsed => !collapsed)}
           onOpenNewSale={() => handleOpenNewSale()}
+          hideNewSaleAction={currentSection === 'sales'}
           onNavigate={setCurrentSection}
           onSelectSearchResult={selectSearchResult}
           onViewAllSearchResults={handleViewAllSearchResults}
@@ -346,13 +307,36 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             setCurrentSection(section);
           }}
         />
+      </div>
 
+      {/* Sidebar Navigation */}
+      <Sidebar
+        currentSection={currentSection}
+        onSelectSection={section => {
+          if (section === 'settings') setSettingsStartSection(undefined);
+          setCurrentSection(section);
+        }}
+        isOpenMobile={isMobileSidebarOpen}
+        onCloseMobile={closeMobileSidebar}
+        isCollapsedDesktop={isSidebarCollapsed}
+      />
+
+      {/* Main Content Area */}
+      <div className="app-main-area min-w-0" inert={isMobileSidebarOpen}>
         {/* View Content */}
-        <main className="app-main flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-[env(safe-area-inset-bottom)]">
+        <main className="app-main flex-1">
+          {isNotFound ? (
+            <RecoveryScreen
+              variant="not-found"
+              allowBack
+              onDashboard={() => setCurrentSection('dashboard')}
+            />
+          ) : (
+          <LazyViewErrorBoundary key={currentSection} onDashboard={() => setCurrentSection('dashboard')}>
           <Suspense fallback={
             <div className="page-container" role="status" aria-live="polite">
               <div className="surface-card flex min-h-32 items-center justify-center gap-3 p-5 text-sm text-slate-500">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent motion-reduce:animate-none" aria-hidden="true" />
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-600 border-t-transparent motion-reduce:animate-none" aria-hidden="true" />
                 Loading page…
               </div>
             </div>
@@ -484,9 +468,9 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             />
           )}
 
-          {currentSection === 'accounts' && <AccountsView selectedAccountId={focusedAccountId} serviceFilterId={accountServiceFilterId} createRequest={createRequests.account} onCreateRequestHandled={() => markCreateRequestHandled('account')} />}
+          {currentSection === 'accounts' && <AccountsView selectedAccountId={focusedAccountId} serviceFilterId={accountServiceFilterId} createRequest={createRequests.account} onCreateRequestHandled={() => markCreateRequestHandled('account')} onCreateSaleForProfile={details => handleOpenNewSale(details.customerId, details.serviceId, details)} onViewSale={saleId => { setFocusedSaleId(saleId); setCurrentSection('sales'); }} onViewSubscription={subscriptionId => { setFocusedSubscriptionId(subscriptionId); setCurrentSection('subscriptions'); }} />}
 
-          {currentSection === 'profiles' && <ProfilesView serviceFilterId={profileServiceFilterId} />}
+          {currentSection === 'profiles' && <ProfilesView serviceFilterId={profileServiceFilterId} onCreateSaleForProfile={details => handleOpenNewSale(details.customerId, details.serviceId, details)} />}
 
           {currentSection === 'subscriptions' && (
             <SubscriptionsView
@@ -672,9 +656,12 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           {currentSection === 'settings' && <SettingsView
             initialSection={settingsStartSection}
             onOpenIntegrity={() => setCurrentSection('data-integrity')}
+            onNavigate={setCurrentSection}
           />}
           {currentSection === 'search' && <SearchResultsView query={searchQuery} onSelectResult={selectSearchResult} />}
           </Suspense>
+          </LazyViewErrorBoundary>
+          )}
 
           {currentSection === 'notifications' && (
             <NotificationsView
@@ -693,14 +680,6 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         </main>
       </div>
 
-      <MobileQuickNav
-        currentSection={currentSection}
-        onNavigate={setCurrentSection}
-        onOpenNewSale={() => handleOpenNewSale()}
-        onAddPayment={handleQuickAddPayment}
-        onQuickAction={handleSearchQuickAction}
-      />
-
       {/* Global New Sale Workflow Modal */}
       {isNewSaleOpen && (
         <Suspense fallback={null}>
@@ -710,9 +689,13 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             setIsNewSaleOpen(false);
             setNewSalePreselectedCustomer(undefined);
             setNewSalePreselectedService(undefined);
+            setNewSaleResourcePreset(undefined);
           }}
           preselectedCustomerId={newSalePreselectedCustomer}
           preselectedServiceId={newSalePreselectedService}
+          preselectedAccountId={newSaleResourcePreset?.accountId}
+          preselectedProfileId={newSaleResourcePreset?.profileId}
+          preselectedPlanId={newSaleResourcePreset?.planId}
           onViewSubscription={subscriptionId => {
             setFocusedSubscriptionId(subscriptionId);
             setCurrentSection('subscriptions');

@@ -109,7 +109,10 @@ export function buildSearchIndex(data: SearchData): GlobalSearchResult[] {
 
   data.customers.forEach(item => push({
     entity: 'customers', id: item.id, section: 'customers', title: item.name,
-    subtitle: item.phone, detail: item.email, fields: [item.id, item.name, item.phone, item.whatsapp ?? '', item.email],
+    subtitle: item.phone, detail: item.email, fields: [
+      item.id, item.name, item.phone, item.whatsapp ?? '', item.email,
+      item.facebookId ?? '', item.facebookUrl ?? '',
+    ],
   }));
   data.services.forEach(item => {
     const related = [item.name];
@@ -118,11 +121,11 @@ export function buildSearchIndex(data: SearchData): GlobalSearchResult[] {
       subtitle: item.category, detail: item.description ?? '', fields: [item.id, item.name, item.description ?? '', item.category, item.advanced?.internalCode ?? ''],
     });
     const namedPlans = item.planDetails?.length
-      ? item.planDetails.map((plan, position) => ({ id: plan.id || item.planIds?.[position] || `${item.id}:${plan.name}`, name: plan.name, internalCode: plan.internalCode ?? '', durationDays: plan.durationDays, price: plan.price, currency: plan.currency }))
-      : item.plans.map((name, position) => ({ id: item.planIds?.[position] || `${item.id}:${name}`, name, internalCode: '', durationDays: item.defaultDurationDays, price: item.defaultPrice ?? item.defaultPriceBDT ?? 0, currency: item.currency ?? 'BDT' as const }));
+      ? item.planDetails.map((plan, position) => ({ id: plan.id || item.planIds?.[position] || `${item.id}:${plan.name}`, name: plan.name, internalCode: plan.internalCode ?? '', durationDays: plan.durationDays }))
+      : item.plans.map((name, position) => ({ id: item.planIds?.[position] || `${item.id}:${name}`, name, internalCode: '', durationDays: item.defaultDurationDays }));
     namedPlans.forEach(plan => push({
       entity: 'plans', id: plan.id, parentId: item.id, section: 'services',
-      title: plan.name, subtitle: item.name, detail: `${plan.durationDays} days · ${plan.price} ${plan.currency}`,
+      title: plan.name, subtitle: item.name, detail: plan.durationDays ? `${plan.durationDays} days` : '',
       fields: [plan.id, plan.name, plan.internalCode],
     }, undefined, [...related, item.advanced?.internalCode ?? '']));
   });
@@ -139,8 +142,8 @@ export function buildSearchIndex(data: SearchData): GlobalSearchResult[] {
       push({
         entity: 'profiles', id: profile.id, parentId: item.id, section: 'accounts',
         title: profile.profileName, subtitle: customer?.name ?? item.email,
-        detail: profile.status, fields: [profile.id, profile.profileName],
-      }, undefined, [...related, customer?.name ?? '']);
+        detail: profile.status, fields: [profile.id, profile.profileName, item.id, item.name ?? '', item.email, item.username ?? '', service?.name ?? '', customer?.id ?? '', customer?.name ?? '', customer?.phone ?? '', customer?.whatsapp ?? '', customer?.email ?? ''],
+      }, undefined, [...related, item.name ?? '', item.email, item.username ?? '', customer?.name ?? '', customer?.phone ?? '', customer?.whatsapp ?? '', customer?.email ?? '']);
     });
   });
   data.subscriptions.forEach(item => {
@@ -157,7 +160,7 @@ export function buildSearchIndex(data: SearchData): GlobalSearchResult[] {
       fields: [
         item.id, item.plan, item.startDate, item.expiryDate, status, item.paymentStatus,
         customer?.name ?? '', customer?.phone ?? '', customer?.whatsapp ?? '', customer?.email ?? '',
-        service?.name ?? '', account?.name ?? '', account?.email ?? '', profile?.profileName ?? '',
+        service?.name ?? '', account?.name ?? '', account?.email ?? '', account?.username ?? '', profile?.profileName ?? '',
       ],
     });
   });
@@ -168,9 +171,13 @@ export function buildSearchIndex(data: SearchData): GlobalSearchResult[] {
     push({
       entity: 'sales', id: item.id, section: 'sales',
       title: item.invoiceNo || item.id, subtitle: customer?.name ?? 'Unknown customer',
-      detail: `${item.date} · ${item.amount} ${item.currency} · ${item.paymentStatus}`,
-      fields: [item.id, item.invoiceNo, item.plan, item.date, item.paymentStatus],
-    }, undefined, [customer?.name ?? '', service?.name ?? '', invoice?.invoiceNumber ?? '']);
+      detail: `${service?.name ?? 'Sale'} · ${item.date} · ${item.paymentStatus}`,
+      fields: [
+        item.id, item.invoiceNo, item.plan, item.date, item.paymentStatus,
+        customer?.id ?? '', customer?.name ?? '', customer?.phone ?? '',
+        customer?.whatsapp ?? '', customer?.email ?? '', service?.name ?? '',
+      ],
+    }, undefined, [customer?.name ?? '', customer?.phone ?? '', customer?.whatsapp ?? '', customer?.email ?? '', service?.name ?? '', invoice?.invoiceNumber ?? '']);
   });
   data.payments.forEach(item => {
     const invoice = item.invoiceId ? invoicesById.get(item.invoiceId) : undefined;
@@ -183,7 +190,7 @@ export function buildSearchIndex(data: SearchData): GlobalSearchResult[] {
     push({
       entity: 'payments', id: item.id, section: 'payments',
       title: item.id, subtitle: customer?.name ?? 'Unknown customer',
-      detail: `${service?.name ?? 'Payment'}${sale?.plan ? ` · ${sale.plan}` : ''} · ${relatedInvoice?.invoiceNumber ?? sale?.invoiceNo ?? 'No invoice'} · ${item.paymentDate} · ${item.amount} ${item.currency} · ${item.paymentStatus}`,
+      detail: `${service?.name ?? 'Payment'}${sale?.plan ? ` · ${sale.plan}` : ''} · ${relatedInvoice?.invoiceNumber ?? sale?.invoiceNo ?? 'No invoice'} · ${item.paymentDate} · ${item.paymentStatus}`,
       fields: [
         item.id, item.transactionId ?? '', item.paymentDate, item.paymentStatus,
         item.paymentMethod, item.saleId ?? '', item.invoiceId ?? '',
@@ -191,7 +198,7 @@ export function buildSearchIndex(data: SearchData): GlobalSearchResult[] {
         relatedInvoice?.invoiceNumber ?? '', sale?.id ?? '', sale?.invoiceNo ?? '',
         service?.name ?? '', sale?.plan ?? '',
       ],
-    }, undefined, [customer?.name ?? '', customer?.phone ?? '', customer?.email ?? '', relatedInvoice?.invoiceNumber ?? '', item.saleId ?? '', service?.name ?? '', sale?.plan ?? '']);
+    }, undefined, [customer?.name ?? '', customer?.phone ?? '', customer?.whatsapp ?? '', customer?.email ?? '', relatedInvoice?.invoiceNumber ?? '', item.saleId ?? '', service?.name ?? '', sale?.plan ?? '']);
   });
   data.invoices.forEach(item => {
     const customer = customers.get(item.customerId);
@@ -200,16 +207,21 @@ export function buildSearchIndex(data: SearchData): GlobalSearchResult[] {
     push({
       entity: 'invoices', id: item.invoiceId, section: 'invoices',
       title: item.invoiceNumber, subtitle: customer?.name ?? 'Unknown customer',
-      detail: `${item.invoiceDate} · ${item.totalAmount} · ${item.paymentStatus}`,
-      fields: [item.invoiceId, item.invoiceNumber, item.invoiceDate, item.paymentStatus, sale?.plan ?? ''],
-    }, undefined, [customer?.name ?? '', service?.name ?? '']);
+      detail: `${service?.name ?? 'Invoice'} · ${item.invoiceDate} · ${item.paymentStatus}`,
+      fields: [
+        item.invoiceId, item.invoiceNumber, item.invoiceDate, item.paymentStatus,
+        sale?.id ?? '', sale?.plan ?? '', customer?.id ?? '', customer?.name ?? '',
+        customer?.phone ?? '', customer?.whatsapp ?? '', customer?.email ?? '', service?.name ?? '',
+      ],
+    }, undefined, [customer?.name ?? '', customer?.phone ?? '', customer?.whatsapp ?? '', customer?.email ?? '', service?.name ?? '']);
   });
   data.activityLogs.forEach(item => {
     const safeDescription = sanitizeHistoryText(item.description);
+    const safeTitle = sanitizeHistoryText(item.title);
     push({
       entity: 'history', id: item.id, section: 'history',
-      title: item.title, subtitle: safeDescription,
-      detail: item.timestamp, fields: [item.id, item.type, item.title, safeDescription, item.entityId ?? '', item.invoiceNumber ?? '', item.customerName ?? '', item.serviceName ?? ''],
+      title: safeTitle, subtitle: safeDescription,
+      detail: item.timestamp, fields: [item.id, item.type, safeTitle, safeDescription, item.entityId ?? '', item.invoiceNumber ?? '', item.customerName ?? '', item.serviceName ?? ''],
     }, undefined, [item.customerName ?? '', item.serviceName ?? '']);
   });
   data.reminders.forEach(item => {
@@ -217,10 +229,10 @@ export function buildSearchIndex(data: SearchData): GlobalSearchResult[] {
     const service = item.serviceId ? services.get(item.serviceId) : undefined;
     push({
       entity: 'reminders', id: item.id, section: 'reminders',
-      title: item.title,
+      title: sanitizeHistoryText(item.title),
       subtitle: customer?.name ?? 'Business reminder',
       detail: `${item.type.replaceAll('_', ' ')} · ${item.dueDate} · ${item.status}`,
-      fields: [item.id, item.title, item.description ?? '', item.type, item.sourceEntityId, item.stage ?? ''],
+      fields: [item.id, sanitizeHistoryText(item.title), sanitizeHistoryText(item.description ?? ''), item.type, item.sourceEntityId, item.stage ?? ''],
     }, undefined, [customer?.name ?? '', service?.name ?? '', item.invoiceId ?? '', item.saleId ?? '']);
   });
 

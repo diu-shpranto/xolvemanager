@@ -117,7 +117,8 @@ export const CsvImportUtility: React.FC = () => {
           'info'
         );
       }
-    } catch {
+    } catch (error) {
+      console.error('Could not parse the selected CSV content.', error);
       showToast(
         language === 'bn' ? 'সিএসভি পার্স করতে সমস্যা হয়েছে।' : 'Failed to parse CSV.',
         'error'
@@ -275,7 +276,12 @@ export const CsvImportUtility: React.FC = () => {
       }
     } catch (err: unknown) {
       console.error('CSV import failed:', err);
-      showToast(language === 'bn' ? 'ডেটা ইমপোর্ট করা যায়নি।' : 'Could not import the data.', 'error');
+      showToast(
+        language === 'bn'
+          ? 'ইমপোর্ট মাঝপথে বন্ধ হয়েছে। কিছু রেকর্ড সংরক্ষিত হয়ে থাকতে পারে; আবার চেষ্টা করার আগে তালিকা যাচাই করুন।'
+          : 'Import stopped before completion. Some records may already be saved; review the lists before trying again.',
+        'error'
+      );
     } finally {
       setIsImportingLocally(false);
     }

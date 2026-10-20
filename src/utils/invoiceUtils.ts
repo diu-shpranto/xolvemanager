@@ -1,7 +1,13 @@
 import type { AppSettings, Customer, Invoice, Payment, Sale, Service, Subscription } from '../types';
 import { createRecordId } from '../services/localStorageStore';
 import { getCustomerDisplayName } from './relationships';
-import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus, getSalePayments } from './saleUtils';
+import {
+  getPaymentSaleAllocation,
+  getSaleDueAmount,
+  getSalePaidAmount,
+  getSalePaymentStatus,
+  getSalePayments,
+} from './saleUtils';
 import type { InvoiceSaleDetails } from './invoiceGenerator';
 
 export function createInvoiceRecord(
@@ -67,7 +73,7 @@ export function buildInvoiceSaleDetails(
   const paymentMethodBreakdown = [...receivedPayments.reduce((groups, payment) => {
     const methodName = payment.paymentMethodName || payment.paymentMethod;
     const current = groups.get(methodName) || { methodName, amount: 0 };
-    current.amount += Number(payment.amount) || 0;
+    current.amount += getPaymentSaleAllocation(payment, sale);
     groups.set(methodName, current);
     return groups;
   }, new Map<string, { methodName: string; amount: number }>()).values()];

@@ -1,15 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, CheckCircle2, LockKeyhole } from 'lucide-react';
+import { ArrowRight, CheckCircle2, LockKeyhole, Wallet } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { formatAppDate, formatCurrency, getDateInTimeZone } from '../../utils/dateUtils';
 import { getDailyFinancialSummary, getFinancialLedger } from '../../utils/financialLedger';
 import { normalizePaymentMethods } from '../../utils/paymentMethods';
 
-const cardClass = 'surface-card p-4 sm:p-5';
+const cardClass = 'surface-card p-3 sm:p-4';
 const inputClass = 'control-field w-full px-3 py-2 text-sm';
 
 export const DailyClosingView: React.FC<{ onNavigate: (section: 'cashbook') => void }> = ({ onNavigate }) => {
+  const { formatCurrency, formatDate: formatAppDate } = useAppFormatting();
   const {
     currentBusiness, financialAccounts, payments, expenses, otherIncome, financialTransfers,
     financialAdjustments, sales, invoices, customers, settings, currency, dailyClosings,
@@ -87,28 +89,33 @@ export const DailyClosingView: React.FC<{ onNavigate: (section: 'cashbook') => v
   };
 
   return (
-    <div className="page-container max-w-5xl space-y-5">
-      <header className="page-header">
-        <div className="page-header__copy">
-          <h1 className="page-title">Daily Closing</h1>
-          <p className="page-description">Compare each account’s expected balance with the amount counted at the end of the day.</p>
+    <div className="finance-responsive-page section-layout-shell customer-list-page mx-auto flex w-full max-w-[1600px] flex-col gap-3 px-3 py-3 pb-10 sm:gap-4 sm:px-6 sm:py-6 lg:px-8">
+      <header className="finance-responsive-header customer-page-header flex min-w-0 items-center gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:pb-4">
+        <div className="customer-heading flex min-w-0 items-start gap-3">
+          <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11"><LockKeyhole className="h-5 w-5" /></div>
+          <div className="min-w-0">
+            <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em]">Finance operations</p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Daily Closing</h1>
+            <p className="mt-0.5 text-sm leading-5 text-slate-600 dark:text-slate-400">Compare expected account balances with the cash counted at day end.</p>
+          </div>
         </div>
       </header>
 
       {!financialAccounts.length ? (
-        <section className={`${cardClass} text-center`}>
-          <p className="text-sm text-slate-600 dark:text-slate-300">Create a financial account before closing a day.</p>
-          <button type="button" onClick={() => onNavigate('cashbook')} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+        <section className={`${cardClass} flex flex-col items-center text-center`}>
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"><Wallet className="h-5 w-5" /></span>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Create a financial account before closing a day.</p>
+          <button type="button" onClick={() => onNavigate('cashbook')} className="customer-primary-action mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-600">
             Open Cashbook <ArrowRight className="h-4 w-4" />
           </button>
         </section>
       ) : (
-        <form onSubmit={submitClosing} className="space-y-5">
-          <section className={`${cardClass} space-y-4`}>
+        <form onSubmit={submitClosing} className="space-y-3">
+          <section className={`${cardClass} space-y-3`}>
             <div className="flex flex-wrap items-end justify-between gap-3">
               <label className="w-full max-w-xs text-xs font-semibold text-slate-600 dark:text-slate-300">
                 Closing date
-                <input type="date" aria-label="Daily closing date" max={today} value={date} onChange={event => setDate(event.target.value)} className={`${inputClass} mt-1`} required />
+                <input type="date" aria-label="Daily closing date" max={today} value={date} onChange={event => setDate(event.target.value)} className={`${inputClass} mt-1 min-h-11`} required />
               </label>
               {existingClosing && <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"><LockKeyhole className="h-3.5 w-3.5" />Closed</span>}
             </div>
@@ -140,10 +147,10 @@ export const DailyClosingView: React.FC<{ onNavigate: (section: 'cashbook') => v
               <textarea value={reason} onChange={event => setReason(event.target.value)} rows={3} className={`${inputClass} mt-1 resize-y`} placeholder="Required when actual and expected balances differ" />
             </label>
             <label className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
-              <input type="checkbox" checked={createAdjustments} onChange={event => setCreateAdjustments(event.target.checked)} className="mt-0.5 accent-emerald-600" />
+              <input type="checkbox" checked={createAdjustments} onChange={event => setCreateAdjustments(event.target.checked)} className="mt-0.5 accent-violet-600" />
               Create ledger adjustments for differences (this changes account balances)
             </label>
-            <button type="submit" disabled={busy || Boolean(existingClosing) || !currentBusiness?.businessId} className="action-primary w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
+            <button type="submit" disabled={busy || Boolean(existingClosing) || !currentBusiness?.businessId} className="customer-primary-action min-h-11 w-full rounded-lg bg-violet-700 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
               {busy ? 'Saving closing…' : existingClosing ? 'Day already closed' : 'Close Financial Day'}
             </button>
           </section>

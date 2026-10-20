@@ -5,6 +5,10 @@ import {
   Filter,
   Download,
   CheckCircle2,
+  Clock,
+  AlertCircle,
+  DollarSign,
+  RefreshCw,
   Eye,
   ChevronDown,
   Plus,
@@ -13,6 +17,7 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
@@ -24,7 +29,7 @@ import {
 } from '../../utils/invoiceGenerator';
 import type { Sale, PaymentMethod, PaymentStatus } from '../../types';
 import { formatAppDate, formatAppDateTime, formatCurrency, getTodayDateString, getSubscriptionStatus } from '../../utils/dateUtils';
-import { getCustomerDisplayName, resolveSaleCustomer } from '../../utils/relationships';
+import { getCustomerDisplayName, getCustomerOptionLabel, resolveSaleCustomer } from '../../utils/relationships';
 import { createRecordId } from '../../services/localStorageStore';
 import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus, getSalePayments } from '../../utils/saleUtils';
 import { getDefaultPaymentMethod, getPaymentBreakdownForSale, normalizePaymentMethods, paymentMethodRequiresTransactionId } from '../../utils/paymentMethods';
@@ -71,6 +76,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   focusSaleId,
   onFocusedSaleHandled,
 }) => {
+  const { formatCurrency, formatDate: formatAppDate } = useAppFormatting();
   const {
     sales,
     invoices,
@@ -283,7 +289,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     if (isInvoiceActionBusy) return;
     setIsInvoiceActionBusy(true);
     try {
-      const result = await generateInvoiceJpg(invoiceDetailsForSale(sale));
+      const result = await generateInvoiceJpg(invoiceDetailsForSale(sale), language);
       downloadInvoiceJpg(result.blob, result.fileName);
       showToast(`Download requested · ${result.fileName}`, 'info');
     } catch (error) {
@@ -299,7 +305,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     setIsInvoiceActionBusy(true);
     try {
       const details = invoiceDetailsForSale(sale);
-      const result = await generateInvoiceJpg(details);
+      const result = await generateInvoiceJpg(details, language);
       const shared = await shareInvoiceJpg(
         result.blob,
         result.fileName,
@@ -455,6 +461,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   useEffect(() => setPage(current => Math.min(current, pageCount)), [pageCount]);
 
   const activeFilterCount = [
+    Boolean(searchInput.trim()),
     selectedServiceId !== 'all',
     selectedPaymentMethod !== 'all',
     selectedCustomer !== 'all',
@@ -494,54 +501,69 @@ export const SalesView: React.FC<SalesViewProps> = ({
   };
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-4 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
-      {/* Header */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between sm:p-4">
-        <div>
-          <h1 className="flex items-center gap-2.5 text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-2xl">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300">
-              <Receipt className="h-4 w-4" />
-            </div>
-            <span>{language === 'bn' ? 'বিক্রয়' : 'Sales'}</span>
-          </h1>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Manage sales, payments, subscriptions, and invoices.
-          </p>
+    <div className="sales-view customer-list-page section-layout-shell mx-auto max-w-[1600px] space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-6 lg:px-8">
+      <div className="customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:flex-nowrap sm:gap-4 sm:pb-4">
+        <div className="customer-heading flex min-w-0 flex-1 items-start gap-3">
+          <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11">
+            <Receipt className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">
+              {language === 'bn' ? 'রাজস্ব পরিচালনা' : 'Revenue operations'}
+            </p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">
+              {language === 'bn' ? 'বিক্রয়' : 'Sales'}
+            </h1>
+            <p className="mt-0.5 max-w-[28rem] text-sm leading-5 text-slate-600 dark:text-slate-400">
+              {language === 'bn' ? 'বিক্রয়, পেমেন্ট ও ইনভয়েস' : 'Sales, payments & invoices.'}
+            </p>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="customer-header-actions flex shrink-0 items-center gap-1.5">
           <button
+            type="button"
             onClick={exportCSV}
-            className="px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-[#151C28] border border-slate-200/80 dark:border-slate-700/80 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            aria-label={t('exportCSV')}
+            title={t('exportCSV')}
+            className="sales-export-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-[#151C28] dark:text-slate-200 dark:hover:bg-slate-800"
           >
-            <Download className="w-3.5 h-3.5 text-slate-400" />
+            <Download className="h-4 w-4 shrink-0" />
             <span>{t('exportCSV')}</span>
           </button>
           <button
+            type="button"
             onClick={() => onOpenNewSale()}
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-violet-700"
+            aria-label={language === 'bn' ? 'নতুন বিক্রয়' : 'New Sale'}
+            title={language === 'bn' ? 'নতুন বিক্রয়' : 'New Sale'}
+            className="customer-primary-action inline-flex h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-violet-700 px-3 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-violet-600 active:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:gap-2 sm:px-4"
           >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>+ New Sale</span>
+            <Plus className="h-4 w-4 shrink-0 stroke-[2.5]" />
+            <span>New Sale</span>
           </button>
         </div>
       </div>
 
-      <section className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6" aria-label="Sales summary">
+      <section className="sales-summary-grid grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" aria-label="Sales summary">
         {[
-          { label: 'Total Sales', value: String(salesStats.totalSales), context: 'Selected period' },
-          { label: 'Paid Sales', value: String(salesStats.paid), amounts: salesStats.paidSalesAmount, context: 'Fully received' },
-          { label: 'Partial Payments', value: String(salesStats.partial), context: 'Partially received' },
-          { label: 'Pending Payments', value: String(salesStats.pending), context: 'No amount received' },
-          { label: 'Outstanding', amounts: salesStats.due, context: 'Balance due' },
-          { label: 'Refunded', amounts: salesStats.refunded, context: 'Recorded refunds' },
+          { label: 'Total Sales', value: String(salesStats.totalSales), context: 'Selected period', icon: Receipt, tone: 'violet' },
+          { label: 'Paid Sales', value: String(salesStats.paid), amounts: salesStats.paidSalesAmount, context: 'Fully received', icon: CheckCircle2, tone: 'emerald' },
+          { label: 'Partial Payments', value: String(salesStats.partial), context: 'Partially received', icon: Clock, tone: 'amber' },
+          { label: 'Pending Payments', value: String(salesStats.pending), context: 'No amount received', icon: AlertCircle, tone: 'amber' },
+          { label: 'Outstanding', amounts: salesStats.due, context: 'Balance due', icon: DollarSign, tone: 'rose' },
+          { label: 'Refunded', amounts: salesStats.refunded, context: 'Recorded refunds', icon: RefreshCw, tone: 'slate' },
         ].map(item => (
-          <article key={item.label} className="flex min-h-[86px] min-w-0 items-start justify-between gap-2 rounded-xl border border-slate-200/80 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:p-3.5">
+          <article key={item.label} className={`sales-summary-card sales-summary-card--${item.tone} flex min-h-[86px] min-w-0 flex-col justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-[#151C28] sm:p-3.5`}>
             <div className="min-w-0">
-              <h2 className="text-[11px] font-medium leading-tight text-slate-500 dark:text-slate-400">{item.label}</h2>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${item.tone === 'violet' ? 'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300' : item.tone === 'emerald' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : item.tone === 'amber' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' : item.tone === 'rose' ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+                  <item.icon className="h-3.5 w-3.5" />
+                </span>
+                <h2 className="min-w-0 text-[11px] font-semibold leading-tight text-slate-600 dark:text-slate-300">{item.label}</h2>
+              </div>
               {item.value !== undefined && <p className="mt-1 text-xl font-bold tabular-nums text-slate-900 dark:text-white">{item.value}</p>}
               {item.amounts && (
-                <div className="mt-1 space-y-0.5">
+                <div className="mt-1 space-y-0.5 pl-9">
                   {(['BDT', 'USD'] as const).map(unit => (
                     <p key={unit} className="truncate text-[11px] font-semibold tabular-nums text-slate-700 dark:text-slate-200">
                       <span className="mr-1 text-[9px] font-semibold text-slate-400">{unit}</span>
@@ -550,15 +572,18 @@ export const SalesView: React.FC<SalesViewProps> = ({
                   ))}
                 </div>
               )}
-              <span className="mt-0.5 block text-[10px] text-slate-400">{item.context}</span>
+              <span className="mt-0.5 block pl-9 text-[10px] text-slate-400">{item.context}</span>
             </div>
           </article>
         ))}
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+      <section className="sales-quick-followup rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-[#151C28]">
         <div className="mb-2 flex items-center justify-between gap-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Quick follow-up</p>
+          <div>
+            <p className="text-xs font-bold text-slate-800 dark:text-slate-100">Quick follow-up</p>
+            <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">Jump to sales that need attention</p>
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -569,23 +594,24 @@ export const SalesView: React.FC<SalesViewProps> = ({
               setDateFilter('all');
               setSortOrder('newest');
             }}
-            className="text-[11px] font-semibold text-slate-500 hover:text-emerald-700 dark:text-slate-400 dark:hover:text-emerald-300"
+            className="min-h-9 px-2 text-[11px] font-semibold text-slate-500 hover:text-violet-700 dark:text-slate-400 dark:hover:text-violet-300"
           >
             Clear
           </button>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="sales-quick-actions flex flex-wrap gap-1.5">
           {[
-            { label: 'Due now', action: () => { setSelectedPaymentStatus('pending'); setSortOrder('highest_due'); setDateFilter('month'); setSearchInput(''); } },
-            { label: 'Partial', action: () => { setSelectedPaymentStatus('partial'); setSortOrder('highest_due'); setDateFilter('month'); setSearchInput(''); } },
-            { label: 'This month', action: () => { setDateFilter('month'); setSelectedPaymentStatus('all'); setSortOrder('newest'); setSearchInput(''); } },
-            { label: 'Paid today', action: () => { setDateFilter('today'); setSelectedPaymentStatus('paid'); setSortOrder('newest'); setSearchInput(''); } },
+            { label: 'Due now', active: selectedPaymentStatus === 'pending' && dateFilter === 'month' && sortOrder === 'highest_due', action: () => { setSelectedPaymentStatus('pending'); setSortOrder('highest_due'); setDateFilter('month'); setSearchInput(''); } },
+            { label: 'Partial', active: selectedPaymentStatus === 'partial' && dateFilter === 'month' && sortOrder === 'highest_due', action: () => { setSelectedPaymentStatus('partial'); setSortOrder('highest_due'); setDateFilter('month'); setSearchInput(''); } },
+            { label: 'This month', active: dateFilter === 'month' && selectedPaymentStatus === 'all' && sortOrder === 'newest', action: () => { setDateFilter('month'); setSelectedPaymentStatus('all'); setSortOrder('newest'); setSearchInput(''); } },
+            { label: 'Paid today', active: dateFilter === 'today' && selectedPaymentStatus === 'paid' && sortOrder === 'newest', action: () => { setDateFilter('today'); setSelectedPaymentStatus('paid'); setSortOrder('newest'); setSearchInput(''); } },
           ].map(action => (
             <button
               key={action.label}
               type="button"
+              aria-pressed={action.active}
               onClick={action.action}
-              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-emerald-700 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300"
+              className={`min-h-9 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 ${action.active ? 'border-violet-600 bg-violet-600 text-white dark:border-violet-500 dark:bg-violet-500' : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:text-violet-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-violet-700 dark:hover:text-violet-300'}`}
             >
               {action.label}
             </button>
@@ -594,26 +620,26 @@ export const SalesView: React.FC<SalesViewProps> = ({
       </section>
 
       {/* Filters Strip */}
-      <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
-        <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
-        <div className="relative w-full md:w-96">
+      <div className="sales-filter-toolbar rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:p-3">
+        <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-3">
+        <div className="relative min-w-0">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="search"
             aria-label="Search sales"
-            placeholder="Customer, phone, email, sale, invoice, service, plan, account or transaction"
+            placeholder="Search sales, customers, invoices..."
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-10 pr-4 text-xs text-slate-900 placeholder-slate-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-white sm:text-sm"
+            className="sales-search-input w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-xs text-slate-900 placeholder-slate-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/15 dark:border-slate-700 dark:bg-slate-800 dark:text-white sm:text-sm"
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
+        <div className="sales-primary-filters grid min-w-0 grid-cols-2 gap-2 md:flex md:w-auto md:items-center">
           <select
             aria-label="Filter by payment status"
             value={selectedPaymentStatus}
             onChange={e => setSelectedPaymentStatus(e.target.value as SalesStatusFilter)}
-            className="px-3 py-2 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 border-none outline-none cursor-pointer"
+            className="sales-filter-select min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 outline-none cursor-pointer dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
           >
             <option value="all">All Payment Statuses</option>
             <option value="paid">Paid</option>
@@ -627,7 +653,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
             aria-label="Filter by service"
             value={selectedServiceId}
             onChange={e => setSelectedServiceId(e.target.value)}
-            className="px-3 py-2 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 border-none outline-none cursor-pointer"
+            className="sales-filter-select min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 outline-none cursor-pointer dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
           >
             <option value="all">All Services</option>
             {services.map(s => (
@@ -643,7 +669,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
               setDateFilter(nextFilter);
               if (nextFilter === 'custom') setShowAdvancedFilters(true);
             }}
-            className="px-3 py-2 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 border-none outline-none cursor-pointer font-mono"
+            className="sales-filter-select col-span-2 min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 outline-none cursor-pointer font-mono md:col-span-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
           >
             <option value="all">All Time</option>
             <option value="today">Today</option>
@@ -657,13 +683,13 @@ export const SalesView: React.FC<SalesViewProps> = ({
           </select>
         </div>
         </div>
-        <div className="flex items-center justify-between">
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-800">
           <button
             type="button"
             aria-expanded={showAdvancedFilters}
             aria-controls="sales-advanced-filters"
             onClick={() => setShowAdvancedFilters(value => !value)}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+            className="inline-flex min-h-9 items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-violet-700 dark:text-slate-400 dark:hover:text-violet-300"
           >
             <Filter className="h-3.5 w-3.5" />
             Advanced filters
@@ -677,28 +703,28 @@ export const SalesView: React.FC<SalesViewProps> = ({
         </div>
         {showAdvancedFilters && (
           <div id="sales-advanced-filters" className="grid grid-cols-1 gap-2 border-t border-slate-100 pt-3 dark:border-slate-800 sm:grid-cols-2 lg:grid-cols-4">
-            <select aria-label="Filter by customer" value={selectedCustomer} onChange={e => setSelectedCustomer(e.target.value)} className="rounded-lg bg-slate-100 px-3 py-2 text-xs dark:bg-slate-800 dark:text-slate-200">
+            <select aria-label="Filter by customer" value={selectedCustomer} onChange={e => setSelectedCustomer(e.target.value)} className="sales-filter-select min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
               <option value="all">All Customers</option>
-              {customers.map(customer => <option key={customer.id} value={customer.id}>{getCustomerDisplayName(customer)}</option>)}
+              {customers.map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}
             </select>
-            <select aria-label="Filter by payment method" value={selectedPaymentMethod} onChange={e => setSelectedPaymentMethod(e.target.value)} className="rounded-lg bg-slate-100 px-3 py-2 text-xs dark:bg-slate-800 dark:text-slate-200">
+            <select aria-label="Filter by payment method" value={selectedPaymentMethod} onChange={e => setSelectedPaymentMethod(e.target.value)} className="sales-filter-select min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
               <option value="all">All Payment Methods</option>
               {[...new Set([...activePaymentMethods, ...businessSales.map(sale => sale.paymentMethod), ...businessPayments.map(payment => payment.paymentMethod)])].map(method => <option key={method} value={method}>{method}</option>)}
             </select>
-            <select aria-label="Filter by plan" value={selectedPlanId} onChange={e => setSelectedPlanId(e.target.value)} className="rounded-lg bg-slate-100 px-3 py-2 text-xs dark:bg-slate-800 dark:text-slate-200">
+            <select aria-label="Filter by plan" value={selectedPlanId} onChange={e => setSelectedPlanId(e.target.value)} className="sales-filter-select min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
               <option value="all">All Plans</option>
               {services.flatMap(service => (service.planDetails || []).map(plan => <option key={plan.id} value={plan.id}>{service.name} · {plan.name}</option>))}
             </select>
-            <select aria-label="Filter by subscription status" value={selectedSubscriptionStatus} onChange={e => setSelectedSubscriptionStatus(e.target.value)} className="rounded-lg bg-slate-100 px-3 py-2 text-xs dark:bg-slate-800 dark:text-slate-200">
+            <select aria-label="Filter by subscription status" value={selectedSubscriptionStatus} onChange={e => setSelectedSubscriptionStatus(e.target.value)} className="sales-filter-select min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
               <option value="all">All Subscription Statuses</option>
               {['active', 'expiring_soon', 'expired', 'cancelled'].map(status => <option key={status} value={status}>{status.replace('_', ' ')}</option>)}
             </select>
             <label className="flex items-center gap-2 text-xs text-slate-500">
               <span>Amount in {currency}</span>
-              <input aria-label="Minimum amount" type="number" min="0" value={amountMin} onChange={event => setAmountMin(event.target.value)} placeholder="Min" className="w-24 rounded-lg bg-slate-100 px-2.5 py-2 text-xs dark:bg-slate-800 dark:text-slate-200" />
-              <input aria-label="Maximum amount" type="number" min={amountMin || 0} value={amountMax} onChange={event => setAmountMax(event.target.value)} placeholder="Max" className="w-24 rounded-lg bg-slate-100 px-2.5 py-2 text-xs dark:bg-slate-800 dark:text-slate-200" />
+              <input aria-label="Minimum amount" type="number" min="0" value={amountMin} onChange={event => setAmountMin(event.target.value)} placeholder="Min" className="sales-filter-select w-20 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" />
+              <input aria-label="Maximum amount" type="number" min={amountMin || 0} value={amountMax} onChange={event => setAmountMax(event.target.value)} placeholder="Max" className="sales-filter-select w-20 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" />
             </label>
-            <select aria-label="Sort sales" value={sortOrder} onChange={event => setSortOrder(event.target.value as SalesSort)} className="rounded-lg bg-slate-100 px-3 py-2 text-xs dark:bg-slate-800 dark:text-slate-200">
+            <select aria-label="Sort sales" value={sortOrder} onChange={event => setSortOrder(event.target.value as SalesSort)} className="sales-filter-select min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
               <option value="newest">Newest</option><option value="oldest">Oldest</option>
               <option value="highest">Highest Amount</option><option value="lowest">Lowest Amount</option>
               <option value="highest_due">Highest Due</option><option value="lowest_due">Lowest Due</option>
@@ -706,20 +732,36 @@ export const SalesView: React.FC<SalesViewProps> = ({
             </select>
             {dateFilter === 'custom' && (
               <>
-                <input aria-label="Start date" type="date" value={customStartDate} max={customEndDate || undefined} onChange={e => setCustomStartDate(e.target.value)} className="rounded-lg bg-slate-100 px-3 py-2 text-xs dark:bg-slate-800 dark:text-slate-200" />
-                <input aria-label="End date" type="date" value={customEndDate} min={customStartDate || undefined} onChange={e => setCustomEndDate(e.target.value)} className="rounded-lg bg-slate-100 px-3 py-2 text-xs dark:bg-slate-800 dark:text-slate-200" />
+                <input aria-label="Start date" type="date" value={customStartDate} max={customEndDate || undefined} onChange={e => setCustomStartDate(e.target.value)} className="sales-filter-select min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" />
+                <input aria-label="End date" type="date" value={customEndDate} min={customStartDate || undefined} onChange={e => setCustomEndDate(e.target.value)} className="sales-filter-select min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" />
               </>
             )}
           </div>
         )}
       </div>
 
+      <div className="customer-directory-heading flex items-center justify-between gap-3 px-0.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="text-base font-bold tracking-tight text-slate-900 dark:text-white">Sales &amp; Orders</h2>
+          <span className="customer-directory-count shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold tabular-nums dark:border-slate-700">
+            {filteredSales.length}
+          </span>
+        </div>
+        {filteredSales.length > 0 && (
+          <span className="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">
+            {Math.min((page - 1) * salesPageSize + 1, filteredSales.length)}–{Math.min(page * salesPageSize, filteredSales.length)} of {filteredSales.length}
+          </span>
+        )}
+      </div>
+
       {businessSales.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center dark:border-slate-700 dark:bg-slate-900">
-          <Receipt className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
-          <h2 className="mt-3 text-sm font-semibold text-slate-900 dark:text-white">No sales yet.</h2>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Create your first sale to start tracking revenue, payments, subscriptions, and invoices.</p>
-          <button onClick={() => onOpenNewSale()} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700">
+        <div className="sales-empty-state rounded-xl border border-dashed border-slate-300 bg-white px-5 py-8 text-center dark:border-slate-700 dark:bg-[#151C28]">
+          <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+            <Receipt className="h-5 w-5" />
+          </span>
+          <h2 className="mt-3 text-sm font-semibold text-slate-900 dark:text-white">No sales yet</h2>
+          <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-slate-500 dark:text-slate-400">Create your first sale to start tracking revenue, payments, subscriptions, and invoices.</p>
+          <button type="button" onClick={() => onOpenNewSale()} className="customer-primary-action mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg bg-violet-700 px-4 text-xs font-semibold text-white hover:bg-violet-600">
             <Plus className="h-4 w-4" /> New Sale
           </button>
         </div>
@@ -727,9 +769,11 @@ export const SalesView: React.FC<SalesViewProps> = ({
       <>
       <div className="space-y-3 xl:hidden">
         {filteredSales.length === 0 ? (
-          <div className="rounded-xl bg-white p-8 text-center dark:bg-slate-900">
+          <div className="sales-empty-state rounded-xl border border-dashed border-slate-300 bg-white p-7 text-center dark:border-slate-700 dark:bg-[#151C28]">
+            <Search className="mx-auto h-5 w-5 text-slate-400" />
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">No sales found</p>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Try a different search or filter.</p>
+            {(activeFilterCount > 0 || searchInput) && <button type="button" onClick={clearFilters} className="mt-3 min-h-9 rounded-lg px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/40">Clear filters</button>}
           </div>
         ) : pageSales.map(sale => {
           const customer = resolveSaleCustomer(sale, customers, subscriptions);
@@ -739,10 +783,10 @@ export const SalesView: React.FC<SalesViewProps> = ({
           const due = getSaleDueAmount(sale, businessPayments);
           const status = getSalePaymentStatus(sale, businessPayments);
           return (
-            <article key={sale.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+            <article key={sale.id} className="sales-order-card rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs transition-colors hover:border-violet-200 dark:border-slate-800 dark:bg-[#151C28] dark:hover:border-violet-900">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <button type="button" aria-label={`View sale ${sale.id}`} onClick={() => setReceiptSale(sale)} className="font-mono text-sm font-bold text-emerald-700 hover:underline dark:text-emerald-300">{invoices.find(item => item.saleId === sale.id)?.invoiceNumber || sale.invoiceNo}</button>
+                  <button type="button" aria-label={`View sale ${sale.id}`} onClick={() => setReceiptSale(sale)} className="font-mono text-sm font-bold text-violet-700 hover:underline dark:text-violet-300">{invoices.find(item => item.saleId === sale.id)?.invoiceNumber || sale.invoiceNo}</button>
                   <button type="button" onClick={() => customer && onViewCustomer(customer.id)} disabled={!customer} className="mt-1 block truncate text-left text-xs font-semibold text-slate-900 disabled:cursor-default dark:text-white">{getCustomerDisplayName(customer)}</button>
                   <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{service?.name || 'Service unavailable'} · {sale.plan}</p>
                   <p className="mt-0.5 truncate font-mono text-[10px] text-slate-400">{sale.id}{sale.renewalOfSubscriptionId ? ' · Renewal Sale' : ''}</p>
@@ -757,9 +801,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 {subscription && <div className="col-span-2"><span className="text-slate-400">Subscription</span><div className="mt-0.5 font-medium text-slate-700 dark:text-slate-200">{formatAppDate(subscription.startDate, language)} – {formatAppDate(subscription.expiryDate, language)} · {getSubscriptionStatus(subscription, service, settings.reminderNoticeDays).replace('_', ' ')}</div></div>}
               </div>
               <div className="mt-3 flex flex-wrap justify-end gap-2">
-                {due > 0 && <button onClick={() => openPaymentDialog(sale)} className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:border-emerald-800 dark:text-emerald-300">Add Payment</button>}
-                <button onClick={() => handleOpenInvoiceJpg(sale)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200">Invoice</button>
-                <button onClick={() => setReceiptSale(sale)} className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">View</button>
+                {due > 0 && <button type="button" onClick={() => openPaymentDialog(sale)} className="min-h-10 rounded-lg border border-violet-200 px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950/40">Add Payment</button>}
+                <button type="button" onClick={() => handleOpenInvoiceJpg(sale)} className="min-h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Invoice</button>
+                <button type="button" onClick={() => setReceiptSale(sale)} className="min-h-10 rounded-lg bg-slate-100 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">View</button>
               </div>
             </article>
           );
@@ -768,7 +812,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
       {/* Sales Table */}
       <div className="hidden xl:block bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="data-table-scroll overflow-x-auto" role="region" aria-label="Sales table; scroll horizontally to view all columns" tabIndex={0}>
           <table className="w-full min-w-[1240px] text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -790,6 +834,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 <tr>
                   <td colSpan={11} className="py-12 text-center text-slate-400">
                     No sales found. Try a different search or filter.
+                  {(activeFilterCount > 0 || searchInput) && <button type="button" onClick={clearFilters} className="ml-2 font-semibold text-violet-700 hover:underline dark:text-violet-300">Clear filters</button>}
                   </td>
                 </tr>
               ) : (
@@ -810,7 +855,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white">
                         <button
                           onClick={() => setReceiptSale(sale)}
-                          className="hover:underline text-emerald-600 dark:text-emerald-400 cursor-pointer"
+                          className="hover:underline text-violet-700 dark:text-violet-300 cursor-pointer"
                         >
                           {saleInvoice?.invoiceNumber || sale.invoiceNo}
                         </button>
@@ -826,9 +871,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
                         <div className="font-bold text-slate-900 dark:text-white">
                           {getCustomerDisplayName(cust)}
                         </div>
-                        {(cust?.phone || cust?.email) && (
+                        {(cust?.whatsapp || cust?.email) && (
                           <div className="text-[11px] text-slate-400 font-mono">
-                            {cust.phone || cust.email}
+                            {cust.whatsapp || cust.phone || cust.email}
                           </div>
                         )}
                       </td>

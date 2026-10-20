@@ -9,7 +9,7 @@ import type {
   WhatsAppTemplate,
   WhatsAppTemplateId,
 } from '../types';
-import { formatAppDate, getDaysDifference } from './dateUtils';
+import { formatAppDate, formatAppNumber, getDaysDifference } from './dateUtils';
 import { getSaleDueAmount, getSalePaidAmount } from './saleUtils';
 import { convertReportCurrency } from './reportMetrics';
 import { createWhatsAppUrl, normalizePhoneNumber, openWhatsApp } from './phoneUtils';
@@ -88,8 +88,6 @@ const defaultTemplates: WhatsAppTemplate[] = [
 
 const dangerousVariablePattern = /\{[^}]*?(?:password|passcode|pin|credential|secret|login|access.?code)[^}]*?\}/gi;
 const variablePattern = /\{([^{}]+)\}/g;
-const amountString = (value: number): string =>
-  new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(Number.isFinite(value) ? value : 0);
 const currencySymbol = (currency: AppSettings['currency']): string => currency === 'BDT' ? '৳' : '$';
 
 export function validateWhatsAppTemplate(message: string): string[] {
@@ -157,6 +155,7 @@ export function generateWhatsAppMessage(
   const sourceCurrency = sale?.currency || subscription?.currency || data.settings.currency;
   const convertAmount = (amount: number) => convertReportCurrency(amount, sourceCurrency, data.settings.currency);
   const daysRemaining = subscription ? getDaysDifference(subscription.expiryDate) : undefined;
+  const messageLanguage = data.settings.whatsappPreferences?.defaultLanguage || data.settings.language || 'en';
 
   if (!customer) missingFields.push('customer');
   if (!phone) missingFields.push('phone');
@@ -205,16 +204,16 @@ export function generateWhatsAppMessage(
     planName: sale?.plan || subscription?.plan || plan?.name || invoice?.invoiceNumber || '',
     accountName: '',
     profileName: '',
-    startDate: subscription ? formatAppDate(subscription.startDate, data.settings.whatsappPreferences?.defaultLanguage || data.settings.language) : '',
-    expiryDate: subscription ? formatAppDate(subscription.expiryDate, data.settings.whatsappPreferences?.defaultLanguage || data.settings.language) : '',
-    daysRemaining: daysRemaining === undefined ? '' : String(daysRemaining),
+    startDate: subscription ? formatAppDate(subscription.startDate, messageLanguage) : '',
+    expiryDate: subscription ? formatAppDate(subscription.expiryDate, messageLanguage) : '',
+    daysRemaining: daysRemaining === undefined ? '' : formatAppNumber(daysRemaining, messageLanguage),
     invoiceNumber: invoice?.invoiceNumber || sale?.invoiceNo || '',
-    invoiceDate: invoice ? formatAppDate(invoice.invoiceDate, data.settings.whatsappPreferences?.defaultLanguage || data.settings.language) : '',
+    invoiceDate: invoice ? formatAppDate(invoice.invoiceDate, messageLanguage) : '',
     saleId: sale?.id || '',
     paymentId: payment?.id || '',
-    totalAmount: amountString(convertAmount(total)),
-    paidAmount: amountString(convertAmount(payment?.amount ?? paid)),
-    dueAmount: amountString(convertAmount(due)),
+    totalAmount: formatAppNumber(convertAmount(total), messageLanguage, { maximumFractionDigits: 2 }),
+    paidAmount: formatAppNumber(convertAmount(payment?.amount ?? paid), messageLanguage, { maximumFractionDigits: 2 }),
+    dueAmount: formatAppNumber(convertAmount(due), messageLanguage, { maximumFractionDigits: 2 }),
     paymentMethod: payment?.paymentMethodName || payment?.paymentMethod || sale?.paymentMethod || '',
     currency: currencySymbol(data.settings.currency),
     supportPhone: data.settings.contactPhone || '',
@@ -228,8 +227,8 @@ export function generateWhatsAppMessage(
     service_name: service?.name || '',
     plan: sale?.plan || subscription?.plan || plan?.name || '',
     days_left: daysRemaining === undefined ? '' : String(daysRemaining),
-    expiry_date: subscription ? formatAppDate(subscription.expiryDate, data.settings.whatsappPreferences?.defaultLanguage || data.settings.language) : '',
-    amount: amountString(convertAmount(total)),
+    expiry_date: subscription ? formatAppDate(subscription.expiryDate, messageLanguage) : '',
+    amount: formatAppNumber(convertAmount(total), messageLanguage, { maximumFractionDigits: 2 }),
   };
   const dangerousTokens = template.message.match(dangerousVariablePattern) || [];
   warnings.push(...validateWhatsAppTemplate(template.message));

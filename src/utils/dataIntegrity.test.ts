@@ -1,8 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { initialSettings } from '../data/mockData';
 import type { DataIntegrityRecords } from './dataIntegrity';
 import { runDataIntegrityCheck } from './dataIntegrity';
+
+const testSettings = {
+  storeName: 'Test business',
+  tagline: '',
+  currency: 'BDT' as const,
+  language: 'en' as const,
+  adminEmail: '',
+  adminName: '',
+  reminderNoticeDays: 7,
+  contactPhone: '',
+  whatsappNumber: '',
+  facebookPageUrl: '',
+  whatsappReminderTemplateEN: '',
+  whatsappReminderTemplateBN: '',
+};
 
 const makeRecords = (overrides: Partial<DataIntegrityRecords> = {}): DataIntegrityRecords => ({
   businessId: 'business-1',
@@ -25,7 +39,7 @@ const makeRecords = (overrides: Partial<DataIntegrityRecords> = {}): DataIntegri
   profitabilityCosts: [],
   activityLogs: [],
   notifications: [],
-  settings: initialSettings,
+  settings: testSettings,
   ...overrides,
 });
 
@@ -106,4 +120,82 @@ test('checks larger record collections without repeated relationship scans', () 
   assert.equal(result.summary.recordsChecked, customers.length);
   assert.equal(result.summary.errors, 0);
   assert.ok(elapsedMs < 5_000, `10,000-record check took ${elapsedMs.toFixed(0)}ms`);
+});
+
+test('reports inventory count and profile assignment inconsistencies without mutating records', () => {
+  const account = {
+    id: 'account-1',
+    serviceId: 'service-1',
+    email: 'service@example.com',
+    password: 'not-read-or-logged',
+    plan: 'Basic',
+    status: 'Available' as const,
+    maxProfiles: 2,
+    profiles: [{
+      id: 'profile-1',
+      accountId: 'missing-account',
+      profileName: 'Profile 1',
+      assignedCustomerId: 'customer-1',
+      status: 'Available' as const,
+    }],
+  };
+  const records = makeRecords({
+    customers: [{ id: 'customer-1', name: 'Customer', phone: '', email: '', createdAt: '2025-01-01' }],
+    services: [{ id: 'service-1', name: 'Service', category: 'Streaming', defaultDurationDays: 30, status: 'active', plans: ['Basic'] }],
+    serviceAccounts: [account],
+  });
+  const before = JSON.stringify(records);
+  const result = runDataIntegrityCheck(records);
+
+  assert.ok(result.warnings.some(issue => issue.entityId === 'account-1' && issue.message.includes('profile records are configured')));
+  assert.ok(result.errors.some(issue => issue.entityId === 'profile-1' && issue.message.includes('parent account')));
+  assert.ok(result.errors.some(issue => issue.entityId === 'profile-1' && issue.message.includes('marked available')));
+  assert.equal(JSON.stringify(records), before);
+});
+
+test('reports multiple active subscriptions assigning the same account profile', () => {
+  const subscription = (id: string) => ({
+    id,
+    customerId: 'customer-1',
+    serviceId: 'service-1',
+    accountId: 'account-1',
+    profileId: 'profile-1',
+    plan: 'Basic',
+    startDate: '2025-01-01',
+    durationDays: 30,
+    expiryDate: '2999-01-01',
+    price: 10,
+    currency: 'BDT' as const,
+    paymentStatus: 'paid' as const,
+    status: 'active' as const,
+    createdAt: '2025-01-01',
+  });
+  const result = runDataIntegrityCheck(makeRecords({
+    customers: [{ id: 'customer-1', name: 'Customer', phone: '', email: '', createdAt: '2025-01-01' }],
+    services: [{ id: 'service-1', name: 'Service', category: 'Streaming', defaultDurationDays: 30, status: 'active', plans: ['Basic'] }],
+    serviceAccounts: [{
+      id: 'account-1',
+      serviceId: 'service-1',
+      email: 'service@example.com',
+      password: 'not-read-or-logged',
+      plan: 'Basic',
+      status: 'Available',
+      maxProfiles: 1,
+      profiles: [{
+        id: 'profile-1',
+        accountId: 'account-1',
+        profileName: 'Profile 1',
+        assignedCustomerId: 'customer-1',
+        subscriptionId: 'subscription-1',
+        status: 'Assigned',
+      }],
+    }],
+    subscriptions: [subscription('subscription-1'), subscription('subscription-2')],
+  }));
+
+  assert.ok(result.errors.some(issue =>
+    issue.category === 'RESOURCES'
+    && issue.entityId === 'profile-1'
+    && issue.message.includes('multiple active subscriptions')
+  ));
 });

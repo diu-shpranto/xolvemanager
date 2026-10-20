@@ -27,11 +27,13 @@ import {
   Mail,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { getCustomerOptionLabel } from '../../utils/relationships';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
 import { AccountProfile, ServiceCategory } from '../../types';
 import { normalizeSearchText } from '../../services/globalSearch';
 import { getAccountCapacity, getProfileStatus, isAccountOperational } from '../../utils/resourceManagement';
+import { ProfileEditModal } from './ProfileEditModal';
 
 interface ServiceAccent {
   leftBorder: string;
@@ -258,9 +260,10 @@ function getCategoryIcon(category?: ServiceCategory) {
 
 interface ProfilesViewProps {
   serviceFilterId?: string;
+  onCreateSaleForProfile?: (details: { customerId: string; accountId: string; profileId: string; serviceId: string; planId?: string }) => void;
 }
 
-export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) => {
+export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onCreateSaleForProfile }) => {
   const {
     accounts,
     services,
@@ -269,7 +272,6 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
     assignCustomerToProfile,
     deleteProfile,
     addProfileToAccount,
-    updateProfile,
     t,
     language,
   } = useApp();
@@ -304,23 +306,30 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
       account: typeof accounts[0];
       service?: typeof services[0];
       customer?: typeof customers[0];
+      subscription?: typeof subscriptions[number];
     }> = [];
 
     accounts.forEach(acc => {
       const srv = services.find(s => s.id === acc.serviceId);
       acc.profiles.forEach(prof => {
         const cust = customers.find(c => c.id === prof.assignedCustomerId);
+        const subscription = (prof.subscriptionId
+          ? subscriptions.find(item => item.id === prof.subscriptionId)
+          : undefined) || subscriptions
+          .filter(item => item.accountId === acc.id && item.profileId === prof.id)
+          .sort((left, right) => (right.createdAt || '').localeCompare(left.createdAt || ''))[0];
         list.push({
           profile: prof,
           account: acc,
           service: srv,
           customer: cust,
+          subscription,
         });
       });
     });
 
     return list;
-  }, [accounts, services, customers]);
+  }, [accounts, services, customers, subscriptions]);
 
   // Filter profiles
   const filteredProfiles = useMemo(() => {
@@ -373,20 +382,6 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
     setTargetAccountId('');
   };
 
-  const handleUpdateProfile = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingProfile) return;
-    updateProfile(editingProfile.accountId, editingProfile.profile.id, {
-      profileName: editingProfile.profile.profileName,
-      startDate: editingProfile.profile.startDate || undefined,
-      expiryDate: editingProfile.profile.expiryDate || undefined,
-      notes: editingProfile.profile.notes || undefined,
-      ...(editingProfile.profile.pin ? { pin: editingProfile.profile.pin } : {}),
-    });
-    showToast(t('profileSavedSuccess'), 'success');
-    setEditingProfile(null);
-  };
-
   const handleAssignProfile = (event: React.FormEvent) => {
     event.preventDefault();
     if (!assigningProfile || !assignCustomerId || !assignSubscriptionId) return;
@@ -399,6 +394,23 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not assign customer.', 'error');
     }
+  };
+
+  const handleCreateSaleForProfile = () => {
+    if (!assigningProfile || !assignCustomerId || !onCreateSaleForProfile) return;
+    const account = accounts.find(item => item.id === assigningProfile.accountId);
+    const profile = account?.profiles.find(item => item.id === assigningProfile.profileId);
+    if (!account || !profile) return;
+    setAssigningProfile(null);
+    setAssignCustomerId('');
+    setAssignSubscriptionId('');
+    onCreateSaleForProfile({
+      customerId: assignCustomerId,
+      accountId: account.id,
+      profileId: profile.id,
+      serviceId: account.serviceId,
+      planId: account.planId,
+    });
   };
 
   // KPI Calculations
@@ -423,30 +435,38 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
   const activeCustomers = customers.filter(customer => !customer.isArchived && customer.status !== 'archived');
 
   return (
-    <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="profiles-view section-layout-shell mx-auto max-w-[1600px] space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-6 lg:px-8">
       {/* 1. PAGE HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 dark:border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0 shadow-2xs">
-              <UserCheck className="w-5 h-5 stroke-[2.2]" />
-            </div>
-            <span>{language === 'bn' ? 'প্রোফাইলসমূহ' : 'Profiles'}</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+      <div className="profile-page-header flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <div className="profile-page-heading flex min-w-0 flex-1 items-start gap-3">
+          <div className="profile-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+            <UserCheck className="h-5 w-5 stroke-[2.2]" />
+          </div>
+          <div className="min-w-0">
+            <p className="profile-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em]">
+              {language === 'bn' ? 'প্রোফাইল ব্যবস্থাপনা' : 'Profile management'}
+            </p>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-[30px]">
+              {language === 'bn' ? 'প্রোফাইলসমূহ' : 'Profiles'}
+            </h1>
+            <p className="profile-page-description mt-0.5 max-w-[28rem] text-sm leading-5">
             {language === 'bn'
               ? 'অ্যাকাউন্টের প্রোফাইল ও গ্রাহক বরাদ্দ পরিচালনা করুন।'
-              : 'Manage account profiles and customer assignments.'}
-          </p>
+              : 'Accounts, profiles & assignments.'}
+            </p>
+          </div>
         </div>
 
         <button
+          type="button"
           onClick={() => {
             setTargetAccountId(accountsWithCapacity[0]?.id || '');
             setIsAddModalOpen(true);
           }}
+          aria-label={t('addProfile')}
+          title={t('addProfile')}
           disabled={accountsWithCapacity.length === 0}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-sm hover:shadow-md transition-all cursor-pointer self-start sm:self-auto shrink-0 focus-visible:outline-2 focus-visible:outline-emerald-600"
+          className="profile-primary-action inline-flex h-11 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="w-4 h-4 stroke-[2.5]" />
           <span>{t('addProfile')}</span>
@@ -454,9 +474,9 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
       </div>
 
       {/* 2. REFINED KPI CARDS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="profile-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
         {/* Total Profiles */}
-        <div className="bg-white dark:bg-[#151C28] rounded-xl border border-slate-200/80 dark:border-slate-800 p-3.5 sm:p-4 shadow-2xs">
+        <div className="profile-kpi profile-kpi--total">
           <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
             <span className="text-[11px] font-bold uppercase tracking-wider">
               {language === 'bn' ? 'মোট প্রোফাইল' : 'Total Profiles'}
@@ -476,7 +496,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
         </div>
 
         {/* Assigned Profiles */}
-        <div className="bg-white dark:bg-[#151C28] rounded-xl border border-slate-200/80 dark:border-slate-800 p-3.5 sm:p-4 shadow-2xs">
+        <div className="profile-kpi profile-kpi--assigned">
           <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-1">
             <span className="text-[11px] font-bold uppercase tracking-wider">
               {language === 'bn' ? 'বরাদ্দকৃত প্রোফাইল' : 'Assigned Profiles'}
@@ -496,7 +516,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
         </div>
 
         {/* Available Slots */}
-        <div className="bg-white dark:bg-[#151C28] rounded-xl border border-slate-200/80 dark:border-slate-800 p-3.5 sm:p-4 shadow-2xs">
+        <div className="profile-kpi profile-kpi--available">
           <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 mb-1">
             <span className="text-[11px] font-bold uppercase tracking-wider">
               {language === 'bn' ? 'উপলব্ধ প্রোফাইল' : 'Available Profiles'}
@@ -516,7 +536,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
         </div>
 
         {/* PIN Protected */}
-        <div className="bg-white dark:bg-[#151C28] rounded-xl border border-slate-200/80 dark:border-slate-800 p-3.5 sm:p-4 shadow-2xs">
+        <div className="profile-kpi profile-kpi--protected">
           <div className="flex items-center justify-between text-amber-600 dark:text-amber-400 mb-1">
             <span className="text-[11px] font-bold uppercase tracking-wider">
               {language === 'bn' ? 'পিন সুরক্ষিত' : 'PIN Protected'}
@@ -537,10 +557,10 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
       </div>
 
       {/* 3. SEARCH + FILTER TOOLBAR */}
-      <div className="bg-white dark:bg-[#151C28] p-3 sm:p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+      <div className="profile-toolbar">
+        <div className="profile-toolbar-layout flex flex-col items-stretch gap-2.5">
           {/* Search bar */}
-          <div className="relative flex-1">
+          <div className="profile-search-field relative flex-1">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
             <input
               type="text"
@@ -551,7 +571,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
               }
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full h-10 pl-10 pr-9 bg-slate-50/70 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-all font-mono"
+              className="profile-search-input w-full h-10 pl-10 pr-9 bg-slate-50/70 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:border-violet-500 focus:bg-white dark:focus:bg-slate-900 transition-all"
             />
             {searchQuery && (
               <button
@@ -565,13 +585,13 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
           </div>
 
           {/* Filters */}
-          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <div className="profile-filter-controls flex items-center gap-2 flex-wrap sm:flex-nowrap">
             {/* Service Filter */}
             <div className="relative min-w-[150px] flex-1 sm:flex-initial">
               <select
                 value={selectedServiceId}
                 onChange={e => setSelectedServiceId(e.target.value)}
-                className="w-full h-10 pl-3 pr-8 bg-slate-50/70 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 cursor-pointer appearance-none"
+                className="profile-filter-select w-full h-10 pl-3 pr-8 bg-slate-50/70 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-violet-500 cursor-pointer appearance-none"
               >
                 <option value="all">{language === 'bn' ? 'সকল সার্ভিস' : 'All Services'}</option>
                 {services.map(s => (
@@ -588,7 +608,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
               <select
                 value={selectedStatus}
                 onChange={e => setSelectedStatus(e.target.value)}
-                className="w-full h-10 pl-3 pr-8 bg-slate-50/70 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 cursor-pointer appearance-none"
+                className="profile-filter-select w-full h-10 pl-3 pr-8 bg-slate-50/70 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-violet-500 cursor-pointer appearance-none"
               >
                 <option value="all">{language === 'bn' ? 'সকল স্ট্যাটাস' : 'All Statuses'}</option>
                 <option value="Available">{t('status_available')}</option>
@@ -608,7 +628,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
                   setSelectedServiceId('all');
                   setSelectedStatus('all');
                 }}
-                className="h-10 px-3 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg border border-rose-200/70 dark:border-rose-900/50 transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
+                className="profile-filter-reset h-10 px-3 text-xs font-semibold text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-lg border border-violet-200/70 dark:border-violet-900/50 transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
                 title="Reset filters"
               >
                 <X className="w-3.5 h-3.5" />
@@ -620,9 +640,19 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
       </div>
 
       {/* 4. PROFILES GRID (3 per row on Desktop, 2 on Tablet, 1 on Mobile) */}
+      <section className="profile-directory-heading">
+        <div>
+          <p>{language === 'bn' ? 'প্রোফাইল ইনভেন্টরি' : 'Profile inventory'}</p>
+          <span>{language === 'bn' ? 'অ্যাকাউন্ট ও গ্রাহক বরাদ্দ এক জায়গায়' : 'Accounts and customer assignments in one place'}</span>
+        </div>
+        <span className="profile-result-count" aria-live="polite">
+          {filteredProfiles.length} {filteredProfiles.length === 1 ? 'profile' : 'profiles'}
+        </span>
+      </section>
+
       {filteredProfiles.length === 0 ? (
-        <div className="p-12 text-center bg-white dark:bg-[#151C28] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-          <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 mx-auto mb-3">
+        <div className="profile-empty-state">
+          <div className="profile-empty-icon w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 mx-auto mb-3">
             <UserCheck className="w-6 h-6" />
           </div>
           <h3 className="text-base font-bold text-slate-900 dark:text-white">
@@ -639,15 +669,15 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
               setIsAddModalOpen(true);
             }}
             disabled={accountsWithCapacity.length === 0}
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow-xs transition-all cursor-pointer"
+            className="profile-primary-action profile-empty-action mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>{t('addProfile')}</span>
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-          {filteredProfiles.map(({ profile, account, service, customer }) => {
+        <div className="profile-card-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+          {filteredProfiles.map(({ profile, account, service, customer, subscription }) => {
             const hasPin = Boolean(profile.pin);
             const profileStatus = getProfileStatus(profile, account);
             const isAssigned = profileStatus === 'Assigned';
@@ -686,7 +716,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
             return (
               <div
                 key={profile.id}
-                className={`rounded-2xl border ${accent.border} border-l-[3.5px] sm:border-l-4 ${accent.leftBorder} ${accent.bgTint} shadow-2xs hover:shadow-xs transition-all p-4 sm:p-5 flex flex-col justify-between overflow-hidden`}
+                className={`profile-card rounded-xl border ${accent.border} border-l-[3.5px] sm:border-l-4 ${accent.leftBorder} ${accent.bgTint} shadow-2xs hover:shadow-xs transition-all p-4 sm:p-5 flex flex-col justify-between overflow-hidden`}
               >
                 <div className="space-y-3.5">
                   {/* Card Header: Service Label + Status Badge */}
@@ -814,6 +844,16 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
                         </span>
                       )}
                     </div>
+                    {(subscription?.startDate || subscription?.expiryDate || profile.startDate || profile.expiryDate) && (
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500 dark:text-slate-400">
+                        {(subscription?.startDate || profile.startDate) && (
+                          <span>{language === 'bn' ? 'শুরু:' : 'Started:'} {subscription?.startDate || profile.startDate}</span>
+                        )}
+                        {(subscription?.expiryDate || profile.expiryDate) && (
+                          <span>{language === 'bn' ? 'মেয়াদ শেষ:' : 'Expires:'} {subscription?.expiryDate || profile.expiryDate}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1013,7 +1053,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
               >
                 <option value="">Select customer</option>
                 {activeCustomers.map(customer => (
-                  <option key={customer.id} value={customer.id}>{customer.name}</option>
+                  <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>
                 ))}
               </select>
             </label>
@@ -1027,7 +1067,12 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
               </select>
             </label>
             {activeCustomers.length === 0 && <p className="text-xs text-slate-500">No active customers to assign.</p>}
-            {assignCustomerId && assignableSubscriptions.length === 0 && <p role="status" className="text-xs text-amber-700 dark:text-amber-300">This customer has no compatible unassigned subscription for the selected service and plan.</p>}
+            {assignCustomerId && assignableSubscriptions.length === 0 && (
+              <div role="status" className="space-y-2 text-xs text-amber-700 dark:text-amber-300">
+                <p>This customer has no compatible unassigned subscription for the selected service and plan. Create a sale first to record the subscription, payment, and profile assignment together.</p>
+                {onCreateSaleForProfile && <button type="button" onClick={handleCreateSaleForProfile} className="rounded-lg bg-emerald-600 px-3 py-2 font-semibold text-white hover:bg-emerald-700">Create Sale for this Profile</button>}
+              </div>
+            )}
             <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
               <button
                 type="button"
@@ -1048,80 +1093,13 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId }) =
         </Modal>
       )}
 
-      {/* Edit Profile Modal */}
       {editingProfile && (
-        <Modal
-          isOpen={Boolean(editingProfile)}
+        <ProfileEditModal
+          key={`${editingProfile.accountId}-${editingProfile.profile.id}`}
+          accountId={editingProfile.accountId}
+          profile={editingProfile.profile}
           onClose={() => setEditingProfile(null)}
-          title={`${t('edit')} ${t('nav_profiles')}`}
-          subtitle={
-            language === 'bn'
-              ? 'স্ক্রিন প্রোফাইলের নাম, পিন কোড এবং স্ট্যাটাস সংশোধন করুন।'
-              : 'Modify screen profile slot details, PIN code, and active status.'
-          }
-          maxWidth="md"
-        >
-          <form onSubmit={handleUpdateProfile} className="space-y-4 text-xs">
-            <div>
-              <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                {t('profileName')} <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={editingProfile.profile.profileName}
-                onChange={e =>
-                  setEditingProfile({
-                    ...editingProfile,
-                    profile: { ...editingProfile.profile, profileName: e.target.value },
-                  })
-                }
-                className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                {t('profilePin')} <span className="text-slate-400 font-normal">({language === 'bn' ? 'ঐচ্ছিক' : 'Optional'})</span>
-              </label>
-              <input
-                type="password"
-                value={editingProfile.profile.pin || ''}
-                onChange={e =>
-                  setEditingProfile({
-                    ...editingProfile,
-                    profile: { ...editingProfile.profile, pin: e.target.value },
-                  })
-                }
-                className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
-                placeholder={editingProfile.profile.pin ? '•••• (saved)' : 'Leave blank to keep saved PIN'}
-                maxLength={6}
-              />
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="font-semibold text-slate-700 dark:text-slate-300">Start Date<input type="date" value={editingProfile.profile.startDate || ''} onChange={event => setEditingProfile({ ...editingProfile, profile: { ...editingProfile.profile, startDate: event.target.value } })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-normal dark:border-slate-700 dark:bg-slate-800" /></label>
-              <label className="font-semibold text-slate-700 dark:text-slate-300">Expiry Date<input type="date" value={editingProfile.profile.expiryDate || ''} onChange={event => setEditingProfile({ ...editingProfile, profile: { ...editingProfile.profile, expiryDate: event.target.value } })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-normal dark:border-slate-700 dark:bg-slate-800" /></label>
-            </div>
-            <label className="block font-semibold text-slate-700 dark:text-slate-300">Notes<textarea rows={2} value={editingProfile.profile.notes || ''} onChange={event => setEditingProfile({ ...editingProfile, profile: { ...editingProfile.profile, notes: event.target.value } })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-normal dark:border-slate-700 dark:bg-slate-800" /></label>
-
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => setEditingProfile(null)}
-                className="px-4 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold text-xs transition-colors cursor-pointer"
-              >
-                {t('cancel')}
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold text-xs rounded-lg shadow-sm transition-all cursor-pointer"
-              >
-                {t('save')}
-              </button>
-            </div>
-          </form>
-        </Modal>
+        />
       )}
     </div>
   );

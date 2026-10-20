@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { Download, X } from 'lucide-react';
 import { usePwaState } from '../../hooks/usePwaState';
-import { dismissPwaInstallPrompt, installPwa } from '../../services/pwaService';
+import {
+  dismissPwaInstallPrompt,
+  installPwa,
+  shouldShowIosSafariInstallInstructions,
+} from '../../services/pwaService';
 import { productBrand } from '../../config/brand';
 
 const installStatusLabel = {
@@ -35,6 +39,11 @@ export const InstallAppPrompt: React.FC = () => {
         <p className="mt-1 text-xs text-slate-500">Install {productBrand.name} for a standalone app window. Business data remains stored locally on this device.</p>
         <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Installation status: <strong>{installStatusLabel[installStatus]}</strong></p>
         <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">App version: <strong>{productBrand.version}</strong></p>
+        {installStatus === 'not-available' && shouldShowIosSafariInstallInstructions() && (
+          <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+            On iPhone or iPad, tap Share in Safari, then choose Add to Home Screen.
+          </p>
+        )}
       </div>
       {installStatus === 'installable' && <div className="flex shrink-0 gap-2">
         <button type="button" onClick={() => void handleInstall()} disabled={installing} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">

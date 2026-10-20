@@ -5,6 +5,8 @@ import {
   Search,
   Plus,
   Bell,
+  ChevronLeft,
+  ChevronRight,
   Sun,
   Moon,
   X,
@@ -19,10 +21,11 @@ import {
   UserCheck,
   Wifi,
   WifiOff,
+  Building2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { ProductLogo } from '../common/BrandLockup';
 import { NavSection } from './Sidebar';
+import { ProductLogo } from '../common/BrandLockup';
 import { formatAppDateTime } from '../../utils/dateUtils';
 import type { BusinessNotification } from '../../types';
 import type { QuickAction } from './CommandCenter';
@@ -36,7 +39,10 @@ interface TopNavProps {
   onLogout: () => void;
   onOpenMobile: () => void;
   isMobileNavOpen: boolean;
+  isSidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
   onOpenNewSale: () => void;
+  hideNewSaleAction?: boolean;
   onNavigate: (section: NavSection) => void;
   onNavigateToNotification?: (section: NavSection, entityId?: string) => void;
   onSelectSearchResult: (result: GlobalSearchResult) => void;
@@ -48,7 +54,10 @@ export const TopNav: React.FC<TopNavProps> = ({
   onLogout,
   onOpenMobile,
   isMobileNavOpen,
+  isSidebarCollapsed,
+  onToggleSidebar,
   onOpenNewSale,
+  hideNewSaleAction = false,
   onNavigate,
   onNavigateToNotification,
   onSelectSearchResult,
@@ -71,17 +80,21 @@ export const TopNav: React.FC<TopNavProps> = ({
     markNotificationAsRead,
     markAllNotificationsAsRead,
   } = useApp();
-  const activeBusinessName = currentBusinessName || settings.storeName || 'Not set';
   const pwa = usePwaState();
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showCommandCenter, setShowCommandCenter] = useState(false);
+  const [isConnectionNoticeDismissed, setIsConnectionNoticeDismissed] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const notifPanelRef = useRef<HTMLDivElement>(null);
   const notificationCloseButtonRef = useRef<HTMLButtonElement>(null);
   const notificationWasOpen = useRef(false);
   const userRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setIsConnectionNoticeDismissed(false);
+  }, [pwa.isOnline, pwa.updateAvailable, pwa.updatePending]);
 
   // Close dropdowns on click outside
   useEffect(() => {
@@ -98,7 +111,12 @@ export const TopNav: React.FC<TopNavProps> = ({
       }
     };
     const handleKeyboardShortcut = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      const target = e.target;
+      const isTypingTarget = target instanceof HTMLElement && (
+        target.isContentEditable
+        || target.matches('input, textarea, select')
+      );
+      if (!e.defaultPrevented && !isTypingTarget && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setShowCommandCenter(true);
       }
@@ -184,6 +202,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   };
 
   const userName = currentUser?.name || settings.adminName || 'Demo User';
+  const activeBusinessName = currentBusinessName || settings.storeName || 'Not set';
   const userEmail = currentUser?.email || settings.adminEmail;
   const userInitials = userName
     .split(/\s+/)
@@ -198,75 +217,95 @@ export const TopNav: React.FC<TopNavProps> = ({
 
   return (
     <>
-      <header className="app-topbar sticky top-0 z-30 flex min-h-[60px] items-center justify-between gap-2 border-b border-slate-200/80 bg-white/80 px-2.5 backdrop-blur-md transition-colors dark:border-slate-800/80 dark:bg-[#0E131F]/85 sm:gap-3 sm:px-5 lg:px-7">
-      {/* Mobile navigation and search; desktop global search */}
-      <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2 lg:max-w-[900px]">
+      <header className="app-topbar flex min-h-[60px] min-w-0 items-center justify-between gap-2 border-b border-slate-200/80 bg-white px-2.5 transition-colors dark:border-slate-800/80 dark:bg-[#111126] sm:gap-3 sm:px-5 lg:px-6">
+      <div className="app-topbar-brand-group flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
         <button
           type="button"
           onClick={onOpenMobile}
-          className="app-icon-button -ml-1 lg:hidden"
-          aria-label={language === 'bn' ? 'নেভিগেশন খুলুন' : 'Open navigation'}
+          className="app-icon-button mobile-sidebar-toggle -ml-1 lg:hidden"
+          aria-label={isMobileNavOpen
+            ? (language === 'bn' ? 'নেভিগেশন বন্ধ করুন' : 'Close navigation')
+            : (language === 'bn' ? 'নেভিগেশন খুলুন' : 'Open navigation')}
           aria-controls="primary-navigation"
           aria-expanded={isMobileNavOpen}
         >
-          <Menu className="w-5 h-5" />
+          {isMobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
-
         <button
           type="button"
-          onClick={() => setShowCommandCenter(true)}
-          className="app-icon-button global-search-trigger"
-          aria-label={`${language === 'bn' ? 'সার্চ খুলুন' : 'Open search'} (${searchShortcut})`}
-          title={`${language === 'bn' ? 'সার্চ খুলুন' : 'Open search'} (${searchShortcut})`}
-          aria-expanded={showCommandCenter}
-          aria-haspopup="dialog"
+          onClick={onToggleSidebar}
+          className="app-icon-button app-topbar-collapse hidden rounded-lg md:inline-flex"
+          aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!isSidebarCollapsed}
+          aria-controls="primary-navigation"
+          title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          <Search className="w-4 h-4" />
+          {isSidebarCollapsed
+            ? <ChevronRight className="h-4 w-4" />
+            : <ChevronLeft className="h-4 w-4" />}
         </button>
-
-        <div className="hidden min-w-0 shrink-0 items-center gap-3 lg:flex">
-          <ProductLogo size="compact" showTagline className="max-w-[180px]" />
-          <div className="hidden h-8 w-px bg-slate-200 dark:bg-slate-700 xl:block" aria-hidden="true" />
-          <div className="hidden min-w-0 flex-col leading-tight xl:flex">
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Current Business</span>
-            <span className="max-w-[170px] truncate text-xs font-semibold text-slate-700 dark:text-slate-200" title={activeBusinessName}>
-              {activeBusinessName}
-            </span>
-          </div>
-        </div>
-
-        {/* Global Search Input - Desktop only */}
-        <div className="relative hidden min-w-0 flex-1 xl:block">
-          <div className="relative flex items-center">
-            <Search className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search customers, sales, invoices..."
-              readOnly
-              onClick={() => setShowCommandCenter(true)}
-              onKeyDown={event => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  setShowCommandCenter(true);
-                }
-              }}
-              aria-label="Open global search"
-              aria-haspopup="dialog"
-              className="app-search-input h-9 w-full py-2 pl-9 pr-12 text-xs sm:text-[13px]"
-            />
-            <span className="hidden sm:inline-flex items-center gap-0.5 absolute right-2.5 text-[10px] font-mono text-slate-400 dark:text-slate-500 bg-slate-200/50 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200/60 dark:border-slate-700/60">{searchShortcut}</span>
-          </div>
+        <button
+          type="button"
+          onClick={() => onNavigate('dashboard')}
+          className="app-topbar-brand-link md:hidden"
+          aria-label={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to dashboard'}
+          title={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to dashboard'}
+        >
+          <ProductLogo size="compact" markOnly className="app-topbar-brand" />
+        </button>
+        <div className="app-topbar-business hidden md:flex">
+          <span className="app-topbar-business-divider" aria-hidden="true" />
+          <span className="app-topbar-business-icon" aria-hidden="true">
+            <Building2 className="h-4 w-4" />
+          </span>
+          <span className="app-topbar-business-copy">
+            <span className="app-topbar-business-label">{language === 'bn' ? 'বর্তমান ব্যবসা' : 'Current business'}</span>
+            <strong title={activeBusinessName}>{activeBusinessName}</strong>
+          </span>
         </div>
       </div>
 
-      {/* Utility controls and primary action */}
-      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${pwa.isOnline ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`} role="status" aria-label={pwa.isOnline ? 'Online' : 'Working offline'} title={pwa.isOnline ? 'Online' : 'Working offline'}>
-          <img src="/xolve-icon.png" alt="" aria-hidden="true" className="h-6 w-auto max-w-[100px] object-contain lg:hidden" />
-          {pwa.isOnline ? <Wifi className="hidden h-4 w-4 lg:block" /> : <WifiOff className="hidden h-4 w-4 lg:block" />}
-          <span className="hidden xl:inline">{pwa.isOnline ? 'Online' : 'Offline'}</span>
-          <span className="sr-only">{pwa.isOnline ? 'Online' : 'Offline'}</span>
-        </span>
+      <div className="app-topbar-search-trigger-wrap md:hidden">
+      <button
+        type="button"
+        onClick={() => setShowCommandCenter(true)}
+        className="app-icon-button global-search-trigger lg:hidden"
+        aria-label={`${language === 'bn' ? 'সার্চ খুলুন' : 'Open search'} (${searchShortcut})`}
+        title={`${language === 'bn' ? 'সার্চ খুলুন' : 'Open search'} (${searchShortcut})`}
+        aria-expanded={showCommandCenter}
+        aria-haspopup="dialog"
+      >
+        <Search className="h-[18px] w-[18px] shrink-0" />
+        <span className="mobile-search-label">{language === 'bn' ? 'সার্চ' : 'Search'}</span>
+      </button>
+      </div>
+
+      <div className="app-topbar-search relative hidden min-w-0 md:block">
+        <Search className="app-topbar-search-icon pointer-events-none absolute left-2.5 h-3.5 w-3.5" />
+        <input
+          type="text"
+          placeholder="Search customers, services, sales..."
+          readOnly
+          onClick={() => setShowCommandCenter(true)}
+          onKeyDown={event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              setShowCommandCenter(true);
+            }
+          }}
+          aria-label="Open global search"
+          aria-haspopup="dialog"
+          className="app-search-input h-10 w-full py-2 pl-10 pr-24 text-sm"
+        />
+        <span className="app-topbar-search-shortcut absolute right-2.5 hidden items-center font-mono text-[10px] sm:inline-flex">{searchShortcut}</span>
+      </div>
+
+      <div className="app-topbar-tools">
+        <div className="app-topbar-system-group">
+      <span className={`app-connection-status ${pwa.isOnline ? 'is-online' : 'is-offline'}`} role="status" aria-label={pwa.isOnline ? 'Online' : 'Working offline'} title={pwa.isOnline ? 'Online' : 'Working offline'}>
+        {pwa.isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+        <span>{pwa.isOnline ? 'Online' : 'Offline'}</span>
+      </span>
         {/* Language Switcher [ বাংলা | EN ] - Desktop Only */}
         <div className="hidden lg:flex app-control-group">
           <button
@@ -318,16 +357,22 @@ export const TopNav: React.FC<TopNavProps> = ({
             $ USD
           </button>
         </div>
+        </div>
 
-        {/* Primary Action: + New Sale (Always visible on mobile & desktop) */}
-        <button
-          onClick={onOpenNewSale}
-          className="app-new-sale"
-          aria-label={t('newSale')}
-        >
-          <Plus className="w-4 h-4 stroke-[2.5]" />
-          <span className="hidden sm:inline">{t('newSale')}</span>
-        </button>
+        {/* Primary quick action */}
+        <span className="app-topbar-divider" aria-hidden="true" />
+        <div className="app-topbar-action-group">
+        {!hideNewSaleAction && (
+          <button
+            onClick={onOpenNewSale}
+            className="app-new-sale"
+            aria-label={t('newSale')}
+            title={t('newSale')}
+          >
+            <Plus className="h-5 w-5 stroke-[2.5]" />
+            <span className="app-new-sale__label">{t('newSale')}</span>
+          </button>
+        )}
 
         {/* Notifications */}
         <div ref={notifRef} className="relative">
@@ -348,7 +393,7 @@ export const TopNav: React.FC<TopNavProps> = ({
 
           {showNotifications && createPortal(
             <div
-              className="fixed inset-0 z-[70] flex justify-end bg-slate-950/25 p-0 sm:p-3 lg:p-4"
+              className="app-notification-overlay fixed inset-0 z-[70] flex justify-end bg-slate-950/25 p-0 sm:p-3 lg:p-4"
               onMouseDown={event => {
                 if (event.target === event.currentTarget) setShowNotifications(false);
               }}
@@ -358,7 +403,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                 role="dialog"
                 aria-modal="true"
                 aria-label="Notifications"
-                className="relative flex h-full w-full max-w-full flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 sm:h-auto sm:max-h-[min(82vh,680px)] sm:w-[min(26rem,calc(100vw-2rem))] sm:rounded-2xl"
+                className="app-notification-panel relative flex h-full w-full max-w-full flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 sm:h-auto sm:max-h-[min(82vh,680px)] sm:w-[min(26rem,calc(100vw-2rem))] sm:rounded-2xl"
               >
                 <header className="flex items-center justify-between border-b border-slate-200 px-4 py-4 dark:border-slate-800 sm:px-5">
                   <div>
@@ -376,7 +421,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                       <button
                         type="button"
                         onClick={markAllNotificationsAsRead}
-                        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                        className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-500 dark:text-slate-300 dark:hover:bg-slate-800"
                       >
                         <CheckCheck className="h-3.5 w-3.5" />
                         <span>{language === 'bn' ? 'সব পড়া হয়েছে' : 'Mark all as read'}</span>
@@ -414,7 +459,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                           type="button"
                           key={notification.id}
                           onClick={() => handleNotificationClick(notification)}
-                          className={`flex w-full items-start gap-3 px-4 py-4 text-left transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-emerald-600 dark:hover:bg-slate-800/70 sm:px-5 ${
+                          className={`flex min-h-11 w-full items-start gap-3 px-4 py-4 text-left transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-violet-500 dark:hover:bg-slate-800/70 sm:px-5 ${
                             !notification.read ? 'bg-slate-50/80 dark:bg-slate-800/40' : ''
                           }`}
                         >
@@ -436,9 +481,8 @@ export const TopNav: React.FC<TopNavProps> = ({
                               }`}>
                                 {notification.title}
                               </span>
-                              <span className="sr-only">{notification.priority} priority</span>
                               {!notification.read && (
-                                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-label="Unread" />
+                                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
                               )}
                             </span>
                             <span className="mt-1 block break-words text-xs leading-5 text-slate-600 dark:text-slate-300">
@@ -461,7 +505,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                       onNavigate('notifications');
                       setShowNotifications(false);
                     }}
-                    className="w-full rounded-lg px-3 py-2.5 text-center text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                    className="min-h-11 w-full rounded-lg px-3 py-2.5 text-center text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-500 dark:text-slate-300 dark:hover:bg-slate-800"
                   >
                     {language === 'bn' ? 'সব নোটিফিকেশন দেখুন' : 'View all notifications'}
                   </button>
@@ -498,7 +542,7 @@ export const TopNav: React.FC<TopNavProps> = ({
           </button>
 
           {showUserMenu && (
-            <div className="app-popover absolute right-0 mt-2 w-56 p-2 z-50 animate-in fade-in" role="menu">
+            <div className="app-popover absolute right-0 mt-2 w-56 p-2 z-50" role="menu">
               <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
                 <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
                   {userName}
@@ -532,12 +576,22 @@ export const TopNav: React.FC<TopNavProps> = ({
             </div>
           )}
         </div>
+        </div>
       </div>
     </header>
 
-    {(!pwa.isOnline || pwa.updateAvailable) && <div className={`flex items-center justify-between gap-3 border-b px-4 py-2 text-xs sm:px-6 ${pwa.isOnline ? 'border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200' : 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200'}`} role="status" aria-live="polite">
-      <span>{pwa.updatePending ? 'Update queued until current work is complete.' : !pwa.isOnline ? 'Working offline — local business data remains available on this device.' : 'New version available.'}</span>
+    {(!pwa.isOnline || pwa.updateAvailable) && !isConnectionNoticeDismissed && <div className={`flex items-center justify-between gap-3 border-b px-4 py-2 text-xs sm:px-6 ${pwa.isOnline ? 'border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200' : 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200'}`} role="status" aria-live="polite">
+      <span className="min-w-0 flex-1">{pwa.updatePending ? 'Update queued until current work is complete.' : !pwa.isOnline ? 'Working offline — local business data remains available on this device.' : 'New version available.'}</span>
       {pwa.updateAvailable && !pwa.updatePending && <button type="button" onClick={requestPwaUpdate} className="shrink-0 rounded-lg border border-current/30 px-3 py-1.5 font-semibold hover:bg-black/5 dark:hover:bg-white/5">Update</button>}
+      <button
+        type="button"
+        onClick={() => setIsConnectionNoticeDismissed(true)}
+        aria-label={language === 'bn' ? 'নোটিশ বন্ধ করুন' : 'Dismiss notification'}
+        title={language === 'bn' ? 'নোটিশ বন্ধ করুন' : 'Dismiss notification'}
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-current dark:hover:bg-white/5"
+      >
+        <X className="h-4 w-4" aria-hidden="true" />
+      </button>
     </div>}
 
     {showCommandCenter && (

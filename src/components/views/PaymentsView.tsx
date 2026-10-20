@@ -14,12 +14,23 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
 import { formatAppDate, formatAppDateTime, formatCurrency, getDaysDifference, getTodayDateString } from '../../utils/dateUtils';
-import { getCustomerDisplayName, resolvePaymentCustomer } from '../../utils/relationships';
-import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus, getSalePayments } from '../../utils/saleUtils';
+import { getCustomerDisplayName, getCustomerOptionLabel, resolvePaymentCustomer } from '../../utils/relationships';
+import {
+  getCustomerAdvanceCredit,
+  getPaymentRefundTotals,
+  getSaleDueAmount,
+  getSalePaidAmount,
+  getSalePaymentStatus,
+  getSalePayments,
+  minorUnitsToAmount,
+  parseAmountToMinorUnits,
+  splitPaymentAllocation,
+} from '../../utils/saleUtils';
 import { buildInvoiceSaleDetails } from '../../utils/invoiceUtils';
 import { convertReportCurrency } from '../../utils/reportMetrics';
 import { getDefaultPaymentMethod, getPaymentMethodSummary, normalizePaymentMethods, paymentMethodRequiresTransactionId } from '../../utils/paymentMethods';
@@ -80,11 +91,11 @@ function getAgingDays(referenceDate: string): number {
   return Math.max(0, -getDaysDifference(referenceDate));
 }
 
-function getAgingBucket(days: number): string {
-  if (days <= 7) return '0–7 days';
-  if (days <= 30) return '8–30 days';
-  if (days <= 60) return '31–60 days';
-  return '60+ days';
+function getAgingBucket(days: number, formatNumber: (value: number) => string, dayLabel: string): string {
+  if (days <= 7) return `${formatNumber(0)}–${formatNumber(7)} ${dayLabel}`;
+  if (days <= 30) return `${formatNumber(8)}–${formatNumber(30)} ${dayLabel}`;
+  if (days <= 60) return `${formatNumber(31)}–${formatNumber(60)} ${dayLabel}`;
+  return `${formatNumber(60)}+ ${dayLabel}`;
 }
 
 export const PaymentsView: React.FC<PaymentsViewProps> = ({
@@ -96,6 +107,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   preselectedSaleId,
   onNavigateSection,
 }) => {
+  const { formatCurrency, formatDate: formatAppDate, formatDurationDays, formatNumber } = useAppFormatting();
   const {
     payments,
     reminders,
@@ -108,9 +120,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     activityLogs,
     ensureInvoiceForSale,
     recordSalePayment,
+    recordPaymentRefund,
+    addPayment,
     logActivity,
     language,
     t,
+    currency,
   } = useApp();
   const { showToast } = useToast();
   const { openMessage, canContact } = useWhatsAppCommunication();
@@ -131,12 +146,21 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const [page, setPage] = useState(1);
   const [focusedPaymentIdState, setFocusedPaymentIdState] = useState<string | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [refundFormOpen, setRefundFormOpen] = useState(false);
+  const [refundAmountInput, setRefundAmountInput] = useState('');
+  const [refundDateInput, setRefundDateInput] = useState(getTodayDateString());
+  const [refundNote, setRefundNote] = useState('');
+  const [isRefundSaving, setIsRefundSaving] = useState(false);
+  const refundOperationId = useRef('');
+  const isRefundSavingRef = useRef(false);
   const [selectedInvoiceData, setSelectedInvoiceData] = useState<ReturnType<typeof buildInvoiceSaleDetails> | null>(null);
 
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
+  const [newPaymentMode, setNewPaymentMode] = useState<'sale' | 'advance'>('sale');
   const [saleSearch, setSaleSearch] = useState('');
   const [newSaleId, setNewSaleId] = useState('');
   const [newAmount, setNewAmount] = useState('');
+  const [newAdvanceCurrency, setNewAdvanceCurrency] = useState<AppCurrency>(currency);
   const [newMethod, setNewMethod] = useState<PaymentMethod>('Cash');
   const [newStatus, setNewStatus] = useState<Extract<PaymentStatus, 'paid' | 'pending' | 'failed'>>('paid');
   const [newTransactionId, setNewTransactionId] = useState('');
@@ -147,6 +171,19 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const [duplicatePayment, setDuplicatePayment] = useState<Payment | null>(null);
   const operationId = useRef('');
   const isSavingRef = useRef(false);
+
+  const resetPaymentFilters = () => {
+    setSelectedMethod('all');
+    setSelectedStatus('all');
+    setSelectedDate('all');
+    setCustomStart('');
+    setCustomEnd('');
+    setSelectedService('all');
+    setSelectedCustomer('all');
+    setSelectedAmount('all');
+    setSearchInput('');
+    setSearchQuery('');
+  };
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setSearchQuery(searchInput.trim()), 250);
@@ -172,7 +209,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
   useEffect(() => {
     if (!createRequest) return;
+    setNewPaymentMode('sale');
     setNewSaleId(preselectedSaleId || '');
+    setNewAdvanceCurrency(currency);
     setSaleSearch('');
     setNewAmount('');
     setNewStatus('paid');
@@ -184,7 +223,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     operationId.current = createRecordId('sale-payment-operation');
     setIsAddPaymentOpen(true);
     onCreateRequestHandled?.();
-  }, [createRequest, onCreateRequestHandled, preselectedCustomerId, preselectedSaleId, settings.paymentPreferences?.methods]);
+  }, [createRequest, onCreateRequestHandled, preselectedCustomerId, preselectedSaleId, settings.paymentPreferences?.methods, currency]);
 
   const customersById = useMemo(() => new Map(customers.map(customer => [customer.id, customer])), [customers]);
   const servicesById = useMemo(() => new Map(services.map(service => [service.id, service])), [services]);
@@ -380,6 +419,11 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const newSaleInvoice = newSale ? invoicesBySaleId.get(newSale.id) : undefined;
   const newSalePayments = newSale ? paymentsBySaleId.get(newSale.id) || [] : [];
   const newSaleDue = newSale ? getSaleDueAmount(newSale, newSalePayments) : 0;
+  const parsedNewAmountMinor = parseAmountToMinorUnits(newAmount);
+  const newPaymentAllocation = splitPaymentAllocation(
+    parsedNewAmountMinor === null ? 0 : minorUnitsToAmount(parsedNewAmountMinor),
+    newSaleDue
+  );
   const duplicateTransaction = useMemo(() => {
     const transactionId = newTransactionId.trim().toLocaleLowerCase();
     if (!transactionId || !newSale) return null;
@@ -398,6 +442,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   }, [newSale, newAmount, newPaymentDate, newMethod, payments, paymentSales]);
 
   const openAddPayment = (customerId?: string, saleId?: string) => {
+    setNewPaymentMode('sale');
     setNewSaleId(saleId || '');
     setSaleSearch('');
     setNewAmount('');
@@ -407,6 +452,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     setNewPaymentDate(getTodayDateString());
     setNewNotes('');
     setNewCustomerFilter(customerId || preselectedCustomerId || 'all');
+    setNewAdvanceCurrency(currency);
     setDuplicatePayment(null);
     operationId.current = createRecordId('sale-payment-operation');
     setIsAddPaymentOpen(true);
@@ -414,14 +460,20 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
   const handleRecordPayment = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!newSale || isSaving || isSavingRef.current) return;
-    const amount = Number(newAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      showToast('Payment amount must be greater than zero.', 'error');
+    if (isSaving || isSavingRef.current) return;
+    if (newPaymentMode === 'sale' && !newSale) return;
+    if (newPaymentMode === 'advance' && newCustomerFilter === 'all') {
+      showToast('Choose a customer for this advance payment.', 'error');
       return;
     }
-    if (amount > newSaleDue) {
-      showToast('Payment cannot be greater than the remaining balance.', 'error');
+    if (parsedNewAmountMinor === null || parsedNewAmountMinor <= 0) {
+      showToast('Enter a valid amount with no more than two decimal places.', 'error');
+      return;
+    }
+    const amount = minorUnitsToAmount(parsedNewAmountMinor);
+    if (newPaymentMode === 'sale' && newStatus !== 'paid'
+      && parsedNewAmountMinor > (parseAmountToMinorUnits(newSaleDue) ?? 0)) {
+      showToast('Pending or failed payment attempts cannot exceed the outstanding balance.', 'error');
       return;
     }
     if (!isValidDate(newPaymentDate) || newPaymentDate > getTodayDateString()) {
@@ -449,18 +501,40 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     isSavingRef.current = true;
     setIsSaving(true);
     try {
-      recordSalePayment(newSale.id, {
-        operationId: operationId.current,
-        customerId: newSale.customerId,
-        amount: Math.round(amount * 100) / 100,
-        currency: newSale.currency,
-        paymentMethod: newMethod,
-        transactionId: newTransactionId.trim() || undefined,
-        paymentDate: newPaymentDate,
-        paymentStatus: newStatus,
-        notes: newNotes.trim() || undefined,
-      });
-      showToast('Payment recorded successfully.', 'success');
+      if (newPaymentMode === 'advance') {
+        addPayment({
+          operationId: operationId.current,
+          customerId: newCustomerFilter,
+          amount,
+          currency: newAdvanceCurrency,
+          paymentMethod: newMethod,
+          transactionId: newTransactionId.trim() || undefined,
+          paymentDate: newPaymentDate,
+          paymentStatus: 'paid',
+          allocations: [],
+          advanceCreditAmount: amount,
+          notes: newNotes.trim() || undefined,
+        });
+        showToast('Customer advance recorded. It is stored as credit, not revenue.', 'success');
+      } else if (newSale) {
+        recordSalePayment(newSale.id, {
+          operationId: operationId.current,
+          customerId: newSale.customerId,
+          amount,
+          currency: newSale.currency,
+          paymentMethod: newMethod,
+          transactionId: newTransactionId.trim() || undefined,
+          paymentDate: newPaymentDate,
+          paymentStatus: newStatus,
+          notes: newNotes.trim() || undefined,
+        });
+        showToast(
+          newPaymentAllocation.advanceCreditAmount > 0
+            ? `Payment recorded. ${formatCurrency(newPaymentAllocation.allocatedAmount, newSale.currency)} allocated to the sale; ${formatCurrency(newPaymentAllocation.advanceCreditAmount, newSale.currency)} added as customer advance.`
+            : 'Payment recorded successfully.',
+          'success'
+        );
+      }
       setIsAddPaymentOpen(false);
       setNewCustomerFilter(preselectedCustomerId || 'all');
       setNewSaleId('');
@@ -527,6 +601,43 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const openPaymentDetails = (payment: Payment) => {
     setSelectedPayment(payment);
     setFocusedPaymentIdState(null);
+    setRefundFormOpen(false);
+    setRefundAmountInput('');
+    setRefundDateInput(getTodayDateString());
+    setRefundNote('');
+  };
+
+  const handleRecordRefund = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedPayment || isRefundSaving || isRefundSavingRef.current) return;
+    if (parsedRefundAmountMinor === null || parsedRefundAmountMinor <= 0
+      || minorUnitsToAmount(parsedRefundAmountMinor) > selectedRefundableAmount) {
+      showToast('Enter a valid refund amount within the remaining refundable balance.', 'error');
+      return;
+    }
+    isRefundSavingRef.current = true;
+    setIsRefundSaving(true);
+    if (!refundOperationId.current) refundOperationId.current = createRecordId('payment-refund-operation');
+    try {
+      recordPaymentRefund(
+        selectedPayment.id,
+        minorUnitsToAmount(parsedRefundAmountMinor),
+        refundDateInput,
+        refundNote,
+        refundOperationId.current
+      );
+      showToast('Refund recorded. Sale balances and customer advance were updated.', 'success');
+      setRefundFormOpen(false);
+      setRefundAmountInput('');
+      setRefundDateInput(getTodayDateString());
+      setRefundNote('');
+    } catch (error) {
+      console.error('Payment refund could not be recorded:', error);
+      showToast(error instanceof Error ? error.message : 'Payment refund could not be recorded.', 'error');
+    } finally {
+      isRefundSavingRef.current = false;
+      setIsRefundSaving(false);
+    }
   };
 
   const selectedSaleForPayment = selectedPayment ? paymentSales.get(selectedPayment.id) : undefined;
@@ -562,65 +673,93 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const selectedSaleDue = selectedSaleForPayment
     ? getSaleDueAmount(selectedSaleForPayment, selectedSalePayments)
     : 0;
+  const selectedRefundTotals = selectedPayment
+    ? getPaymentRefundTotals(selectedPayment, payments)
+    : { totalRefunded: 0, saleRefunded: 0, advanceRefunded: 0 };
+  const selectedRefundableAmount = selectedPayment
+    ? Math.max(0, selectedPayment.amount - selectedRefundTotals.totalRefunded)
+    : 0;
+  const parsedRefundAmountMinor = parseAmountToMinorUnits(refundAmountInput);
+  const selectedRefundAdvanceRemaining = selectedPayment
+    ? Math.max(0, (selectedPayment.advanceCreditAmount || 0) - selectedRefundTotals.advanceRefunded)
+    : 0;
+  const refundAdvancePreview = parsedRefundAmountMinor === null
+    ? 0
+    : minorUnitsToAmount(Math.min(parsedRefundAmountMinor, Math.round(selectedRefundAdvanceRemaining * 100)));
   const validCustomRange = selectedDate !== 'custom'
     || (isValidDate(customStart) && isValidDate(customEnd) && customStart <= customEnd);
+  const activeFilterCount = [
+    searchInput.trim().length > 0,
+    selectedMethod !== 'all',
+    selectedStatus !== 'all',
+    selectedDate !== 'all',
+    selectedService !== 'all',
+    selectedCustomer !== 'all',
+    selectedAmount !== 'all',
+  ].filter(Boolean).length;
 
   return (
-    <div className="mx-auto flex max-w-[1600px] flex-col gap-4 px-3 py-4 sm:gap-5 sm:px-6 sm:py-5 xl:px-8">
-      <header className="dashboard-page-header flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-sm font-bold tracking-wide text-violet-700 dark:text-violet-300">Finance</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-3xl">Payments</h1>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Track collections, outstanding balances and payment history.</p>
+    <div className="payments-view customer-list-page mx-auto flex max-w-[1600px] flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-6 xl:px-8">
+      <header className="customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:flex-nowrap sm:gap-4 sm:pb-4">
+        <div className="customer-heading flex min-w-0 flex-1 items-start gap-3">
+          <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11">
+            <CreditCard className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">Finance</p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Payments</h1>
+            <p className="mt-0.5 max-w-[28rem] text-sm leading-5 text-slate-600 dark:text-slate-400">Collections, balances &amp; payment history.</p>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={exportPayments} disabled={!visiblePayments.length} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
-            <ArrowDownToLine className="h-4 w-4" /> Export
+        <div className="customer-header-actions payments-header-actions flex shrink-0 items-center gap-1.5">
+          <button type="button" onClick={exportPayments} disabled={!visiblePayments.length} aria-label="Export payments" title="Export payments" className="payments-header-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-[#151C28] dark:text-slate-200 dark:hover:bg-slate-800">
+            <ArrowDownToLine className="h-4 w-4" /><span>Export</span>
           </button>
-          <button type="button" onClick={() => openAddPayment()} disabled={!activePaymentMethods.length || !outstandingSales.length} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-bold text-white shadow-xs hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">
-            <CreditCard className="h-4 w-4" /> Add Payment
+          <button type="button" onClick={() => { openAddPayment(); setNewPaymentMode('advance'); }} disabled={!activePaymentMethods.length || !customers.length} aria-label="Record advance" title="Record advance" className="payments-header-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-violet-200 bg-white px-3 text-sm font-semibold text-violet-700 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-900 dark:bg-[#151C28] dark:text-violet-300 dark:hover:bg-violet-950/40">
+            <Wallet className="h-4 w-4" /><span>Record Advance</span>
+          </button>
+          <button type="button" onClick={() => openAddPayment()} disabled={!activePaymentMethods.length || !customers.length} aria-label="Add payment" title="Add payment" className="customer-primary-action payments-header-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-violet-700 px-3 text-sm font-semibold text-white hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-50">
+            <CreditCard className="h-4 w-4" /><span>Add Payment</span>
           </button>
         </div>
       </header>
 
-      <section aria-label="Payment summary" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Metric label="Received" value={<CurrencyAmounts amounts={currencyTotals} field="received" />} tone="emerald" />
-        <Metric label="Outstanding Due" value={<CurrencyAmounts amounts={currencyTotals} field="due" />} tone="amber" />
-        <Metric label="Partial" value={String(partialCount)} tone="amber" />
-        <Metric label="Pending" value={String(pendingCount)} />
-        <Metric label="Refunds" value={<CurrencyAmounts amounts={currencyTotals} field="refunded" />} tone="rose" />
-        <Metric label="Failed" value={String(failedCount)} tone="rose" />
+      <section aria-label="Payment summary" className="payment-summary-grid grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <Metric label="Received" value={<CurrencyAmounts amounts={currencyTotals} field="received" />} tone="emerald" icon={Wallet} />
+        <Metric label="Outstanding Due" value={<CurrencyAmounts amounts={currencyTotals} field="due" />} tone="amber" icon={AlertCircle} />
+        <Metric label="Partial" value={String(partialCount)} tone="amber" icon={CreditCard} />
+        <Metric label="Pending" value={String(pendingCount)} tone="slate" icon={Clock3} />
+        <Metric label="Refunds" value={<CurrencyAmounts amounts={currencyTotals} field="refunded" />} tone="rose" icon={ArrowDownToLine} />
+        <Metric label="Failed" value={String(failedCount)} tone="rose" icon={AlertCircle} />
       </section>
 
-      <section className="dashboard-panel rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
+      <section className="payment-followup dashboard-panel rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Payment follow-up</p>
+          <div><p className="text-xs font-bold text-slate-800 dark:text-slate-100">Payment follow-up</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">Jump to payments that need attention</p></div>
           <button
             type="button"
             onClick={() => {
-              setSelectedStatus('all');
-              setSelectedMethod('all');
-              setSelectedDate('all');
-              setSearchInput('');
+              resetPaymentFilters();
               setActiveTab('payments');
             }}
-            className="text-[11px] font-semibold text-slate-500 hover:text-violet-700 dark:text-slate-400 dark:hover:text-violet-300"
+            className="min-h-9 px-2 text-[11px] font-semibold text-slate-500 hover:text-violet-700 dark:text-slate-400 dark:hover:text-violet-300"
           >
             Clear
           </button>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="payment-quick-actions flex flex-wrap gap-1.5">
           {[
-            { label: 'Due now', action: () => { setActiveTab('outstanding'); setSelectedDate('month'); setSelectedStatus('all'); setSelectedMethod('all'); setSearchInput(''); } },
-            { label: 'Partial', action: () => { setActiveTab('payments'); setSelectedStatus('partial'); setSelectedDate('month'); setSelectedMethod('all'); setSearchInput(''); } },
-            { label: 'Pending', action: () => { setActiveTab('payments'); setSelectedStatus('pending'); setSelectedDate('month'); setSelectedMethod('all'); setSearchInput(''); } },
-            { label: 'Today', action: () => { setActiveTab('payments'); setSelectedDate('today'); setSelectedStatus('all'); setSelectedMethod('all'); setSearchInput(''); } },
+            { label: 'Due now', active: activeTab === 'outstanding' && selectedDate === 'month' && selectedStatus === 'all', action: () => { resetPaymentFilters(); setActiveTab('outstanding'); setSelectedDate('month'); } },
+            { label: 'Partial', active: activeTab === 'payments' && selectedStatus === 'partial' && selectedDate === 'month', action: () => { resetPaymentFilters(); setActiveTab('payments'); setSelectedStatus('partial'); setSelectedDate('month'); } },
+            { label: 'Pending', active: activeTab === 'payments' && selectedStatus === 'pending' && selectedDate === 'month', action: () => { resetPaymentFilters(); setActiveTab('payments'); setSelectedStatus('pending'); setSelectedDate('month'); } },
+            { label: 'Today', active: activeTab === 'payments' && selectedDate === 'today' && selectedStatus === 'all', action: () => { resetPaymentFilters(); setActiveTab('payments'); setSelectedDate('today'); } },
           ].map(action => (
             <button
               key={action.label}
               type="button"
+              aria-pressed={action.active}
               onClick={action.action}
-              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-violet-700 dark:hover:bg-violet-950/40 dark:hover:text-violet-300"
+              className={`min-h-9 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${action.active ? 'border-violet-600 bg-violet-600 text-white dark:border-violet-500 dark:bg-violet-500' : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-violet-700 dark:hover:bg-violet-950/40 dark:hover:text-violet-300'}`}
             >
               {action.label}
             </button>
@@ -628,7 +767,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </div>
       </section>
 
-      <section aria-label="Payment methods summary" className="dashboard-panel space-y-3 rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
+      <section aria-label="Payment methods summary" className="payment-method-summary dashboard-panel space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:p-4">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div><h2 className="text-sm font-bold text-slate-900 dark:text-white">Received by method</h2><p className="text-xs text-slate-500">Received and partial payments matching the current filters.</p></div>
           {selectedMethod !== 'all' && <span className="text-xs text-slate-500">Filtered to {selectedMethod}</span>}
@@ -645,30 +784,37 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               </div>)}
             </div>
           </div>)}
-        </div> : <p className="py-4 text-center text-xs text-slate-500">No received payments match the current filters.</p>}
+        </div> : <p className="payment-method-empty rounded-lg border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-slate-700">No received payments match the current filters.</p>}
       </section>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800">
+      <div className="payment-tabs flex w-full items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-[#151C28]">
         <TabButton active={activeTab === 'payments'} onClick={() => setActiveTab('payments')}>Payment history <span>{payments.length}</span></TabButton>
         <TabButton active={activeTab === 'outstanding'} onClick={() => setActiveTab('outstanding')}>Outstanding <span>{outstandingSales.length}</span></TabButton>
       </div>
 
-      <section className="dashboard-panel space-y-3 rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
+      <section className="payment-filter-panel dashboard-panel space-y-3 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:p-3">
         <div className="flex flex-col gap-2 lg:flex-row">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">Search payments and receivables</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Search payment, transaction, customer, invoice, sale, service or plan" className="min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+            <input aria-label="Search payments and receivables" value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Search payments, customers, invoices..." className="payment-search w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
           </label>
           <div className="flex gap-2">
             {activeTab === 'payments' && <select aria-label="Filter by payment status" value={selectedStatus} onChange={event => setSelectedStatus(event.target.value)} className="min-h-10 min-w-28 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white">
               <option value="all">All statuses</option>
               <option value="paid">Paid</option><option value="partial">Partial</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="refunded">Refunded</option>
             </select>}
-            <button type="button" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
-              <Filter className="h-4 w-4" /> Filters
+            <button type="button" aria-expanded={showFilters} onClick={() => setShowFilters(value => !value)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+              <Filter className="h-4 w-4" /> Filters{activeFilterCount > 0 && <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">{activeFilterCount}</span>}
             </button>
           </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            {activeTab === 'payments' ? `${visiblePayments.length} payments` : `${visibleOutstanding.length} outstanding invoices`}
+            {activeFilterCount > 0 ? ` · ${activeFilterCount} active filter${activeFilterCount === 1 ? '' : 's'}` : ''}
+          </span>
+          {(activeFilterCount > 0 || sortOrder !== 'highest') && <button type="button" onClick={() => { resetPaymentFilters(); setSortOrder('highest'); }} className="min-h-8 px-1 text-xs font-semibold text-violet-700 hover:underline dark:text-violet-300">Clear all</button>}
         </div>
         {showFilters && <div className="grid gap-2 border-t border-slate-100 pt-3 dark:border-slate-800 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Method
@@ -688,7 +834,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           </label>
           <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Customer
             <select value={selectedCustomer} onChange={event => setSelectedCustomer(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white">
-              <option value="all">All customers</option>{customers.map(customer => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+              <option value="all">All customers</option>{customers.map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}
             </select>
           </label>
           <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Amount
@@ -705,9 +851,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">From<input type="date" value={customStart} onChange={event => setCustomStart(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
             <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">To<input type="date" value={customEnd} onChange={event => setCustomEnd(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
           </div>}
-          <div className="flex items-end justify-between gap-3 text-xs text-slate-500 sm:col-span-2 lg:col-span-4">
-            <span>{activeTab === 'payments' ? `${visiblePayments.length} payments` : `${visibleOutstanding.length} outstanding invoices`}</span>
-            <button type="button" onClick={() => { setSelectedMethod('all'); setSelectedStatus('all'); setSelectedDate('all'); setCustomStart(''); setCustomEnd(''); setSelectedService('all'); setSelectedCustomer('all'); setSelectedAmount('all'); setSearchInput(''); }} className="font-semibold text-violet-700 hover:underline dark:text-violet-300">Clear filters</button>
+          <div className="flex items-end justify-end gap-3 text-xs text-slate-500 sm:col-span-2 lg:col-span-4">
+            {activeFilterCount > 0 && <button type="button" onClick={resetPaymentFilters} className="font-semibold text-violet-700 hover:underline dark:text-violet-300">Clear filters</button>}
           </div>
           {!validCustomRange && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300 sm:col-span-2 lg:col-span-4">Enter a valid custom date range.</p>}
         </div>}
@@ -715,7 +860,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
       {activeTab === 'payments' ? (
         <section aria-label="Payments table" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="hidden overflow-x-auto lg:block">
+          <div className="data-table-scroll hidden overflow-x-auto lg:block" role="region" aria-label="Payments table; scroll horizontally to view all columns" tabIndex={0}>
             <table className="w-full min-w-[980px] text-left text-xs">
               <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
                 <tr><th className="px-3 py-3">Payment</th><th className="px-3 py-3">Date</th><th className="px-3 py-3">Customer</th><th className="px-3 py-3">Invoice / Sale</th><th className="px-3 py-3">Service</th><th className="px-3 py-3">Method</th><th className="px-3 py-3">Amount</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Transaction</th><th className="px-3 py-3">Actions</th></tr>
@@ -726,10 +871,10 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   const customer = resolvePaymentCustomer(payment, customers, sales, subscriptions);
                   const invoice = payment.invoiceId ? invoices.find(item => item.invoiceId === payment.invoiceId) : undefined;
                   const service = sale ? servicesById.get(sale.serviceId) : undefined;
-                  return <tr id={`payment-${payment.id}`} key={payment.id} className={focusedPaymentIdState === payment.id ? 'bg-emerald-50 dark:bg-emerald-950/30' : ''}>
+                  return <tr id={`payment-${payment.id}`} key={payment.id} className={focusedPaymentIdState === payment.id ? 'bg-violet-50 dark:bg-violet-950/30' : ''}>
                     <td className="px-3 py-3 font-mono font-semibold text-slate-700 dark:text-slate-200">{payment.id}</td>
                     <td className="whitespace-nowrap px-3 py-3">{formatAppDate(payment.paymentDate, language)}</td>
-                    <td className="px-3 py-3"><div className="font-semibold text-slate-900 dark:text-white">{getCustomerDisplayName(customer)}</div><div className="text-[10px] text-slate-500">{customer?.phone || customer?.email || ''}</div></td>
+                    <td className="px-3 py-3"><div className="font-semibold text-slate-900 dark:text-white">{getCustomerDisplayName(customer)}</div><div className="text-[10px] text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
                     <td className="px-3 py-3"><div>{invoice?.invoiceNumber || sale?.invoiceNo || '—'}</div><div className="font-mono text-[10px] text-slate-500">{sale?.id || payment.saleId || 'Unlinked legacy payment'}</div></td>
                     <td className="px-3 py-3">{service?.name || '—'}{sale?.plan && <div className="text-[10px] text-slate-500">{sale.plan}</div>}</td>
                     <td className="px-3 py-3">{methodLabel(payment.paymentMethodName || payment.paymentMethod)}</td>
@@ -747,8 +892,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               const sale = paymentSales.get(payment.id);
               const customer = resolvePaymentCustomer(payment, customers, sales, subscriptions);
               const service = sale ? servicesById.get(sale.serviceId) : undefined;
-              return <article id={`payment-${payment.id}`} key={payment.id} className={`space-y-2 p-4 ${focusedPaymentIdState === payment.id ? 'bg-emerald-50 dark:bg-emerald-950/30' : ''}`}>
-                <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-mono text-xs text-slate-500">{payment.id}</p><h3 className="mt-1 truncate text-sm font-bold text-slate-900 dark:text-white">{getCustomerDisplayName(customer)}</h3><p className="text-xs text-slate-500">{service?.name || 'Payment'}{sale?.plan ? ` · ${sale.plan}` : ''}</p></div><span className="shrink-0 font-mono font-bold">{formatCurrency(payment.amount, payment.currency)}</span></div>
+              return <article id={`payment-${payment.id}`} key={payment.id} className={`space-y-2 p-4 ${focusedPaymentIdState === payment.id ? 'bg-violet-50 dark:bg-violet-950/30' : ''}`}>
+                <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-mono text-xs text-slate-500">{payment.id}</p><h3 className="mt-1 truncate text-sm font-bold text-slate-900 dark:text-white">{getCustomerDisplayName(customer)}</h3><p className="text-xs text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</p><p className="text-xs text-slate-500">{service?.name || 'Payment'}{sale?.plan ? ` · ${sale.plan}` : ''}</p></div><span className="shrink-0 font-mono font-bold">{formatCurrency(payment.amount, payment.currency)}</span></div>
                 <div className="flex flex-wrap items-center justify-between gap-2"><PaymentStatusBadge status={payment.paymentStatus} className={statusStyle(payment.paymentStatus)} icon={statusIcon(payment.paymentStatus)} /><span className="text-xs text-slate-500">{methodLabel(payment.paymentMethodName || payment.paymentMethod)} · {formatAppDate(payment.paymentDate, language)}</span></div>
                 <div className="flex items-center justify-between gap-2"><span className="truncate font-mono text-[11px] text-slate-500">{payment.transactionId || 'No transaction ID'}</span><button type="button" onClick={() => openPaymentDetails(payment)} className="min-h-9 shrink-0 rounded-lg px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/40">View details</button></div>
               </article>;
@@ -758,7 +903,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </section>
       ) : (
         <section aria-label="Outstanding receivables" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="hidden overflow-x-auto lg:block">
+          <div className="data-table-scroll hidden overflow-x-auto lg:block" role="region" aria-label="Outstanding receivables table; scroll horizontally to view all columns" tabIndex={0}>
             <table className="w-full min-w-[850px] text-left text-xs">
               <thead className="bg-violet-50/60 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-violet-950/20 dark:text-slate-400"><tr><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Invoice / Sale</th><th className="px-4 py-3">Service</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Paid</th><th className="px-4 py-3">Due</th><th className="px-4 py-3">Last payment</th><th className="px-4 py-3">Days outstanding</th><th className="px-4 py-3">Actions</th></tr></thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -767,13 +912,13 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   const service = servicesById.get(sale.serviceId);
                   const days = getAgingDays(dueReferenceDate);
                   return <tr key={sale.id}>
-                    <td className="px-4 py-3"><div className="font-semibold">{getCustomerDisplayName(customer)}</div><div className="text-[10px] text-slate-500">{customer?.phone || ''}</div></td>
+                    <td className="px-4 py-3"><div className="font-semibold">{getCustomerDisplayName(customer)}</div><div className="text-[10px] text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
                     <td className="px-4 py-3">{invoice?.invoiceNumber || sale.invoiceNo}<div className="font-mono text-[10px] text-slate-500">{sale.id}</div></td>
                     <td className="px-4 py-3">{service?.name || '—'}<div className="text-[10px] text-slate-500">{sale.plan}</div></td>
                     <td className="px-4 py-3">{formatCurrency(sale.amount, sale.currency)}</td><td className="px-4 py-3">{formatCurrency(paid, sale.currency)}</td>
                     <td className="px-4 py-3 font-bold text-amber-700 dark:text-amber-300">{formatCurrency(due, sale.currency)}</td>
                     <td className="px-4 py-3">{lastPayment ? formatAppDate(lastPayment.paymentDate, language) : '—'}</td>
-                    <td className="px-4 py-3"><span>{days} days</span><div className="text-[10px] text-slate-500">{getAgingBucket(days)}</div></td>
+                    <td className="px-4 py-3"><span>{formatDurationDays(days)}</span><div className="text-[10px] text-slate-500">{getAgingBucket(days, formatNumber, language === 'bn' ? 'দিন' : 'days')}</div></td>
                     <td className="px-4 py-3"><div className="flex gap-1"><button type="button" onClick={() => openAddPayment(sale.customerId, sale.id)} className="rounded-lg bg-violet-600 px-2.5 py-1.5 font-semibold text-white hover:bg-violet-700">Add Payment</button>{customer && canContact(customer.id) && <button type="button" title="Compose payment reminder" aria-label={`Compose payment reminder for ${customer.name}`} onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })} className="rounded-lg p-1.5 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30"><MessageCircle className="h-4 w-4" /></button>}<button type="button" aria-label="View sale" onClick={() => onNavigateSection?.('sales', sale.id)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Eye className="h-4 w-4" /></button><button type="button" aria-label="View invoice" onClick={() => openInvoice(sale)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><FileText className="h-4 w-4" /></button></div></td>
                   </tr>;
                 })}
@@ -786,7 +931,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               const days = getAgingDays(dueReferenceDate);
               return <article key={sale.id} className="space-y-3 p-4">
                 <div className="flex items-start justify-between gap-2"><div><h3 className="font-bold">{getCustomerDisplayName(customer)}</h3><p className="text-xs text-slate-500">{servicesById.get(sale.serviceId)?.name || 'Service'} · {sale.plan}</p><p className="mt-1 text-[11px] text-slate-500">{invoice?.invoiceNumber || sale.invoiceNo}</p></div><p className="font-mono font-bold text-amber-700 dark:text-amber-300">{formatCurrency(due, sale.currency)} due</p></div>
-                <dl className="grid grid-cols-2 gap-2 text-xs"><div><dt className="text-slate-500">Total / Paid</dt><dd>{formatCurrency(sale.amount, sale.currency)} / {formatCurrency(paid, sale.currency)}</dd></div><div><dt className="text-slate-500">Outstanding</dt><dd>{days} days · {getAgingBucket(days)}</dd></div><div><dt className="text-slate-500">Last payment</dt><dd>{lastPayment ? formatAppDate(lastPayment.paymentDate, language) : 'None'}</dd></div></dl>
+                <dl className="grid grid-cols-2 gap-2 text-xs"><div><dt className="text-slate-500">Total / Paid</dt><dd>{formatCurrency(sale.amount, sale.currency)} / {formatCurrency(paid, sale.currency)}</dd></div><div><dt className="text-slate-500">Outstanding</dt><dd>{formatDurationDays(days)} · {getAgingBucket(days, formatNumber, language === 'bn' ? 'দিন' : 'days')}</dd></div><div><dt className="text-slate-500">Last payment</dt><dd>{lastPayment ? formatAppDate(lastPayment.paymentDate, language) : 'None'}</dd></div></dl>
                 <div className="flex flex-wrap gap-2"><button type="button" onClick={() => openAddPayment(sale.customerId, sale.id)} className="min-h-9 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white hover:bg-violet-700">Add Payment</button>{customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-emerald-200 px-3 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp Reminder</button>}<button type="button" onClick={() => onNavigateSection?.('sales', sale.id)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Sale</button><button type="button" onClick={() => openInvoice(sale)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Invoice</button><button type="button" onClick={() => onNavigateSection?.('customers', sale.customerId)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">Customer</button></div>
               </article>;
             })}
@@ -800,22 +945,38 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         <div className="flex gap-2"><button type="button" disabled={currentPage <= 1} onClick={() => setPage(value => Math.max(1, value - 1))} className="min-h-9 rounded-lg border border-slate-200 px-3 font-semibold disabled:opacity-40 dark:border-slate-700">Previous</button><button type="button" disabled={currentPage >= totalPages} onClick={() => setPage(value => Math.min(totalPages, value + 1))} className="min-h-9 rounded-lg border border-slate-200 px-3 font-semibold disabled:opacity-40 dark:border-slate-700">Next</button></div>
       </nav>}
 
-      <Modal isOpen={isAddPaymentOpen} onClose={() => { if (!isSaving) setIsAddPaymentOpen(false); }} title="Record Payment" subtitle="Select an outstanding sale and record a received payment." maxWidth="lg">
+      <Modal isOpen={isAddPaymentOpen} onClose={() => { if (!isSaving) setIsAddPaymentOpen(false); }} title={newPaymentMode === 'advance' ? 'Record Customer Advance' : 'Record Payment'} subtitle={newPaymentMode === 'advance' ? 'Record money received for a customer with no sale allocation.' : 'Allocate a payment to an outstanding sale; any excess becomes customer advance credit.'} maxWidth="lg">
         <form onSubmit={handleRecordPayment} className="space-y-4">
-          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Find sale or invoice
-            <span className="relative mt-1.5 block"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input autoFocus value={saleSearch} onChange={event => setSaleSearch(event.target.value)} placeholder="Invoice, customer, phone, service or sale ID" className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></span>
-          </label>
-          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Outstanding sale *
-            <select required value={newSaleId} onChange={event => { setNewSaleId(event.target.value); setNewAmount(''); setNewTransactionId(''); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white">
-              <option value="">Choose a sale</option>
-              {eligibleSales.map(sale => {
-                const customer = customersById.get(sale.customerId);
-                const due = getSaleDueAmount(sale, paymentsBySaleId.get(sale.id) || []);
-                return <option key={sale.id} value={sale.id}>{getCustomerDisplayName(customer)} · {servicesById.get(sale.serviceId)?.name || 'Service'} · {invoicesBySaleId.get(sale.id)?.invoiceNumber || sale.invoiceNo} · Due {formatCurrency(due, sale.currency)}</option>;
-              })}
-            </select>
-          </label>
-          {!eligibleSales.length && <p role="status" className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">No sales with an outstanding balance were found.</p>}
+          <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800" aria-label="Payment allocation type">
+            <button type="button" aria-pressed={newPaymentMode === 'sale'} onClick={() => { setNewPaymentMode('sale'); setNewSaleId(''); setNewAmount(''); setDuplicatePayment(null); }} className={`min-h-10 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'sale' ? 'bg-white text-violet-700 shadow-xs dark:bg-slate-700 dark:text-violet-200' : 'text-slate-600 dark:text-slate-300'}`}>Pay an outstanding sale</button>
+            <button type="button" aria-pressed={newPaymentMode === 'advance'} onClick={() => { setNewPaymentMode('advance'); setNewSaleId(''); setNewAmount(''); setDuplicatePayment(null); }} className={`min-h-10 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'advance' ? 'bg-white text-violet-700 shadow-xs dark:bg-slate-700 dark:text-violet-200' : 'text-slate-600 dark:text-slate-300'}`}>Customer advance</button>
+          </div>
+          {newPaymentMode === 'sale' ? <>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Find sale or invoice
+              <span className="relative mt-1.5 block"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input autoFocus value={saleSearch} onChange={event => setSaleSearch(event.target.value)} placeholder="Invoice, customer, phone, service or sale ID" className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></span>
+            </label>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Outstanding sale *
+              <select required value={newSaleId} onChange={event => { setNewSaleId(event.target.value); setNewAmount(''); setNewTransactionId(''); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+                <option value="">Choose a sale</option>
+                {eligibleSales.map(sale => {
+                  const customer = customersById.get(sale.customerId);
+                  const due = getSaleDueAmount(sale, paymentsBySaleId.get(sale.id) || []);
+                  return <option key={sale.id} value={sale.id}>{getCustomerDisplayName(customer)} · WA: {customer?.whatsapp || customer?.phone || 'Not set'} · {servicesById.get(sale.serviceId)?.name || 'Service'} · {invoicesBySaleId.get(sale.id)?.invoiceNumber || sale.invoiceNo} · Due {formatCurrency(due, sale.currency)}</option>;
+                })}
+              </select>
+            </label>
+            {!eligibleSales.length && <p role="status" className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">No sales with an outstanding balance were found. Choose Customer advance to record an unallocated receipt.</p>}
+          </> : <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Customer *
+              <select required value={newCustomerFilter === 'all' ? '' : newCustomerFilter} onChange={event => setNewCustomerFilter(event.target.value || 'all')} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+                <option value="">Choose a customer</option>{customers.filter(customer => !customer.isArchived).map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}
+              </select>
+            </label>
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Currency *
+              <select value={newAdvanceCurrency} onChange={event => setNewAdvanceCurrency(event.target.value as AppCurrency)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="BDT">BDT — ৳</option><option value="USD">USD — $</option></select>
+            </label>
+            {newCustomerFilter !== 'all' && <p className="text-xs text-slate-500 sm:col-span-2">Available advance: {formatCurrency(getCustomerAdvanceCredit(payments, newCustomerFilter, newAdvanceCurrency), newAdvanceCurrency)} · This receipt will add new customer credit, not revenue.</p>}
+          </div>}
           {newSale && <section aria-label="Selected sale balance" className="grid gap-3 rounded-xl border border-violet-200 bg-violet-50/60 p-3 text-sm dark:border-violet-900 dark:bg-violet-950/20 sm:grid-cols-2">
             <div><p className="text-xs text-slate-500">Customer</p><p className="font-semibold">{getCustomerDisplayName(newSaleCustomer)}</p><p className="text-xs text-slate-500">{newSaleCustomer?.phone || newSaleCustomer?.email || ''}</p></div>
             <div><p className="text-xs text-slate-500">Sale</p><p className="font-semibold">{newSaleService?.name || 'Service'} · {newSale.plan}</p><p className="text-xs text-slate-500">{newSaleInvoice?.invoiceNumber || newSale.invoiceNo}</p></div>
@@ -823,8 +984,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             <div><p className="text-xs text-slate-500">Remaining balance</p><p className="font-mono font-bold text-amber-800 dark:text-amber-300">{formatCurrency(newSaleDue, newSale.currency)}</p></div>
           </section>}
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Amount *
-              <input required type="number" min="0.01" max={newSaleDue || undefined} step={newSale?.currency === 'USD' ? '0.01' : '1'} value={newAmount} onChange={event => { setNewAmount(event.target.value); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Amount received *
+              <input required type="number" min="0.01" step="0.01" inputMode="decimal" value={newAmount} onChange={event => { setNewAmount(event.target.value); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
             </label>
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Payment date *
               <input required type="date" max={getTodayDateString()} value={newPaymentDate} onChange={event => { setNewPaymentDate(event.target.value); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
@@ -834,30 +995,35 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 {activePaymentMethods.map(method => <option key={method} value={method}>{methodLabel(method)}</option>)}
               </select>
             </label>
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Payment status *
+            {newPaymentMode === 'sale' && <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Payment status *
               <select required value={newStatus} onChange={event => setNewStatus(event.target.value as Extract<PaymentStatus, 'paid' | 'pending' | 'failed'>)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
                 <option value="paid">Received</option><option value="pending">Pending</option><option value="failed">Failed</option>
               </select>
-            </label>
+            </label>}
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Transaction ID {paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId) ? '*' : '(optional)'}
               <input required={paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId)} value={newTransactionId} onChange={event => { setNewTransactionId(event.target.value); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
             </label>
           </div>
+          {newPaymentMode === 'sale' && newStatus === 'paid' && newSale && parsedNewAmountMinor !== null && parsedNewAmountMinor > 0 && <section aria-label="Payment allocation preview" className="rounded-xl border border-violet-200 bg-violet-50/60 p-3 text-sm dark:border-violet-900 dark:bg-violet-950/20">
+            <p className="font-semibold text-slate-900 dark:text-white">Allocation preview</p>
+            <div className="mt-2 flex justify-between gap-3"><span className="text-slate-600 dark:text-slate-300">Applied to outstanding sale</span><span className="font-mono font-semibold">{formatCurrency(newPaymentAllocation.allocatedAmount, newSale.currency)}</span></div>
+            <div className="mt-1 flex justify-between gap-3"><span className="text-slate-600 dark:text-slate-300">Added to customer advance</span><span className="font-mono font-semibold">{formatCurrency(newPaymentAllocation.advanceCreditAmount, newSale.currency)}</span></div>
+          </section>}
           <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Note <span className="font-normal text-slate-500">(optional)</span>
             <input value={newNotes} onChange={event => setNewNotes(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
           </label>
           {duplicateTransaction && <DuplicateWarning payment={duplicateTransaction} onReview={() => { setIsAddPaymentOpen(false); openPaymentDetails(duplicateTransaction); }} />}
           {!duplicateTransaction && possibleDuplicate && <DuplicateWarning payment={possibleDuplicate} onReview={() => { setIsAddPaymentOpen(false); openPaymentDetails(possibleDuplicate); }} />}
           {duplicatePayment && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">A matching payment exists. Review it before recording another payment.</p>}
-          <p className="text-xs text-slate-500">Only active payment methods from Settings are selectable. Received payments are added to the existing sale, invoice and subscription records.</p>
+          <p className="text-xs text-slate-500">Only active payment methods from Settings are selectable. Sale allocations are limited to the outstanding amount; any excess is saved as customer advance credit and is not auto-applied to another sale.</p>
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
             <button type="button" disabled={isSaving} onClick={() => setIsAddPaymentOpen(false)} className="min-h-10 rounded-xl px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800">Cancel</button>
-            <button type="submit" disabled={isSaving || !newSale || !activePaymentMethods.length || Boolean(duplicateTransaction || possibleDuplicate)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">{isSaving ? <><Clock3 className="h-4 w-4 animate-spin" /> Recording payment…</> : 'Record Payment'}</button>
+            <button type="submit" disabled={isSaving || (newPaymentMode === 'sale' ? !newSale : newCustomerFilter === 'all') || parsedNewAmountMinor === null || !activePaymentMethods.length || Boolean(duplicateTransaction || possibleDuplicate)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">{isSaving ? <><Clock3 className="h-4 w-4 animate-spin" /> Recording payment…</> : newPaymentMode === 'advance' ? 'Record Advance' : 'Record Payment'}</button>
           </div>
         </form>
       </Modal>
 
-      <Modal isOpen={Boolean(selectedPayment)} onClose={() => setSelectedPayment(null)} title={selectedPayment?.id || 'Payment Details'} subtitle={selectedPayment ? `${formatAppDate(selectedPayment.paymentDate, language)} · ${selectedPayment.paymentStatus}` : undefined} maxWidth="xl">
+      <Modal isOpen={Boolean(selectedPayment)} onClose={() => { setSelectedPayment(null); setRefundFormOpen(false); }} title={selectedPayment?.id || 'Payment Details'} subtitle={selectedPayment ? `${formatAppDate(selectedPayment.paymentDate, language)} · ${selectedPayment.paymentStatus}` : undefined} maxWidth="xl">
         {selectedPayment && <div className="space-y-5">
           <section className="grid gap-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-700 sm:grid-cols-3">
             <Detail label="Amount" value={formatCurrency(selectedPayment.amount, selectedPayment.currency)} strong />
@@ -868,6 +1034,50 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             <Detail label="Transaction ID" value={selectedPayment.transactionId || 'Not provided'} />
             <Detail label="Payment date" value={formatAppDate(selectedPayment.paymentDate, language)} />
             <Detail label="Created" value={selectedPayment.createdAt ? formatAppDateTime(selectedPayment.createdAt, language) : '—'} />
+          </section>
+          <section aria-label="Payment refunds" className="space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold">Refunds</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Refunded {formatCurrency(selectedRefundTotals.totalRefunded, selectedPayment.currency)} · Remaining refundable {formatCurrency(selectedRefundableAmount, selectedPayment.currency)}
+                </p>
+              </div>
+              {selectedPayment.paymentStatus !== 'failed' && selectedPayment.paymentStatus !== 'refunded' && selectedRefundableAmount > 0 && !refundFormOpen && (
+                <button type="button" onClick={() => {
+                  refundOperationId.current = createRecordId('payment-refund-operation');
+                  setRefundAmountInput('');
+                  setRefundDateInput(getTodayDateString());
+                  setRefundFormOpen(true);
+                }} className="min-h-10 rounded-lg border border-rose-200 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/30">
+                  Record Refund
+                </button>
+              )}
+            </div>
+            {payments.filter(payment => payment.refundOfPaymentId === selectedPayment.id).map(refund => (
+              <div key={refund.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs dark:bg-rose-950/30">
+                <span>{formatAppDate(refund.paymentDate, language)} · {refund.notes || 'Refund recorded'}</span>
+                <strong className="font-mono text-rose-800 dark:text-rose-200">{formatCurrency(refund.amount, refund.currency)}</strong>
+              </div>
+            ))}
+            {refundFormOpen && selectedRefundableAmount > 0 && <form onSubmit={handleRecordRefund} className="grid gap-3 rounded-xl border border-rose-200 bg-rose-50/60 p-3 dark:border-rose-900 dark:bg-rose-950/20 sm:grid-cols-2">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-200">Refund amount *
+                <input required type="number" min="0.01" max={selectedRefundableAmount} step="0.01" inputMode="decimal" value={refundAmountInput} onChange={event => setRefundAmountInput(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+              </label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-200">Refund date *
+                <input required type="date" max={getTodayDateString()} value={refundDateInput} onChange={event => setRefundDateInput(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+              </label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-200 sm:col-span-2">Note <span className="font-normal text-slate-500">(optional)</span>
+                <input value={refundNote} onChange={event => setRefundNote(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+              </label>
+              {parsedRefundAmountMinor !== null && parsedRefundAmountMinor > 0 && <p className="text-xs text-slate-600 dark:text-slate-300 sm:col-span-2">
+                This refund returns {formatCurrency(refundAdvancePreview, selectedPayment.currency)} from customer advance first, then reverses any remaining sale allocation. The refunded amount is not revenue.
+              </p>}
+              <div className="flex justify-end gap-2 sm:col-span-2">
+                <button type="button" disabled={isRefundSaving} onClick={() => setRefundFormOpen(false)} className="min-h-10 rounded-lg px-3 text-xs font-semibold text-slate-600 hover:bg-white disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800">Cancel</button>
+                <button type="submit" disabled={isRefundSaving || parsedRefundAmountMinor === null || parsedRefundAmountMinor <= 0 || minorUnitsToAmount(parsedRefundAmountMinor) > selectedRefundableAmount} className="min-h-10 rounded-lg bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50">{isRefundSaving ? 'Recording…' : 'Confirm Refund'}</button>
+              </div>
+            </form>}
           </section>
           <section className="space-y-2 border-t border-slate-100 pt-4 dark:border-slate-800">
             <h3 className="text-sm font-bold">Customer</h3>
@@ -926,14 +1136,19 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   );
 };
 
-function Metric({ label, value, tone = 'slate' }: { label: string; value: React.ReactNode; tone?: 'slate' | 'emerald' | 'amber' | 'rose' }) {
+function Metric({ label, value, tone = 'slate', icon: Icon }: {
+  label: string;
+  value: React.ReactNode;
+  tone?: 'slate' | 'emerald' | 'amber' | 'rose';
+  icon: React.ComponentType<{ className?: string }>;
+}) {
   const tones = {
-    slate: 'text-slate-900 dark:text-white',
-    emerald: 'text-emerald-700 dark:text-emerald-300',
-    amber: 'text-amber-700 dark:text-amber-300',
-    rose: 'text-rose-700 dark:text-rose-300',
+    slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+    emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+    amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
+    rose: 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
   };
-  return <div className="dashboard-panel dashboard-metric min-w-0 rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-3.5"><p className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">{label}</p><div className={`mt-1 min-w-0 break-words font-mono text-lg font-bold tabular-nums sm:text-xl ${tones[tone]}`}>{value}</div></div>;
+  return <article className="payment-metric min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-[#151C28] sm:p-3.5"><div className="flex min-w-0 items-center gap-2"><span className={`payment-metric-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}><Icon className="h-3.5 w-3.5" /></span><p className="min-w-0 text-[11px] font-semibold leading-tight text-slate-600 dark:text-slate-300">{label}</p></div><div className="payment-metric-value mt-2 min-w-0 break-words font-mono text-lg font-bold tabular-nums text-slate-950 dark:text-white sm:text-xl">{value}</div></article>;
 }
 
 function CurrencyAmounts({ amounts, field }: {
@@ -951,7 +1166,7 @@ function CurrencyAmounts({ amounts, field }: {
 }
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button type="button" onClick={onClick} aria-pressed={active} className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-semibold ${active ? 'border-violet-600 text-violet-700 dark:text-violet-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}>{children}</button>;
+  return <button type="button" onClick={onClick} aria-pressed={active} className={`inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-xs font-semibold transition-colors sm:text-sm ${active ? 'bg-violet-600 text-white shadow-xs dark:bg-violet-500' : 'text-slate-600 hover:bg-violet-50 hover:text-violet-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-violet-300'}`}>{children}</button>;
 }
 
 function PaymentStatusBadge({ status, className, icon }: { status: PaymentStatus; className: string; icon: React.ReactNode }) {
@@ -960,7 +1175,7 @@ function PaymentStatusBadge({ status, className, icon }: { status: PaymentStatus
 }
 
 function EmptyState({ title, description }: { title: string; description: string }) {
-  return <div className="px-4 py-12 text-center"><div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800"><Wallet className="h-5 w-5" /></div><h3 className="mt-3 text-sm font-bold text-slate-900 dark:text-white">{title}</h3><p className="mt-1 text-xs text-slate-500">{description}</p></div>;
+  return <div className="payment-empty-state px-4 py-8 text-center sm:py-10"><div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"><Wallet className="h-5 w-5" /></div><h3 className="mt-3 text-sm font-bold text-slate-900 dark:text-white">{title}</h3><p className="mt-1 text-xs text-slate-500">{description}</p></div>;
 }
 
 function Detail({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {

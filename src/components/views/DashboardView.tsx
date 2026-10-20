@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   Users,
   CreditCard,
@@ -31,6 +31,9 @@ import {
   Check,
   Download,
   Wallet,
+  MoveUp,
+  MoveDown,
+  Settings2,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -51,6 +54,8 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { useApp } from '../../context/AppContext';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
+import { useReducedMotionPreference } from '../../hooks/useReducedMotionPreference';
 import { useToast } from '../common/Toast';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
 import { getExpiryWhatsAppTemplateId } from '../../utils/whatsappService';
@@ -66,7 +71,21 @@ import {
   getDaysDifference,
 } from '../../utils/dateUtils';
 import { NavSection } from '../navigation/Sidebar';
-import { Invoice, Sale, Subscription, PaymentMethod } from '../../types';
+import type {
+  DashboardPanelWidgetId,
+  DashboardSummaryWidgetId,
+  DashboardWidgetId,
+  Invoice,
+  Sale,
+  Subscription,
+  PaymentMethod,
+} from '../../types';
+import {
+  dashboardPanelWidgetIds,
+  dashboardSummaryWidgetIds,
+  defaultDashboardLayout,
+  normalizeDashboardLayout,
+} from '../../utils/dashboardLayout';
 import { getCustomerDisplayName, resolveSaleCustomer } from '../../utils/relationships';
 import { getSalePaidAmount, getSalePaymentStatus } from '../../utils/saleUtils';
 import { getPaymentMethodSummary, normalizePaymentMethods } from '../../utils/paymentMethods';
@@ -121,15 +140,17 @@ function DashboardPanel({
   action,
   children,
   className = '',
+  style,
 }: {
   title: string;
   description?: string;
   action?: { label: string; onClick: () => void };
   children: React.ReactNode;
   className?: string;
+  style?: React.CSSProperties;
 }) {
   return (
-    <section className={`${dashboardPanelClass} space-y-3 ${className}`}>
+    <section style={style} className={`${dashboardPanelClass} min-w-0 space-y-3 ${className}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-bold text-slate-900 dark:text-white">{title}</h2>
@@ -198,6 +219,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onViewSale,
   onNavigateToCustomers,
 }) => {
+  const { formatCurrency, formatDate: formatAppDate, formatNumber, formatDurationDays } = useAppFormatting();
+  const prefersReducedMotion = useReducedMotionPreference();
   const {
     stats,
     subscriptions,
@@ -231,9 +254,92 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     storageWarning,
     demoDataStatus,
     installDemoData,
+    updateSettings,
   } = useApp();
   const { showToast } = useToast();
   const { openMessage, canContact } = useWhatsAppCommunication();
+  const savedDashboardLayout = useMemo(
+    () => normalizeDashboardLayout(settings.dashboardLayout),
+    [settings.dashboardLayout]
+  );
+  const [isCustomizingDashboard, setIsCustomizingDashboard] = useState(false);
+  const [dashboardLayoutDraft, setDashboardLayoutDraft] = useState(() =>
+    normalizeDashboardLayout(settings.dashboardLayout)
+  );
+  useEffect(() => {
+    setDashboardLayoutDraft(normalizeDashboardLayout(settings.dashboardLayout));
+    setIsCustomizingDashboard(false);
+  }, [currentBusiness?.businessId, settings.dashboardLayout]);
+  const activeDashboardLayout = isCustomizingDashboard ? dashboardLayoutDraft : savedDashboardLayout;
+  const summaryWidgetNames: Record<DashboardSummaryWidgetId, string> = language === 'bn'
+    ? {
+      receivedRevenue: 'প্রাপ্ত আয়',
+      customers: 'গ্রাহক',
+      activeSubscriptions: 'সক্রিয় সাবস্ক্রিপশন',
+      expiringSubscriptions: 'শিগগির মেয়াদ শেষ',
+      outstandingPayments: 'বকেয়া পেমেন্ট',
+    }
+    : {
+      receivedRevenue: 'Received revenue',
+      customers: 'Customers',
+      activeSubscriptions: 'Active subscriptions',
+      expiringSubscriptions: 'Expiring soon',
+      outstandingPayments: 'Outstanding payments',
+    };
+  const panelWidgetNames: Record<DashboardPanelWidgetId, string> = language === 'bn'
+    ? {
+      attention: 'করণীয়',
+      revenueTrend: 'আয়ের প্রবণতা চার্ট',
+      subscriptionHealth: 'সাবস্ক্রিপশন অবস্থা চার্ট',
+      recentSales: 'সাম্প্রতিক বিক্রয়',
+    }
+    : {
+      attention: 'Action required',
+      revenueTrend: 'Revenue trend chart',
+      subscriptionHealth: 'Subscription health chart',
+      recentSales: 'Recent sales',
+    };
+  const moveWidget = (group: 'summaryOrder' | 'panelOrder', id: DashboardWidgetId, offset: -1 | 1) => {
+    setDashboardLayoutDraft(previous => {
+      if (group === 'summaryOrder') {
+        const order = [...previous.summaryOrder];
+        const index = order.indexOf(id as DashboardSummaryWidgetId);
+        const targetIndex = index + offset;
+        if (index < 0 || targetIndex < 0 || targetIndex >= order.length) return previous;
+        [order[index], order[targetIndex]] = [order[targetIndex], order[index]];
+        return { ...previous, summaryOrder: order };
+      }
+      const order = [...previous.panelOrder];
+      const index = order.indexOf(id as DashboardPanelWidgetId);
+      const targetIndex = index + offset;
+      if (index < 0 || targetIndex < 0 || targetIndex >= order.length) return previous;
+      [order[index], order[targetIndex]] = [order[targetIndex], order[index]];
+      return { ...previous, panelOrder: order };
+    });
+  };
+  const toggleWidget = (id: DashboardWidgetId, visible: boolean) => {
+    setDashboardLayoutDraft(previous => ({
+      ...previous,
+      hidden: visible
+        ? previous.hidden.filter(widgetId => widgetId !== id)
+        : [...new Set([...previous.hidden, id])],
+    }));
+  };
+  const cancelDashboardCustomization = () => {
+    setDashboardLayoutDraft(savedDashboardLayout);
+    setIsCustomizingDashboard(false);
+  };
+  const saveDashboardCustomization = async () => {
+    const normalized = normalizeDashboardLayout(dashboardLayoutDraft);
+    try {
+      await updateSettings({ dashboardLayout: normalized });
+      setIsCustomizingDashboard(false);
+      showToast(language === 'bn' ? 'ড্যাশবোর্ড লেআউট সংরক্ষিত হয়েছে।' : 'Dashboard layout saved.', 'success');
+    } catch (error) {
+      console.error('Could not save the dashboard layout.', error);
+      showToast(language === 'bn' ? 'ড্যাশবোর্ড লেআউট সংরক্ষণ করা যায়নি।' : 'Could not save the dashboard layout.', 'error');
+    }
+  };
   const reminderToday = getDateInTimeZone(settings.businessProfile?.timeZone);
   const openReminders = useMemo(() => reminders.filter(reminder =>
     reminder.status === 'open' || reminder.status === 'snoozed'
@@ -351,6 +457,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     currentBusiness?.businessId, cashbookRecords, scopedSubscriptions, scopedServices,
     scopedDailyClosings, scopedReconciliations, scopedFinancialPeriods,
   ]);
+  const hasCriticalWarning = financialIntegrityErrors > 0 || Boolean(storageWarning);
+  const panelOrderChanged = dashboardPanelWidgetIds.some((id, index) => activeDashboardLayout.panelOrder[index] !== id);
+  const isPanelVisible = (id: DashboardPanelWidgetId) =>
+    (id === 'attention' && hasCriticalWarning) || !activeDashboardLayout.hidden.includes(id);
+  const getPanelLayoutStyle = (id: DashboardPanelWidgetId): React.CSSProperties | undefined => panelOrderChanged
+    ? { gridArea: 'auto', order: activeDashboardLayout.panelOrder.indexOf(id) }
+    : undefined;
   const reconciliationDifferences = useMemo(() => {
     const latestByAccount = new Map<string, (typeof scopedReconciliations)[number]>();
     [...scopedReconciliations]
@@ -610,8 +723,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     });
     return [...groups.values()].sort((left, right) => left.key.localeCompare(right.key)).map(group => ({
       ...group,
-      label: new Date(`${group.key.length === 7 ? `${group.key}-01` : group.key}T00:00:00`).toLocaleDateString(
-        language === 'bn' ? 'bn-BD' : 'en-US',
+      label: formatAppDate(
+        group.key.length === 7 ? `${group.key}-01` : group.key,
+        language,
         trendGrouping === 'monthly' ? { month: 'short', year: '2-digit' } : { month: 'short', day: 'numeric' }
       ),
     }));
@@ -767,10 +881,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       const year = d.getFullYear();
       const monthNum = d.getMonth() + 1;
       const monthStr = `${year}-${String(monthNum).padStart(2, '0')}`;
-      const monthLabel = d.toLocaleDateString(language === 'bn' ? 'bn-BD' : 'en-US', {
-        month: 'short',
-        year: '2-digit',
-      });
+      const monthLabel = formatAppDate(`${monthStr}-01`, language, { month: 'short', year: '2-digit' });
 
       const startOfMonthStr = `${monthStr}-01`;
       const lastDay = new Date(year, monthNum, 0).getDate();
@@ -950,14 +1061,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     for (let i = 1; i <= 3; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString(language === 'bn' ? 'bn-BD' : 'en-US', {
-        month: 'short',
-        year: '2-digit',
-      });
-      const fullMonthName = d.toLocaleDateString(language === 'bn' ? 'bn-BD' : 'en-US', {
-        month: 'long',
-        year: 'numeric',
-      });
+      const label = formatAppDate(`${key}-01`, language, { month: 'short', year: '2-digit' });
+      const fullMonthName = formatAppDate(`${key}-01`, language, { month: 'long', year: 'numeric' });
 
       targetKeys.push(key);
       months.push({
@@ -1110,14 +1215,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       const year = d.getFullYear();
       const monthNum = d.getMonth() + 1;
       const monthStr = `${year}-${String(monthNum).padStart(2, '0')}`;
-      const monthLabel = d.toLocaleDateString(language === 'bn' ? 'bn-BD' : 'en-US', {
-        month: 'short',
-        year: '2-digit',
-      });
-      const fullMonthLabel = d.toLocaleDateString(language === 'bn' ? 'bn-BD' : 'en-US', {
-        month: 'long',
-        year: 'numeric',
-      });
+      const monthLabel = formatAppDate(`${monthStr}-01`, language, { month: 'short', year: '2-digit' });
+      const fullMonthLabel = formatAppDate(`${monthStr}-01`, language, { month: 'long', year: 'numeric' });
 
       // Filter sales belonging to this month using actual sales state
       const monthSales = sales.filter(s => {
@@ -1314,7 +1413,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     outstanding: 'বকেয়া',
     activeRecords: 'সক্রিয় রেকর্ড',
     currentStatus: 'বর্তমান অবস্থা',
-    withinDays: (days: number) => `${days} দিনের মধ্যে`,
+    withinDays: (days: number) => `${formatNumber(days)} দিনের মধ্যে`,
     dueSelected: 'নির্বাচিত বিক্রয়ের বকেয়া',
     quickActions: 'দ্রুত কাজ',
     commonTasks: 'নিয়মিত কাজ',
@@ -1325,15 +1424,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     actionDescription: 'যে পেমেন্ট ও সাবস্ক্রিপশনে মনোযোগ প্রয়োজন।',
     allClear: 'সবকিছু ঠিক আছে। এখন জরুরি কোনো কাজ নেই।',
     paymentDue: 'পেমেন্ট বাকি',
-    daysOverdue: (days: number) => `${days} দিন বকেয়া`,
+    daysOverdue: (days: number) => `${formatNumber(days)} দিন বকেয়া`,
     dueDate: 'বকেয়ার তারিখ',
-    morePayments: (count: number) => `আরও ${count}টি বকেয়া পেমেন্ট`,
+    morePayments: (count: number) => `আরও ${formatNumber(count)}টি বকেয়া পেমেন্ট`,
     expiresToday: 'আজ মেয়াদ শেষ',
-    daysRemaining: (days: number) => `${days} দিন বাকি`,
-    moreSubscriptions: (count: number) => `আরও ${count}টি সাবস্ক্রিপশন শিগগির শেষ হবে`,
+    daysRemaining: (days: number) => `${formatNumber(days)} দিন বাকি`,
+    moreSubscriptions: (count: number) => `আরও ${formatNumber(count)}টি সাবস্ক্রিপশন শিগগির শেষ হবে`,
     viewSale: 'বিক্রয় দেখুন',
     renew: 'নবায়ন',
-    profileExpiry: (count: number, days: number) => `${count}টি বরাদ্দ প্রোফাইল ${days} দিনের মধ্যে মেয়াদ শেষ হবে`,
+    profileExpiry: (count: number, days: number) => `${formatNumber(count)}টি বরাদ্দ প্রোফাইল ${formatNumber(days)} দিনের মধ্যে মেয়াদ শেষ হবে`,
     integrityIssues: (count: number) => `${count}টি আর্থিক তথ্যের সমস্যা পর্যালোচনা করুন`,
     storageWarning: 'স্টোরেজ সতর্কতা পর্যালোচনা করুন',
     revenueTrend: 'আয়ের প্রবণতা',
@@ -1366,7 +1465,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     outstanding: 'Outstanding',
     activeRecords: 'Active records',
     currentStatus: 'Current status',
-    withinDays: (days: number) => `Within ${days} days`,
+    withinDays: (days: number) => `Within ${formatNumber(days)} days`,
     dueSelected: 'Due across selected sales',
     quickActions: 'Quick actions',
     commonTasks: 'Common tasks',
@@ -1377,15 +1476,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     actionDescription: 'Payments and subscriptions that may need attention.',
     allClear: 'Everything is up to date. No urgent actions right now.',
     paymentDue: 'Payment due',
-    daysOverdue: (days: number) => `${days}d overdue`,
+    daysOverdue: (days: number) => `${formatNumber(days)}d overdue`,
     dueDate: 'Due',
-    morePayments: (count: number) => `${count} more outstanding payments`,
+    morePayments: (count: number) => `${formatNumber(count)} more outstanding payments`,
     expiresToday: 'Expires today',
-    daysRemaining: (days: number) => `${days}d remaining`,
-    moreSubscriptions: (count: number) => `${count} more subscriptions ending soon`,
+    daysRemaining: (days: number) => `${formatNumber(days)}d remaining`,
+    moreSubscriptions: (count: number) => `${formatNumber(count)} more subscriptions ending soon`,
     viewSale: 'View sale',
     renew: 'Renew',
-    profileExpiry: (count: number, days: number) => `${count} assigned ${count === 1 ? 'profile expires' : 'profiles expire'} within ${days} days`,
+    profileExpiry: (count: number, days: number) => `${formatNumber(count)} assigned ${count === 1 ? 'profile expires' : 'profiles expire'} within ${formatNumber(days)} days`,
     integrityIssues: (count: number) => `${count} financial integrity issue${count === 1 ? '' : 's'} to review`,
     storageWarning: 'Storage warning to review',
     revenueTrend: 'Revenue trend',
@@ -1429,7 +1528,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         settings,
         subscriptionById.get(invoice.subscriptionId || sale.subscriptionId || '')
       );
-      const generated = await generateInvoiceJpg(details);
+      const generated = await generateInvoiceJpg(details, language);
       downloadInvoiceJpg(generated.blob, generated.fileName);
       showToast(`Download requested · ${generated.fileName}`, 'info');
     } catch (error) {
@@ -1449,6 +1548,89 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       console.error('Could not install demo data.', error);
       showToast(error instanceof Error ? error.message : 'Could not install demo data.', 'error');
     }
+  };
+  const renderWidgetControls = (
+    group: 'summaryOrder' | 'panelOrder',
+    widgetIds: readonly DashboardWidgetId[]
+  ) => widgetIds.map((id, index) => {
+    const isLocked = id === 'attention' && hasCriticalWarning;
+    const isVisible = isLocked || !activeDashboardLayout.hidden.includes(id);
+    const label = id in summaryWidgetNames
+      ? summaryWidgetNames[id as DashboardSummaryWidgetId]
+      : panelWidgetNames[id as DashboardPanelWidgetId];
+    return (
+      <li key={id} className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white p-2.5 dark:border-slate-700 dark:bg-slate-900">
+        <input
+          type="checkbox"
+          checked={isVisible}
+          disabled={isLocked}
+          onChange={event => toggleWidget(id, event.target.checked)}
+          aria-label={`${isVisible ? 'Show' : 'Hide'} ${label}`}
+          className="h-4 w-4 shrink-0 accent-violet-600"
+        />
+        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-800 dark:text-slate-200">{label}</span>
+        {isLocked && <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300">Required</span>}
+        <span className="shrink-0 text-[10px] tabular-nums text-slate-500">{index + 1}/{widgetIds.length}</span>
+        <button
+          type="button"
+          onClick={() => moveWidget(group, id, -1)}
+          disabled={index === 0}
+          aria-label={`Move ${label} up`}
+          className="rounded-md p-1.5 text-slate-600 hover:bg-violet-50 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-300 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
+        ><MoveUp className="h-4 w-4" aria-hidden="true" /></button>
+        <button
+          type="button"
+          onClick={() => moveWidget(group, id, 1)}
+          disabled={index === widgetIds.length - 1}
+          aria-label={`Move ${label} down`}
+          className="rounded-md p-1.5 text-slate-600 hover:bg-violet-50 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-300 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
+        ><MoveDown className="h-4 w-4" aria-hidden="true" /></button>
+      </li>
+    );
+  });
+  const summaryWidgetContent: Record<DashboardSummaryWidgetId, (order: number) => React.ReactNode> = {
+    receivedRevenue: order => (
+      <button type="button" style={{ order }} onClick={() => onNavigate('payments')} className="dashboard-revenue-kpi">
+        <span className="dashboard-kpi-eyebrow">{dashboardCopy.receivedRevenue}</span>
+        <span className="dashboard-revenue-values">
+          <span><small>BDT</small><strong>{formatCurrency(receivedByCurrency.BDT, 'BDT')}</strong></span>
+          <span><small>USD</small><strong>{formatCurrency(receivedByCurrency.USD, 'USD')}</strong></span>
+        </span>
+        <span className="dashboard-revenue-context">{dashboardCopy.receivedContext} · {reportRangeLabel}</span>
+        <ArrowUpRight className="dashboard-revenue-arrow" aria-hidden="true" />
+      </button>
+    ),
+    customers: order => (
+      <button type="button" style={{ order }} onClick={() => onNavigate('customers')} className="dashboard-kpi dashboard-kpi--customers">
+        <span className="dashboard-kpi-label"><Users aria-hidden="true" /> {dashboardCopy.customers}</span>
+        <strong>{scopedCustomers.filter(customer => !customer.isArchived && customer.status !== 'archived').length}</strong>
+        <span className="dashboard-kpi-note">{dashboardCopy.activeRecords}</span>
+      </button>
+    ),
+    activeSubscriptions: order => (
+      <button type="button" style={{ order }} onClick={() => onNavigate('subscriptions')} className="dashboard-kpi dashboard-kpi--subscriptions">
+        <span className="dashboard-kpi-label"><CreditCard aria-hidden="true" /> {dashboardCopy.activeSubscriptions}</span>
+        <strong>{activeBusinessSubscriptions.length}</strong>
+        <span className="dashboard-kpi-note">{dashboardCopy.currentStatus}</span>
+      </button>
+    ),
+    expiringSubscriptions: order => (
+      <button type="button" style={{ order }} onClick={() => onNavigate('subscriptions')} className={`dashboard-kpi dashboard-kpi--ending${endingSoonSubscriptions.length ? ' is-attention' : ''}`}>
+        <span className="dashboard-kpi-label"><Calendar aria-hidden="true" /> {dashboardCopy.expiringSoon}</span>
+        <strong>{endingSoonSubscriptions.length}</strong>
+        <span className="dashboard-kpi-note">{dashboardCopy.withinDays(settings.reminderNoticeDays)}</span>
+      </button>
+    ),
+    outstandingPayments: order => (
+      <button type="button" style={{ order }} onClick={() => onNavigate('payments')} className={`dashboard-kpi dashboard-kpi--outstanding${salesSummaryByCurrency.BDT.due > 0 || salesSummaryByCurrency.USD.due > 0 ? ' is-attention' : ''}`}>
+        <span className="dashboard-kpi-label"><Wallet aria-hidden="true" /> {dashboardCopy.outstanding}</span>
+        <span className="dashboard-kpi-currencies">
+          <span><small>BDT</small><strong>{formatCurrency(salesSummaryByCurrency.BDT.due, 'BDT')}</strong></span>
+          <span><small>USD</small><strong>{formatCurrency(salesSummaryByCurrency.USD.due, 'USD')}</strong></span>
+        </span>
+        <span className="dashboard-kpi-note">{dashboardCopy.dueSelected}</span>
+      </button>
+    ),
   };
 
   return (
@@ -1485,8 +1667,87 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <option value="custom">Custom Range</option>
             </select>
           </label>
+          <button
+            type="button"
+            aria-expanded={isCustomizingDashboard}
+            aria-controls="dashboard-layout-customizer"
+            onClick={() => {
+              if (isCustomizingDashboard) {
+                cancelDashboardCustomization();
+              } else {
+                setDashboardLayoutDraft(savedDashboardLayout);
+                setIsCustomizingDashboard(true);
+              }
+            }}
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-800 shadow-xs hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-violet-900 dark:bg-slate-900 dark:text-violet-200 dark:hover:bg-violet-950/40"
+          >
+            <Settings2 className="h-4 w-4" aria-hidden="true" />
+            {isCustomizingDashboard
+              ? language === 'bn' ? 'কাস্টমাইজ বন্ধ করুন' : 'Close customization'
+              : language === 'bn' ? 'ড্যাশবোর্ড সাজান' : 'Customize Dashboard'}
+          </button>
         </div>
       </header>
+      {isCustomizingDashboard && (
+        <section
+          id="dashboard-layout-customizer"
+          aria-labelledby="dashboard-layout-title"
+          className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 shadow-xs dark:border-violet-900/70 dark:bg-violet-950/20 sm:p-5"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 id="dashboard-layout-title" className="text-sm font-bold text-slate-900 dark:text-white">
+                {language === 'bn' ? 'ড্যাশবোর্ড লেআউট' : 'Dashboard layout'}
+              </h2>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                {language === 'bn'
+                  ? 'কার্ড দেখান বা লুকান এবং উপরে/নিচে সরানোর বোতাম দিয়ে সাজান। সংরক্ষণ না করলে পরিবর্তন থাকবে না।'
+                  : 'Show or hide cards, then use the move buttons to arrange them. Changes are not kept until saved.'}
+              </p>
+              {hasCriticalWarning && (
+                <p className="mt-2 text-xs font-semibold text-amber-800 dark:text-amber-300">
+                  {language === 'bn'
+                    ? 'গুরুত্বপূর্ণ ডেটা সতর্কতা থাকায় করণীয় কার্ডটি আবশ্যক।'
+                    : 'The Action required card is locked while a data warning needs attention.'}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setDashboardLayoutDraft(normalizeDashboardLayout(defaultDashboardLayout))}
+              className="min-h-9 shrink-0 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-violet-900 dark:bg-slate-900 dark:text-violet-200 dark:hover:bg-violet-950/40"
+            >
+              {language === 'bn' ? 'ডিফল্টে ফিরুন' : 'Reset to Default'}
+            </button>
+          </div>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <fieldset className="min-w-0 space-y-2">
+              <legend className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                {language === 'bn' ? 'সারাংশ কার্ড' : 'Summary cards'}
+              </legend>
+              <ol className="grid gap-2">{renderWidgetControls('summaryOrder', activeDashboardLayout.summaryOrder)}</ol>
+            </fieldset>
+            <fieldset className="min-w-0 space-y-2">
+              <legend className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                {language === 'bn' ? 'ড্যাশবোর্ড প্যানেল' : 'Dashboard panels'}
+              </legend>
+              <ol className="grid gap-2">{renderWidgetControls('panelOrder', activeDashboardLayout.panelOrder)}</ol>
+            </fieldset>
+          </div>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={cancelDashboardCustomization}
+              className="min-h-10 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >{language === 'bn' ? 'বাতিল' : 'Cancel'}</button>
+            <button
+              type="button"
+              onClick={saveDashboardCustomization}
+              className="min-h-10 rounded-lg bg-violet-700 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
+            >{language === 'bn' ? 'লেআউট সংরক্ষণ' : 'Save Layout'}</button>
+          </div>
+        </section>
+      )}
       {datePreset === 'custom' && (
         <div className="grid w-full grid-cols-2 gap-2 sm:ml-auto sm:max-w-md">
           <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Start date<input type="date" aria-label="Dashboard start date" value={customStartDate} onChange={event => setCustomStartDate(event.target.value)} className={`${dashboardSelectClass} mt-0.5 w-full`} /></label>
@@ -1525,41 +1786,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       )}
 
       {dashboardDataLoading ? <div aria-label="Loading dashboard metrics" className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-        {Array.from({ length: 5 }, (_, index) => <div key={index} className="h-28 animate-pulse rounded-2xl bg-slate-200/70 dark:bg-slate-800" />)}
-      </div> : <section aria-label="Business performance" className="dashboard-kpi-grid">
-        <button type="button" onClick={() => onNavigate('payments')} className="dashboard-revenue-kpi">
-          <span className="dashboard-kpi-eyebrow">{dashboardCopy.receivedRevenue}</span>
-          <span className="dashboard-revenue-values">
-            <span><small>BDT</small><strong>{formatCurrency(receivedByCurrency.BDT, 'BDT')}</strong></span>
-            <span><small>USD</small><strong>{formatCurrency(receivedByCurrency.USD, 'USD')}</strong></span>
-          </span>
-          <span className="dashboard-revenue-context">{dashboardCopy.receivedContext} · {reportRangeLabel}</span>
-          <ArrowUpRight className="dashboard-revenue-arrow" aria-hidden="true" />
-        </button>
-        <button type="button" onClick={() => onNavigate('customers')} className="dashboard-kpi dashboard-kpi--customers">
-          <span className="dashboard-kpi-label"><Users aria-hidden="true" /> {dashboardCopy.customers}</span>
-          <strong>{scopedCustomers.filter(customer => !customer.isArchived && customer.status !== 'archived').length}</strong>
-          <span className="dashboard-kpi-note">{dashboardCopy.activeRecords}</span>
-        </button>
-        <button type="button" onClick={() => onNavigate('subscriptions')} className="dashboard-kpi dashboard-kpi--subscriptions">
-          <span className="dashboard-kpi-label"><CreditCard aria-hidden="true" /> {dashboardCopy.activeSubscriptions}</span>
-          <strong>{activeBusinessSubscriptions.length}</strong>
-          <span className="dashboard-kpi-note">{dashboardCopy.currentStatus}</span>
-        </button>
-        <button type="button" onClick={() => onNavigate('subscriptions')} className={`dashboard-kpi dashboard-kpi--ending${endingSoonSubscriptions.length ? ' is-attention' : ''}`}>
-          <span className="dashboard-kpi-label"><Calendar aria-hidden="true" /> {dashboardCopy.expiringSoon}</span>
-          <strong>{endingSoonSubscriptions.length}</strong>
-          <span className="dashboard-kpi-note">{dashboardCopy.withinDays(settings.reminderNoticeDays)}</span>
-        </button>
-        <button type="button" onClick={() => onNavigate('payments')} className={`dashboard-kpi dashboard-kpi--outstanding${salesSummaryByCurrency.BDT.due > 0 || salesSummaryByCurrency.USD.due > 0 ? ' is-attention' : ''}`}>
-          <span className="dashboard-kpi-label"><Wallet aria-hidden="true" /> {dashboardCopy.outstanding}</span>
-          <span className="dashboard-kpi-currencies">
-            <span><small>BDT</small><strong>{formatCurrency(salesSummaryByCurrency.BDT.due, 'BDT')}</strong></span>
-            <span><small>USD</small><strong>{formatCurrency(salesSummaryByCurrency.USD.due, 'USD')}</strong></span>
-          </span>
-          <span className="dashboard-kpi-note">{dashboardCopy.dueSelected}</span>
-        </button>
-      </section>}
+        {activeDashboardLayout.summaryOrder.filter(id => !activeDashboardLayout.hidden.includes(id))
+          .map((id, index) => <div key={id} style={{ order: index }} className="h-28 animate-pulse rounded-2xl bg-slate-200/70 dark:bg-slate-800" />)}
+      </div> : activeDashboardLayout.summaryOrder.some(id => !activeDashboardLayout.hidden.includes(id)) && (
+        <section aria-label="Business performance" className="dashboard-kpi-grid">
+          {activeDashboardLayout.summaryOrder
+            .filter(id => !activeDashboardLayout.hidden.includes(id))
+            .map((id, index) => <React.Fragment key={id}>{summaryWidgetContent[id](index)}</React.Fragment>)}
+        </section>
+      )}
 
       <section className="dashboard-quick-actions" aria-label="Quick actions">
         <div className="dashboard-quick-actions-heading">
@@ -1574,10 +1809,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </section>
 
       <div className="dashboard-core-grid">
-        <DashboardPanel
+        {isPanelVisible('attention') && <DashboardPanel
           title={dashboardCopy.actionRequired}
           description={dashboardCopy.actionDescription}
           className="dashboard-attention-panel"
+          style={getPanelLayoutStyle('attention')}
         >
           {attentionCount === 0 ? (
             <div className="dashboard-attention-empty"><CheckCircle aria-hidden="true" /><span>{dashboardCopy.allClear}</span></div>
@@ -1648,9 +1884,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </button>
             )}
           </div>}
-        </DashboardPanel>
+        </DashboardPanel>}
 
-        <DashboardPanel title={dashboardCopy.revenueTrend} description={`${reportRangeLabel} · ${currency}`} className="dashboard-revenue-panel">
+        {isPanelVisible('revenueTrend') && <DashboardPanel title={dashboardCopy.revenueTrend} description={`${reportRangeLabel} · ${currency}`} className="dashboard-revenue-panel" style={getPanelLayoutStyle('revenueTrend')}>
           <div className="dashboard-chart-controls">
             <span>{dashboardCopy.revenueLegend}</span>
             <select aria-label="Revenue trend grouping" value={trendGrouping} onChange={event => setTrendGrouping(event.target.value as 'daily' | 'weekly' | 'monthly')} className={dashboardSelectClass}>
@@ -1666,22 +1902,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <YAxis tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : '#64748b' }} axisLine={false} tickLine={false} width={62} />
                   <Tooltip formatter={(value, name) => [formatCurrency(Number(value), currency), String(name)]} />
                   <Legend />
-                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#7c3aed" strokeWidth={2.5} fill="#7c3aed" fillOpacity={0.12} />
-                  <Area type="monotone" dataKey="paid" name="Paid" stroke="#059669" strokeWidth={2} fill="#059669" fillOpacity={0.08} />
-                  <Area type="monotone" dataKey="due" name="Due" stroke="#d97706" strokeWidth={2} fill="#d97706" fillOpacity={0.07} />
+                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#7c3aed" strokeWidth={2.5} fill="#7c3aed" fillOpacity={0.12} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                  <Area type="monotone" dataKey="paid" name="Paid" stroke="#059669" strokeWidth={2} fill="#059669" fillOpacity={0.08} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                  <Area type="monotone" dataKey="due" name="Due" stroke="#d97706" strokeWidth={2} fill="#d97706" fillOpacity={0.07} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           )}
-        </DashboardPanel>
+        </DashboardPanel>}
 
-        <DashboardPanel title={dashboardCopy.subscriptionHealth} description={dashboardCopy.subscriptionHealthDescription} className="dashboard-health-panel">
+        {isPanelVisible('subscriptionHealth') && <DashboardPanel title={dashboardCopy.subscriptionHealth} description={dashboardCopy.subscriptionHealthDescription} className="dashboard-health-panel" style={getPanelLayoutStyle('subscriptionHealth')}>
           {subscriptionHealthData.length === 0 ? <p className="dashboard-empty-state">{dashboardCopy.noSubscriptions}</p> : (
             <div className="dashboard-health-layout">
               <div className="dashboard-health-chart" role="img" aria-label={`Subscription status distribution: ${subscriptionHealthData.map(item => `${item.name} ${item.value}`).join(', ')}`}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={subscriptionHealthData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius="66%" outerRadius="92%" paddingAngle={2} stroke="none">
+                    <Pie data={subscriptionHealthData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius="66%" outerRadius="92%" paddingAngle={2} stroke="none" isAnimationActive={!prefersReducedMotion} animationDuration={350}>
                       {subscriptionHealthData.map(item => <Cell key={item.name} fill={item.color} />)}
                     </Pie>
                     <Tooltip />
@@ -1699,10 +1935,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </ul>
             </div>
           )}
-        </DashboardPanel>
-      </div>
+        </DashboardPanel>}
 
-      <DashboardPanel title={dashboardCopy.recentSales} action={{ label: dashboardCopy.viewAllSales, onClick: () => onNavigate('sales') }} className="dashboard-recent-sales-panel">
+      {isPanelVisible('recentSales') && <DashboardPanel title={dashboardCopy.recentSales} action={{ label: dashboardCopy.viewAllSales, onClick: () => onNavigate('sales') }} className="dashboard-recent-sales-panel" style={getPanelLayoutStyle('recentSales')}>
         {centralRecentSales.length === 0 ? <p className="dashboard-empty-state">{dashboardCopy.noSales}</p> : (
           <div className="dashboard-recent-sales">
             {centralRecentSales.slice(0, 5).map(sale => {
@@ -1722,7 +1957,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             })}
           </div>
         )}
-      </DashboardPanel>
+      </DashboardPanel>}
+      </div>
 
       <details className="dashboard-more-reports">
         <summary><span>{dashboardCopy.moreReports}</span><span>{dashboardCopy.moreReportsDescription}</span></summary>
@@ -1806,9 +2042,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <YAxis tick={{ fontSize: 10 }} width={58} />
                   <Tooltip formatter={(value, name) => [formatCurrency(Number(value), currency), String(name)]} />
                   <Legend />
-                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#7c3aed" fill="#ede9fe" />
-                  <Area type="monotone" dataKey="paid" name="Paid" stroke="#2563eb" fill="#dbeafe" />
-                  <Area type="monotone" dataKey="due" name="Due" stroke="#d97706" fill="#fef3c7" />
+                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#7c3aed" fill="#ede9fe" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                  <Area type="monotone" dataKey="paid" name="Paid" stroke="#2563eb" fill="#dbeafe" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                  <Area type="monotone" dataKey="due" name="Due" stroke="#d97706" fill="#fef3c7" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -1821,8 +2057,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={cashFlowTrend.map(point => ({
                 ...point,
-                label: new Date(`${point.key.length === 7 ? `${point.key}-01` : point.key}T00:00:00`).toLocaleDateString(
-                  language === 'bn' ? 'bn-BD' : 'en-US',
+                label: formatAppDate(
+                  point.key.length === 7 ? `${point.key}-01` : point.key,
+                  language,
                   trendGrouping === 'monthly' ? { month: 'short', year: '2-digit' } : { month: 'short', day: 'numeric' }
                 ),
               }))} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
@@ -1831,9 +2068,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <YAxis tick={{ fontSize: 10 }} width={58} />
                 <Tooltip formatter={(value, name) => [formatCurrency(Number(value), currency), String(name)]} />
                 <Legend />
-                <Bar dataKey="moneyIn" name="Money In" fill="#059669" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="moneyOut" name="Money Out" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                <Line type="monotone" dataKey="netCashFlow" name="Net Cash Flow" stroke="#2563eb" strokeWidth={2} dot={false} />
+                <Bar dataKey="moneyIn" name="Money In" fill="#059669" radius={[4, 4, 0, 0]} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                <Bar dataKey="moneyOut" name="Money Out" fill="#f59e0b" radius={[4, 4, 0, 0]} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                <Line type="monotone" dataKey="netCashFlow" name="Net Cash Flow" stroke="#2563eb" strokeWidth={2} dot={false} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -1903,7 +2140,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               const customer = customerById.get(subscription.customerId);
               const service = serviceById.get(subscription.serviceId);
               const days = Math.max(0, daysUntilExpiry(subscription));
-              return <div key={subscription.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-100 p-3 text-xs dark:border-amber-900/50"><div><button type="button" onClick={() => onNavigate('subscriptions', subscription.id)} className="font-semibold text-slate-800 hover:text-emerald-700 dark:text-slate-100">{getCustomerDisplayName(customer)}</button><p className="mt-0.5 text-slate-500">{service?.name || 'Service unavailable'} · {subscription.plan}</p></div><div className="text-right"><p>{formatAppDate(subscription.expiryDate, language)}</p><p className="mt-0.5 text-amber-700 dark:text-amber-300">{days} days left</p></div>{canContact(subscription.customerId) && <button type="button" onClick={() => openMessage({ customerId: subscription.customerId, subscriptionId: subscription.id, templateId: getExpiryWhatsAppTemplateId(getDaysDifference(subscription.expiryDate)) })} aria-label={`WhatsApp renewal reminder to ${customer?.name || 'customer'}`} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-2.5 py-1.5 font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</button>}<button type="button" onClick={() => onRenewSubscription(subscription)} className="rounded-lg bg-emerald-600 px-2.5 py-1.5 font-semibold text-white">Renew</button></div>;
+              return <div key={subscription.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-100 p-3 text-xs dark:border-amber-900/50"><div><button type="button" onClick={() => onNavigate('subscriptions', subscription.id)} className="font-semibold text-slate-800 hover:text-emerald-700 dark:text-slate-100">{getCustomerDisplayName(customer)}</button><p className="mt-0.5 text-slate-500">{service?.name || 'Service unavailable'} · {subscription.plan}</p></div><div className="text-right"><p>{formatAppDate(subscription.expiryDate, language)}</p><p className="mt-0.5 text-amber-700 dark:text-amber-300">{language === 'bn' ? `${formatDurationDays(days)} বাকি` : `${formatDurationDays(days)} left`}</p></div>{canContact(subscription.customerId) && <button type="button" onClick={() => openMessage({ customerId: subscription.customerId, subscriptionId: subscription.id, templateId: getExpiryWhatsAppTemplateId(getDaysDifference(subscription.expiryDate)) })} aria-label={`WhatsApp renewal reminder to ${customer?.name || 'customer'}`} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-2.5 py-1.5 font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</button>}<button type="button" onClick={() => onRenewSubscription(subscription)} className="rounded-lg bg-emerald-600 px-2.5 py-1.5 font-semibold text-white">Renew</button></div>;
             })}</div>
           )}
         </DashboardPanel>
@@ -2359,6 +2596,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       radius={[4, 4, 0, 0]}
                       maxBarSize={32}
                       opacity={0.85}
+                      isAnimationActive={!prefersReducedMotion}
+                      animationDuration={350}
                     />
                   )}
 
@@ -2372,6 +2611,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       fillOpacity={1}
                       fill="url(#mrrGradient)"
                       activeDot={{ r: 5, fill: '#059669', strokeWidth: 2, stroke: '#ffffff' }}
+                      isAnimationActive={!prefersReducedMotion}
+                      animationDuration={350}
                     />
                   )}
                 </ComposedChart>
@@ -2505,6 +2746,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         paddingAngle={3}
                         onMouseEnter={(_, index) => setActivePieIndex(index)}
                         onMouseLeave={() => setActivePieIndex(null)}
+                        isAnimationActive={!prefersReducedMotion}
+                        animationDuration={350}
                       >
                         {distributionData.map((entry, index) => (
                           <Cell
@@ -3120,6 +3363,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   dot={{ r: 4, stroke: '#7027d9', strokeWidth: 2, fill: '#ffffff' }}
                   activeDot={{ r: 7, stroke: '#7027d9', strokeWidth: 2, fill: '#7027d9' }}
                   connectNulls={false}
+                  isAnimationActive={!prefersReducedMotion}
+                  animationDuration={350}
                 />
               )}
 
@@ -3136,6 +3381,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   dot={{ r: 4, stroke: '#8b5cf6', strokeWidth: 2, fill: '#ffffff' }}
                   activeDot={{ r: 7, stroke: '#8b5cf6', strokeWidth: 2, fill: '#8b5cf6' }}
                   connectNulls={true}
+                  isAnimationActive={!prefersReducedMotion}
+                  animationDuration={350}
                 />
               )}
 
@@ -3151,6 +3398,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   strokeDasharray={revenueViewMode === 'both' ? '5 5' : undefined}
                   dot={{ r: 3.5, stroke: '#6366f1', strokeWidth: 1.5, fill: '#ffffff' }}
                   activeDot={{ r: 6, stroke: '#6366f1', strokeWidth: 2, fill: '#6366f1' }}
+                  isAnimationActive={!prefersReducedMotion}
+                  animationDuration={350}
                 />
               )}
 
@@ -3165,6 +3414,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   strokeWidth={3}
                   dot={{ r: 4, stroke: '#0ea5e9', strokeWidth: 2, fill: '#ffffff' }}
                   activeDot={{ r: 7, stroke: '#0ea5e9', strokeWidth: 2, fill: '#0ea5e9' }}
+                  isAnimationActive={!prefersReducedMotion}
+                  animationDuration={350}
                 />
               )}
             </LineChart>

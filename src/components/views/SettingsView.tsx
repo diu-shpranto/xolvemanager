@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import NextImage from 'next/image';
 import {
   Bell, BellRing, Building2, Check, CreditCard, Database, FileText, Image, Palette,
   Save, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, Download,
@@ -6,6 +7,7 @@ import {
   Eye, Sparkles,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { AppSettings, Customer, FinancialCategory, WhatsAppTemplateId } from '../../types';
 import type { NotificationCategory } from '../../types';
@@ -13,7 +15,10 @@ import { CsvImportUtility } from '../settings/CsvImportUtility';
 import { initialSettings } from '../../data/mockData';
 import { productBrand } from '../../config/brand';
 import { ProductLogo } from '../common/BrandLockup';
+import { Modal } from '../common/Modal';
+import { AboutExperience } from './AboutExperience';
 import { InstallAppPrompt } from '../common/InstallAppPrompt';
+import type { NavSection } from '../navigation/Sidebar';
 import { createPaymentMethodId, normalizePaymentMethods } from '../../utils/paymentMethods';
 import {
   BackupDocument, createVersionedBackup, exportCustomersCSV, exportInvoicesCSV,
@@ -29,6 +34,7 @@ import { getLastDataIntegrityResult } from '../../utils/dataIntegrity';
 import { usePwaState } from '../../hooks/usePwaState';
 import { getDemoDataPreview } from '../../services/demoDataService';
 import { inspectStorageDurability, requestStoragePersistence, type StorageDurabilityInfo } from '../../services/storageDurability';
+import { formatAppDateTime } from '../../utils/dateUtils';
 
 type SettingsSection =
   | 'business' | 'branding' | 'invoice' | 'payments' | 'subscriptions'
@@ -66,9 +72,10 @@ const sections: { id: SettingsSection; label: string; icon: React.FC<{ className
 interface SettingsViewProps {
   initialSection?: 'data' | 'messages';
   onOpenIntegrity: () => void;
+  onNavigate: (section: NavSection) => void;
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOpenIntegrity }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOpenIntegrity, onNavigate }) => {
   const {
     settings, updateSettings, currentBusinessName, storageWarning,
     exportDataJSON, importDataJSON, clearBusinessData, customers, services,
@@ -80,6 +87,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
     demoDataStatus, demoDataCounts, installDemoData, removeDemoData,
     isDark, toggleDarkMode, currency, setCurrency, language, setLanguage,
   } = useApp();
+  const { formatDateTime, formatDurationDays } = useAppFormatting();
   const { installStatus } = usePwaState();
   const { showToast } = useToast();
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection ?? 'business');
@@ -100,6 +108,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [selectedWhatsAppTemplateId, setSelectedWhatsAppTemplateId] = useState<WhatsAppTemplateId>('renewal_reminder');
   const [demoDialog, setDemoDialog] = useState<'preview' | 'remove' | null>(null);
+  const [demoActionError, setDemoActionError] = useState<string | null>(null);
   const [isDemoDataBusy, setIsDemoDataBusy] = useState(false);
 
   useEffect(() => setDraft(settings), [settings]);
@@ -143,10 +152,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
       const granted = await requestStoragePersistence();
       const info = await inspectStorageDurability();
       setStorageDurability(info);
-      showToast(granted
-        ? 'This browser will protect XolveManager data from automatic storage cleanup.'
-        : 'The browser did not grant persistent storage. Keep regular backups.',
-      granted ? 'success' : 'error');
+      if (granted) {
+        setStoragePersistenceError(null);
+        showToast('This browser will protect XolveManager data from automatic storage cleanup.', 'success');
+      } else {
+        setStoragePersistenceError('The browser did not grant persistent storage. Keep regular backups.');
+      }
     } catch (error) {
       console.error('Could not request persistent browser storage.', error);
       const message = error instanceof Error
@@ -180,11 +191,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   };
 
   const updateDraft = (updates: Partial<AppSettings>) => setDraft(previous => ({ ...previous, ...updates }));
+  const openDemoDialog = (dialog: 'preview' | 'remove') => {
+    setDemoActionError(null);
+    setDemoDialog(dialog);
+  };
+  const closeDemoDialog = () => {
+    setDemoActionError(null);
+    setDemoDialog(null);
+  };
   const addDemoRecords = () => {
     setIsDemoDataBusy(true);
+    setDemoActionError(null);
     try {
       const counts = installDemoData();
-      setDemoDialog(null);
+      closeDemoDialog();
       showToast(`Demo data added: ${counts.customers} customers, ${counts.sales} sales, and ${counts.expenses} expenses.`, 'success');
     } catch (error) {
       console.error('Could not install demo data.', error);
@@ -195,13 +215,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   };
   const removeDemoRecords = () => {
     setIsDemoDataBusy(true);
+    setDemoActionError(null);
     try {
       removeDemoData();
-      setDemoDialog(null);
+      closeDemoDialog();
       showToast('Demo data was removed. Your other business data was preserved.', 'success');
     } catch (error) {
       console.error('Could not remove demo data.', error);
-      showToast(error instanceof Error ? error.message : 'Could not remove demo data.', 'error');
+      setDemoActionError(error instanceof Error ? error.message : 'Could not remove demo data.');
     } finally {
       setIsDemoDataBusy(false);
     }
@@ -560,10 +581,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
           <section className={cardClass}>
             <SectionHeading title="Product branding" description={`${productBrand.name} is the software platform. Product identity is centrally configured and does not change when your business details change.`} />
             <div className="flex flex-wrap items-center justify-between gap-5 rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/50">
-              <ProductLogo size="large" showTagline />
+              <ProductLogo size="large" tone={isDark ? 'inverse' : 'default'} showTagline />
               <div className="flex items-center gap-4">
                 <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-                  <img src={productBrand.faviconUrl} alt={`${productBrand.name} favicon`} className="h-10 w-10" />
+                  <NextImage src={productBrand.faviconUrl} alt={`${productBrand.name} favicon`} width={32} height={32} className="h-10 w-10" />
                 </div>
                 <div>
                   <div className={labelClass}>Favicon</div>
@@ -720,7 +741,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
       case 'subscriptions':
         return <div className={cardClass}>
           <SectionHeading title="Subscription defaults" description="Defaults are used for new subscriptions only. Existing subscription dates and settings stay unchanged." />
-          <Field label="Default duration"><select className={inputClass} value={draft.subscriptionDefaults?.durationDays ?? 30} onChange={e => updateDraft({ subscriptionDefaults: { ...draft.subscriptionDefaults, durationDays: Number(e.target.value) } })}>{dayOptions.map(days => <option key={days} value={days}>{days} days</option>)}</select></Field>
+          <Field label="Default duration"><select className={inputClass} value={draft.subscriptionDefaults?.durationDays ?? 30} onChange={e => updateDraft({ subscriptionDefaults: { ...draft.subscriptionDefaults, durationDays: Number(e.target.value) } })}>{dayOptions.map(days => <option key={days} value={days}>{formatDurationDays(days)}</option>)}</select></Field>
           <div className="mt-4"><CheckSetting label="Allow early renewal" checked={draft.subscriptionDefaults?.allowEarlyRenewal ?? true} onChange={checked => updateDraft({ subscriptionDefaults: { ...draft.subscriptionDefaults, allowEarlyRenewal: checked } })} /></div>
           <div className="mt-5"><Field label="Renewal notice threshold (days)"><input className={inputClass} type="number" min={0} max={90} value={draft.reminderNoticeDays || 3} onChange={e => updateDraft({ reminderNoticeDays: Math.max(0, Math.min(90, Number(e.target.value))) })} /></Field></div>
         </div>;
@@ -813,7 +834,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
       case 'services':
         return <div className={cardClass}>
           <SectionHeading title="Service defaults" description="New services can use this default duration. Existing services and plans are never overwritten." />
-          <Field label="Default plan duration"><select className={inputClass} value={draft.serviceDefaults?.durationDays ?? 30} onChange={e => updateDraft({ serviceDefaults: { durationDays: Number(e.target.value) } })}>{dayOptions.map(days => <option key={days} value={days}>{days} days</option>)}</select></Field>
+          <Field label="Default plan duration"><select className={inputClass} value={draft.serviceDefaults?.durationDays ?? 30} onChange={e => updateDraft({ serviceDefaults: { durationDays: Number(e.target.value) } })}>{dayOptions.map(days => <option key={days} value={days}>{formatDurationDays(days)}</option>)}</select></Field>
         </div>;
       case 'appearance':
         return <div className={cardClass}>
@@ -876,10 +897,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
               <AboutItem label="Storage mode" value="Local browser storage" />
               <AboutItem label="Approximate storage usage" value={prettyBytes} />
               <AboutItem label="Browser storage quota" value={prettyQuota} />
-              <AboutItem label="Last backup" value={formatMetadataDate(backupMetadata.lastBackupAt)} />
-              <AboutItem label="Last restore" value={formatMetadataDate(backupMetadata.lastRestoreAt)} />
-              <AboutItem label="Last import" value={formatMetadataDate(backupMetadata.lastImportAt)} />
-              <AboutItem label="Last export" value={formatMetadataDate(backupMetadata.lastExportAt)} />
+              <AboutItem label="Last backup" value={formatMetadataDate(backupMetadata.lastBackupAt, language)} />
+              <AboutItem label="Last restore" value={formatMetadataDate(backupMetadata.lastRestoreAt, language)} />
+              <AboutItem label="Last import" value={formatMetadataDate(backupMetadata.lastImportAt, language)} />
+              <AboutItem label="Last export" value={formatMetadataDate(backupMetadata.lastExportAt, language)} />
             </div>
             <div className="mb-4 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -949,13 +970,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
-                <button type="button" onClick={() => setDemoDialog('preview')} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+                <button type="button" onClick={() => openDemoDialog('preview')} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
                   <Eye className="h-4 w-4" /> Preview Demo Data
                 </button>
-                <button type="button" disabled={demoDataStatus === 'Installed' || demoDataStatus === 'Partially installed'} onClick={() => setDemoDialog('preview')} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="button" disabled={demoDataStatus === 'Installed' || demoDataStatus === 'Partially installed'} onClick={() => openDemoDialog('preview')} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
                   <Sparkles className="h-4 w-4" /> Add Demo Data
                 </button>
-                <button type="button" disabled={demoDataStatus === 'Not installed'} onClick={() => setDemoDialog('remove')} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-rose-300 px-3.5 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/30">
+                <button type="button" disabled={demoDataStatus === 'Not installed'} onClick={() => openDemoDialog('remove')} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-rose-300 px-3.5 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/30">
                   <Trash2 className="h-4 w-4" /> Remove Demo Data
                 </button>
               </div>
@@ -981,10 +1002,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
             </div>}
           </section>
 
-          {demoDialog && <div className="fixed inset-0 z-[120] grid place-items-center bg-slate-950/60 p-4" onClick={() => !isDemoDataBusy && setDemoDialog(null)}>
-            <div role="dialog" aria-modal="true" aria-labelledby="demo-data-dialog-title" className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:p-6" onClick={event => event.stopPropagation()}>
+          {demoDialog && <Modal
+            isOpen
+            onClose={() => !isDemoDataBusy && closeDemoDialog()}
+            title={demoDialog === 'preview' ? 'Demo Data Preview' : 'Remove Demo Data?'}
+            maxWidth="xl"
+            footer={<div className="flex flex-wrap justify-end gap-2">
+              <button type="button" disabled={isDemoDataBusy} onClick={closeDemoDialog} className="min-h-10 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold dark:border-slate-700">Cancel</button>
+              {demoDialog === 'preview'
+                ? <button type="button" disabled={isDemoDataBusy || demoDataStatus !== 'Not installed'} onClick={addDemoRecords} className="min-h-10 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{isDemoDataBusy ? 'Adding…' : 'Add Demo Data'}</button>
+                : <button type="button" disabled={isDemoDataBusy} onClick={removeDemoRecords} className="min-h-10 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{isDemoDataBusy ? 'Removing…' : 'Remove Demo Data'}</button>}
+            </div>}
+          >
+            <div>
+              {demoActionError && <div role="alert" className="mb-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200">{demoActionError}</div>}
               {demoDialog === 'preview' ? <>
-                <h2 id="demo-data-dialog-title" className="text-lg font-bold text-slate-900 dark:text-white">Demo Data Preview</h2>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{demoPreview.description} Existing data will not be deleted.</p>
                 <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {Object.entries(demoPreview.counts).map(([label, count]) => <div key={label} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
@@ -995,23 +1027,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
                 <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
                   Demo data will be added to your existing data. Existing data will not be deleted or overwritten.
                 </div>
-                <div className="mt-5 flex flex-wrap justify-end gap-2">
-                  <button type="button" disabled={isDemoDataBusy} onClick={() => setDemoDialog(null)} className="min-h-10 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold dark:border-slate-700">Cancel</button>
-                  <button type="button" disabled={isDemoDataBusy || demoDataStatus !== 'Not installed'} onClick={addDemoRecords} className="min-h-10 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{isDemoDataBusy ? 'Adding…' : 'Add Demo Data'}</button>
-                </div>
               </> : <>
-                <h2 id="demo-data-dialog-title" className="text-lg font-bold text-slate-900 dark:text-white">Remove Demo Data?</h2>
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">This will remove only records marked as demo data. Your existing real data will remain unchanged.</p>
                 <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-                  If a real record now depends on a demo customer, service, account, or plan, removal will stop and explain the dependency rather than break your data.
-                </div>
-                <div className="mt-5 flex flex-wrap justify-end gap-2">
-                  <button type="button" disabled={isDemoDataBusy} onClick={() => setDemoDialog(null)} className="min-h-10 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold dark:border-slate-700">Cancel</button>
-                  <button type="button" disabled={isDemoDataBusy} onClick={removeDemoRecords} className="min-h-10 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{isDemoDataBusy ? 'Removing…' : 'Remove Demo Data'}</button>
+                  If any non-demo record depends on demo data, removal will stop without changing anything rather than break your customer, service, subscription, sale, payment, invoice, account, or profile relationships. Reassign or remove those links first.
                 </div>
               </>}
             </div>
-          </div>}
+          </Modal>}
 
           <section className={cardClass}>
             <SectionHeading title="Backup and restore" description="Backups include this business, settings, records, relationships, and notifications." />
@@ -1031,7 +1054,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
               {backupErrors.length > 0 && <div role="alert" className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200"><strong>Backup validation failed</strong><ul className="mt-1 list-inside list-disc">{backupErrors.slice(0, 8).map((error, index) => <li key={`${index}-${error}`}>{error}</li>)}</ul>{backupErrors.length > 8 && <p>And {backupErrors.length - 8} more issues.</p>}</div>}
               {backupPreview && counts && <div role="dialog" aria-modal="true" aria-labelledby="restore-preview-title" className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/20">
                 <h4 id="restore-preview-title" className="text-base font-bold">Restore Backup preview</h4>
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Backup date: {formatMetadataDate(backupPreview.exportedAt)} · Business: {getBusinessNameFromBackup(backupPreview) || 'Unknown'} · Version: {backupPreview.backupVersion}</p>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Backup date: {formatMetadataDate(backupPreview.exportedAt, language)} · Business: {getBusinessNameFromBackup(backupPreview) || 'Unknown'} · Version: {backupPreview.backupVersion}</p>
                 {backupPreview.integrityChecksum
                   ? <p className="mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">Backup integrity checksum verified.</p>
                   : <p className="mt-1 rounded-lg border border-amber-300 bg-amber-100/70 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">This older backup has no integrity checksum. Its structure was validated, but file corruption cannot be checked.</p>}
@@ -1098,7 +1121,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-600 dark:text-slate-400">
                 {lastIntegrityResult && lastIntegrityResult.businessId === currentBusiness?.businessId
-                  ? `Last check: ${lastIntegrityResult.summary.errors} errors, ${lastIntegrityResult.summary.warnings} warnings · ${new Date(lastIntegrityResult.checkedAt).toLocaleString()}`
+                  ? `Last check: ${lastIntegrityResult.summary.errors} errors, ${lastIntegrityResult.summary.warnings} warnings · ${formatDateTime(lastIntegrityResult.checkedAt)}`
                   : 'No integrity check has been run for this business in this session.'}
               </p>
               <button type="button" onClick={onOpenIntegrity} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold dark:border-slate-600"><ShieldCheck className="h-4 w-4" /> Open Data Integrity Center</button>
@@ -1125,23 +1148,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
         </div>;
       }
       case 'about':
-        return <div className={cardClass}>
-          <SectionHeading title="About" description={`${productBrand.name} product information and local data details.`} />
-          <div className="mb-5 rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/50">
-            <ProductLogo size="compact" showTagline />
-          </div>
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <AboutItem label="Product" value={productBrand.name} />
-            <AboutItem label="Version" value={productBrand.version} />
-            <AboutItem label="Data" value="Stored locally on this device" />
-            <AboutItem label="Backend" value="Not connected" />
-            <AboutItem label="Authentication" value="Not enabled" />
-            <AboutItem label="Current Business" value={currentBusinessName || draft.storeName || 'Not set'} />
-            <AboutItem label="Display mode" value={installStatus === 'installed' ? 'Standalone' : 'Browser'} />
-          </dl>
+        return <>
+          <AboutExperience
+            currentBusinessName={currentBusinessName || draft.storeName || 'Not set'}
+            displayMode={installStatus === 'installed' ? 'Standalone' : 'Browser'}
+            isDark={isDark}
+            onNavigate={onNavigate}
+            onOpenDataManagement={() => setActiveSection('data')}
+          />
           <InstallAppPrompt />
-          <p className="mt-5 text-xs text-slate-500">This workspace keeps its records in this browser. Download regular backups to protect your data.</p>
-        </div>;
+        </>;
     }
   };
 
@@ -1149,7 +1165,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   return <main className="mx-auto max-w-[1400px] space-y-5 px-4 py-6 sm:px-6 lg:px-8">
     <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div><div className="flex items-center gap-2"><Settings className="h-6 w-6 text-emerald-600" /><h1 className="text-2xl font-bold text-slate-900 dark:text-white">Settings</h1></div><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Manage your business, workflows, and data.</p></div>
-      {activeSection !== 'data' && <button form="settings-form" type="submit" className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"><Save className="h-4 w-4" /> Save changes</button>}
+      {!['data', 'about'].includes(activeSection) && <button form="settings-form" type="submit" className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"><Save className="h-4 w-4" /> Save changes</button>}
     </header>
     <div className="grid gap-5 lg:grid-cols-[230px_minmax(0,1fr)]">
       <nav aria-label="Settings sections" className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
@@ -1158,7 +1174,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
       <form id="settings-form" onSubmit={saveSettings} className="min-w-0 space-y-4">
         <div className="flex items-center gap-2 text-xs text-slate-500"><Check className="h-4 w-4 text-emerald-600" />{active.label}</div>
         {renderContent()}
-        {activeSection !== 'data' && <div className="flex justify-end"><button type="submit" className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"><Save className="h-4 w-4" /> Save changes</button></div>}
       </form>
     </div>
   </main>;
@@ -1170,9 +1185,9 @@ const CheckSetting: React.FC<{ label: string; checked: boolean; onChange: (check
 const Metric: React.FC<{ label: string; count: number }> = ({ label, count }) => <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70"><div className="text-lg font-bold text-slate-900 dark:text-white">{count}</div><div className="text-xs text-slate-500">{label}</div></div>;
 const AboutItem: React.FC<{ label: string; value: string }> = ({ label, value }) => <div><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 text-sm font-medium text-slate-900 dark:text-white">{value}</dd></div>;
 
-const formatMetadataDate = (value?: string): string => {
+const formatMetadataDate = (value?: string, language: 'en' | 'bn' = 'en'): string => {
   if (!value || !Number.isFinite(Date.parse(value))) return 'Never';
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  return formatAppDateTime(value, language);
 };
 
 const getBusinessNameFromBackup = (backup: BackupDocument): string => {

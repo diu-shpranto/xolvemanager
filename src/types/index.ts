@@ -1,6 +1,25 @@
 export type Language = 'en' | 'bn';
 export type AppCurrency = 'BDT' | 'USD';
 
+export type DashboardSummaryWidgetId =
+  | 'receivedRevenue'
+  | 'customers'
+  | 'activeSubscriptions'
+  | 'expiringSubscriptions'
+  | 'outstandingPayments';
+export type DashboardPanelWidgetId =
+  | 'attention'
+  | 'revenueTrend'
+  | 'subscriptionHealth'
+  | 'recentSales';
+export type DashboardWidgetId = DashboardSummaryWidgetId | DashboardPanelWidgetId;
+
+export interface DashboardLayoutPreference {
+  summaryOrder: DashboardSummaryWidgetId[];
+  panelOrder: DashboardPanelWidgetId[];
+  hidden: DashboardWidgetId[];
+}
+
 export type ServiceCategory = 
   | 'Streaming'
   | 'AI Tools'
@@ -570,6 +589,7 @@ export interface Sale {
   subtotal?: number;
   discount?: number;
   amountPaid?: number;
+  paymentAllocationBaseline?: number;
   currency: AppCurrency;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
@@ -613,6 +633,11 @@ export interface Payment {
   saleId?: string;
   subscriptionId?: string;
   amount: number;
+  allocations?: PaymentAllocation[];
+  advanceCreditAmount?: number;
+  refundOfPaymentId?: string;
+  refundedSaleAllocations?: PaymentAllocation[];
+  refundedAdvanceCreditAmount?: number;
   currency: AppCurrency;
   paymentMethod: PaymentMethod;
   paymentMethodId?: string;
@@ -628,6 +653,12 @@ export interface Payment {
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface PaymentAllocation {
+  saleId: string;
+  invoiceId?: string;
+  amount: number;
 }
 
 export type ActivityType = 
@@ -851,6 +882,7 @@ export interface AppSettings {
   profitabilityPreferences?: {
     lowMarginWarningPercent?: number;
   };
+  dashboardLayout?: DashboardLayoutPreference;
 }
 
 export type NotificationCategory =

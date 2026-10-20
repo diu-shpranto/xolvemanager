@@ -62,9 +62,10 @@ export default function ClientAppShell() {
         setPathname('/login');
       }
     } catch (error) {
+      console.error('Local authentication could not be initialized.', error);
       setUser(null);
       setStatus('error');
-      setAuthError(error instanceof Error ? error.message : 'Local authentication could not be initialized.');
+      setAuthError('XolveManager could not verify this local session. Your business records were not cleared. Check browser storage availability and try again.');
       if (!getAuthMode(currentPath)) {
         returnPath.current = currentPath === '/' ? '/dashboard' : currentPath;
         navigateTo('/login', true);
@@ -95,7 +96,8 @@ export default function ClientAppShell() {
         try {
           signOutLocally(false);
         } catch (error) {
-          setAuthError(error instanceof Error ? error.message : 'This local session could not be fully cleared.');
+          console.error('Local session could not be fully cleared.', error);
+          setAuthError('This local session could not be fully cleared. Your business records were not changed.');
         }
         refreshSession(window.location.pathname);
       } else if (event.key === AUTH_ACCOUNTS_KEY) {

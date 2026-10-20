@@ -38,13 +38,20 @@ import {
   MoreVertical,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
 import { Customer, Subscription } from '../../types';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
 import { InvoiceSaleDetails, downloadInvoiceJpg, generateInvoiceJpg } from '../../utils/invoiceGenerator';
 import { resolvePaymentCustomer, resolveSaleCustomer } from '../../utils/relationships';
-import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus } from '../../utils/saleUtils';
+import {
+  getCustomerAdvanceCredit,
+  getPaymentRecognizedAmount,
+  getSaleDueAmount,
+  getSalePaidAmount,
+  getSalePaymentStatus,
+} from '../../utils/saleUtils';
 import { buildInvoiceSaleDetails } from '../../utils/invoiceUtils';
 import { getInvoicesForCustomer } from '../../utils/invoiceUtils';
 import {
@@ -131,6 +138,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   initialServiceFilterId,
   onInitialCustomerFilterHandled,
 }) => {
+  const { formatCurrency, formatDate: formatAppDate } = useAppFormatting();
   const {
     customers,
     customersLoading,
@@ -184,6 +192,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   // Pagination
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [createdFrom, createdTo, lastActivityFrom, lastActivityTo]);
 
   // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -244,6 +256,12 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [noteDraft, setNoteDraft] = useState('');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState('');
+  useEffect(() => {
+    setNewTag('');
+    setNoteDraft('');
+    setEditingNoteId(null);
+    setEditingNoteText('');
+  }, [detailedCustomerId]);
 
   // Validation Errors State
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -442,7 +460,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
   const handleDownloadInvoice = async (sale: (typeof sales)[number]) => {
     try {
-      const result = await generateInvoiceJpg(invoiceDetailsForSale(sale));
+      const result = await generateInvoiceJpg(invoiceDetailsForSale(sale), language);
       downloadInvoiceJpg(result.blob, result.fileName);
       showToast(`Download requested · ${result.fileName}`, 'info');
     } catch (error) {
@@ -624,6 +642,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     return due > 0 ? [{ sale, customer, due, dueInCurrency: convertReportCurrency(due, sale.currency, currency) }] : [];
   }).sort((left, right) => right.dueInCurrency - left.dueInCurrency).slice(0, 8), [sales, customers, subscriptions, payments, currency]);
 
+  const invalidCustomerDateRange = Boolean(
+    (createdFrom && createdTo && createdFrom > createdTo)
+    || (lastActivityFrom && lastActivityTo && lastActivityFrom > lastActivityTo)
+  );
+
   // Filter & Sort Pipeline
   const filteredCustomers = useMemo(() => {
     return customers
@@ -634,6 +657,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         } else {
           if (cust.isArchived) return false;
         }
+
+        if (invalidCustomerDateRange) return false;
 
         // Search is filtered locally across the customer's existing identity fields.
         if (!matchesCustomerSearch(cust, searchQuery)) return false;
@@ -702,6 +727,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     customerMetrics,
     services,
     settings.reminderNoticeDays,
+    invalidCustomerDateRange,
   ]);
 
   // Paginated records
@@ -802,6 +828,21 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const detailedPayments = detailedCustomer
     ? payments.filter(payment => resolvePaymentCustomer(payment, customers, sales, subscriptions)?.id === detailedCustomer.id)
     : [];
+  const detailedBalances = detailedSales.reduce((balances, sale) => {
+    balances.outstanding[sale.currency] += getSaleDueAmount(sale, payments);
+    return balances;
+  }, {
+    outstanding: { BDT: 0, USD: 0 },
+  });
+  const detailedAdvanceBalances = detailedCustomer
+    ? {
+      BDT: getCustomerAdvanceCredit(payments, detailedCustomer.id, 'BDT'),
+      USD: getCustomerAdvanceCredit(payments, detailedCustomer.id, 'USD'),
+    }
+    : { BDT: 0, USD: 0 };
+  const detailedPaymentHistory = [...detailedPayments].sort((left, right) =>
+    right.paymentDate.localeCompare(left.paymentDate) || (right.createdAt || '').localeCompare(left.createdAt || '')
+  );
   const detailedCrmMetrics = detailedCustomer ? customerMetrics.get(detailedCustomer.id) : undefined;
   const detailedInvoices = detailedCustomer
     ? getInvoicesForCustomer(invoices, detailedCustomer.id)
@@ -887,7 +928,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   };
 
   return (
-    <div className="customers-view mx-auto max-w-[1440px] px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
+    <div className="customers-view section-layout-shell mx-auto max-w-[1600px] px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
       <div className={detailedCustomerId ? 'hidden' : 'customer-list-page space-y-3 sm:space-y-4'}>
       {/* 1. PAGE HEADER */}
       <div className="customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:flex-nowrap sm:gap-4 sm:pb-4">
@@ -1107,26 +1148,26 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               setFilterRenewal(e.target.value as typeof filterRenewal);
               setCurrentPage(1);
             }}
-            aria-label="Filter by renewal status"
+            aria-label={language === 'bn' ? 'নবায়নের প্রয়োজন অনুযায়ী ফিল্টার' : 'Filter by renewal need'}
             className="h-11 max-w-full px-3 bg-white dark:bg-[#151C28] border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
           >
-            <option value="all">{language === 'bn' ? 'সব নবায়ন' : 'All Renewals'}</option>
-            <option value="due">{language === 'bn' ? 'নবায়ন বাকি' : 'Renewal Due'}</option>
-            <option value="expired">{language === 'bn' ? 'মেয়াদোত্তীর্ণ' : 'Expired'}</option>
-            <option value="none">{language === 'bn' ? 'সাবস্ক্রিপশন নেই' : 'No Subscription'}</option>
+            <option value="all">{language === 'bn' ? 'সব নবায়নের অবস্থা' : 'All renewal needs'}</option>
+            <option value="due">{language === 'bn' ? 'নবায়ন বাকি' : 'Renewal due'}</option>
+            <option value="expired">{language === 'bn' ? 'মেয়াদোত্তীর্ণ নবায়ন' : 'Renewal expired'}</option>
+            <option value="none">{language === 'bn' ? 'কোনো সাবস্ক্রিপশন রেকর্ড নেই' : 'No subscription on record'}</option>
           </select>}
 
           <select
             value={filterSubscription}
             onChange={event => { setFilterSubscription(event.target.value as typeof filterSubscription); setCurrentPage(1); }}
-            aria-label="Filter by subscription"
+            aria-label={language === 'bn' ? 'সাবস্ক্রিপশনের অবস্থা অনুযায়ী ফিল্টার' : 'Filter by current subscription state'}
             className="h-11 max-w-full rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs focus:border-emerald-500 focus:outline-hidden dark:border-slate-800 dark:bg-[#151C28] dark:text-slate-300"
           >
-            <option value="all">All subscriptions</option>
+            <option value="all">Any subscription state</option>
             <option value="active">Has active subscription</option>
             <option value="none">No active subscription</option>
             <option value="expiring">Expiring soon</option>
-            <option value="expired">Expired</option>
+            <option value="expired">Has an expired subscription</option>
           </select>
           <select
             value={filterPayment}
@@ -1187,6 +1228,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               <option value={50}>50 / page</option>
             </select>
           </div>
+              {invalidCustomerDateRange && <p role="alert" className="col-span-full text-xs font-medium text-rose-700 dark:text-rose-300">
+                {language === 'bn' ? 'শুরুর তারিখ শেষের তারিখের পরে হতে পারবে না।' : 'Each start date must be on or before its end date.'}
+              </p>}
             </div>
           </details>
 
@@ -1236,9 +1280,18 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       )}
 
       {/* 4. CUSTOMER TABLE & CARD LIST CONTAINER */}
+      <div className="customer-directory-heading">
+        <div>
+          <p>{language === 'bn' ? 'গ্রাহক তালিকা' : 'Customer directory'}</p>
+          <span>{language === 'bn' ? 'আপনার গ্রাহক সম্পর্ক এক জায়গায় পরিচালনা করুন' : 'Manage your customer relationships in one place'}</span>
+        </div>
+        <span className="customer-directory-count" aria-live="polite">
+          {language === 'bn' ? `${filteredCustomers.length} জন গ্রাহক` : `${filteredCustomers.length} ${filteredCustomers.length === 1 ? 'record' : 'records'}`}
+        </span>
+      </div>
       <div className="customer-list-section space-y-3">
         {/* Desktop Table View */}
-        <div className="customer-desktop-table hidden overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#151C28] xl:block">
+        <div className="data-table-scroll customer-desktop-table hidden overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#151C28] xl:block" role="region" aria-label="Customer records table; scroll horizontally to view all columns" tabIndex={0}>
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -1605,6 +1658,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   </div>
 
                   <div className="customer-card-contacts mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0 text-xs">
+                    <span className="customer-contact-link inline-flex min-h-9 min-w-0 items-center gap-2 text-slate-700 dark:text-slate-200">
+                      <MessageCircle className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                      <span className="min-w-0">WA: {cust.whatsapp || cust.phone || 'Not set'}</span>
+                    </span>
                     {cust.phone && <a href={`tel:${cust.phone}`} onClick={event => event.stopPropagation()} className="customer-contact-link inline-flex min-h-9 min-w-0 items-center gap-2 text-slate-700 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-200 dark:hover:text-violet-300"><Phone className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="min-w-0">{cust.phone}</span></a>}
                     {cust.email && <a href={`mailto:${cust.email}`} onClick={event => event.stopPropagation()} title={cust.email} className="customer-contact-link inline-flex min-h-9 min-w-0 items-center gap-2 text-slate-700 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-200 dark:hover:text-violet-300"><Mail className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="min-w-0">{cust.email}</span></a>}
                     {cust.facebookUrl && <a href={cust.facebookUrl.startsWith('http') ? cust.facebookUrl : `https://${cust.facebookUrl}`} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()} aria-label={`Facebook profile for ${cust.name}`} className="customer-contact-link inline-flex min-h-9 min-w-0 items-center gap-2 text-blue-700 hover:text-blue-800 focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-blue-300"><Facebook className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Facebook</span></a>}
@@ -1783,7 +1840,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </button>
           </div>
         ) : (
-        <div className="customer-detail-workspace mx-auto w-full max-w-[1400px] space-y-4">
+        <div
+          className="customer-detail-workspace mx-auto w-full max-w-[1400px] space-y-4"
+          onClick={event => {
+            const target = event.target;
+            if (target instanceof Element && !target.closest('.customer-profile-more')) {
+              event.currentTarget.querySelector('.customer-profile-more[open]')?.removeAttribute('open');
+            }
+          }}
+        >
           <button
             type="button"
             onClick={() => {
@@ -1827,6 +1892,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       : <span>—</span>}
                     {detailedCustomer.email?.trim() && <a href={`mailto:${detailedCustomer.email}`} className="break-all hover:text-violet-700 dark:hover:text-violet-300">{detailedCustomer.email}</a>}
                   </div>
+                  {detailedCustomer.createdAt && (
+                    <p className="customer-profile-since mt-1.5 text-[11px] font-medium">
+                      {language === 'bn' ? 'গ্রাহক হিসেবে যোগদান:' : 'Customer since'} {formatAppDate(detailedCustomer.createdAt, language)}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -1857,7 +1927,17 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <Edit2 className="h-4 w-4" />
                   Edit
                 </button>
-                <details className="customer-profile-more relative">
+                <details
+                  className="customer-profile-more relative"
+                  onKeyDown={event => {
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      event.currentTarget.removeAttribute('open');
+                      event.currentTarget.querySelector('summary')?.focus();
+                    }
+                  }}
+                >
                   <summary aria-label={language === 'bn' ? 'আরও কাস্টমার অ্যাকশন' : 'More customer actions'} title={language === 'bn' ? 'আরও অ্যাকশন' : 'More actions'} className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
                     <MoreVertical className="h-5 w-5" />
                   </summary>
@@ -1886,18 +1966,31 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               <a href="#customer-activity" className="customer-detail-nav-link">{language === 'bn' ? 'কার্যকলাপ' : 'Activity'} <span>{detailedActivities.length}</span></a>
             </nav>
 
-            <section id="customer-overview" aria-label="Customer overview" className="customer-overview-grid grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <section id="customer-overview" aria-label="Customer overview" className="customer-overview-grid grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
               <div className="customer-overview-metric">
                 <span>{language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Active subscriptions'}</span>
                 <strong>{currentActiveSubsForDetailed.length}</strong>
+                <small>{detailedSubs.length} total subscriptions</small>
               </div>
               <div className={`customer-overview-metric ${detailedTotalDue > 0 ? 'customer-overview-metric--due' : ''}`}>
-                <span>{language === 'bn' ? `বকেয়া · ${currency}` : `Outstanding balance · ${currency}`}</span>
-                <strong>{formatCurrency(detailedTotalDue, currency)}</strong>
+                <span>{language === 'bn' ? 'মোট বকেয়া' : 'Total outstanding'}</span>
+                <strong>{formatCurrency(detailedBalances.outstanding.BDT, 'BDT')} · {formatCurrency(detailedBalances.outstanding.USD, 'USD')}</strong>
+                <small>By currency</small>
+              </div>
+              <div className="customer-overview-metric customer-overview-metric--paid">
+                <span>{language === 'bn' ? `মোট পরিশোধ · ${currency}` : `Total paid · ${currency}`}</span>
+                <strong>{formatCurrency(detailedCrmMetrics?.totalPaid || 0, currency)}</strong>
+                <small>Recognized payments</small>
+              </div>
+              <div className="customer-overview-metric">
+                <span>{language === 'bn' ? 'উপলভ্য অগ্রিম ক্রেডিট' : 'Available advance credit'}</span>
+                <strong>{formatCurrency(detailedAdvanceBalances.BDT, 'BDT')} · {formatCurrency(detailedAdvanceBalances.USD, 'USD')}</strong>
+                <small>By currency</small>
               </div>
               <div className="customer-overview-metric">
                 <span>{language === 'bn' ? `মোট ব্যয় · ${currency}` : `Total spent · ${currency}`}</span>
                 <strong>{formatCurrency(detailedTotalSales, currency)}</strong>
+                <small>{detailedCrmMetrics?.salesCount || 0} sales</small>
               </div>
               <div className="customer-overview-metric">
                 <span>{language === 'bn' ? 'পরবর্তী সাবস্ক্রিপশনের মেয়াদ' : 'Next subscription expiry'}</span>
@@ -2210,6 +2303,34 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
             {/* Sales History */}
             <div id="customer-purchases" className="customer-detail-section">
+              <section aria-label="Customer payment history" className="mb-5 rounded-xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-800">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">Payment history ({detailedPaymentHistory.length})</h3>
+                  <span className="text-[10px] text-slate-500">Received amounts include any advance credit.</span>
+                </div>
+                {detailedPaymentHistory.length === 0 ? (
+                  <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-900/50">No payment history yet.</p>
+                ) : (
+                  <ol className="space-y-2">
+                    {detailedPaymentHistory.map(payment => (
+                      <li key={payment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 text-xs dark:border-slate-700">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-800 dark:text-slate-100">{formatAppDate(payment.paymentDate, language)} · {payment.paymentMethodName || payment.paymentMethod} · {payment.paymentStatus}</p>
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            {payment.allocations?.length
+                              ? `Allocated to sale${payment.allocations.length === 1 ? '' : 's'}: ${formatCurrency(getPaymentRecognizedAmount(payment), payment.currency)}`
+                              : payment.advanceCreditAmount
+                                ? 'Customer advance credit'
+                                : payment.saleId ? 'Sale payment' : 'Unallocated historical payment'}
+                            {Number(payment.advanceCreditAmount) > 0 ? ` · Advance ${formatCurrency(payment.advanceCreditAmount || 0, payment.currency)}` : ''}
+                          </p>
+                        </div>
+                        <strong className="font-mono">{formatCurrency(payment.amount, payment.currency)}</strong>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
               <div className="mb-2.5 flex items-center justify-between">
                 <div className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
                   Sales ({detailedSales.length})
@@ -2377,11 +2498,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   No activity yet.
                 </div>
               ) : (
-                <ol aria-label="Customer activity timeline" className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                <ol aria-label="Customer activity timeline" className="customer-activity-list space-y-2 max-h-64 overflow-y-auto pr-1">
                   {detailedActivities.map(act => (
                     <li
                       key={act.id}
-                      className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex items-start justify-between gap-3 text-xs"
+                      className="customer-activity-item p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex items-start justify-between gap-3 text-xs"
                     >
                       <div className="space-y-0.5">
                         <div className="font-semibold text-slate-800 dark:text-slate-200">

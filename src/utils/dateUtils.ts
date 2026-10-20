@@ -1,45 +1,68 @@
-import { AppCurrency, Language, Service, Subscription, SubscriptionStatus } from '../types';
+import type { AppCurrency, Language, Service, Subscription, SubscriptionStatus } from '../types';
 
-export function formatAppDate(dateStr: string, language: Language = 'en'): string {
+const getFormattingLocale = (language: Language): string => language === 'bn' ? 'bn-BD' : 'en-GB';
+const dateOnlyPattern = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+export function formatAppDate(
+  dateStr: string | null | undefined,
+  language: Language = 'en',
+  options: Intl.DateTimeFormatOptions = {}
+): string {
   if (!dateStr) return 'N/A';
-  try {
-    const d = new Date(dateStr + (dateStr.length === 10 ? 'T00:00:00' : ''));
-    if (isNaN(d.getTime())) return dateStr;
+  const dateOnly = dateOnlyPattern.exec(dateStr);
+  let date: Date;
 
-    if (language === 'bn') {
-      return d.toLocaleDateString('bn-BD', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
-    }
-
-    return d.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  } catch {
-    return dateStr;
+  if (dateOnly) {
+    const [, year, month, day] = dateOnly;
+    date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+    if (date.getUTCFullYear() !== Number(year)
+      || date.getUTCMonth() !== Number(month) - 1
+      || date.getUTCDate() !== Number(day)) return dateStr;
+  } else {
+    date = new Date(dateStr);
   }
+
+  if (!Number.isFinite(date.getTime())) return dateStr;
+  return new Intl.DateTimeFormat(getFormattingLocale(language), {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    ...options,
+    ...(dateOnly ? { timeZone: 'UTC' } : {}),
+  }).format(date);
 }
 
-export function formatAppDateTime(isoStr: string, language: Language = 'en'): string {
-  if (!isoStr) return 'N/A';
-  try {
-    const d = new Date(isoStr);
-    if (isNaN(d.getTime())) return isoStr;
-    const locale = language === 'bn' ? 'bn-BD' : 'en-US';
-    return d.toLocaleDateString(locale, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return isoStr;
-  }
+export function formatAppDateTime(
+  dateTime: string | null | undefined,
+  language: Language = 'en',
+  options: Intl.DateTimeFormatOptions = {}
+): string {
+  if (!dateTime) return 'N/A';
+  const date = new Date(dateTime);
+  if (!Number.isFinite(date.getTime())) return dateTime;
+  return new Intl.DateTimeFormat(getFormattingLocale(language), {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    ...options,
+  }).format(date);
+}
+
+export function formatAppNumber(
+  value: number,
+  language: Language = 'en',
+  options: Intl.NumberFormatOptions = {}
+): string {
+  if (!Number.isFinite(value)) return '—';
+  return new Intl.NumberFormat(getFormattingLocale(language), options).format(value);
+}
+
+export function formatAppDurationDays(days: number, language: Language = 'en'): string {
+  if (!Number.isFinite(days)) return '—';
+  const formattedDays = formatAppNumber(days, language);
+  return language === 'bn' ? `${formattedDays} দিন` : `${formattedDays} ${days === 1 ? 'day' : 'days'}`;
 }
 
 export function getTodayDateString(): string {
@@ -149,14 +172,14 @@ export function getSubscriptionStatus(
 export function getExpiryBadgeInfo(expiryDateStr: string, language: Language = 'en', warningDays: number = 7) {
   const days = getDaysDifference(expiryDateStr);
   const isBn = language === 'bn';
+  const formattedDays = formatAppNumber(Math.abs(days), language);
 
   if (days < 0) {
-    const absDays = Math.abs(days);
     return {
       status: 'expired' as const,
       label: isBn
-        ? (days === -1 ? 'গতকাল মেয়াদ শেষ' : `${absDays} দিন আগে মেয়াদ শেষ`)
-        : (days === -1 ? 'Expired yesterday' : `Expired ${absDays}d ago`),
+        ? (days === -1 ? 'গতকাল মেয়াদ শেষ' : `${formattedDays} দিন আগে মেয়াদ শেষ`)
+        : (days === -1 ? 'Expired yesterday' : `Expired ${formattedDays}d ago`),
       shortLabel: isBn ? 'মেয়াদোত্তীর্ণ' : 'Expired',
       colorClass: 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/50',
       dotClass: 'bg-rose-500',
@@ -174,15 +197,15 @@ export function getExpiryBadgeInfo(expiryDateStr: string, language: Language = '
   if (days <= warningDays) {
     return {
       status: 'expiring_soon' as const,
-      label: isBn ? `${days} দিন বাকি` : `${days} days left`,
-      shortLabel: isBn ? `${days} দিন বাকি` : `${days}d left`,
+      label: isBn ? `${formattedDays} দিন বাকি` : `${formattedDays} days left`,
+      shortLabel: isBn ? `${formattedDays} দিন বাকি` : `${formattedDays}d left`,
       colorClass: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/50',
       dotClass: 'bg-amber-500',
     };
   }
   return {
     status: 'active' as const,
-    label: isBn ? `${days} দিন বাকি` : `${days} days left`,
+    label: isBn ? `${formattedDays} দিন বাকি` : `${formattedDays} days left`,
     shortLabel: isBn ? 'সক্রিয়' : 'Active',
     colorClass: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50',
     dotClass: 'bg-emerald-500',
@@ -191,21 +214,21 @@ export function getExpiryBadgeInfo(expiryDateStr: string, language: Language = '
 
 export function formatCurrency(
   amount: number,
-  currency: AppCurrency | string = 'BDT'
+  currency: AppCurrency | string = 'BDT',
+  language: Language = 'en'
 ): string {
-  const num = Number(amount) || 0;
-  const isUSD = currency === 'USD' || currency === '$';
+  if (!Number.isFinite(amount)) return '—';
+  const currencyCode: AppCurrency | null = currency === '$' ? 'USD'
+    : currency === 'BDT' || currency === 'USD' ? currency : null;
+  if (!currencyCode) return '—';
 
-  if (isUSD) {
-    const hasDecimals = num % 1 !== 0;
-    return `$${num.toLocaleString('en-US', {
-      minimumFractionDigits: hasDecimals ? 2 : 0,
-      maximumFractionDigits: 2,
-    })}`;
-  }
-
-  // Bangladeshi Taka (BDT) formatting - whole integer Takas with commas
-  return `৳${Math.round(num).toLocaleString('en-US')}`;
+  return new Intl.NumberFormat(getFormattingLocale(language), {
+    style: 'currency',
+    currency: currencyCode,
+    currencyDisplay: 'narrowSymbol',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
 }
 
 export function generateInvoiceNo(existingInvoiceNumbers: string[] = [], invoicePrefix = 'INV-'): string {

@@ -8,15 +8,17 @@ import type {
   ReminderPriority,
   ReminderPreferences,
   ReminderType,
+  Language,
   Sale,
   Service,
   Subscription,
 } from '../types';
 import { getSaleDueAmount, getSalePaidAmount } from '../utils/saleUtils';
-import { getDaysDifferenceInTimeZone } from '../utils/dateUtils';
+import { formatAppNumber, getDaysDifferenceInTimeZone } from '../utils/dateUtils';
 import { createRecordId } from './localStorageStore';
 
 export interface ReminderEngineData {
+  language?: Language;
   businessId?: string;
   customers: Customer[];
   services: Service[];
@@ -189,7 +191,7 @@ export function generateReminderCandidates(
       title: overdue ? `Invoice ${invoice.invoiceNumber} is overdue`
         : partiallyPaid ? `Partial payment for invoice ${invoice.invoiceNumber}`
           : `Invoice ${invoice.invoiceNumber} is due`,
-      description: `${customerName} · ${serviceName} · outstanding ${invoice.dueAmount.toLocaleString()}.`,
+      description: `${customerName} · ${serviceName} · outstanding ${formatAppNumber(invoice.dueAmount, data.language)}.`,
       customerId: invoice.customerId,
       serviceId: invoice.serviceId,
       planId: invoice.planId,
@@ -222,7 +224,7 @@ export function generateReminderCandidates(
       priority: priorityForPayment(daysOverdue),
       title: daysOverdue > 0 ? `Payment overdue for ${sale.invoiceNo}`
         : paid > 0 ? `Partial payment for ${sale.invoiceNo}` : `Payment pending for ${sale.invoiceNo}`,
-      description: `${customerName} · ${serviceName} · outstanding ${due.toLocaleString()}.`,
+      description: `${customerName} · ${serviceName} · outstanding ${formatAppNumber(due, data.language)}.`,
       customerId: sale.customerId,
       serviceId: sale.serviceId,
       planId: sale.planId,

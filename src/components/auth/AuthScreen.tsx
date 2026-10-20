@@ -23,6 +23,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import type { LocalAuthUser } from '../../services/localAuthService';
+import { ProductLogo } from '../common/BrandLockup';
 import { LocalAuthError } from '../../services/localAuthService';
 import {
   createOwnerAccount,
@@ -87,7 +88,6 @@ const copy = {
     localText: 'Your account and session are stored in this browser. There is no email delivery or server-side account recovery.',
     storageWarning: localAuthMessages.storageWarning,
     singleOwnerPolicy: localAuthMessages.singleOwnerPolicy,
-    brandEyebrow: 'Business, Simplified.',
     brandHeadline: 'Manage Your',
     brandHeadlineSecond: 'Business',
     brandHeadlineAccent: 'Smarter.',
@@ -320,13 +320,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     <main className="auth-page" data-auth-language={language}>
       <div className="auth-frame">
         <aside className="auth-story" aria-label="XolveManager">
-          <div className="auth-story-header">
-            <span className="auth-brand-mark" aria-hidden="true"><i /><i /><i /></span>
-            <div className="auth-story-brand-copy">
-              <span className="auth-brand-name">XolveManager</span>
-              <span className="auth-brand-tagline">{text.brandEyebrow}</span>
-            </div>
-          </div>
+          <ProductLogo size="compact" tone="inverse" showTagline className="auth-story-header" />
           <div className="auth-story-copy">
             <h1><span>{text.brandHeadline}</span><span>{text.brandHeadlineSecond}</span><span className="auth-headline-accent">{text.brandHeadlineAccent}</span></h1>
             <p className="auth-story-description">{text.brandDescription}</p>
@@ -365,7 +359,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
             </div>
             <div className="auth-preview-window">
               <div className="auth-preview-rail" aria-hidden="true">
-                <span className="auth-preview-symbol"><i /><i /><i /></span>
+                <ProductLogo size="compact" markOnly className="auth-preview-symbol" />
                 <i /><i /><i /><i />
               </div>
               <div className="auth-preview-content">
@@ -393,13 +387,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
         <section className="auth-panel" aria-labelledby="auth-heading">
           <div className="auth-card">
             <div className="auth-panel-header">
-              <div className="auth-card-brand">
-                <span className="auth-brand-mark" aria-hidden="true"><i /><i /><i /></span>
-                <div className="auth-card-brand-copy">
-                  <span className="auth-brand-name">XolveManager</span>
-                  <span>{text.brandEyebrow}</span>
-                </div>
-              </div>
+              <ProductLogo size="compact" showTagline className="auth-card-brand" />
               <button type="button" onClick={updateLanguage} className="auth-language" aria-label={language === 'en' ? 'Switch language to Bangla' : 'Switch language to English'}><Globe2 aria-hidden="true" />{text.language}<ChevronRight aria-hidden="true" /></button>
             </div>
 

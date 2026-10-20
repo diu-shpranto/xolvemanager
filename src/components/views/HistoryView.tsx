@@ -3,9 +3,9 @@ import {
   Activity, CalendarDays, ChevronLeft, ChevronRight, Clock3, FileText, Filter,
   Search, UserRound, X,
 } from 'lucide-react';
-import { ActivityAction, ActivityCategory, ActivityEntityType, ActivityLog } from '../../types';
+import { ActivityAction, ActivityCategory, ActivityEntityType, ActivityLog, Language } from '../../types';
 import { useApp } from '../../context/AppContext';
-import { formatAppDateTime } from '../../utils/dateUtils';
+import { formatAppDateTime, formatAppNumber } from '../../utils/dateUtils';
 import { getCustomerDisplayName, resolveActivityCustomerName } from '../../utils/relationships';
 import { filterActivities, getActivityAction, getActivityCategory, getActivityEntityType, sanitizeActivityDescription, searchActivities } from '../../services/activityService';
 import { Modal } from '../common/Modal';
@@ -65,13 +65,13 @@ const dateOptions = [
 ] as const;
 const inputClass = 'min-h-10 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200';
 
-function ActivityMetric({ label, value, icon: Icon }: { label: string; value: number; icon: React.ElementType }) {
+function ActivityMetric({ label, value, icon: Icon, language }: { label: string; value: number; icon: React.ElementType; language: Language }) {
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
       <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
         {label}<Icon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
       </div>
-      <div className="mt-2 font-mono text-2xl font-bold text-slate-900 dark:text-white">{value.toLocaleString()}</div>
+      <div className="mt-2 font-mono text-2xl font-bold text-slate-900 dark:text-white">{formatAppNumber(value, language)}</div>
     </div>
   );
 }
@@ -175,8 +175,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onViewRelated }) => {
     const today = new Date();
     const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
     const startDate = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()).getTime();
-    const locale = language === 'bn' ? 'bn-BD' : 'en-US';
-    const time = parsed.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
+    const time = formatAppDateTime(timestamp, language, { hour: 'numeric', minute: '2-digit' });
     if (startDate === startToday) return `${language === 'bn' ? 'আজ' : 'Today'} · ${time}`;
     if (startDate === startToday - 86400000) return `${language === 'bn' ? 'গতকাল' : 'Yesterday'} · ${time}`;
     return formatAppDateTime(timestamp, language);
@@ -231,15 +230,15 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onViewRelated }) => {
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Track important changes and business activity.</p>
         </div>
-        <div className="text-xs text-slate-500">{businessLogs.length.toLocaleString()} total activities</div>
+        <div className="text-xs text-slate-500">{formatAppNumber(businessLogs.length, language)} total activities</div>
       </header>
 
       <section aria-label="Activity summary" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <ActivityMetric label="Total Activities" value={businessLogs.length} icon={Activity} />
-        <ActivityMetric label="Today" value={todayCount} icon={CalendarDays} />
-        <ActivityMetric label="This Week" value={weekCount} icon={Clock3} />
-        <ActivityMetric label="Financial Activities" value={financialCount} icon={FileText} />
-        <ActivityMetric label="Customer / Subscription" value={customerCount + subscriptionCount} icon={UserRound} />
+        <ActivityMetric label="Total Activities" value={businessLogs.length} icon={Activity} language={language} />
+        <ActivityMetric label="Today" value={todayCount} icon={CalendarDays} language={language} />
+        <ActivityMetric label="This Week" value={weekCount} icon={Clock3} language={language} />
+        <ActivityMetric label="Financial Activities" value={financialCount} icon={FileText} language={language} />
+        <ActivityMetric label="Customer / Subscription" value={customerCount + subscriptionCount} icon={UserRound} language={language} />
       </section>
 
       <section aria-label="Filter activity" className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
@@ -284,7 +283,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onViewRelated }) => {
           </div>
         )}
         <div className="mt-3 flex items-center justify-between gap-3">
-          <p aria-live="polite" className="text-xs text-slate-500"><Filter className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />{filtered.length.toLocaleString()} activities</p>
+          <p aria-live="polite" className="text-xs text-slate-500"><Filter className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />{formatAppNumber(filtered.length, language)} activities</p>
           <button type="button" onClick={clearFilters} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white"><X className="h-3.5 w-3.5" />Clear filters</button>
         </div>
       </section>

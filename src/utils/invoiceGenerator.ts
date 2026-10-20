@@ -1,5 +1,5 @@
-import type { AppCurrency } from '../types';
-import { formatCurrency } from './dateUtils';
+import type { AppCurrency, Language } from '../types';
+import { formatAppDate, formatCurrency } from './dateUtils';
 
 export interface InvoiceSaleDetails {
   saleId?: string;
@@ -162,17 +162,11 @@ function safeFileName(invoiceNo: string): string {
   return `Invoice-${safeNumber || 'Invoice'}.jpg`;
 }
 
-function formatInvoiceDate(date: string): string {
-  const parsed = new Date(`${date}T00:00:00`);
-  if (!Number.isFinite(parsed.getTime())) return date;
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(parsed);
+function formatInvoiceDate(date: string, language: Language): string {
+  return formatAppDate(date, language, { day: '2-digit' });
 }
 
-export async function generateInvoiceJpg(data: InvoiceSaleDetails): Promise<GeneratedInvoiceResult> {
+export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Language = 'en'): Promise<GeneratedInvoiceResult> {
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;
   canvas.height = HEIGHT;
@@ -235,7 +229,7 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails): Promise<Gene
   drawText(context, data.invoiceNo, 92, 308, 460);
   context.fillStyle = COLORS.muted;
   context.font = `400 22px ${FONT}`;
-  context.fillText(`Date: ${formatInvoiceDate(data.date)}`, 92, 344);
+  context.fillText(`Date: ${formatInvoiceDate(data.date, language)}`, 92, 344);
   const status = data.paymentStatus.replace(/_/g, ' ').toUpperCase();
   const statusColor = data.paymentStatus === 'paid'
     ? COLORS.green
@@ -287,7 +281,7 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails): Promise<Gene
     detailY += 36;
   }
   if (data.invoiceSettings?.showSubscriptionPeriod !== false && (data.startDate || data.expiryDate)) {
-    const period = [data.startDate && formatInvoiceDate(data.startDate), data.expiryDate && formatInvoiceDate(data.expiryDate)]
+    const period = [data.startDate && formatInvoiceDate(data.startDate, language), data.expiryDate && formatInvoiceDate(data.expiryDate, language)]
       .filter(Boolean)
       .join(' – ');
     secondaryText(`Subscription period: ${period}`, detailY);
@@ -306,12 +300,12 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails): Promise<Gene
     drawText(context, value, WIDTH - 92, y, 430, 'right');
   };
 
-  paymentRow('Total', formatCurrency(data.amount, data.currency), 822, true);
-  paymentRow('Paid', formatCurrency(paid, data.currency), 866);
-  paymentRow('Due', formatCurrency(due, data.currency), 910, due > 0, due > 0 ? COLORS.amber : undefined);
+  paymentRow('Total', formatCurrency(data.amount, data.currency, language), 822, true);
+  paymentRow('Paid', formatCurrency(paid, data.currency, language), 866);
+  paymentRow('Due', formatCurrency(due, data.currency, language), 910, due > 0, due > 0 ? COLORS.amber : undefined);
   if (data.invoiceSettings?.showPaymentMethod !== false) {
     const methods = data.paymentMethodBreakdown?.map(item =>
-      `${item.methodName}: ${formatCurrency(item.amount, data.currency)}`
+      `${item.methodName}: ${formatCurrency(item.amount, data.currency, language)}`
     ).join(', ');
     paymentRow('Method breakdown', methods || data.paymentMethod || 'Not specified', 954);
   }

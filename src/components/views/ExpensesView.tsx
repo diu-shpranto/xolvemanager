@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Download, Eye, Pencil, Plus, Search, XCircle } from 'lucide-react';
+import { Download, Eye, Pencil, Plus, ReceiptText, Search, XCircle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
 import type { Expense } from '../../types';
@@ -21,8 +22,8 @@ type ExpenseDraft = Pick<Expense,
   'accountId' | 'categoryId' | 'amount' | 'currency' | 'date' | 'description' | 'vendor' | 'reference' | 'notes'
 >;
 
-const cardClass = 'rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-5';
-const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white';
+const cardClass = 'rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4';
+const inputClass = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white';
 const labelClass = 'mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300';
 const today = getTodayDateString();
 
@@ -35,6 +36,7 @@ const csvCell = (value: string | number): string => {
 const expenseReference = (id: string): string => `EXP-${id.replace(/^expense[-_]?/i, '').slice(-8).toUpperCase()}`;
 
 export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRequest = 0, onCreateRequestHandled }) => {
+  const { formatCurrency, formatDate: formatAppDate } = useAppFormatting();
   const {
     currentBusiness,
     financialAccounts,
@@ -283,19 +285,38 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
   };
 
   const displayStatus = (expense: Expense) => expense.status === 'voided' ? 'Voided' : 'Recorded';
+  const hasFilters = Boolean(
+    fromDate || toDate || accountFilter !== 'all' || categoryFilter !== 'all'
+    || statusFilter !== 'posted' || vendorFilter || query || minimumAmount || maximumAmount
+  );
+  const clearFilters = () => {
+    setFromDate('');
+    setToDate('');
+    setAccountFilter('all');
+    setCategoryFilter('all');
+    setStatusFilter('posted');
+    setVendorFilter('');
+    setQuery('');
+    setMinimumAmount('');
+    setMaximumAmount('');
+  };
   const formAccount = draft ? accountById.get(draft.accountId) : undefined;
   const projectedBalance = draft && formAccount ? balanceAfter(draft.accountId, Number(draft.amount) || 0) : undefined;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5 pb-10">
-      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Expenses</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Track business spending and outgoing money.</p>
+    <div className="finance-responsive-page section-layout-shell customer-list-page mx-auto flex w-full max-w-[1600px] flex-col gap-3 px-3 py-3 pb-10 sm:gap-4 sm:px-6 sm:py-6 lg:px-8">
+      <header className="finance-responsive-header customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:pb-4">
+        <div className="customer-heading flex min-w-0 items-start gap-3">
+          <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11"><ReceiptText className="h-5 w-5" /></div>
+          <div className="min-w-0">
+            <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em]">Finance operations</p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Expenses</h1>
+            <p className="mt-0.5 text-sm leading-5 text-slate-600 dark:text-slate-400">Track business spending and outgoing money.</p>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={exportExpenses} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><Download className="h-4 w-4" />Export</button>
-          <button type="button" onClick={startCreate} disabled={!scopedAccounts.some(account => account.enabled) || !activeCategories.length} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"><Plus className="h-4 w-4" />Add Expense</button>
+        <div className="finance-responsive-actions customer-header-actions flex w-full items-center justify-end gap-2 sm:w-auto">
+          <button type="button" onClick={exportExpenses} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><Download className="h-4 w-4" /><span>Export</span></button>
+          <button type="button" onClick={startCreate} disabled={!scopedAccounts.some(account => account.enabled) || !activeCategories.length} className="customer-primary-action inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed disabled:opacity-50"><Plus className="h-4 w-4" />Add Expense</button>
         </div>
       </header>
 
@@ -303,7 +324,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
         {!scopedAccounts.some(account => account.enabled) ? 'Add an enabled financial account in Cashbook before recording expenses.' : 'Enable or add an expense category in Settings → Payments before recording expenses.'}
       </div>}
 
-      <section aria-label="Expense summary" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <section aria-label="Expense summary" className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 xl:grid-cols-6">
         {[
           ['Total Expenses', formatCurrency(totals.total, currency)],
           ['Today', formatCurrency(totals.today, currency)],
@@ -311,14 +332,14 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
           ['Number of Expenses', String(totals.count)],
           ['Largest Expense', formatCurrency(totals.largest, currency)],
           ['Average Expense', formatCurrency(totals.average, currency)],
-        ].map(([label, value]) => <div key={label} className={`${cardClass} min-w-0`}>
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
-          <p className="mt-2 truncate font-mono text-lg font-bold tabular-nums text-slate-900 dark:text-white">{value}</p>
+        ].map(([label, value], index) => <div key={label} className={`${cardClass} min-w-0 transition-colors hover:border-violet-200 dark:hover:border-violet-900 ${index === 0 ? 'border-violet-200 bg-violet-50/60 dark:border-violet-900/60 dark:bg-violet-950/20' : ''}`}>
+          <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">{label}</p>
+          <p className="mt-1.5 truncate font-mono text-lg font-bold tabular-nums tracking-tight text-slate-950 dark:text-white">{value}</p>
         </div>)}
       </section>
 
-      <section className={cardClass}>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className={`${cardClass} cashbook-ledger-filters`}>
+        <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
           <label className="relative block sm:col-span-2 lg:col-span-1"><span className={labelClass}>Search expenses</span><Search className="absolute left-3 top-9 h-4 w-4 text-slate-400" /><input className={`${inputClass} pl-9`} value={query} onChange={event => setQuery(event.target.value)} placeholder="ID, description, vendor..." /></label>
           <label><span className={labelClass}>From date</span><input className={inputClass} type="date" value={fromDate} onChange={event => setFromDate(event.target.value)} /></label>
           <label><span className={labelClass}>To date</span><input className={inputClass} type="date" value={toDate} onChange={event => setToDate(event.target.value)} /></label>
@@ -328,18 +349,22 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
           <label><span className={labelClass}>Status</span><select className={inputClass} value={statusFilter} onChange={event => setStatusFilter(event.target.value as typeof statusFilter)}><option value="posted">Recorded</option><option value="voided">Voided</option><option value="all">All statuses</option></select></label>
           <div className="grid grid-cols-2 gap-2"><label><span className={labelClass}>Minimum</span><input className={inputClass} type="number" min="0" step="0.01" value={minimumAmount} onChange={event => setMinimumAmount(event.target.value)} /></label><label><span className={labelClass}>Maximum</span><input className={inputClass} type="number" min="0" step="0.01" value={maximumAmount} onChange={event => setMaximumAmount(event.target.value)} /></label></div>
         </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+          <p className="text-xs text-slate-500">{filteredExpenses.length} matching record{filteredExpenses.length === 1 ? '' : 's'}</p>
+          {hasFilters && <button type="button" onClick={clearFilters} className="min-h-9 rounded-lg px-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/40">Clear filters</button>}
+        </div>
         {!validDates && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700 dark:text-rose-300">End date must be on or after the start date.</p>}
       </section>
 
       <section className={`${cardClass} !p-0`}>
         <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800 sm:px-5">
           <div><h2 className="text-base font-bold text-slate-900 dark:text-white">Expense records</h2><p className="mt-0.5 text-xs text-slate-500">{filteredExpenses.length} matching record{filteredExpenses.length === 1 ? '' : 's'}</p></div>
-          <button type="button" onClick={() => onNavigate('cashbook')} className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">Open Cashbook</button>
+          <button type="button" onClick={() => onNavigate('cashbook')} className="text-xs font-semibold text-violet-700 hover:underline dark:text-violet-300">Open Cashbook</button>
         </div>
         {filteredExpenses.length === 0 ? <div className="px-5 py-12 text-center">
           <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{scopedExpenses.length ? 'No expenses match these filters.' : 'No expenses recorded.'}</p>
           <p className="mt-1 text-xs text-slate-500">Record business spending to track outgoing money and account balances.</p>
-          <button type="button" disabled={!scopedAccounts.some(account => account.enabled) || !activeCategories.length} onClick={startCreate} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"><Plus className="h-4 w-4" />Add Expense</button>
+          <button type="button" disabled={!scopedAccounts.some(account => account.enabled) || !activeCategories.length} onClick={startCreate} className="customer-primary-action mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"><Plus className="h-4 w-4" />Add Expense</button>
         </div> : <>
           <div className="hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[980px] text-left text-xs">
@@ -354,9 +379,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
                 <td className="px-3 py-3 font-mono font-semibold">{formatCurrency(expense.amount, expense.currency)}</td>
                 <td className="px-3 py-3"><span>{displayStatus(expense)}</span></td>
                 <td className="px-3 py-3"><div className="flex items-center gap-1">
-                  <button type="button" aria-label={`View ${expenseReference(expense.id)}`} onClick={() => setSelectedExpense(expense)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:hover:bg-slate-800"><Eye className="h-4 w-4" /></button>
+                  <button type="button" aria-label={`View ${expenseReference(expense.id)}`} onClick={() => setSelectedExpense(expense)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:hover:bg-slate-800"><Eye className="h-4 w-4" /></button>
                   {expense.status === 'posted' && <>
-                    <button type="button" aria-label={`Edit ${expenseReference(expense.id)}`} onClick={() => editExpense(expense)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:hover:bg-slate-800"><Pencil className="h-4 w-4" /></button>
+                    <button type="button" aria-label={`Edit ${expenseReference(expense.id)}`} onClick={() => editExpense(expense)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:hover:bg-slate-800"><Pencil className="h-4 w-4" /></button>
                     <button type="button" aria-label={`Void ${expenseReference(expense.id)}`} onClick={() => setVoidTarget(expense)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-rose-600 dark:hover:bg-rose-950/30"><XCircle className="h-4 w-4" /></button>
                   </>}
                 </div></td>
@@ -393,7 +418,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
             <label><span className={labelClass}>Reference</span><input className={inputClass} maxLength={120} value={draft.reference || ''} onChange={event => setDraft({ ...draft, reference: event.target.value })} /></label>
           </div>
           <label className="block"><span className={labelClass}>Notes</span><textarea className={inputClass} rows={3} maxLength={1000} value={draft.notes || ''} onChange={event => setDraft({ ...draft, notes: event.target.value })} /></label>
-          <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800"><button type="button" onClick={() => { setDraft(null); setEditingExpense(null); }} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold dark:border-slate-700">Cancel</button><button type="submit" className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">{editingExpense ? 'Save Changes' : 'Record Expense'}</button></div>
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800"><button type="button" onClick={() => { setDraft(null); setEditingExpense(null); }} className="min-h-11 rounded-lg border border-slate-200 px-4 text-sm font-semibold dark:border-slate-700">Cancel</button><button type="submit" className="customer-primary-action min-h-11 rounded-lg bg-violet-700 px-4 text-sm font-semibold text-white">{editingExpense ? 'Save Changes' : 'Record Expense'}</button></div>
         </form>}
       </Modal>
 
@@ -414,7 +439,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
               ['Notes', selectedExpense.notes || '—'],
             ].map(([label, value]) => <div key={label}><dt className="text-xs font-medium text-slate-500">{label}</dt><dd className="mt-1 break-words text-sm font-semibold text-slate-900 dark:text-slate-100">{value}</dd></div>)}
           </dl>
-          <button type="button" onClick={() => onNavigate('cashbook', selectedExpense.accountId)} className="text-sm font-semibold text-emerald-700 hover:underline dark:text-emerald-300">View Account Ledger</button>
+          <button type="button" onClick={() => onNavigate('cashbook', selectedExpense.accountId)} className="text-sm font-semibold text-violet-700 hover:underline dark:text-violet-300">View Account Ledger</button>
           {selectedExpense.status === 'posted' && <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800"><button type="button" onClick={() => editExpense(selectedExpense)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold dark:border-slate-700">Edit</button><button type="button" onClick={() => { setVoidTarget(selectedExpense); setSelectedExpense(null); }} className="rounded-xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 dark:border-rose-900 dark:text-rose-300">Void Expense</button></div>}
         </div>}
       </Modal>

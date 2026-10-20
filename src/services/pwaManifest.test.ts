@@ -9,23 +9,23 @@ const manifest = JSON.parse(readFileSync(new URL('../../public/manifest.webmanif
   start_url: string;
   scope: string;
   display: string;
-  orientation: string;
+  orientation?: string;
   theme_color: string;
   background_color: string;
   icons: Array<{ src: string; sizes: string; type: string; purpose?: string }>;
 };
 
 test('PWA manifest has the product identity and standalone launch configuration', () => {
-  assert.equal(manifest.name, 'XolveManager — Business Management Platform');
+  assert.equal(manifest.name, 'XolveManager');
   assert.equal(manifest.short_name, 'XolveManager');
   assert.match(manifest.description, /customer records, subscriptions, sales, payments/);
   assert.equal(manifest.start_url, '/');
   assert.equal(manifest.scope, '/');
   assert.equal(manifest.display, 'standalone');
-  assert.equal(manifest.orientation, 'portrait-primary');
-  assert.equal(manifest.theme_color, '#7C3AED');
-  assert.equal(manifest.background_color, '#F8FAFC');
-  assert.ok(manifest.icons.every(icon => icon.src.startsWith('/icons/xolve-manager-')));
+  assert.equal(manifest.orientation, undefined);
+  assert.equal(manifest.theme_color, '#8B5CF6');
+  assert.equal(manifest.background_color, '#0B0B1B');
+  assert.ok(manifest.icons.every(icon => icon.src.startsWith('/icons/xolvemanager-violet-')));
 });
 
 test('manifest icons exist as PNG assets with their declared dimensions', () => {
@@ -37,7 +37,30 @@ test('manifest icons exist as PNG assets with their declared dimensions', () => 
     assert.equal(bytes.readUInt32BE(16), width);
     assert.equal(bytes.readUInt32BE(20), height);
   }
+
+  for (const wordmarkFile of [
+    'xolvemanager-wordmark-violet-dark.png',
+    'xolvemanager-wordmark-violet-light.png',
+  ]) {
+    const wordmark = readFileSync(new URL(`../../public/${wordmarkFile}`, import.meta.url));
+    assert.equal(wordmark.readUInt32BE(16), 1080);
+    assert.equal(wordmark.readUInt32BE(20), 200);
+  }
+  const socialCard = readFileSync(new URL('../../public/xolvemanager-social.png', import.meta.url));
+  assert.equal(socialCard.readUInt32BE(16), 1200);
+  assert.equal(socialCard.readUInt32BE(20), 630);
+
   assert.ok(manifest.icons.some(icon => icon.sizes === '192x192'));
   assert.ok(manifest.icons.some(icon => icon.sizes === '512x512' && icon.purpose === 'any'));
   assert.ok(manifest.icons.some(icon => icon.sizes === '512x512' && icon.purpose === 'maskable'));
+
+  for (const [file, size] of [
+    ['xolvemanager-violet-16.png', 16],
+    ['xolvemanager-violet-32.png', 32],
+    ['xolvemanager-violet-180.png', 180],
+  ] as const) {
+    const bytes = readFileSync(new URL(`../../public/icons/${file}`, import.meta.url));
+    assert.equal(bytes.readUInt32BE(16), size);
+    assert.equal(bytes.readUInt32BE(20), size);
+  }
 });

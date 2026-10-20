@@ -4,6 +4,7 @@ import {
   FileClock, RefreshCw, Search, ShieldAlert, ShieldCheck,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { formatCurrency } from '../../utils/dateUtils';
 import {
   getLastDataIntegrityResult,
@@ -44,10 +45,11 @@ const getSeverityStyle = (severity: DataIntegrityIssue['severity']): string => {
   if (severity === 'WARNING') return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200';
   return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300';
 };
-const formatCheckedBalance = (amount: number, currency: string): string =>
-  Number.isFinite(amount) ? formatCurrency(amount, currency) : 'Unavailable — invalid ledger amount';
+const formatCheckedBalance = (amount: number, currency: string, language: 'en' | 'bn'): string =>
+  Number.isFinite(amount) ? formatCurrency(amount, currency, language) : 'Unavailable — invalid ledger amount';
 
 export const DataIntegrityView: React.FC<DataIntegrityViewProps> = ({ onOpenBackupSettings }) => {
+  const { formatCurrency, formatDate: formatAppDate, formatDateTime, formatNumber, language } = useAppFormatting();
   const {
     currentBusiness, customers, services, accounts, subscriptions, sales, invoices, payments,
     financialAccounts, expenses, otherIncome, financialTransfers, financialAdjustments,
@@ -122,7 +124,7 @@ export const DataIntegrityView: React.FC<DataIntegrityViewProps> = ({ onOpenBack
       ].some(value => value?.toLocaleLowerCase().includes(query)))
     );
   }, [result, search, selectedCategory]);
-  const checkedDate = result ? new Date(result.checkedAt).toLocaleString() : '';
+  const checkedDate = result ? formatDateTime(result.checkedAt) : '';
 
   return <div className="mx-auto w-full max-w-screen-2xl space-y-5 px-4 py-4 sm:px-6 lg:px-8">
     <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -152,7 +154,7 @@ export const DataIntegrityView: React.FC<DataIntegrityViewProps> = ({ onOpenBack
               <h2 className="text-lg font-bold text-slate-950 dark:text-white">
                 {result.status === 'ERROR' ? 'Errors need review' : result.status === 'WARNING' ? 'Review recommended' : 'No critical issues found'}
               </h2>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Checked {result.summary.recordsChecked.toLocaleString()} records · {checkedDate}</p>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Checked {formatNumber(result.summary.recordsChecked)} records · {checkedDate}</p>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2 sm:min-w-[330px]">
@@ -172,12 +174,12 @@ export const DataIntegrityView: React.FC<DataIntegrityViewProps> = ({ onOpenBack
         {result.summary.accountBalances.length ? <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {result.summary.accountBalances.map(account => <div key={account.accountId} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
             <div className="truncate text-xs font-semibold text-slate-700 dark:text-slate-200">{account.accountName}</div>
-            <div className="mt-1 font-mono text-base font-bold">{formatCheckedBalance(account.calculatedBalance, account.currency)}</div>
+            <div className="mt-1 font-mono text-base font-bold">{formatCheckedBalance(account.calculatedBalance, account.currency, language)}</div>
           </div>)}
         </div> : <p className="mt-3 rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700">No financial accounts are configured.</p>}
         <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
           <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Total business balance</span>
-          <span className="font-mono text-sm font-bold">{formatCheckedBalance(result.summary.businessBalance, settings.currency)}</span>
+          <span className="font-mono text-sm font-bold">{formatCheckedBalance(result.summary.businessBalance, settings.currency, language)}</span>
         </div>
       </section>
 

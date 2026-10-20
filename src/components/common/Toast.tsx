@@ -44,13 +44,13 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className="pointer-events-none fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+4.5rem)] z-[80] flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 flex-col gap-2 sm:left-auto sm:right-5 sm:top-auto sm:bottom-5 sm:bottom-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] sm:translate-x-0">
+      <div className="pointer-events-none fixed left-1/2 top-[calc(env(safe-area-inset-top,0px)+4.5rem)] z-[80] flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 flex-col gap-2 sm:left-auto sm:right-5 sm:top-auto sm:bottom-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] sm:translate-x-0">
         {toasts.map(toast => (
           <div
             key={toast.id}
             role={toast.type === 'error' ? 'alert' : 'status'}
             aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
-            className={`pointer-events-auto flex items-start justify-between gap-3 rounded-xl border p-3.5 text-sm shadow-lg transition-all duration-200 animate-in slide-in-from-bottom-2 ${
+            className={`app-toast pointer-events-auto flex items-start justify-between gap-3 rounded-xl border p-3.5 text-sm shadow-lg ${
               toast.type === 'success'
                 ? 'bg-white text-slate-900 border-emerald-200 dark:bg-slate-900 dark:text-white dark:border-emerald-900'
                 : toast.type === 'error'
@@ -70,7 +70,7 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             <button
               type="button"
               onClick={() => removeToast(toast.id)}
-              className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-violet-500 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
               aria-label="Dismiss notification"
             >
               <X className="w-4 h-4" />

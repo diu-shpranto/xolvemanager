@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Modal } from '../common/Modal';
 import { useApp } from '../../context/AppContext';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
 import { PaymentMethod, PaymentStatus, AppCurrency, Subscription } from '../../types';
@@ -44,6 +45,9 @@ interface NewSaleModalProps {
   onClose: () => void;
   preselectedCustomerId?: string;
   preselectedServiceId?: string;
+  preselectedAccountId?: string;
+  preselectedProfileId?: string;
+  preselectedPlanId?: string;
   onViewSubscription?: (subscriptionId: string) => void;
   onViewCustomer?: (customerId: string) => void;
   onViewSale?: (saleId: string) => void;
@@ -56,12 +60,16 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   onClose,
   preselectedCustomerId,
   preselectedServiceId,
+  preselectedAccountId,
+  preselectedProfileId,
+  preselectedPlanId,
   onViewSubscription,
   onViewCustomer,
   onViewSale,
   onViewAccounts,
   onAddService,
 }) => {
+  const { formatCurrency, formatDate: formatAppDate, formatDurationDays } = useAppFormatting();
   const { customers, services, accounts, subscriptions, sales, payments, createSale, addCustomer, addAccount, logActivity, settings, currency: globalCurrency, t, language } = useApp();
   const { showToast } = useToast();
   const { openMessage, canContact } = useWhatsAppCommunication();
@@ -78,7 +86,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const [customerId, setCustomerId] = useState(preselectedCustomerId || '');
   const [serviceId, setServiceId] = useState(preselectedServiceId || (services.find(s => s.status === 'active' && !s.isArchived)?.id || ''));
   const [plan, setPlan] = useState('');
-  const [planId, setPlanId] = useState('');
+  const [planId, setPlanId] = useState(preselectedPlanId || '');
   const [accountId, setAccountId] = useState('');
   const [profileId, setProfileId] = useState('');
   const [startDate, setStartDate] = useState(getTodayDateString());
@@ -110,6 +118,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const [discountValue, setDiscountValue] = useState(0);
   const [amountPaidInput, setAmountPaidInput] = useState('');
   const submissionLock = useRef(false);
+  const resourcePresetApplied = useRef(false);
   const saleOperationId = useRef(createRecordId('new-sale-operation'));
   const customerCreationLock = useRef(false);
   const accountCreationLock = useRef(false);
@@ -212,8 +221,8 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     setAccountId(accId);
     const acc = accounts.find(a => a.id === accId);
     if (acc && acc.profiles && acc.profiles.length > 0) {
-      const availProfile = acc.profiles.find(p => p.status === 'Available');
-      setProfileId(availProfile ? availProfile.id : '');
+      const availableProfile = getAvailableProfiles([acc], serviceId, planId)[0]?.profile;
+      setProfileId(availableProfile?.id || '');
     } else {
       setProfileId('');
     }
@@ -242,8 +251,8 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         .some(value => value?.toLowerCase().includes(query))
     ).slice(0, 50);
   }, [eligibleServices, debouncedServiceSearch]);
-  const serviceUsesProfiles = selectedService?.settings?.usesProfiles === true;
-  const profileRequired = serviceUsesProfiles || selectedService?.settings?.profileAssignmentRequired === true;
+  const profileRequired = selectedService?.settings?.usesProfiles === true
+    || selectedService?.settings?.profileAssignmentRequired === true;
   const serviceUsesAccounts = selectedService?.settings?.usesAccounts === true || profileRequired;
   const availableProfilePairs = useMemo(
     () => getAvailableProfiles(accounts, serviceId, planId),
@@ -262,6 +271,24 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const availableProfiles = availableAccounts.some(account => account.id === selectedAccount?.id)
     ? availableProfilePairs.filter(pair => pair.account.id === selectedAccount?.id).map(pair => pair.profile)
     : [];
+  useEffect(() => {
+    if (!isOpen) {
+      resourcePresetApplied.current = false;
+      return;
+    }
+    if (!preselectedAccountId || resourcePresetApplied.current) return;
+    const account = availableAccounts.find(item => item.id === preselectedAccountId);
+    if (!account) return;
+    const profile = account.profiles.find(item =>
+      item.id === preselectedProfileId
+      && item.status === 'Available'
+      && !item.assignedCustomerId
+    );
+    if (profileRequired && !profile) return;
+    setAccountId(account.id);
+    setProfileId(profile?.id || '');
+    resourcePresetApplied.current = true;
+  }, [isOpen, preselectedAccountId, preselectedProfileId, availableAccounts, profileRequired]);
   const activeCustomers = useMemo(
     () => customers.filter(c => !c.isArchived && c.status !== 'archived'),
     [customers]
@@ -312,14 +339,14 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       showToast('Enter a valid account email.', 'error');
       return;
     }
-    if (serviceUsesProfiles && (!Number.isInteger(newAccountProfileCount) || newAccountProfileCount < 1)) {
+    if (profileRequired && (!Number.isInteger(newAccountProfileCount) || newAccountProfileCount < 1)) {
       showToast('Enter at least one profile slot.', 'error');
       return;
     }
     accountCreationLock.current = true;
     setIsAddingAccount(true);
     try {
-      const profileCount = serviceUsesProfiles ? Math.max(1, Math.floor(newAccountProfileCount)) : 0;
+      const profileCount = profileRequired ? Math.max(1, Math.floor(newAccountProfileCount)) : 0;
       const added = addAccount({
         serviceId: selectedService.id,
         email: newAccountEmail.trim(),
@@ -569,7 +596,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     invoiceGenerationLock.current = true;
     setIsDownloadingDirect(true);
     try {
-      const result = await generateInvoiceJpg(completedSaleData);
+      const result = await generateInvoiceJpg(completedSaleData, language);
       downloadInvoiceJpg(result.blob, result.fileName);
       recordInvoiceGenerated(completedSaleData);
       showToast(`Invoice generated · ${Math.round(result.blob.size / 1024)} KB`, 'success');
@@ -587,7 +614,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     invoiceGenerationLock.current = true;
     setIsSharingDirect(true);
     try {
-      const result = await generateInvoiceJpg(completedSaleData);
+      const result = await generateInvoiceJpg(completedSaleData, language);
       recordInvoiceGenerated(completedSaleData);
       if (!canShareInvoiceJpg()) {
         downloadInvoiceJpg(result.blob, result.fileName);
@@ -1092,7 +1119,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                     </div>
                     {selectedCustomer && !showCustomerPicker && !isCreatingCustomer ? (
                       <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
-                        <div className="flex min-w-0 items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/70 dark:text-emerald-300"><Check className="h-5 w-5" /></span><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900 dark:text-white">{selectedCustomer.name}</p><p className="truncate text-xs text-slate-600 dark:text-slate-300">{selectedCustomer.phone || selectedCustomer.whatsapp || 'No phone'}</p><p className="truncate text-xs text-slate-500 dark:text-slate-400">{selectedCustomer.email || 'No email'}</p></div></div>
+                        <div className="flex min-w-0 items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/70 dark:text-emerald-300"><Check className="h-5 w-5" /></span><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900 dark:text-white">{selectedCustomer.name}</p><p className="truncate text-xs text-slate-600 dark:text-slate-300">WhatsApp: {selectedCustomer.whatsapp || selectedCustomer.phone || 'Not set'}</p><p className="truncate text-xs text-slate-500 dark:text-slate-400">{selectedCustomer.email || 'No email'}</p></div></div>
                         <button type="button" onClick={() => setShowCustomerPicker(true)} className="shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-white/70 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-emerald-300 dark:hover:bg-slate-800">Change Customer</button>
                       </div>
                     ) : isCreatingCustomer ? (
@@ -1107,7 +1134,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                       <div className="space-y-3">
                         <label className="relative block"><span className="sr-only">Search customers by name, phone, or email</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="search" value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (filteredCustomers.length === 1) handleChooseCustomer(filteredCustomers[0].id); else if (filteredCustomers.length > 1) showToast('Choose the intended customer from the results.', 'info'); } }} placeholder="Search name, phone, or email" className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
                         <div className="max-h-56 space-y-2 overflow-y-auto pr-1" role="listbox" aria-label="Customer search results">
-                          {filteredCustomers.length ? filteredCustomers.map(customer => <button key={customer.id} type="button" role="option" aria-selected={customer.id === customerId} onClick={() => handleChooseCustomer(customer.id)} className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-emerald-600 ${customer.id === customerId ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600'}`}><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-900 dark:text-white">{customer.name}</span><span className="mt-0.5 block truncate text-xs text-slate-500 dark:text-slate-400">{customer.phone || customer.whatsapp || 'Phone unavailable'}{customer.email ? ` · ${customer.email}` : ''}</span></span><span className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">{subscriptions.filter(sub => sub.customerId === customer.id && sub.status !== 'cancelled' && getDaysDifference(sub.expiryDate) >= 0).length} active</span></button>) : <p className="rounded-lg bg-slate-50 p-4 text-center text-sm text-slate-500 dark:bg-slate-800">No matching customers. Use Add customer to create a record.</p>}
+                          {filteredCustomers.length ? filteredCustomers.map(customer => <button key={customer.id} type="button" role="option" aria-selected={customer.id === customerId} onClick={() => handleChooseCustomer(customer.id)} className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-emerald-600 ${customer.id === customerId ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600'}`}><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-900 dark:text-white">{customer.name}</span><span className="mt-0.5 block truncate text-xs text-slate-500 dark:text-slate-400">WhatsApp: {customer.whatsapp || customer.phone || 'Not set'}{customer.email ? ` · ${customer.email}` : ''}</span></span><span className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">{subscriptions.filter(sub => sub.customerId === customer.id && sub.status !== 'cancelled' && getDaysDifference(sub.expiryDate) >= 0).length} active</span></button>) : <p className="rounded-lg bg-slate-50 p-4 text-center text-sm text-slate-500 dark:bg-slate-800">No matching customers. Use Add customer to create a record.</p>}
                         </div>
                         {filteredCustomers.length === 50 && <p className="text-xs text-slate-500">Showing the first 50 matches. Refine your search to find another customer.</p>}
                       </div>
@@ -1159,11 +1186,11 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                   <section aria-labelledby="sale-fulfillment-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
                     <div><h2 id="sale-fulfillment-title" className="text-base font-bold text-slate-900 dark:text-white">Account and profile</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose active inventory for this service. Account credentials and profile PINs are never displayed.</p></div>
                     {serviceUsesAccounts && <div className="space-y-3">
-                      {availableAccounts.length ? <label className="block space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Account *</span><select value={accountId} onChange={e => handleAccountChange(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="">Select an account</option>{availableAccounts.map(account => <option key={account.id} value={account.id}>{account.email} · {account.plan} · {account.profiles.filter(profile => profile.status === 'Available' && !profile.assignedCustomerId).length} profiles available</option>)}</select></label> : <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30"><p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{profileRequired ? 'No available profiles for this plan.' : 'No available account found.'}</p><div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => setIsAddingAccount(value => !value)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-amber-700 px-3 text-xs font-semibold text-white"><Plus className="h-3.5 w-3.5" />Add Account</button>{onViewAccounts && <button type="button" onClick={onViewAccounts} className="inline-flex min-h-9 items-center rounded-lg border border-amber-800 px-3 text-xs font-semibold text-amber-900 dark:text-amber-200">View Accounts</button>}</div></div>}
+                      {availableAccounts.length ? <label className="block space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Account *</span><select value={accountId} onChange={e => handleAccountChange(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="">Select an account</option>{availableAccounts.map(account => <option key={account.id} value={account.id}>{account.email} · {account.plan} · {profileRequired ? `${account.profiles.filter(profile => profile.status === 'Available' && !profile.assignedCustomerId).length} profiles available` : 'Full account access'}</option>)}</select></label> : <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30"><p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{profileRequired ? 'No available profiles for this plan.' : 'No available account found.'}</p><div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => setIsAddingAccount(value => !value)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-amber-700 px-3 text-xs font-semibold text-white"><Plus className="h-3.5 w-3.5" />Add Account</button>{onViewAccounts && <button type="button" onClick={onViewAccounts} className="inline-flex min-h-9 items-center rounded-lg border border-amber-800 px-3 text-xs font-semibold text-amber-900 dark:text-amber-200">View Accounts</button>}</div></div>}
                       {isAddingAccount && <div className="grid gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700 sm:grid-cols-2">
                         <label className="space-y-1 text-xs font-medium"><span>Account email *</span><input required type="email" value={newAccountEmail} onChange={event => setNewAccountEmail(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
                         <label className="space-y-1 text-xs font-medium"><span>Password</span><input type="password" value={newAccountPassword} onChange={event => setNewAccountPassword(event.target.value)} autoComplete="new-password" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
-                        {serviceUsesProfiles && <label className="space-y-1 text-xs font-medium"><span>Profile slots</span><input type="number" min={1} step={1} value={newAccountProfileCount} onChange={event => setNewAccountProfileCount(Number(event.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>}
+                        {profileRequired && <label className="space-y-1 text-xs font-medium"><span>Profile slots</span><input type="number" min={1} step={1} value={newAccountProfileCount} onChange={event => setNewAccountProfileCount(Number(event.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>}
                         <button type="button" onClick={handleQuickAddAccount} disabled={isAddingAccount} className="self-end rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{isAddingAccount ? 'Adding…' : 'Save & Select Account'}</button>
                       </div>}
                     </div>}
@@ -1204,13 +1231,13 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                   <section aria-labelledby="sale-review-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
                     <div><h2 id="sale-review-title" className="text-base font-bold text-slate-900 dark:text-white">Review Sale</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Check customer, fulfillment, dates, and payment before creating the sale. Use Edit to return to a step.</p></div>
                     <dl className="grid gap-3 rounded-xl bg-slate-50 p-4 text-xs dark:bg-slate-800/60 sm:grid-cols-2">
-                      <div><dt className="flex items-center justify-between text-slate-500">Customer <button type="button" onClick={() => setStep(0)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{selectedCustomer?.name || 'Not selected'}{selectedCustomer?.phone ? ` · ${selectedCustomer.phone}` : ''}{selectedCustomer?.email ? ` · ${selectedCustomer.email}` : ''}</dd></div>
+                      <div><dt className="flex items-center justify-between text-slate-500">Customer <button type="button" onClick={() => setStep(0)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{selectedCustomer?.name || 'Not selected'} · WhatsApp: {selectedCustomer?.whatsapp || selectedCustomer?.phone || 'Not set'}{selectedCustomer?.email ? ` · ${selectedCustomer.email}` : ''}</dd></div>
                       <div><dt className="flex items-center justify-between text-slate-500">Service <button type="button" onClick={() => setStep(1)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{selectedService?.name || 'Not selected'}</dd></div>
                       <div><dt className="text-slate-500">Plan</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{plan || 'Not selected'}</dd></div>
                       {serviceUsesAccounts && <div><dt className="text-slate-500">Account</dt><dd className="mt-1 break-all font-semibold text-slate-900 dark:text-white">{selectedAccount?.email || 'Not selected'}</dd></div>}
                       {profileRequired && <div><dt className="text-slate-500">Profile</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{selectedProfile?.profileName || 'Not selected'}</dd></div>}
                       <div><dt className="flex items-center justify-between text-slate-500">Start Date <button type="button" onClick={() => setStep(2)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{formatAppDate(startDate, language)}</dd></div>
-                      <div><dt className="text-slate-500">End Date</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{formatAppDate(calculatedExpiryDate, language)} · {durationDays} days</dd></div>
+                      <div><dt className="text-slate-500">End Date</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{formatAppDate(calculatedExpiryDate, language)} · {formatDurationDays(durationDays)}</dd></div>
                       <div><dt className="flex items-center justify-between text-slate-500">Payment <button type="button" onClick={() => setStep(3)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold capitalize text-slate-900 dark:text-white">{paymentStatus} · {paymentMethod}</dd></div>
                     </dl>
                     <div className="space-y-2 rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-700">

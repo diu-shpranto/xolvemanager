@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Activity, ArrowDown, ArrowUp, BellRing, Building2, CreditCard, FileText, KeyRound,
+  Activity, ArrowDown, ArrowUp, BellRing, Building2, FileText, KeyRound,
   LayoutDashboard, Plus, Receipt, Search, Settings, Users, Wallet, X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -20,7 +20,7 @@ interface CommandCenterProps {
   onQuickAction: (action: QuickAction) => void;
 }
 
-export type QuickAction = 'customer' | 'service' | 'sale' | 'payment' | 'invoice' | 'account' | 'subscription';
+export type QuickAction = 'customer' | 'service' | 'sale' | 'payment' | 'account' | 'subscriptions';
 
 type Command = { kind: 'navigation'; label: string; section: NavSection } | { kind: 'action'; label: string; action: QuickAction };
 const navigation: { label: string; section: NavSection; icon: React.FC<{ className?: string }> }[] = [
@@ -40,12 +40,10 @@ const navigation: { label: string; section: NavSection; icon: React.FC<{ classNa
 ];
 const actions: { label: string; action: QuickAction; icon: React.FC<{ className?: string }> }[] = [
   { label: 'Add Customer', action: 'customer', icon: Users },
-  { label: 'Add Service', action: 'service', icon: Building2 },
   { label: 'New Sale', action: 'sale', icon: Plus },
-  { label: 'Add Payment', action: 'payment', icon: Wallet },
-  { label: 'Create Invoice', action: 'invoice', icon: FileText },
   { label: 'Add Account', action: 'account', icon: KeyRound },
-  { label: 'Add Subscription', action: 'subscription', icon: CreditCard },
+  { label: 'Record Payment', action: 'payment', icon: Wallet },
+  { label: 'View Subscriptions', action: 'subscriptions', icon: Activity },
 ];
 
 const queryCommands = (query: string): Command[] => {
@@ -66,6 +64,17 @@ const searchResultIcon: Record<GlobalSearchResult['entity'], React.FC<{ classNam
   customers: Users, services: Building2, plans: FileText, accounts: KeyRound,
   profiles: Users, subscriptions: Activity, sales: Receipt, payments: Wallet,
   invoices: FileText, history: Activity, reminders: BellRing,
+};
+
+const highlightMatch = (text: string, query: string): React.ReactNode => {
+  const match = query.trim();
+  if (!match) return text;
+  const escaped = match.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = text.split(new RegExp(`(${escaped})`, 'ig'));
+  if (parts.length === 1) return text;
+  return parts.map((part, index) => index % 2 === 1
+    ? <mark key={`${index}:${part}`} className="rounded bg-amber-200/80 text-inherit dark:bg-amber-700/60">{part}</mark>
+    : part);
 };
 
 export const CommandCenter: React.FC<CommandCenterProps> = ({
@@ -112,10 +121,14 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
   }), [results]);
   const selectableResults = query.trim()
     ? groupedResults.flatMap(group => group.results)
-    : recentResults.slice(0, 8);
+    : recentResults.slice(0, 5);
   const selectableCount = query.trim()
     ? commands.length + selectableResults.length
     : actions.length + selectableResults.length + navigation.length;
+
+  useEffect(() => {
+    setSelectedIndex(current => Math.min(current, Math.max(0, selectableCount - 1)));
+  }, [selectableCount]);
 
   const selectResult = (result: GlobalSearchResult) => {
     onSelect(result);
@@ -137,10 +150,18 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
         onClose();
       } else if (event.key === 'ArrowDown' && selectableCount > 0) {
         event.preventDefault();
-        setSelectedIndex(current => (current + 1) % selectableCount);
+        setSelectedIndex(current => {
+          const next = (current + 1) % selectableCount;
+          requestAnimationFrame(() => document.getElementById(`command-option-${next}`)?.scrollIntoView({ block: 'nearest' }));
+          return next;
+        });
       } else if (event.key === 'ArrowUp' && selectableCount > 0) {
         event.preventDefault();
-        setSelectedIndex(current => (current - 1 + selectableCount) % selectableCount);
+        setSelectedIndex(current => {
+          const next = (current - 1 + selectableCount) % selectableCount;
+          requestAnimationFrame(() => document.getElementById(`command-option-${next}`)?.scrollIntoView({ block: 'nearest' }));
+          return next;
+        });
       } else if (event.key === 'Enter') {
         event.preventDefault();
         if (!query.trim() && selectedIndex < actions.length) {
@@ -241,7 +262,7 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
                 aria-current={selectedIndex === position ? 'true' : undefined}
                 className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left ${selectedIndex === position ? 'bg-violet-50 dark:bg-violet-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                 <Icon className="h-4 w-4 shrink-0 text-slate-500" />
-                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.title}</span><span className="block truncate text-xs text-slate-500">{item.subtitle}{item.detail ? ` · ${item.detail}` : ''}</span></span>
+                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{highlightMatch(item.title, query)}</span><span className="block truncate text-xs text-slate-500">{highlightMatch(`${item.subtitle}${item.detail ? ` · ${item.detail}` : ''}`, query)}</span></span>
               </button>;
             })}
           </section>)}
@@ -254,18 +275,18 @@ export const CommandCenter: React.FC<CommandCenterProps> = ({
   );
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] flex items-start justify-center bg-slate-950/40 p-0 backdrop-blur-[2px] sm:p-8" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="app-command-center-overlay fixed inset-0 z-[90] flex items-start justify-center bg-slate-950/40 p-0 backdrop-blur-[2px] sm:p-8" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Global search and command center"
-        className="flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl dark:bg-slate-900 sm:mt-[8vh] sm:h-auto sm:max-h-[min(78vh,760px)] sm:max-w-3xl sm:rounded-2xl sm:border sm:border-slate-200 dark:sm:border-slate-700">
+        className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl dark:bg-slate-900 sm:mt-[8vh] sm:h-auto sm:max-h-[min(78vh,760px)] sm:max-w-3xl sm:rounded-2xl sm:border sm:border-slate-200 dark:sm:border-slate-700">
         <header className="sticky top-0 z-10 border-b border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 sm:p-4">
           <div className="flex items-center gap-3">
-            <Search className="h-5 w-5 shrink-0 text-emerald-600" />
+            <Search className="h-5 w-5 shrink-0 text-violet-600 dark:text-violet-400" />
             <input ref={inputRef} value={query} onChange={event => { setQuery(event.target.value); setSelectedIndex(0); }}
               placeholder="Search customers, sales, invoices..." aria-label="Search business data"
               aria-controls="global-search-results" aria-activedescendant={selectableCount ? `command-option-${selectedIndex}` : undefined}
               className="min-w-0 flex-1 bg-transparent py-2 text-base outline-none placeholder:text-slate-400 sm:text-lg" />
             <span className="hidden rounded border px-1.5 py-1 text-[10px] text-slate-500 sm:inline">ESC</span>
-            <button type="button" onClick={onClose} aria-label="Close search" className="flex h-10 w-10 items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-5 w-5" /></button>
+            <button type="button" onClick={onClose} aria-label="Close search" className="flex h-11 w-11 items-center justify-center rounded-xl hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-500 dark:hover:bg-slate-800"><X className="h-5 w-5" /></button>
           </div>
           <div className="mt-1 flex items-center gap-2 pl-8 text-[11px] text-slate-400"><ArrowUp className="h-3 w-3" /><ArrowDown className="h-3 w-3" /> to navigate <span className="ml-auto">Ctrl K / ⌘ K</span></div>
         </header>

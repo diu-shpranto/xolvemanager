@@ -10,6 +10,7 @@ import type {
 } from '../types';
 import { getSubscriptionStatus } from './dateUtils';
 import { calculateSalesFinancialSummary, convertReportCurrency } from './reportMetrics';
+import { getPaymentRecognizedAmount } from './saleUtils';
 
 export const CUSTOMER_CRM_THRESHOLDS = {
   recentActivityDays: 30,
@@ -137,7 +138,7 @@ export function buildCustomerCrmMetrics(
           );
         return !linkedSale || !saleIds.has(linkedSale.id);
       })
-      .reduce((sum, payment) => sum + convertReportCurrency(Number(payment.amount) || 0, payment.currency, currency), 0);
+      .reduce((sum, payment) => sum + convertReportCurrency(getPaymentRecognizedAmount(payment), payment.currency, currency), 0);
     const subscriptionStates = customerSubscriptions
       .map(subscription => {
         const status = getSubscriptionStatus(

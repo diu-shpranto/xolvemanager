@@ -21,6 +21,7 @@ import type {
   Subscription,
 } from '../types';
 import { normalizePaymentMethods } from './paymentMethods';
+import { getSubscriptionStatus } from './dateUtils';
 import { getAccountBalance, getFinancialLedger, getTotalBusinessBalance } from './financialLedger';
 import { runFinancialIntegrityCheck, type FinancialIntegrityIssue } from './accountingControls';
 
@@ -265,6 +266,18 @@ export function runDataIntegrityCheck(
     }
     if (!Number.isInteger(account.maxProfiles) || account.maxProfiles < 0) {
       addIssue('ERROR', 'RESOURCES', 'account', account.id, 'Account profile capacity must be a non-negative whole number.');
+    } else if (Array.isArray(account.profiles) && account.profiles.length !== account.maxProfiles) {
+      addIssue(
+        'WARNING',
+        'RESOURCES',
+        'account',
+        account.id,
+        `Declared profile capacity is ${account.maxProfiles}, but ${account.profiles.length} profile records are configured.`,
+        'Review the account capacity and configured profile records; no records were changed.',
+      );
+    }
+    if (account.expiryDate && !isValidDateOnly(account.expiryDate)) {
+      addIssue('ERROR', 'DATES', 'account', account.id, 'Account expiry date is invalid.');
     }
     const profileIds = new Set<string>();
     let assignedProfiles = 0;
@@ -276,18 +289,44 @@ export function runDataIntegrityCheck(
       }
       if (profile.id) profileAccountById.set(profile.id, account.id);
       recordsChecked += 1;
-      if (profile.accountId !== account.id) addIssue('ERROR', 'RELATIONSHIPS', 'profile', profile.id, 'Profile account relationship does not match its parent account.');
-      if (profile.status === 'Assigned') assignedProfiles += 1;
+      if (!profile.accountId || profile.accountId !== account.id) {
+        addIssue('ERROR', 'RELATIONSHIPS', 'profile', profile.id, 'Profile refers to a missing or different parent account.');
+      }
+      if ((profile.startDate && !isValidDateOnly(profile.startDate))
+        || (profile.expiryDate && !isValidDateOnly(profile.expiryDate))) {
+        addIssue('ERROR', 'DATES', 'profile', profile.id, 'Profile start or expiry date is invalid.');
+      }
+      if (profile.startDate && profile.expiryDate && profile.expiryDate < profile.startDate) {
+        addIssue('ERROR', 'DATES', 'profile', profile.id, 'Profile expiry date is before its start date.');
+      }
+      const hasCustomerAssignment = Boolean(profile.assignedCustomerId);
+      if (profile.status === 'Assigned' || hasCustomerAssignment) assignedProfiles += 1;
+      if (profile.status === 'Available' && hasCustomerAssignment) {
+        addIssue('ERROR', 'RESOURCES', 'profile', profile.id, 'Profile is marked available but still references an assigned customer.');
+      }
+      if (profile.status === 'Assigned' && !hasCustomerAssignment) {
+        addIssue('WARNING', 'RESOURCES', 'profile', profile.id, 'Profile is marked assigned but has no customer relationship.');
+      }
       if (profile.assignedCustomerId && !customersById.has(profile.assignedCustomerId)) {
         addIssue('WARNING', 'RELATIONSHIPS', 'profile', profile.id, 'Profile is assigned to a customer that no longer exists.');
       }
       if (profile.subscriptionId && !subscriptionsById.has(profile.subscriptionId)) {
         addIssue('WARNING', 'RELATIONSHIPS', 'profile', profile.id, 'Profile references a missing subscription.');
+      } else if (profile.subscriptionId) {
+        const subscription = subscriptionsById.get(profile.subscriptionId);
+        if (subscription && (
+          subscription.accountId !== account.id
+          || subscription.profileId !== profile.id
+          || (profile.assignedCustomerId && subscription.customerId !== profile.assignedCustomerId)
+        )) {
+          addIssue('WARNING', 'RELATIONSHIPS', 'profile', profile.id, 'Profile and linked subscription reference different account, profile, or customer records.');
+        }
       }
     });
     if (assignedProfiles > account.maxProfiles) addIssue('ERROR', 'RESOURCES', 'account', account.id, `Account has ${assignedProfiles} assigned profiles but its capacity is ${account.maxProfiles}.`);
   });
 
+  const activeAssignmentByProfile = new Map<string, string>();
   subscriptions.forEach(subscription => {
     if (!customersById.has(subscription.customerId)) addIssue('ERROR', 'RELATIONSHIPS', 'subscription', subscription.id, 'Subscription refers to a missing customer.');
     const service = servicesById.get(subscription.serviceId);
@@ -302,6 +341,36 @@ export function runDataIntegrityCheck(
       ? serviceAccountsById.get(subscription.accountId)?.profiles.find(item => item.id === subscription.profileId)
       : undefined;
     if (subscription.profileId && !profile) addIssue('ERROR', 'RELATIONSHIPS', 'subscription', subscription.id, 'Subscription profile is missing from its linked service account.');
+    if (subscription.profileId && !subscription.accountId) {
+      addIssue('ERROR', 'RELATIONSHIPS', 'subscription', subscription.id, 'Subscription has a profile ID without a parent account ID.');
+    }
+    if (profile && profile.assignedCustomerId && profile.assignedCustomerId !== subscription.customerId) {
+      addIssue('WARNING', 'RELATIONSHIPS', 'subscription', subscription.id, 'Subscription customer does not match the profile assignment.');
+    }
+    if (profile && profile.status !== 'Assigned') {
+      addIssue('WARNING', 'RESOURCES', 'subscription', subscription.id, 'Subscription references a profile that is not marked assigned.');
+    }
+    if (subscription.accountId && subscription.profileId
+      && ['active', 'expiring_soon'].includes(getSubscriptionStatus(
+        subscription,
+        service,
+        records.settings.reminderNoticeDays,
+      ))) {
+      const assignmentKey = `${subscription.accountId}:${subscription.profileId}`;
+      const existingSubscriptionId = activeAssignmentByProfile.get(assignmentKey);
+      if (existingSubscriptionId) {
+        addIssue(
+          'ERROR',
+          'RESOURCES',
+          'profile',
+          subscription.profileId,
+          `Profile has multiple active subscriptions (${existingSubscriptionId} and ${subscription.id}).`,
+          'Review the assignment history and retain the correct subscription without deleting historical records.',
+        );
+      } else {
+        activeAssignmentByProfile.set(assignmentKey, subscription.id);
+      }
+    }
     if (subscription.startDate && subscription.expiryDate && subscription.expiryDate < subscription.startDate) {
       addIssue('ERROR', 'DATES', 'subscription', subscription.id, 'Subscription expiry date is before its start date.');
     }
@@ -314,6 +383,20 @@ export function runDataIntegrityCheck(
     const service = servicesById.get(sale.serviceId);
     if (!service) addIssue('ERROR', 'RELATIONSHIPS', 'sale', sale.id, 'Sale refers to a missing service.');
     else if (!plansForService(service, sale.planId, sale.plan)) addIssue('WARNING', 'RELATIONSHIPS', 'sale', sale.id, 'Sale plan is not present in its linked service.');
+    if (sale.accountId && !serviceAccountsById.has(sale.accountId)) {
+      addIssue('WARNING', 'RELATIONSHIPS', 'sale', sale.id, 'Sale refers to a missing service account.');
+    }
+    if (sale.profileId) {
+      const saleProfile = sale.accountId
+        ? serviceAccountsById.get(sale.accountId)?.profiles.find(item => item.id === sale.profileId)
+        : undefined;
+      if (!saleProfile) {
+        addIssue('WARNING', 'RELATIONSHIPS', 'sale', sale.id, 'Sale profile is missing from its linked service account.');
+      }
+    }
+    if (sale.subscriptionId && !subscriptionsById.has(sale.subscriptionId)) {
+      addIssue('WARNING', 'RELATIONSHIPS', 'sale', sale.id, 'Sale refers to a missing subscription.');
+    }
     if (!isValidDateOnly(sale.date)) addIssue('ERROR', 'DATES', 'sale', sale.id, 'Sale date is invalid.');
   });
   invoices.forEach(invoice => {

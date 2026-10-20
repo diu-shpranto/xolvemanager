@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { BellRing, CalendarClock, Check, Clock3, Plus, Search, X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
+import { getCustomerOptionLabel } from '../../utils/relationships';
 import { useToast } from '../common/Toast';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
 import type { Reminder, ReminderPriority, ReminderStatus, ReminderType } from '../../types';
@@ -58,6 +60,7 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
   onRenewSubscription,
   onAddPayment,
 }) => {
+  const { formatCurrency, formatDate: formatAppDate, formatDateTime, formatDurationDays } = useAppFormatting();
   const {
     reminders, customers, services, subscriptions, sales, invoices, settings, currency, language,
     completeReminder, snoozeReminder, dismissReminder, reopenReminder, createManualReminder,
@@ -212,8 +215,8 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
       </section>
 
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-        <div role="tablist" aria-label="Filter reminders" className="flex gap-2 overflow-x-auto pb-1">
-          {filters.map(item => <button key={item.id} type="button" role="tab" aria-selected={filter === item.id} onClick={() => setFilter(item.id)} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 ${filter === item.id ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'}`}>
+        <div role="group" aria-label="Filter reminders" className="flex gap-2 overflow-x-auto pb-1">
+          {filters.map(item => <button key={item.id} type="button" aria-pressed={filter === item.id} onClick={() => setFilter(item.id)} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 ${filter === item.id ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'}`}>
             {item.label} <span className="ml-1 opacity-75">{countFor(item.id)}</span>
           </button>)}
         </div>
@@ -244,7 +247,7 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${priorityClass[reminder.priority]}`}>{reminder.priority} priority</span>
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">{statusLabels[reminder.status]}</span>
                   </div>
-                  <p className="mt-1 text-xs text-slate-500">{typeLabels[reminder.type]} · Due {formatAppDate(reminder.dueDate, language)}{reminder.status === 'snoozed' && reminder.snoozedUntil ? ` · Snoozed until ${new Date(reminder.snoozedUntil).toLocaleString()}` : ''}</p>
+                  <p className="mt-1 text-xs text-slate-500">{typeLabels[reminder.type]} · Due {formatAppDate(reminder.dueDate, language)}{reminder.status === 'snoozed' && reminder.snoozedUntil ? ` · Snoozed until ${formatDateTime(reminder.snoozedUntil)}` : ''}</p>
                   {reminder.description && <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{reminder.description}</p>}
                   <p className="mt-1 text-xs text-slate-500">{customer?.name || ''}{service?.name ? ` · ${service.name}` : ''}{reminder.stage ? ` · ${reminder.stage.replaceAll('_', ' ')}` : ''}</p>
                   {reminder.amount !== undefined && <p className="mt-2 text-sm font-bold text-slate-900 dark:text-white">{formatCurrency(reminder.amount, reminder.currency || currency)}</p>}
@@ -254,7 +257,7 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
                   {reminder.subscriptionId && subscription && !isClosed && <button type="button" onClick={() => onRenewSubscription(subscription)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700">Renew</button>}
                   {reminder.saleId && !isClosed && <button type="button" onClick={() => onAddPayment(reminder.saleId!)} className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300">Payment</button>}
                   {reminder.customerId && canContact(reminder.customerId) && !isClosed && <button type="button" onClick={() => whatsapp(reminder)} className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300">WhatsApp</button>}
-                  {!isClosed && reminder.status !== 'snoozed' && <label className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 dark:border-slate-700"><Clock3 className="h-3.5 w-3.5 text-slate-500" /><span className="sr-only">Snooze reminder</span><select aria-label={`Snooze ${reminder.title}`} defaultValue="" onChange={event => { if (event.target.value) snooze(reminder, event.target.value); event.target.value = ''; }} className="max-w-24 bg-transparent py-2 text-xs"><option value="" disabled>Snooze</option><option value="1h">1 hour</option><option value="today">Today</option><option value="1">Tomorrow</option><option value="3">3 days</option><option value="7">7 days</option></select></label>}
+                  {!isClosed && reminder.status !== 'snoozed' && <label className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 dark:border-slate-700"><Clock3 className="h-3.5 w-3.5 text-slate-500" /><span className="sr-only">Snooze reminder</span><select aria-label={`Snooze ${reminder.title}`} defaultValue="" onChange={event => { if (event.target.value) snooze(reminder, event.target.value); event.target.value = ''; }} className="max-w-24 bg-transparent py-2 text-xs"><option value="" disabled>Snooze</option><option value="1h">1 hour</option><option value="today">Today</option><option value="1">Tomorrow</option><option value="3">{formatDurationDays(3)}</option><option value="7">{formatDurationDays(7)}</option></select></label>}
                   {!isClosed && <button type="button" onClick={() => perform(() => completeReminder(reminder.id), 'Reminder completed.')} aria-label={`Complete ${reminder.title}`} className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900"><Check className="h-3.5 w-3.5" /><span className="hidden sm:inline">Complete</span></button>}
                   {isClosed && <button type="button" onClick={() => perform(() => reopenReminder(reminder.id), 'Reminder reopened.')} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Reopen</button>}
                   {!isClosed && <button type="button" onClick={() => perform(() => dismissReminder(reminder.id), 'Reminder dismissed.')} aria-label={`Dismiss ${reminder.title}`} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"><X className="h-4 w-4" /></button>}
@@ -271,7 +274,7 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
           <form onSubmit={submitReminder} className="space-y-4">
             <label className="block text-xs font-semibold">Title *<input required maxLength={120} value={title} onChange={event => setTitle(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
             <label className="block text-xs font-semibold">Note<textarea maxLength={1000} value={description} onChange={event => setDescription(event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
-            <label className="block text-xs font-semibold">Customer (optional)<select value={customerId} onChange={event => setCustomerId(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="">No customer</option>{customers.filter(customer => !customer.isArchived && customer.status !== 'archived').map(customer => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label>
+            <label className="block text-xs font-semibold">Customer (optional)<select value={customerId} onChange={event => setCustomerId(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="">No customer</option>{customers.filter(customer => !customer.isArchived && customer.status !== 'archived').map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}</select></label>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block text-xs font-semibold">Due date *<input type="date" required value={dueDate} onChange={event => setDueDate(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
               <label className="block text-xs font-semibold">Priority<select value={priority} onChange={event => setPriority(event.target.value as ReminderPriority)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800">{(['low', 'medium', 'high', 'critical'] as const).map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>

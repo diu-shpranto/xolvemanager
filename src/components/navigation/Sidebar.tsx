@@ -7,6 +7,7 @@ import {
   UserCheck,
   CreditCard,
   Receipt,
+  CircleDollarSign,
   FileText,
   Wallet,
   Landmark,
@@ -20,9 +21,7 @@ import {
   BellRing,
   Sun,
   Moon,
-  X,
   ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ProductLogo } from '../common/BrandLockup';
@@ -55,7 +54,6 @@ interface SidebarProps {
   isOpenMobile: boolean;
   onCloseMobile: () => void;
   isCollapsedDesktop: boolean;
-  onToggleDesktop: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -64,13 +62,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile,
   onCloseMobile,
   isCollapsedDesktop,
-  onToggleDesktop,
 }) => {
   const {
     stats,
-    t,
-    settings,
     currentBusinessName,
+    settings,
+    t,
     language,
     setLanguage,
     currency,
@@ -78,9 +75,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     isDark,
     toggleDarkMode,
   } = useApp();
+  const activeBusinessName = currentBusinessName || settings.storeName || 'Not set';
+  const sidebarRef = React.useRef<HTMLElement>(null);
   const closeButtonRef = React.useRef<HTMLButtonElement>(null);
   const previouslyFocusedElement = React.useRef<HTMLElement | null>(null);
-  const activeBusinessName = currentBusinessName || settings.storeName || 'Not set';
 
   const navItems = [
     {
@@ -153,7 +151,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'expenses' as NavSection,
       label: language === 'bn' ? 'খরচ' : 'Expenses',
-      icon: Receipt,
+      icon: CircleDollarSign,
       badge: null,
     },
     {
@@ -212,23 +210,62 @@ export const Sidebar: React.FC<SidebarProps> = ({
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeButtonRef.current?.focus();
 
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCloseMobile();
+    const keepFocusInDrawer = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onCloseMobile();
+        return;
+      }
+      if (event.key !== 'Tab' || !sidebarRef.current) return;
+
+      const focusable = Array.from(
+        sidebarRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter(element => element.getClientRects().length > 0);
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !sidebarRef.current.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !sidebarRef.current.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    document.addEventListener('keydown', closeOnEscape);
+    document.addEventListener('keydown', keepFocusInDrawer);
     return () => {
-      document.removeEventListener('keydown', closeOnEscape);
-      previouslyFocusedElement.current?.focus();
+      document.removeEventListener('keydown', keepFocusInDrawer);
+      const previousElement = previouslyFocusedElement.current;
+      if (previousElement?.isConnected && previousElement.getClientRects().length > 0) {
+        previousElement.focus();
+      } else {
+        const visibleDesktopToggle = document.querySelector<HTMLElement>('.app-topbar-collapse');
+        if (visibleDesktopToggle?.getClientRects().length) visibleDesktopToggle.focus();
+      }
       previouslyFocusedElement.current = null;
     };
   }, [isOpenMobile, onCloseMobile]);
+
+  useEffect(() => {
+    if (!isOpenMobile) return;
+
+    const root = document.documentElement;
+    const rootOverflow = root.style.overflow;
+    root.style.overflow = 'hidden';
+
+    return () => {
+      root.style.overflow = rootOverflow;
+    };
+  }, [isOpenMobile]);
 
   return (
     <>
       {/* Mobile Backdrop */}
       {isOpenMobile && (
         <div
-          className="fixed inset-0 z-40 bg-slate-950/55 backdrop-blur-[2px] lg:hidden"
+          className="app-sidebar-backdrop fixed inset-0 z-40 bg-slate-950/35 lg:hidden"
           onClick={onCloseMobile}
           aria-hidden="true"
         />
@@ -236,81 +273,86 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sidebar container */}
       <aside
+        ref={sidebarRef}
         id="primary-navigation"
-        aria-label="Main navigation"
+        aria-label={isOpenMobile ? 'Mobile navigation' : 'Main navigation'}
+        role={isOpenMobile ? 'dialog' : undefined}
+        aria-modal={isOpenMobile || undefined}
         data-collapsed={isCollapsedDesktop}
-        className={`app-sidebar fixed top-0 bottom-0 left-0 z-40 flex w-[288px] max-w-[calc(100vw-16px)] flex-col border-r border-slate-200/80 bg-white/90 shadow-[0_0_0_1px_rgba(15,23,42,0.02),18px_0_42px_-30px_rgba(0,0,0,0.42)] backdrop-blur-xl transition-[width,transform] duration-200 ease-out dark:border-slate-800/80 dark:bg-[#0E131F]/90 motion-reduce:transition-none lg:translate-x-0 ${
-          isCollapsedDesktop ? 'lg:w-16' : 'lg:w-64'
+        data-open-mobile={isOpenMobile}
+        className={`app-sidebar fixed bottom-0 left-0 z-40 flex w-[280px] max-w-[calc(100vw-48px)] flex-col border-r border-slate-200/80 bg-white shadow-[0_0_0_1px_rgba(15,23,42,0.02),18px_0_42px_-30px_rgba(0,0,0,0.42)] transition-[width,transform] duration-200 ease-out dark:border-slate-800/80 dark:bg-[#111126] motion-reduce:transition-none lg:translate-x-0 ${
+          isCollapsedDesktop ? 'lg:w-[4.5rem]' : 'lg:w-60'
         } ${
           isOpenMobile ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Application brand identity */}
-        <div className={`app-sidebar-brand flex h-16 shrink-0 items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 dark:border-slate-800/80 dark:bg-slate-900/60 lg:h-[68px] ${isCollapsedDesktop ? 'lg:justify-center lg:px-2' : ''}`}>
-          <div className={`flex min-w-0 items-center gap-3 lg:block ${isCollapsedDesktop ? 'lg:flex lg:justify-center' : ''}`}>
-            <div className="flex min-w-0 items-center gap-3 lg:block">
-              <ProductLogo size="compact" tone="inverse" showTagline className="max-w-full" />
+        <div className="app-sidebar-brand flex shrink-0 border-b border-slate-100 bg-slate-50/80 dark:border-slate-800/80 dark:bg-[#17132B]">
+          <div className="app-sidebar-brand-content">
+            <div className="app-sidebar-brand-row">
+              <ProductLogo
+                size="compact"
+                tone="inverse"
+                showTagline
+                className="app-sidebar-mobile-brand md:hidden"
+              />
+              <ProductLogo
+                size="compact"
+                tone="inverse"
+                showTagline
+                markOnly={isCollapsedDesktop}
+                className="app-sidebar-desktop-brand hidden md:inline-flex"
+              />
+              <button
+                type="button"
+                onClick={onCloseMobile}
+                ref={closeButtonRef}
+                className="app-icon-button app-sidebar-close rounded-lg border border-white/[0.06] text-slate-300 hover:bg-white/[0.06] hover:text-white lg:hidden"
+                aria-label="Close navigation"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
             </div>
-            <div className={`hidden items-center gap-1.5 text-[10px] leading-none text-slate-400 lg:flex ${isCollapsedDesktop ? 'lg:hidden' : 'lg:mt-1 lg:justify-center'}`}>
-              <ShieldCheck className="h-3 w-3 text-emerald-400" aria-hidden="true" />
-              <span className="truncate" title={activeBusinessName}>
-                Current Business: {activeBusinessName}
-              </span>
+            <div className="app-sidebar-business">
+              <span>{language === 'bn' ? 'বর্তমান ব্যবসা' : 'Current business'}</span>
+              <strong>{activeBusinessName}</strong>
             </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={onToggleDesktop}
-              className="app-icon-button hidden h-8 w-8 rounded-lg text-slate-400 hover:bg-white/5 hover:text-white lg:inline-flex"
-              aria-label={isCollapsedDesktop ? 'Expand sidebar' : 'Collapse sidebar'}
-              aria-expanded={!isCollapsedDesktop}
-              title={isCollapsedDesktop ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              {isCollapsedDesktop ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-            </button>
-            <button
-              type="button"
-              onClick={onCloseMobile}
-              ref={closeButtonRef}
-              className="app-icon-button h-8 w-8 shrink-0 rounded-lg border border-white/[0.06] text-slate-300 hover:bg-white/[0.06] hover:text-white lg:hidden"
-              aria-label="Close navigation"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </div>
         </div>
 
         {/* Navigation list */}
-        <nav className={`app-sidebar-nav min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3.5 transition-all duration-200 lg:space-y-5 lg:py-4 ${isCollapsedDesktop ? 'lg:px-2' : ''}`}>
+        <nav
+          aria-label={language === 'bn' ? 'অ্যাপ্লিকেশন নেভিগেশন' : 'Application sections'}
+          tabIndex={0}
+          className={`app-sidebar-nav min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3.5 transition-all duration-200 lg:space-y-5 lg:py-4 ${isCollapsedDesktop ? 'lg:space-y-3 lg:px-2 lg:py-3' : ''}`}
+        >
           {[
             {
-              label: language === 'bn' ? 'ওভারভিউ' : 'OVERVIEW',
+              label: language === 'bn' ? 'ওভারভিউ' : 'Overview',
               items: navItems.filter(item => item.id === 'dashboard'),
             },
             {
-              label: language === 'bn' ? 'পরিচালনা' : 'MANAGE',
+              label: language === 'bn' ? 'পরিচালনা' : 'Manage',
               items: navItems.filter(item =>
                 ['customers', 'services', 'accounts', 'profiles'].includes(item.id)
               ),
             },
             {
-              label: language === 'bn' ? 'বিক্রয় ও অর্থ' : 'REVENUE',
+              label: language === 'bn' ? 'বিক্রয় ও অর্থ' : 'Revenue',
               items: navItems.filter(item =>
                 ['subscriptions', 'sales', 'payments', 'cashbook', 'expenses', 'daily-closing', 'financial-control', 'invoices'].includes(item.id)
               ),
             },
             {
-              label: language === 'bn' ? 'বিশ্লেষণ' : 'INSIGHTS',
+              label: language === 'bn' ? 'বিশ্লেষণ' : 'Insights',
               items: navItems.filter(item => ['history', 'reports', 'notifications', 'reminders', 'data-integrity'].includes(item.id)),
             },
             {
-              label: language === 'bn' ? 'পছন্দসমূহ' : 'PREFERENCES',
+              label: language === 'bn' ? 'পছন্দসমূহ' : 'Preferences',
               items: navItems.filter(item => item.id === 'settings'),
             },
           ].map(group => (
             <section key={group.label} aria-label={group.label}>
-              <div className={`app-nav-group-label px-3 pb-1.5 text-[10px] font-medium tracking-[0.12em] text-slate-400 uppercase lg:pb-2 lg:text-xs lg:font-semibold lg:tracking-wider ${isCollapsedDesktop ? 'lg:sr-only' : ''}`}>
+              <div className={`app-nav-group-label px-3 pb-1.5 text-[10px] font-semibold tracking-[0.08em] text-slate-400 lg:pb-2 ${isCollapsedDesktop ? 'lg:sr-only' : ''}`}>
                 {group.label}
               </div>
               <div className="space-y-1">
@@ -322,7 +364,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 key={item.id}
                 type="button"
                 onClick={() => handleNav(item.id)}
-                className={`app-nav-item relative flex h-[42px] w-full cursor-pointer items-center justify-between rounded-[10px] border border-transparent px-3 py-2 text-[13px] font-medium transition-all duration-200 group lg:h-11 lg:rounded-xl lg:py-2.5 ${
+                className={`app-nav-item relative flex h-11 w-full cursor-pointer items-center justify-between rounded-[10px] border border-transparent px-3 py-2 text-[13px] font-medium transition-all duration-200 group lg:rounded-xl lg:py-2.5 ${
                   isCollapsedDesktop ? 'lg:justify-center lg:px-0' : ''
                 } ${
                   isActive
@@ -331,11 +373,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }`}
                 aria-current={isActive ? 'page' : undefined}
                 aria-label={item.label}
-                title={isCollapsedDesktop ? item.label : undefined}
+                title={isCollapsedDesktop ? (item.badge !== null ? `${item.label} (${item.badge})` : item.label) : undefined}
               >
                 <div className={`flex min-w-0 items-center gap-2.5 ${isCollapsedDesktop ? 'lg:justify-center' : ''}`}>
                   <Icon
-                    className={`h-[18px] w-[18px] shrink-0 transition-colors lg:h-4 lg:w-4 ${
+                    className={`h-[18px] w-[18px] shrink-0 transition-colors lg:h-[19px] lg:w-[19px] ${
                       isActive
                         ? 'text-violet-600 dark:text-violet-400'
                         : 'text-slate-400 group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300'
@@ -376,7 +418,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={toggleDarkMode}
-              className={`flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-slate-300 transition-all duration-200 hover:bg-white/[0.06] hover:text-white focus-visible:outline-2 focus-visible:outline-emerald-500 ${isCollapsedDesktop ? 'lg:w-9 lg:justify-center lg:px-0' : ''}`}
+              className={`flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-slate-300 transition-all duration-200 hover:bg-white/[0.06] hover:text-white focus-visible:outline-2 focus-visible:outline-violet-400 ${isCollapsedDesktop ? 'lg:w-9 lg:justify-center lg:px-0' : ''}`}
               aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
               title={isCollapsedDesktop ? (isDark ? 'Switch to light theme' : 'Switch to dark theme') : undefined}
             >
@@ -386,7 +428,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {isCollapsedDesktop && (
-            <div className="mb-2 hidden grid-cols-2 gap-1 lg:grid">
+            <div className="app-sidebar-compact-controls mb-2 hidden grid-cols-2 gap-1 lg:grid">
               <button
                 type="button"
                 onClick={() => setLanguage(language === 'bn' ? 'en' : 'bn')}
@@ -408,7 +450,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
 
-          <div className={`grid grid-cols-2 gap-2 ${isCollapsedDesktop ? 'lg:hidden' : ''}`}>
+          <div className={`app-sidebar-expanded-controls grid grid-cols-2 gap-2 ${isCollapsedDesktop ? 'lg:hidden' : ''}`}>
             {/* Language toggle */}
             <div>
               <span className="mb-1 block text-[10px] text-slate-500">{language === 'bn' ? 'ভাষা' : 'Language'}</span>
@@ -416,8 +458,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => setLanguage('bn')}
-                  className={`flex-1 rounded-md py-1.5 text-center text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-emerald-500 ${
-                    language === 'bn' ? 'bg-emerald-500/15 text-emerald-300' : 'text-slate-400 hover:text-slate-200'
+                  className={`flex-1 rounded-md py-1.5 text-center text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-violet-400 ${
+                    language === 'bn' ? 'bg-violet-500/15 text-violet-300' : 'text-slate-400 hover:text-slate-200'
                   }`}
                   aria-pressed={language === 'bn'}
                 >
@@ -426,8 +468,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => setLanguage('en')}
-                  className={`flex-1 rounded-md py-1.5 text-center text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-emerald-500 ${
-                    language === 'en' ? 'bg-emerald-500/15 text-emerald-300' : 'text-slate-400 hover:text-slate-200'
+                  className={`flex-1 rounded-md py-1.5 text-center text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-violet-400 ${
+                    language === 'en' ? 'bg-violet-500/15 text-violet-300' : 'text-slate-400 hover:text-slate-200'
                   }`}
                   aria-pressed={language === 'en'}
                 >
@@ -443,8 +485,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => setCurrency('BDT')}
-                  className={`flex-1 rounded-md py-1.5 text-center text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-emerald-500 ${
-                    currency === 'BDT' ? 'bg-emerald-500/15 text-emerald-300' : 'text-slate-400 hover:text-slate-200'
+                  className={`flex-1 rounded-md py-1.5 text-center text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-violet-400 ${
+                    currency === 'BDT' ? 'bg-violet-500/15 text-violet-300' : 'text-slate-400 hover:text-slate-200'
                   }`}
                   aria-pressed={currency === 'BDT'}
                 >
@@ -453,8 +495,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => setCurrency('USD')}
-                  className={`flex-1 rounded-md py-1.5 text-center text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-emerald-500 ${
-                    currency === 'USD' ? 'bg-emerald-500/15 text-emerald-300' : 'text-slate-400 hover:text-slate-200'
+                  className={`flex-1 rounded-md py-1.5 text-center text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-violet-400 ${
+                    currency === 'USD' ? 'bg-violet-500/15 text-violet-300' : 'text-slate-400 hover:text-slate-200'
                   }`}
                   aria-pressed={currency === 'USD'}
                 >

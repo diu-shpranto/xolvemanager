@@ -5,11 +5,14 @@ import './globals.css';
 
 const productTitle = `${productBrand.name} — ${productBrand.description}`;
 const productDescription = 'XolveManager is a business management dashboard for customer records, subscriptions, sales, payments, service accounts, renewals, notifications, and reports.';
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+const metadataBase = siteUrl ? new URL(siteUrl) : undefined;
 
 export const metadata: Metadata = {
   title: productTitle,
   description: productDescription,
   applicationName: productBrand.shortName,
+  ...(metadataBase ? { metadataBase } : {}),
   manifest: '/manifest.webmanifest',
   robots: {
     index: false,
@@ -17,10 +20,10 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: productBrand.faviconUrl, type: 'image/svg+xml' },
-      { url: '/icons/xolve-manager-32.png', type: 'image/png', sizes: '32x32' },
+      { url: '/icons/xolvemanager-violet-16.png', type: 'image/png', sizes: '16x16' },
+      { url: productBrand.faviconUrl, type: 'image/png', sizes: '32x32' },
     ],
-    apple: [{ url: '/icons/xolve-manager-180.png', sizes: '180x180' }],
+    apple: [{ url: '/icons/xolvemanager-violet-180.png', sizes: '180x180' }],
   },
   appleWebApp: {
     capable: true,
@@ -31,11 +34,21 @@ export const metadata: Metadata = {
     title: productTitle,
     description: productDescription,
     type: 'website',
+    siteName: productBrand.name,
+    ...(metadataBase ? {
+      images: [{
+        url: '/xolvemanager-social.png',
+        width: 1200,
+        height: 630,
+        alt: 'XolveManager — Business, in better focus',
+      }],
+    } : {}),
   },
   twitter: {
-    card: 'summary',
+    card: metadataBase ? 'summary_large_image' : 'summary',
     title: productTitle,
     description: productDescription,
+    ...(metadataBase ? { images: ['/xolvemanager-social.png'] } : {}),
   },
 };
 
@@ -57,7 +70,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
           rel="stylesheet"
         />
       </head>
-      <body className="h-full bg-[#F8FAFC] font-sans text-slate-900 antialiased selection:bg-violet-600 selection:text-white dark:bg-[#0B0F17] dark:text-slate-100">
+      <body className="h-full bg-[#F8FAFC] font-sans text-slate-900 antialiased selection:bg-violet-600 selection:text-white dark:bg-[#0B0B1B] dark:text-slate-100">
         {children}
       </body>
     </html>

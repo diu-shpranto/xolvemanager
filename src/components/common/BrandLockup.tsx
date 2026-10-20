@@ -1,4 +1,5 @@
 import React from 'react';
+import Image from 'next/image';
 import { productBrand } from '../../config/brand';
 
 interface ProductLogoProps {
@@ -23,12 +24,25 @@ export const ProductLogo: React.FC<ProductLogoProps> = ({
       aria-label={productBrand.name}
       title={productBrand.name}
     >
-      <div className="brand-lockup__mark" aria-hidden="true">
-        <img className="brand-lockup__uploaded-mark" src={productBrand.faviconUrl} alt="" />
-      </div>
-      {!markOnly && (
+      {markOnly ? (
+        <span className="brand-lockup__mark" aria-hidden="true">
+          <Image
+            className="brand-lockup__uploaded-mark"
+            src={productBrand.iconUrl}
+            alt=""
+            width={192}
+            height={192}
+          />
+        </span>
+      ) : (
         <div className="brand-lockup__copy">
-          <span className="brand-lockup__name">{productBrand.name}</span>
+          <Image
+            className="brand-lockup__wordmark"
+            src={tone === 'inverse' ? productBrand.wordmarkDarkUrl : productBrand.wordmarkLightUrl}
+            alt=""
+            width={1080}
+            height={200}
+          />
           {showTagline && <span className="brand-lockup__tagline">{productBrand.tagline}</span>}
         </div>
       )}

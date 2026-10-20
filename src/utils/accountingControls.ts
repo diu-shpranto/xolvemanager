@@ -17,7 +17,7 @@ import type {
   Subscription,
 } from '../types';
 import { convertReportCurrency } from './reportMetrics';
-import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus } from './saleUtils';
+import { getPaymentSaleAllocation, getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus } from './saleUtils';
 import { getAccountBalanceAtDate, getFinancialLedger, type FinancialLedgerEntry } from './financialLedger';
 
 export interface ReceivableRow {
@@ -265,7 +265,7 @@ export function runFinancialIntegrityCheck(records: AccountingRecords): Financia
     const postedPayments = matchingPayments.filter(payment =>
       payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial'
     );
-    const rawPaid = postedPayments.reduce((sum, payment) => sum + payment.amount, 0);
+    const rawPaid = postedPayments.reduce((sum, payment) => sum + getPaymentSaleAllocation(payment, sale), 0);
     if (rawPaid > sale.amount + 0.005) {
       issues.push({ severity: 'ERROR', type: 'payment_exceeds_sale', entityType: 'sale', entityId: sale.id, message: 'Effective payments exceed the sale total.' });
     }

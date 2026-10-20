@@ -18,6 +18,8 @@ import {
   YAxis,
 } from 'recharts';
 import { useApp } from '../../context/AppContext';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
+import { useReducedMotionPreference } from '../../hooks/useReducedMotionPreference';
 import { useToast } from '../common/Toast';
 import {
   formatAppDate,
@@ -45,7 +47,7 @@ import {
 } from '../../utils/reportMetrics';
 import { getSalePaymentStatus } from '../../utils/saleUtils';
 import { getPaymentMethodSummary, normalizePaymentMethods } from '../../utils/paymentMethods';
-import { getCustomerDisplayName } from '../../utils/relationships';
+import { getCustomerDisplayName, getCustomerOptionLabel } from '../../utils/relationships';
 import { getOpenReminders, getOverdueReminders } from '../../services/reminderEngine';
 import { buildCustomerCrmMetrics } from '../../utils/customerCrm';
 import { getServiceResourceSummary, getAccountCapacity, RESOURCE_CAPACITY_THRESHOLDS } from '../../utils/resourceManagement';
@@ -90,9 +92,9 @@ type PerformanceSort = 'revenue' | 'sales' | 'active';
 type CustomerSort = 'spent' | 'purchases' | 'due';
 type DueSort = 'due' | 'oldest' | 'customer';
 
-const cardClass = 'surface-card p-4';
+const cardClass = 'surface-card p-3 sm:p-4';
 const labelClass = 'text-xs font-medium text-slate-500 dark:text-slate-400';
-const numberClass = 'mt-1 block font-mono text-xl font-bold tabular-nums text-slate-900 dark:text-white';
+const numberClass = 'mt-1 block truncate font-mono text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-white';
 const paymentStatuses: PaymentStatus[] = ['paid', 'partial', 'pending', 'failed', 'refunded'];
 
 const normalizeDate = (value?: string): string => value?.slice(0, 10) || '';
@@ -120,10 +122,9 @@ const trendKey = (dateValue: string, grouping: TrendGrouping): string => {
   return dateValue;
 };
 
-const readableDate = (key: string, grouping: TrendGrouping): string => {
-  const date = new Date(`${key}T00:00:00`);
-  if (!Number.isFinite(date.getTime())) return key;
-  return date.toLocaleDateString('en-US', grouping === 'monthly'
+const readableDate = (key: string, grouping: TrendGrouping, language: 'en' | 'bn'): string => {
+  const dateValue = key.length === 7 ? `${key}-01` : key;
+  return formatAppDate(dateValue, language, grouping === 'monthly'
     ? { month: 'short', year: 'numeric' }
     : { month: 'short', day: 'numeric' });
 };
@@ -143,7 +144,7 @@ function MetricCard({
     slate: 'text-slate-900 dark:text-white',
     green: 'text-emerald-700 dark:text-emerald-300',
     amber: 'text-amber-700 dark:text-amber-300',
-    blue: 'text-blue-700 dark:text-blue-300',
+    blue: 'text-violet-700 dark:text-violet-300',
   };
   return (
     <div className={cardClass}>
@@ -179,6 +180,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   onRenewSubscription,
   onViewInvoice,
 }) => {
+  const { formatCurrency, language, formatDate: formatAppDate, formatDateTime } = useAppFormatting();
+  const prefersReducedMotion = useReducedMotionPreference();
   const {
     sales,
     subscriptions,
@@ -735,13 +738,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     const allKeys = [...new Set([...salesGroups.keys(), ...paymentGroups.keys()])].sort();
     return allKeys.map(key => ({
       key,
-      date: readableDate(key, grouping),
+      date: readableDate(key, grouping, language),
       sales: salesGroups.get(key)?.count || 0,
       revenue: salesGroups.get(key)?.revenue || 0,
       payments: paymentGroups.get(key)?.count || 0,
       paid: paymentGroups.get(key)?.amount || 0,
     }));
-  }, [reportSales, reportPayments, grouping, currency]);
+  }, [reportSales, reportPayments, grouping, currency, language]);
 
   const paymentMethods = useMemo(() => getPaymentMethodSummary(
     reportPayments,
@@ -921,11 +924,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       groups.set(key, item);
     });
     return [...groups.values()].sort((left, right) => left.key.localeCompare(right.key))
-      .map(item => ({ ...item, date: readableDate(item.key, grouping) }));
-  }, [reportExpenses, grouping, currency]);
+      .map(item => ({ ...item, date: readableDate(item.key, grouping, language) }));
+  }, [reportExpenses, grouping, currency, language]);
   const cashFlowTrend = boundsAreValid
     ? getCashFlowTrend(dimensionFilteredLedger, currency, bounds, grouping)
-      .map(item => ({ ...item, date: readableDate(item.key, grouping) }))
+      .map(item => ({ ...item, date: readableDate(item.key, grouping, language) }))
     : [];
   const dailyLedgerSummary = boundsAreValid
     ? getDailyFinancialSummary(financialRecords.accounts, financialLedger, selectedDay, currency)
@@ -1197,11 +1200,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     const rows = buildReportRows().map(row =>
       `<tr>${row.map(value => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`
     ).join('');
-    printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>XolveManager Report</title><style>body{font:12px Arial,sans-serif;color:#17211f;padding:24px}h1{margin-bottom:4px}p{color:#687572}.summary{display:flex;gap:18px;flex-wrap:wrap}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{text-align:left;padding:7px;border-bottom:1px solid #e2e9e6;vertical-align:top}th{background:#f6f8f7;position:sticky;top:0}tr{break-inside:avoid;page-break-inside:avoid}@media print{body{padding:8mm}thead{display:table-header-group}}</style></head><body><h1>Reports &amp; Analytics</h1><p>${escapeHtml(currentBusiness?.name || settings.storeName)} · ${escapeHtml(formatAppDate(bounds.start))} – ${escapeHtml(formatAppDate(bounds.end))} · Generated ${escapeHtml(new Date().toLocaleString())}</p><div class="summary"><span>Revenue: ${escapeHtml(formatCurrency(saleFinancials.revenue, currency))}</span><span>Payments received: ${escapeHtml(formatCurrency(reportPaymentsPaidTotal, currency))}</span><span>Expenses: ${escapeHtml(formatCurrency(expenseSummary.total, currency))}</span><span>Net cash flow: ${escapeHtml(formatCurrency(cashFlowSummary.netCashFlow, currency))}</span><span>Due: ${escapeHtml(formatCurrency(saleFinancials.due, currency))}</span></div><table><thead><tr>${reportExportHeaders.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${reportExportHeaders.length}">No data available for this period.</td></tr>`}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`);
+    printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>XolveManager Report</title><style>body{font:12px Arial,sans-serif;color:#17211f;padding:24px}h1{margin-bottom:4px}p{color:#687572}.summary{display:flex;gap:18px;flex-wrap:wrap}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{text-align:left;padding:7px;border-bottom:1px solid #e2e9e6;vertical-align:top}th{background:#f6f8f7;position:sticky;top:0}tr{break-inside:avoid;page-break-inside:avoid}@media print{body{padding:8mm}thead{display:table-header-group}}</style></head><body><h1>Reports &amp; Analytics</h1><p>${escapeHtml(currentBusiness?.name || settings.storeName)} · ${escapeHtml(formatAppDate(bounds.start, language))} – ${escapeHtml(formatAppDate(bounds.end, language))} · Generated ${escapeHtml(formatDateTime(new Date().toISOString()))}</p><div class="summary"><span>Revenue: ${escapeHtml(formatCurrency(saleFinancials.revenue, currency))}</span><span>Payments received: ${escapeHtml(formatCurrency(reportPaymentsPaidTotal, currency))}</span><span>Expenses: ${escapeHtml(formatCurrency(expenseSummary.total, currency))}</span><span>Net cash flow: ${escapeHtml(formatCurrency(cashFlowSummary.netCashFlow, currency))}</span><span>Due: ${escapeHtml(formatCurrency(saleFinancials.due, currency))}</span></div><table><thead><tr>${reportExportHeaders.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${reportExportHeaders.length}">No data available for this period.</td></tr>`}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`);
     printWindow.document.close();
   };
 
-  const selectClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-700 focus:border-emerald-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200';
+  const selectClass = 'w-full min-w-0 min-h-11 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-700 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200';
   const noResults = reportSales.length === 0
     && reportPayments.length === 0
     && reportSubscriptions.length === 0
@@ -1292,32 +1295,31 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   };
 
   return (
-    <div className="page-container max-w-[1500px] space-y-5">
-      <header className="page-header">
-        <div className="page-header__copy">
-          <h1 className="page-title flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-200/70 bg-emerald-50 text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/50 dark:text-emerald-300">
-              <BarChart3 className="h-5 w-5" />
-            </span>
-            Reports &amp; Analytics
-          </h1>
-          <p className="page-description">Understand sales, payments, cash flow, expenses, customers, and subscriptions.</p>
-          <p className="page-metadata">{currentBusiness?.name || settings.storeName} · Report period: {formatAppDate(bounds.start)} – {formatAppDate(bounds.end)}</p>
+    <div className="finance-responsive-page section-layout-shell customer-list-page mx-auto flex w-full max-w-[1600px] flex-col gap-3 px-3 py-3 pb-10 sm:gap-4 sm:px-6 sm:py-6 lg:px-8">
+      <header className="finance-responsive-header customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:pb-4">
+        <div className="customer-heading flex min-w-0 items-start gap-3">
+          <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11"><BarChart3 className="h-5 w-5" /></div>
+          <div className="min-w-0">
+            <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em]">Business intelligence</p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Insights</h1>
+            <p className="mt-1 text-[11px] font-medium text-violet-200">{currentBusiness?.name || settings.storeName} · {formatAppDate(bounds.start, language)} – {formatAppDate(bounds.end, language)}</p>
+            <p className="mt-0.5 text-sm leading-5 text-slate-600 dark:text-slate-400">Sales, cash flow, expenses, customers, and subscriptions.</p>
+          </div>
         </div>
-        <div className="page-header__actions">
-          <button type="button" onClick={downloadReportCsv} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+        <div className="finance-responsive-actions customer-header-actions flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+          <button type="button" onClick={downloadReportCsv} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/60">
             <Download className="h-4 w-4" /> Export CSV
           </button>
-          <button type="button" onClick={printReport} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+          <button type="button" onClick={printReport} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/60">
             <Printer className="h-4 w-4" /> Print Report
           </button>
-          <button type="button" onClick={() => showToast('Reports reflect the latest saved business data.', 'info')} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+          <button type="button" onClick={() => showToast('Reports reflect the latest saved business data.', 'info')} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/60">
             Refresh
           </button>
         </div>
       </header>
 
-      <section aria-label="Report filters" className={`${cardClass} grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6`}>
+      <section aria-label="Report filters" className={`${cardClass} grid min-w-0 grid-cols-2 gap-2 rounded-xl sm:gap-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6`}>
         <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
           Date Range
           <select aria-label="Date range" value={datePreset} onChange={event => setDatePreset(event.target.value as ReportDatePreset)} className={`${selectClass} mt-1`}>
@@ -1352,7 +1354,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <select aria-label="Filter by customer" value={customerFilter} onChange={event => setCustomerFilter(event.target.value)} className={`${selectClass} mt-1`}>
             <option value="all">All Customers</option>
             {businessCustomers.filter(customer => !customer.isArchived && customer.status !== 'archived').map(customer => (
-              <option key={customer.id} value={customer.id}>{customer.name}</option>
+              <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>
             ))}
           </select>
         </label>
@@ -1399,7 +1401,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </select>
         </label>
         <div className="flex items-end">
-          <button type="button" onClick={clearFilters} disabled={!hasFilters} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+          <button type="button" onClick={clearFilters} disabled={!hasFilters} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-violet-700 hover:border-violet-300 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-violet-300 dark:hover:bg-slate-800">
             <FilterX className="h-4 w-4" /> Clear Filters
           </button>
         </div>
@@ -1488,9 +1490,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             ['90+ Days', accountingReceivableAging.over90Days],
           ].map(([label, value]) => <MetricCard key={label} label={label as string} value={boundsAreValid ? formatCurrency(Number(value), currency) : '—'} tone={Number(value) > 0 ? 'amber' : 'slate'} />)}
         </div>
-        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+        <div className="data-table-scroll overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700" role="region" aria-label="Receivables report table; scroll horizontally to view all columns" tabIndex={0}>
           <table className="w-full min-w-[600px] text-left text-xs"><thead className="bg-slate-50 text-[11px] uppercase text-slate-500 dark:bg-slate-800/70 dark:text-slate-400"><tr><th className="px-3 py-2">Customer / Invoice</th><th className="px-3 py-2">Due Date</th><th className="px-3 py-2">Status</th><th className="px-3 py-2 text-right">Total</th><th className="px-3 py-2 text-right">Paid</th><th className="px-3 py-2 text-right">Due</th></tr></thead>
-            <tbody>{accountingReceivableAging.rows.slice(0, 20).map(row => <tr key={row.saleId} className="border-t border-slate-100 dark:border-slate-800"><td className="px-3 py-2.5 font-medium">{row.customerName}<span className="block text-[10px] text-slate-400">{row.invoiceNumber || row.saleId}</span></td><td className="px-3 py-2.5">{formatAppDate(row.dueDate)}</td><td className="px-3 py-2.5 capitalize">{row.status === 'overdue' ? `Overdue · ${row.ageDays} days` : row.status}</td><td className="px-3 py-2.5 text-right font-mono tabular-nums">{formatCurrency(row.total, currency)}</td><td className="px-3 py-2.5 text-right font-mono tabular-nums">{formatCurrency(row.paid, currency)}</td><td className="px-3 py-2.5 text-right font-mono font-semibold tabular-nums">{formatCurrency(row.due, currency)}</td></tr>)}
+            <tbody>{accountingReceivableAging.rows.slice(0, 20).map(row => <tr key={row.saleId} className="border-t border-slate-100 dark:border-slate-800"><td className="px-3 py-2.5 font-medium">{row.customerName}<span className="block text-[10px] text-slate-400">{row.invoiceNumber || row.saleId}</span></td><td className="px-3 py-2.5">{formatAppDate(row.dueDate, language)}</td><td className="px-3 py-2.5 capitalize">{row.status === 'overdue' ? `Overdue · ${row.ageDays} days` : row.status}</td><td className="px-3 py-2.5 text-right font-mono tabular-nums">{formatCurrency(row.total, currency)}</td><td className="px-3 py-2.5 text-right font-mono tabular-nums">{formatCurrency(row.paid, currency)}</td><td className="px-3 py-2.5 text-right font-mono font-semibold tabular-nums">{formatCurrency(row.due, currency)}</td></tr>)}
               {!accountingReceivableAging.rows.length && <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">No outstanding receivables as of this date.</td></tr>}
             </tbody>
           </table>
@@ -1615,13 +1617,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip formatter={value => formatCurrency(Number(value) || 0, currency)} />
-                <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#10b981" fill="#10b981" fillOpacity={0.12} />
-                <Area type="monotone" dataKey="grossProfit" name="Gross profit" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.08} />
+                <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#10b981" fill="#10b981" fillOpacity={0.12} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                <Area type="monotone" dataKey="grossProfit" name="Gross profit" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.08} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
               </AreaChart>
             </ResponsiveContainer>
           ) : <p className="flex h-full items-center justify-center text-sm text-slate-500">No recognized sales in this period.</p>}
         </div>
-        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+        <div className="data-table-scroll overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700" role="region" aria-label="Profitability report table; scroll horizontally to view all columns" tabIndex={0}>
           <table className="w-full min-w-[720px] text-left text-xs">
             <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
               <tr><th className="px-3 py-2.5">Name</th><th className="px-3 py-2.5 text-right">Sales</th><th className="px-3 py-2.5 text-right">Revenue</th><th className="px-3 py-2.5 text-right">Direct Cost</th><th className="px-3 py-2.5 text-right">Gross Profit</th><th className="px-3 py-2.5 text-right">Margin</th><th className="px-3 py-2.5 text-right">Due</th></tr>
@@ -1728,8 +1730,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       <YAxis yAxisId="left" tick={{ fontSize: 10 }} width={36} />
                       <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} width={56} />
                       <Tooltip formatter={(value, name) => name === 'revenue' ? formatCurrency(Number(value), currency) : value} />
-                      <Area yAxisId="left" type="monotone" dataKey="sales" name="Sales" stroke="#2563eb" fill="#dbeafe" />
-                      <Area yAxisId="right" type="monotone" dataKey="revenue" name="Revenue" stroke="#059669" fill="#d1fae5" />
+                      <Area yAxisId="left" type="monotone" dataKey="sales" name="Sales" stroke="#2563eb" fill="#dbeafe" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                      <Area yAxisId="right" type="monotone" dataKey="revenue" name="Revenue" stroke="#059669" fill="#d1fae5" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -1744,7 +1746,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={20} />
                       <YAxis tick={{ fontSize: 10 }} width={56} />
                       <Tooltip formatter={(value, name) => name === 'paid' ? formatCurrency(Number(value), currency) : value} />
-                      <Bar dataKey="paid" name="Paid" fill="#059669" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="paid" name="Paid" fill="#059669" radius={[4, 4, 0, 0]} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1762,8 +1764,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={20} />
                       <YAxis tick={{ fontSize: 10 }} width={56} />
                       <Tooltip formatter={(value, name) => formatCurrency(Number(value), currency)} />
-                      <Bar dataKey="moneyIn" name="Money In" fill="#059669" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="moneyOut" name="Money Out" fill="#e11d48" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="moneyIn" name="Money In" fill="#059669" radius={[4, 4, 0, 0]} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                      <Bar dataKey="moneyOut" name="Money Out" fill="#e11d48" radius={[4, 4, 0, 0]} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1784,7 +1786,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={20} />
                       <YAxis tick={{ fontSize: 10 }} width={56} />
                       <Tooltip formatter={value => formatCurrency(Number(value), currency)} />
-                      <Area dataKey="moneyOut" name="Expenses" type="monotone" stroke="#e11d48" fill="#ffe4e6" />
+                      <Area dataKey="moneyOut" name="Expenses" type="monotone" stroke="#e11d48" fill="#ffe4e6" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -1810,7 +1812,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <option value="active">Most Active Subscriptions</option>
             </select>
             {serviceMetrics.length === 0 ? <EmptyRows /> : (
-              <div className="overflow-x-auto">
+              <div className="data-table-scroll overflow-x-auto" role="region" aria-label="Service performance table; scroll horizontally to view all columns" tabIndex={0}>
                 <table className="w-full min-w-[860px] text-left text-xs">
                   <thead><tr className="border-b border-slate-200 text-slate-500 dark:border-slate-800"><th className="p-2">Service</th><th className="p-2">Sales</th><th className="p-2">Revenue</th><th className="p-2">Paid</th><th className="p-2">Due</th><th className="p-2">Active</th><th className="p-2">Renewals</th><th className="p-2">Customers</th></tr></thead>
                   <tbody>{serviceMetrics.map(item => <tr key={item.serviceId} className="border-b border-slate-100 dark:border-slate-800"><td className="p-2 font-semibold text-slate-800 dark:text-slate-100">{item.serviceName}</td><td className="p-2">{item.salesCount}</td><td className="p-2">{formatCurrency(item.revenue, currency)}</td><td className="p-2">{formatCurrency(item.paid, currency)}</td><td className="p-2">{formatCurrency(item.due, currency)}</td><td className="p-2">{item.activeSubscriptions}</td><td className="p-2">{item.renewals}</td><td className="p-2">{serviceCustomerCounts.get(item.serviceId) || 0}</td></tr>)}</tbody>
@@ -1827,7 +1829,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <option value="active">Most Active Subscriptions</option>
             </select>
             {planMetrics.length === 0 ? <EmptyRows /> : (
-              <div className="overflow-x-auto">
+              <div className="data-table-scroll overflow-x-auto" role="region" aria-label="Plan performance table; scroll horizontally to view all columns" tabIndex={0}>
                 <table className="w-full min-w-[880px] text-left text-xs">
                   <thead><tr className="border-b border-slate-200 text-slate-500 dark:border-slate-800"><th className="p-2">Service</th><th className="p-2">Plan</th><th className="p-2">Sales</th><th className="p-2">Revenue</th><th className="p-2">Paid</th><th className="p-2">Due</th><th className="p-2">Active</th><th className="p-2">Renewals</th></tr></thead>
                   <tbody>{planMetrics.map(item => <tr key={`${item.serviceId}-${item.planId}`} className="border-b border-slate-100 dark:border-slate-800"><td className="p-2">{item.serviceName}</td><td className="p-2 font-semibold text-slate-800 dark:text-slate-100">{item.planName}</td><td className="p-2">{item.salesCount}</td><td className="p-2">{formatCurrency(item.revenue, currency)}</td><td className="p-2">{formatCurrency(item.paid, currency)}</td><td className="p-2">{formatCurrency(item.due, currency)}</td><td className="p-2">{item.activeSubscriptions}</td><td className="p-2">{item.renewals}</td></tr>)}</tbody>
@@ -1908,7 +1910,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                           <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">{kindLabel}</span>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-                          <span>{row.kind === 'renewed' ? `Renewed ${formatAppDate(row.date)}` : `Expires ${formatAppDate(row.date)}`}{row.amount > 0 ? ` · ${formatCurrency(row.amount, currency)}` : ''}</span>
+                          <span>{row.kind === 'renewed' ? `Renewed ${formatAppDate(row.date, language)}` : `Expires ${formatAppDate(row.date, language)}`}{row.amount > 0 ? ` · ${formatCurrency(row.amount, currency)}` : ''}</span>
                           <div className="flex gap-2">
                             {subscription && <button type="button" onClick={() => onNavigate('subscriptions', subscription.id)} className="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">View</button>}
                             {subscription && row.kind !== 'renewed' && <button type="button" onClick={() => onRenewSubscription(subscription)} className="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">Renew</button>}
@@ -1989,7 +1991,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
           <Section title="Financial Account Performance" description="Balances are reconciled from the centralized Cashbook ledger; internal transfers change account balances but not total business cash flow.">
             {accountPeriodSummary.length === 0 ? <EmptyRows /> : (
-              <div className="overflow-x-auto">
+              <div className="data-table-scroll overflow-x-auto" role="region" aria-label="Financial account performance table; scroll horizontally to view all columns" tabIndex={0}>
                 <table className="w-full min-w-[980px] text-left text-xs">
                   <thead><tr className="border-b border-slate-200 text-slate-500 dark:border-slate-800">
                     {['Account', 'Opening', 'Money In', 'Money Out', 'Transfer In', 'Transfer Out', 'Closing', 'Transactions'].map(label => <th key={label} scope="col" className="p-2">{label}</th>)}
@@ -2020,11 +2022,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 <MetricCard label="Total Difference" value={formatCurrency(dailyClosingTotals.difference, currency)} tone={dailyClosingTotals.difference ? 'amber' : 'green'} />
               </div>
               {closingRows.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No daily closing records for this period.</p> : (
-                <div className="max-h-[420px] overflow-auto">
+                <div className="data-table-scroll max-h-[420px] overflow-auto" role="region" aria-label="Daily closing records table; scroll to view all records and columns" tabIndex={0}>
                   <table className="w-full min-w-[780px] text-left text-xs">
                     <thead><tr className="border-b border-slate-200 text-slate-500 dark:border-slate-800">{['Date', 'Opening', 'Money In', 'Money Out', 'Expected', 'Actual', 'Difference', 'Status'].map(label => <th key={label} scope="col" className="p-2">{label}</th>)}</tr></thead>
                     <tbody>{closingRows.map(closing => <tr key={closing.id} className="border-b border-slate-100 dark:border-slate-800">
-                      <td className="p-2"><button type="button" onClick={() => onNavigate('daily-closing', closing.date)} className="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">{formatAppDate(closing.date)}</button></td>
+                      <td className="p-2"><button type="button" onClick={() => onNavigate('daily-closing', closing.date)} className="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">{formatAppDate(closing.date, language)}</button></td>
                       <td className="p-2">{formatCurrency(closing.openingBalance, closing.currency)}</td>
                       <td className="p-2">{formatCurrency(closing.totalMoneyIn, closing.currency)}</td>
                       <td className="p-2">{formatCurrency(closing.totalMoneyOut, closing.currency)}</td>
@@ -2055,14 +2057,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <Section title="Recent Financial Activity" description="Latest real sales, payments, expenses, transfers, invoices, adjustments, and closing records in this report period.">
             {recentFinancialActivity.length === 0 ? <EmptyRows /> : <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {recentFinancialActivity.map(item => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-xs">
-                <div className="min-w-0"><p className="font-semibold text-slate-800 dark:text-slate-100">{item.type} · {item.description}</p><p className="mt-1 text-slate-500">{formatAppDate(item.date)} · {item.status}</p></div>
+                <div className="min-w-0"><p className="font-semibold text-slate-800 dark:text-slate-100">{item.type} · {item.description}</p><p className="mt-1 text-slate-500">{formatAppDate(item.date, language)} · {item.status}</p></div>
                 <span className={`font-mono font-semibold ${item.amount < 0 ? 'text-rose-700 dark:text-rose-300' : 'text-slate-800 dark:text-slate-100'}`}>{formatCurrency(item.amount, currency)}</span>
                 {item.targetSection && item.targetId && <button type="button" onClick={() => item.targetSection === 'invoices' ? onViewInvoice(item.targetId!) : onNavigate(item.targetSection!, item.targetId)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-950/30">View</button>}
               </div>)}
             </div>}
           </Section>
 
-          <Section title="Daily Summary" description={`Selected day: ${formatAppDate(selectedDay)}`}>
+          <Section title="Daily Summary" description={`Selected day: ${formatAppDate(selectedDay, language)}`}>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
               <MetricCard label="Sales" value={dailySummary.salesCount} />
               <MetricCard label="Revenue" value={formatCurrency(dailySummary.revenue, currency)} tone="green" />
@@ -2087,7 +2089,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <div className="space-y-2">
                 {searchedInvoiceRows.slice(0, 20).map(row => (
                   <div key={row.invoice.invoiceId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 text-xs dark:border-slate-800">
-                    <div className="min-w-36"><div className="font-semibold text-slate-800 dark:text-slate-100">{row.invoice.invoiceNumber} · {formatAppDate(row.invoice.invoiceDate)}</div><div className="mt-0.5 text-slate-500">{row.customer?.name || 'Customer unavailable'} · {row.service?.name || 'Service unavailable'} · {row.sale.plan}</div></div>
+                    <div className="min-w-36"><div className="font-semibold text-slate-800 dark:text-slate-100">{row.invoice.invoiceNumber} · {formatAppDate(row.invoice.invoiceDate, language)}</div><div className="mt-0.5 text-slate-500">{row.customer?.name || 'Customer unavailable'} · {row.service?.name || 'Service unavailable'} · {row.sale.plan}</div></div>
                     <div className="text-slate-600 dark:text-slate-300">Total {formatCurrency(row.revenue, currency)} · Paid {formatCurrency(row.paid, currency)} · Due {formatCurrency(row.due, currency)}</div>
                     <span className="capitalize text-slate-500">{row.status}</span>
                     <button type="button" onClick={() => onViewInvoice(row.invoice.invoiceId)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-950/30"><Receipt className="h-3.5 w-3.5" /> View Invoice</button>

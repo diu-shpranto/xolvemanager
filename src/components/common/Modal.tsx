@@ -12,6 +12,31 @@ interface ModalProps {
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
 }
 
+let activeModalScrollLocks = 0;
+let previousBodyOverflow = '';
+let previousDocumentOverflow = '';
+
+function lockPageScroll(): () => void {
+  if (activeModalScrollLocks === 0) {
+    previousBodyOverflow = document.body.style.overflow;
+    previousDocumentOverflow = document.documentElement.style.overflow;
+  }
+  activeModalScrollLocks += 1;
+  document.body.style.overflow = 'hidden';
+  document.documentElement.style.overflow = 'hidden';
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    activeModalScrollLocks = Math.max(0, activeModalScrollLocks - 1);
+    if (activeModalScrollLocks === 0) {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousDocumentOverflow;
+    }
+  };
+}
+
 export const Modal: React.FC<ModalProps> = ({
   isOpen,
   onClose,
@@ -29,6 +54,14 @@ export const Modal: React.FC<ModalProps> = ({
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
   const titleId = useId();
   onCloseRef.current = onClose;
+  const hasEditableContent = () => Boolean(
+    dialogRef.current?.querySelector('form, input:not([type="hidden"]), select, textarea')
+  );
+  const getFocusableElements = () => Array.from(
+    dialogRef.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), a[href], input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
+    ) ?? []
+  ).filter(element => element.getClientRects().length > 0 && element.getAttribute('aria-hidden') !== 'true');
 
   useEffect(() => {
     setPortalContainer(document.body);
@@ -37,11 +70,8 @@ export const Modal: React.FC<ModalProps> = ({
   useEffect(() => {
     if (!isOpen || !portalContainer) return;
 
-    const previousOverflow = document.body.style.overflow;
-    const previousDocumentOverflow = document.documentElement.style.overflow;
+    const unlockPageScroll = lockPageScroll();
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
     closeButtonRef.current?.focus();
 
     const visualViewport = window.visualViewport;
@@ -56,13 +86,15 @@ export const Modal: React.FC<ModalProps> = ({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (hasEditableContent()) {
+          event.preventDefault();
+          return;
+        }
         onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab' || !dialogRef.current) return;
-      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
+      const focusable = getFocusableElements();
       if (focusable.length === 0) {
         event.preventDefault();
         dialogRef.current.focus();
@@ -70,22 +102,21 @@ export const Modal: React.FC<ModalProps> = ({
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (event.shiftKey && (document.activeElement === first || !dialogRef.current.contains(document.activeElement))) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && (document.activeElement === last || !dialogRef.current.contains(document.activeElement))) {
         event.preventDefault();
         first.focus();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
-      document.documentElement.style.overflow = previousDocumentOverflow;
+      unlockPageScroll();
       window.removeEventListener('keydown', handleKeyDown);
       visualViewport?.removeEventListener('resize', updateViewport);
       visualViewport?.removeEventListener('scroll', updateViewport);
-      returnFocusRef.current?.focus();
+      returnFocusRef.current?.focus({ preventScroll: true });
       returnFocusRef.current = null;
     };
   }, [isOpen, portalContainer]);
@@ -107,13 +138,15 @@ export const Modal: React.FC<ModalProps> = ({
       ref={overlayRef}
       className="app-modal-overlay fixed inset-x-0 top-0 z-50 flex h-[100dvh] items-end justify-center overflow-y-auto bg-slate-900/60 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-xs sm:items-center sm:bg-transparent sm:p-4"
       onMouseDown={event => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget && !hasEditableContent()) onClose();
       }}
     >
       {/* Backdrop */}
       <div
         className="fixed inset-0 hidden bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200 sm:block"
-        onClick={onClose}
+        onClick={() => {
+          if (!hasEditableContent()) onClose();
+        }}
         aria-hidden="true"
       />
 
@@ -126,9 +159,9 @@ export const Modal: React.FC<ModalProps> = ({
         role="dialog"
         aria-modal="true"
       >
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3.5 dark:border-slate-800 sm:px-6 sm:py-4">
+        <div className="app-modal-header flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3.5 dark:border-slate-800 sm:px-6 sm:py-4">
           <div className="min-w-0 flex-1">
-            <h3 id={titleId} className="text-base font-semibold leading-6 text-slate-900 dark:text-white sm:text-lg">
+            <h3 id={titleId} className="app-modal-title text-base font-semibold leading-6 text-slate-900 dark:text-white sm:text-lg">
               {title}
             </h3>
             {subtitle && (
@@ -142,7 +175,7 @@ export const Modal: React.FC<ModalProps> = ({
             onClick={onClose}
             ref={closeButtonRef}
             aria-label="Close dialog"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-2 focus-visible:outline-violet-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
           >
             <X className="w-5 h-5" />
           </button>
@@ -152,7 +185,7 @@ export const Modal: React.FC<ModalProps> = ({
           {children}
         </div>
         {footer && (
-          <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
+          <div className="app-modal-footer shrink-0 border-t border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
             {footer}
           </div>
         )}

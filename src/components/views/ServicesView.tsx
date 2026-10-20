@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Layers,
   Plus,
@@ -39,8 +39,11 @@ import {
   ArrowLeft,
   Copy,
   Download,
+  Filter,
+  ChevronDown,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
 import {
@@ -321,12 +324,6 @@ function getServiceCapacity(serviceAccounts: Account[]) {
   );
 }
 
-function getServiceInitials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length > 1) return `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase();
-  return words[0]?.slice(0, 2).toUpperCase() || '?';
-}
-
 function getServicePrice(service: Service, selectedCurrency: AppCurrency): number | null {
   const currencyPrice =
     selectedCurrency === 'BDT' ? service.defaultPriceBDT : service.defaultPriceUSD;
@@ -373,6 +370,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   createRequest,
   onCreateRequestHandled,
 }) => {
+  const { formatCurrency, formatDate: formatAppDate, formatDurationDays } = useAppFormatting();
   const {
     services,
     servicesLoading,
@@ -408,6 +406,33 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   >('popular');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [openServiceActionsId, setOpenServiceActionsId] = useState<string | null>(null);
+  const [serviceActionsOpenDirection, setServiceActionsOpenDirection] = useState<'above' | 'below'>('above');
+  const serviceActionsRef = useRef<HTMLDivElement | null>(null);
+  const serviceActionsTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
+
+  useEffect(() => {
+    if (!openServiceActionsId) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !serviceActionsRef.current?.contains(event.target)) {
+        setOpenServiceActionsId(null);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setOpenServiceActionsId(null);
+        serviceActionsTriggerRefs.current.get(openServiceActionsId)?.focus();
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openServiceActionsId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearchQuery(searchQuery.trim().toLocaleLowerCase()), 200);
@@ -762,7 +787,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
     }
   };
 
-  const openAddPlan = () => {
+  const openAddPlan = (service = detailedService) => {
     setPlanEditing(null);
     setPlanName('');
     setPlanInternalCode('');
@@ -776,10 +801,10 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
     setPlanDirectCostAmount('');
     setPlanProfileCapacity('');
     setPlanAccountCapacity('');
-    setPlanRenewalEnabled(detailedService?.settings?.renewalEnabled ?? true);
-    setPlanReminderEnabled(detailedService?.settings?.renewalReminderEnabled ?? true);
-    setPlanReminderDays(detailedService?.settings?.reminderDays ?? 7);
-    setPlanSortOrder((detailedService?.planDetails || []).length);
+    setPlanRenewalEnabled(service?.settings?.renewalEnabled ?? true);
+    setPlanReminderEnabled(service?.settings?.renewalReminderEnabled ?? true);
+    setPlanReminderDays(service?.settings?.reminderDays ?? 7);
+    setPlanSortOrder((service?.planDetails || []).length);
     setPlanFormError('');
     setIsPlanModalOpen(true);
   };
@@ -1159,74 +1184,98 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   }, [catalogServices, servicePerformanceById, sales, payments, currency, currentMonthPrefix]);
 
   return (
-    <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
+    <div className="services-view mx-auto max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
       {!detailedService && (
-        <div className="space-y-5">
+        <div className="service-list-page space-y-5">
       {/* 1. PAGE HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-xs shrink-0 ring-1 ring-emerald-500/30">
-              <Layers className="w-5 h-5" />
-            </div>
-            <span>{language === 'bn' ? 'সার্ভিস' : 'Services'}</span>
-          </h1>
-          <p className="text-xs sm:text-[13px] text-slate-500 dark:text-slate-400 mt-1">
-            {language === 'bn'
-              ? 'ডিজিটাল সাবস্ক্রিপশন ক্যাটালগ, অ্যাকাউন্ট পুল ইনভেন্টরি ও মূল্য তালিকা ব্যবস্থাপনা।'
-              : 'Manage services, plans, pricing, subscriptions and resources.'}
-          </p>
+      <div className="service-page-header flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="service-page-heading flex min-w-0 items-start gap-3">
+          <span className="service-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+            <Layers className="h-5 w-5" />
+          </span>
+          <div className="service-page-heading-copy min-w-0">
+            <p className="service-page-eyebrow text-[11px] font-bold uppercase tracking-[0.16em]">Catalog &amp; operations</p>
+            <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
+              {language === 'bn' ? 'সার্ভিস' : 'Services'}
+            </h1>
+            <p className="service-page-description mt-0.5 text-xs">
+              {language === 'bn' ? 'সার্ভিস ও প্ল্যান পরিচালনা করুন' : 'Manage services and plans'}
+            </p>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+        <div className="service-page-actions flex flex-wrap items-center gap-2 self-start sm:self-auto">
           <button
             type="button"
             onClick={() => downloadCSV('services.csv', exportServicesCSV(catalogServices))}
             disabled={catalogServices.length === 0}
+            aria-label={language === 'bn' ? 'সার্ভিস রপ্তানি' : 'Export services'}
+            title={language === 'bn' ? 'সার্ভিস রপ্তানি' : 'Export services'}
             className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
           >
-            <Download className="h-3.5 w-3.5" /> Export
+            <Download className="h-3.5 w-3.5" />
+            <span className="service-action-label">Export</span>
           </button>
           <button
+            type="button"
             onClick={openAddModal}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs sm:text-sm font-semibold rounded-lg shadow-sm shadow-emerald-600/25 hover:shadow-emerald-600/35 transition-all cursor-pointer"
+            aria-label={t('addService')}
+            title={t('addService')}
+            className="service-primary-action inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>{t('addService')}</span>
+            <span className="service-action-label">{t('addService')}</span>
           </button>
         </div>
       </div>
 
       {!servicesLoading && !servicesError && (
-        <section aria-label="Service catalog summary" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        <section aria-label="Service catalog summary" className="service-summary-grid grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
           {[
-            { label: 'Total Services', value: summary.totalServices, icon: Layers },
-            { label: 'Active Services', value: summary.activeServices, icon: CheckCircle2 },
-            { label: 'Total Plans', value: summary.totalPlans, icon: FileText },
-            { label: 'Active Plans', value: summary.activePlans, icon: CheckCircle2 },
-            { label: 'Active Subscriptions', value: summary.activeSubscriptions, icon: CreditCard },
-            { label: 'Monthly Revenue', value: summary.monthlyRevenue, icon: DollarSign, currency: true },
-          ].map(({ label, value, icon: SummaryIcon, currency: isCurrency }) => (
+            { label: 'Total Services', value: summary.totalServices, icon: Layers, iconTone: 'violet' },
+            { label: 'Active Services', value: summary.activeServices, icon: CheckCircle2, iconTone: 'emerald' },
+            { label: 'Active Plans', value: summary.activePlans, icon: CheckCircle2, iconTone: 'teal' },
+            { label: 'Monthly Revenue', value: summary.monthlyRevenue, icon: DollarSign, iconTone: 'violet', currency: true },
+          ].map(({ label, value, icon: SummaryIcon, iconTone, currency: isCurrency }) => (
             <div
               key={label}
-              className="min-w-0 rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-2xs dark:border-slate-800 dark:bg-[#111726]"
+              className="service-summary-card min-w-0 rounded-xl border border-slate-200/80 bg-white px-3.5 py-3 shadow-2xs dark:border-slate-800 dark:bg-[#111726]"
             >
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <div className="flex items-start justify-between gap-2">
+                <span className="line-clamp-2 min-h-7 text-[10px] font-semibold uppercase leading-3.5 tracking-wide text-slate-500 dark:text-slate-400">
                   {label}
                 </span>
-                <SummaryIcon className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${
+                  iconTone === 'emerald'
+                    ? 'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300 dark:ring-emerald-900/60'
+                    : iconTone === 'blue'
+                    ? 'bg-blue-50 text-blue-700 ring-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:ring-blue-900/60'
+                    : iconTone === 'teal'
+                    ? 'bg-teal-50 text-teal-700 ring-teal-100 dark:bg-teal-950/50 dark:text-teal-300 dark:ring-teal-900/60'
+                    : iconTone === 'amber'
+                    ? 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-900/60'
+                    : 'bg-violet-50 text-violet-700 ring-violet-100 dark:bg-violet-950/50 dark:text-violet-300 dark:ring-violet-900/60'
+                }`}>
+                  <SummaryIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                </span>
               </div>
-              <div className="mt-1 truncate text-xl font-bold tabular-nums text-slate-900 dark:text-white">{isCurrency ? formatCurrency(value, currency) : value}</div>
+              <div className="mt-1 truncate text-lg font-bold tabular-nums text-slate-900 dark:text-white">{isCurrency ? formatCurrency(value, currency) : value}</div>
             </div>
           ))}
         </section>
       )}
 
+      {!servicesLoading && !servicesError && (
+        <div className="service-secondary-metrics" aria-label="Additional service metrics">
+          <div><span>Total Plans</span><strong>{summary.totalPlans}</strong></div>
+          <div><span>Active Subscriptions</span><strong>{summary.activeSubscriptions}</strong></div>
+        </div>
+      )}
+
       {/* 2. SEARCH & FILTER TOOLBAR */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+      <div className="service-toolbar flex flex-col items-stretch justify-between gap-3 lg:flex-row lg:items-center">
         {/* Search input */}
-        <div className="relative flex-1 max-w-lg">
+        <div className="service-search relative min-w-0 flex-1 lg:max-w-lg">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <input
             type="text"
@@ -1248,7 +1297,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         </div>
 
         {/* Filters & View Toggles with matching h-10 */}
-        <div className="flex flex-wrap items-center gap-2 pb-1 sm:pb-0">
+        <div className="service-toolbar-filters flex flex-wrap items-center gap-2 pb-1 sm:pb-0">
           {/* Status Dropdown */}
           <div className="relative shrink-0">
             <select
@@ -1262,16 +1311,6 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               <option value="inactive">{language === 'bn' ? 'নিষ্ক্রিয়' : 'Inactive'}</option>
             </select>
           </div>
-
-          <select aria-label="Filter services by active plans" value={planFilter} onChange={event => setPlanFilter(event.target.value as typeof planFilter)} className="h-10 max-w-full rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-emerald-500 dark:border-slate-800 dark:bg-[#111726] dark:text-slate-300">
-            <option value="all">All plans</option><option value="has_active">Has active plans</option><option value="none_active">No active plans</option>
-          </select>
-          <select aria-label="Filter services by active subscriptions" value={subscriptionFilter} onChange={event => setSubscriptionFilter(event.target.value as typeof subscriptionFilter)} className="h-10 max-w-full rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-emerald-500 dark:border-slate-800 dark:bg-[#111726] dark:text-slate-300">
-            <option value="all">All subscriptions</option><option value="has_active">Has active subscriptions</option><option value="none_active">No active subscriptions</option>
-          </select>
-          <select aria-label="Filter services by resource type" value={resourceFilter} onChange={event => setResourceFilter(event.target.value as typeof resourceFilter)} className="h-10 max-w-full rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-emerald-500 dark:border-slate-800 dark:bg-[#111726] dark:text-slate-300">
-            <option value="all">All resources</option><option value="accounts">Uses accounts</option><option value="profiles">Uses profiles</option><option value="none">No resource assignment</option>
-          </select>
 
           {/* Sort By Dropdown */}
           <div className="relative shrink-0">
@@ -1308,8 +1347,49 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             </select>
           </div>
 
+          <details className="service-advanced-filters">
+            <summary className="service-filter-trigger">
+              <Filter className="h-3.5 w-3.5" />
+              <span>Filters</span>
+              {(Number(planFilter !== 'all') + Number(subscriptionFilter !== 'all') + Number(resourceFilter !== 'all')) > 0 && (
+                <span className="service-filter-count">
+                  {Number(planFilter !== 'all') + Number(subscriptionFilter !== 'all') + Number(resourceFilter !== 'all')}
+                </span>
+              )}
+              <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+            </summary>
+            <div className="service-advanced-filter-panel">
+              <select aria-label="Filter services by active plans" value={planFilter} onChange={event => setPlanFilter(event.target.value as typeof planFilter)} className="h-10 max-w-full rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-violet-500 dark:border-slate-800 dark:bg-[#111726] dark:text-slate-300">
+                <option value="all">All plans</option><option value="has_active">Has active plans</option><option value="none_active">No active plans</option>
+              </select>
+              <select aria-label="Filter services by active subscriptions" value={subscriptionFilter} onChange={event => setSubscriptionFilter(event.target.value as typeof subscriptionFilter)} className="h-10 max-w-full rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-violet-500 dark:border-slate-800 dark:bg-[#111726] dark:text-slate-300">
+                <option value="all">All subscriptions</option><option value="has_active">Has active subscriptions</option><option value="none_active">No active subscriptions</option>
+              </select>
+              <select aria-label="Filter services by resource type" value={resourceFilter} onChange={event => setResourceFilter(event.target.value as typeof resourceFilter)} className="h-10 max-w-full rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-violet-500 dark:border-slate-800 dark:bg-[#111726] dark:text-slate-300">
+                <option value="all">All resources</option><option value="accounts">Uses accounts</option><option value="profiles">Uses profiles</option><option value="none">No resource assignment</option>
+              </select>
+            </div>
+          </details>
+
+          {(searchQuery || statusFilter !== 'all' || planFilter !== 'all' || subscriptionFilter !== 'all' || resourceFilter !== 'all') && (
+            <button
+              type="button"
+              className="service-filter-reset"
+              onClick={() => {
+                setSearchQuery('');
+                setStatusFilter('all');
+                setPlanFilter('all');
+                setSubscriptionFilter('all');
+                setResourceFilter('all');
+              }}
+            >
+              <X className="h-3.5 w-3.5" />
+              <span>Clear filters</span>
+            </button>
+          )}
+
           {/* View Mode Toggle (Grid vs Table) */}
-          <div className="h-10 shrink-0 flex items-center p-0.5 bg-slate-100/90 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs">
+          <div className="service-view-toggle h-10 shrink-0 flex items-center p-0.5 bg-slate-100/90 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs">
             <button
               onClick={() => setViewMode('grid')}
               className={`h-full px-2.5 rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
@@ -1340,7 +1420,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 
       {/* 3. ERROR BANNER */}
       {servicesError && (
-        <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 flex items-center justify-between text-xs text-rose-800 dark:text-rose-200">
+        <div className="service-error-banner flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>{servicesError}</span>
@@ -1354,10 +1434,25 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         </div>
       )}
 
+      <section className="service-catalog-heading flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="service-catalog-eyebrow">{language === 'bn' ? 'আপনার ক্যাটালগ' : 'YOUR CATALOG'}</p>
+          <h2>{language === 'bn' ? 'সার্ভিস ও প্ল্যান' : 'Service catalog'}</h2>
+          <p>{language === 'bn' ? 'দাম, সাবস্ক্রিপশন ও রিসোর্স এক জায়গায় পরিচালনা করুন।' : 'Manage pricing, subscriptions and resources in one place.'}</p>
+        </div>
+        <span className="service-result-count" aria-live="polite">
+          {servicesLoading
+            ? (language === 'bn' ? 'লোড হচ্ছে…' : 'Loading…')
+            : language === 'bn'
+              ? `${filteredServices.length}টি সার্ভিস`
+              : `${filteredServices.length} ${filteredServices.length === 1 ? 'service' : 'services'}`}
+        </span>
+      </section>
+
       {/* 4. MAIN CONTENT CONTAINER */}
       {servicesLoading && services.length === 0 ? (
         /* Loading Skeleton */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="service-loading-grid grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
@@ -1377,7 +1472,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         </div>
       ) : filteredServices.length === 0 ? (
         /* Empty State */
-        <div className="py-9 text-center text-slate-400 bg-white dark:bg-[#111726] rounded-xl border border-slate-200/80 dark:border-slate-800 p-6 shadow-xs">
+        <div className="service-empty-state rounded-xl border border-slate-200/80 bg-white p-6 py-9 text-center text-slate-400 shadow-xs dark:border-slate-800 dark:bg-[#111726]">
           <div className="flex flex-col items-center justify-center gap-3 max-w-md mx-auto">
             <div className="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400">
               <Layers className="w-5 h-5 stroke-[1.5]" />
@@ -1403,23 +1498,24 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         </div>
       ) : viewMode === 'grid' ? (
         /* CARDS GRID VIEW */
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4.5 sm:gap-5">
+        <div className="service-card-grid grid grid-cols-1 gap-4.5 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
           {filteredServices.map(srv => {
             const isArchivedService = srv.isArchived || srv.status === 'archived';
             const plans = srv.planDetails?.map(plan => plan.name) || srv.plans || [];
             const activePlanCount = srv.planDetails?.filter(plan => plan.status === 'active').length || 0;
             const metrics = servicePerformanceById.get(srv.id);
             const resources = serviceResourcesById.get(srv.id);
+            const ServiceIcon = getServiceIcon(srv);
             return (
               <div
                 key={srv.id}
-                className="group flex flex-col justify-between rounded-xl border border-slate-200/80 border-t-2 bg-white p-4 shadow-2xs transition-[border-color,box-shadow] hover:border-slate-300 hover:shadow-xs dark:border-slate-800/90 dark:bg-[#111726] dark:hover:border-slate-700"
+                className={`service-card group flex flex-col justify-between rounded-xl border border-slate-200/80 border-t-2 bg-white p-4 shadow-2xs transition-[border-color,box-shadow] hover:border-slate-300 hover:shadow-xs dark:border-slate-800/90 dark:bg-[#111726] dark:hover:border-slate-700 ${openServiceActionsId === srv.id ? 'is-actions-open' : ''}`}
                 style={{ borderTopColor: srv.color || '#10b981' }}
               >
-                <div className="space-y-3">
+                <div className="service-card-content space-y-3">
                   {/* HEADER: Icon + Service Name + Category + Status */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
+                  <div className="service-card-topline flex items-start gap-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
                       <div
                         className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-2xs overflow-hidden ring-1 ring-black/5 dark:ring-white/10 ${srv.logoUrl ? 'text-white' : 'border bg-slate-50 text-slate-900 dark:bg-slate-100 dark:text-slate-900'}`}
                         style={srv.logoUrl ? { backgroundColor: srv.color || '#10b981' } : { borderColor: srv.color || '#cbd5e1' }}
@@ -1434,63 +1530,71 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                             }}
                           />
                         ) : (
-                          <span aria-hidden="true" className="text-base font-bold">{getServiceInitials(srv.name)}</span>
+                          <ServiceIcon className="h-5 w-5" aria-hidden="true" />
                         )}
                       </div>
 
-                      <div className="min-w-0">
-                        <h3 className="truncate text-base font-bold tracking-tight text-slate-900 dark:text-white sm:text-[17px]">
-                          <button type="button" onClick={() => setDetailedServiceId(srv.id)} className="max-w-full truncate text-left transition-colors hover:text-emerald-600 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:hover:text-emerald-400" aria-label={`View ${srv.name} service details`}>
-                            {srv.name}
-                          </button>
-                        </h3>
-                        <div className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400">
+                      <div className="service-card-identity min-w-0 flex-1">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                          <h3 className="min-w-0 max-w-full truncate text-base font-bold tracking-tight text-slate-900 dark:text-white sm:text-[17px]">
+                            <button type="button" onClick={() => setDetailedServiceId(srv.id)} className="max-w-full truncate text-left transition-colors hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:hover:text-violet-300" aria-label={`View ${srv.name} service details`}>
+                              {srv.name}
+                            </button>
+                          </h3>
+                          {isArchivedService ? (
+                            <span className="shrink-0 rounded-full border border-amber-200/60 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:border-amber-800/60 dark:bg-amber-950/60 dark:text-amber-400">Archived</span>
+                          ) : srv.status === 'active' ? (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-200/60 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/60 dark:text-emerald-400">
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                              <span>{t('status_active')}</span>
+                            </span>
+                          ) : (
+                            <span className="shrink-0 rounded-full border border-slate-200/80 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:border-slate-700/80 dark:bg-slate-800 dark:text-slate-400">
+                              {language === 'bn' ? 'নিষ্ক্রিয়' : 'Inactive'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="service-card-metadata mt-1 truncate text-[10px] text-slate-500 dark:text-slate-400">
                           {srv.advanced?.internalCode ? `Code ${srv.advanced.internalCode}` : `ID ${srv.id}`}
                           <span> · {srv.category}</span>
                         </div>
                       </div>
                     </div>
-
-                    {/* Status Badge */}
-                    <div className="shrink-0">
-                      {isArchivedService ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60">
-                          Archived
-                        </span>
-                      ) : srv.status === 'active' ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                          <span>{t('status_active')}</span>
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200/80 dark:border-slate-700/80">
-                          {language === 'bn' ? 'নিষ্ক্রিয়' : 'Inactive'}
-                        </span>
-                      )}
-                    </div>
                   </div>
 
                   {/* DESCRIPTION (2 lines max, tooltip on hover) */}
-                  {srv.description && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
-                      {srv.description}
-                    </p>
-                  )}
+                  <p className="service-card-description text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed" title={srv.description || undefined}>
+                    {srv.description || '\u00a0'}
+                  </p>
 
-                  <div className="grid grid-cols-2 gap-2 border-y border-slate-100 py-3 dark:border-slate-800">
-                    <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Plans</p><p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">{plans.length} <span className="text-[10px] font-normal text-slate-500">({activePlanCount} active)</span></p></div>
-                    <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Active subscriptions</p><p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900 dark:text-white">{metrics?.activeSubscriptions || 0}</p></div>
-                    <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Accounts</p><p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900 dark:text-white">{resources?.accountCount || 0} <span className="text-[10px] font-normal text-slate-500">({resources?.activeAccounts || 0} active)</span></p></div>
-                    <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Profiles</p><p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900 dark:text-white">{resources?.usedProfiles || 0}/{resources?.profileCapacity || 0} <span className="text-[10px] font-normal text-slate-500">used</span></p></div>
-                    <div className="col-span-2"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Revenue</p><p className="mt-0.5 text-base font-bold tabular-nums text-emerald-700 dark:text-emerald-400">{formatCurrency(metrics?.revenue || 0, currency)}</p><p className="text-[10px] text-slate-500">Paid {formatCurrency(metrics?.paid || 0, currency)} · Due {formatCurrency(metrics?.due || 0, currency)}</p></div>
+                  <div className="service-card-metrics grid grid-cols-2 gap-2">
+                    <div className="service-card-metric"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Plans</p><p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">{plans.length} <span className="text-[10px] font-normal text-slate-500">({activePlanCount} active)</span></p></div>
+                    <div className="service-card-metric"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Active subscriptions</p><p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900 dark:text-white">{metrics?.activeSubscriptions || 0}</p></div>
+                    <div className="service-card-metric"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Accounts</p><p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900 dark:text-white">{resources?.accountCount || 0} <span className="text-[10px] font-normal text-slate-500">({resources?.activeAccounts || 0} active)</span></p></div>
+                    <div className="service-card-metric"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Profiles</p><p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900 dark:text-white">{resources?.usedProfiles || 0}/{resources?.profileCapacity || 0} <span className="text-[10px] font-normal text-slate-500">used</span></p></div>
+                  </div>
+
+                  <div className="service-card-revenue">
+                    <div className="service-card-revenue-heading">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Revenue</p>
+                      <p className="text-base font-bold tabular-nums text-violet-800 dark:text-violet-300">{formatCurrency(metrics?.revenue || 0, currency)}</p>
+                    </div>
+                    <p className="service-card-revenue-support text-[10px] text-slate-600 dark:text-slate-300">
+                      Paid {formatCurrency(metrics?.paid || 0, currency)} <span aria-hidden="true">·</span> Due {formatCurrency(metrics?.due || 0, currency)}
+                    </p>
                   </div>
                 </div>
 
                 {/* CARD FOOTER: Actions */}
-                <div
-                  className="relative mt-4 pt-3 flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800/80"
-                >
-                  <button type="button" onClick={() => setDetailedServiceId(srv.id)} className="inline-flex min-h-9 items-center rounded-lg px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-200 dark:hover:bg-slate-800">View Details</button>
+                <div className="service-card-footer relative mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 dark:border-slate-800/80">
+                  <button
+                    type="button"
+                    onClick={() => setDetailedServiceId(srv.id)}
+                    className="service-card-view-details inline-flex min-h-10 items-center justify-center rounded-lg px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-500 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    View Details
+                  </button>
+                  <div className="service-card-primary-actions flex min-w-0 flex-1 flex-wrap items-center gap-2">
                   {srv.status === 'active'
                     && srv.planDetails?.some(plan => plan.status === 'active')
                     && srv.settings?.subscriptionEnabled !== false
@@ -1498,83 +1602,157 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                     && srv.advanced?.showInNewSale !== false && (
                     <button
                       onClick={() => onOpenNewSaleForService(srv.id)}
-                      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-emerald-700 px-3 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
+                      className="service-card-action service-card-action-primary inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-violet-700 px-3 text-xs font-semibold text-white transition-colors hover:bg-violet-600"
                     >
                       <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                       <span>New Sale</span>
                     </button>
                   )}
-                  {srv.status === 'active' && (!srv.planDetails || !activePlanCount) && <button type="button" onClick={() => { setDetailedServiceId(srv.id); window.setTimeout(() => document.getElementById('service-detail-plans')?.scrollIntoView({ behavior: 'smooth' }), 0); }} className="rounded-md px-2 py-1 text-[10px] font-medium text-amber-700 hover:bg-amber-50 focus-visible:outline-2 focus-visible:outline-amber-600 dark:text-amber-300 dark:hover:bg-amber-950/40">No active plans · Manage Plans</button>}
+                  <button
+                    type="button"
+                    onClick={() => onAddAccountForService ? onAddAccountForService(srv.id) : onNavigateToServiceAccounts ? onNavigateToServiceAccounts(srv.id) : onNavigateSection?.('accounts')}
+                    className="service-card-action inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-semibold text-violet-800 transition-colors hover:border-violet-300 hover:bg-violet-100 dark:border-violet-800/70 dark:bg-violet-950/40 dark:text-violet-200 dark:hover:bg-violet-900/50"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Add Account</span>
+                  </button>
+                  </div>
 
-                  <div className="relative">
+                  <div ref={openServiceActionsId === srv.id ? serviceActionsRef : null} className="relative">
                     <button
                       type="button"
-                      onClick={() => setOpenServiceActionsId(openServiceActionsId === srv.id ? null : srv.id)}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200/80 text-slate-500 transition-colors hover:bg-slate-100 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800"
-                      aria-label={`Actions for ${srv.name}`}
+                      onClick={event => {
+                        event.stopPropagation();
+                        if (openServiceActionsId === srv.id) {
+                          setOpenServiceActionsId(null);
+                          return;
+                        }
+                        const buttonBounds = event.currentTarget.getBoundingClientRect();
+                        setServiceActionsOpenDirection(
+                          window.innerHeight - buttonBounds.bottom > buttonBounds.top ? 'below' : 'above'
+                        );
+                        setOpenServiceActionsId(srv.id);
+                      }}
+                      onKeyDown={event => {
+                        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+                        event.preventDefault();
+                        const focusLastItem = event.key === 'ArrowUp';
+                        const buttonBounds = event.currentTarget.getBoundingClientRect();
+                        setServiceActionsOpenDirection(
+                          window.innerHeight - buttonBounds.bottom > buttonBounds.top ? 'below' : 'above'
+                        );
+                        setOpenServiceActionsId(srv.id);
+                        window.setTimeout(() => {
+                          const items = serviceActionsRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
+                          (focusLastItem ? items?.[items.length - 1] : items?.[0])?.focus();
+                        }, 0);
+                      }}
+                      className="service-card-more-button inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                      ref={element => {
+                        if (element) serviceActionsTriggerRefs.current.set(srv.id, element);
+                        else serviceActionsTriggerRefs.current.delete(srv.id);
+                      }}
+                      aria-label={`More actions for ${srv.name}`}
                       aria-expanded={openServiceActionsId === srv.id}
+                      aria-haspopup="menu"
                     >
                       <MoreHorizontal className="h-4 w-4" />
+                      <span className="service-card-more-label">More</span>
                     </button>
                     {openServiceActionsId === srv.id && (
-                      <div role="menu" className="absolute right-0 top-10 z-20 min-w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                      <div
+                        role="menu"
+                        aria-label={`${srv.name} service actions`}
+                        onClick={event => event.stopPropagation()}
+                        onKeyDown={event => {
+                          if (event.key === 'Escape') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setOpenServiceActionsId(null);
+                            serviceActionsTriggerRefs.current.get(srv.id)?.focus();
+                            return;
+                          }
+                          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return;
+                          const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+                          if (items.length === 0) return;
+                          event.preventDefault();
+                          const currentIndex = items.findIndex(item => item === document.activeElement);
+                          const nextIndex = event.key === 'Home'
+                            ? 0
+                            : event.key === 'End'
+                              ? items.length - 1
+                              : (currentIndex + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+                          items[nextIndex].focus();
+                        }}
+                        className={`service-card-actions-menu absolute right-0 z-30 max-h-[min(70vh,24rem)] min-w-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-900 ${serviceActionsOpenDirection === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'}`}
+                      >
+                        <button type="button" role="menuitem" onClick={() => { setOpenServiceActionsId(null); setDetailedServiceId(srv.id); }} className="service-card-menu-item flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"><FileText className="h-3.5 w-3.5" /> View Details</button>
+                        <button type="button" role="menuitem" onClick={() => { setOpenServiceActionsId(null); onNavigateToServiceAccounts ? onNavigateToServiceAccounts(srv.id) : onNavigateSection?.('accounts'); }} className="service-card-menu-item flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"><Users className="h-3.5 w-3.5" /> Manage Accounts</button>
+                        <button type="button" role="menuitem" onClick={() => { setOpenServiceActionsId(null); onAddCustomerForService ? onAddCustomerForService(srv.id) : onNavigateToServiceCustomers ? onNavigateToServiceCustomers(srv.id) : onNavigateSection?.('customers'); }} className="service-card-menu-item flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"><UserRound className="h-3.5 w-3.5" /> Add Customer</button>
                         {!isArchivedService && (
                           <button
                             type="button"
+                            role="menuitem"
                             onClick={() => {
                               setOpenServiceActionsId(null);
                               openEditModal(srv);
                             }}
-                            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                            className="service-card-menu-item flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
                           >
-                            <Edit2 className="h-3.5 w-3.5" /> Edit
+                            <Edit2 className="h-3.5 w-3.5" /> Edit Service
                           </button>
                         )}
-                        <button type="button" onClick={() => { setOpenServiceActionsId(null); setDetailedServiceId(srv.id); }} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"><FileText className="h-3.5 w-3.5" /> Plans</button>
-                        <button type="button" onClick={() => { setOpenServiceActionsId(null); onNavigateToServiceAccounts ? onNavigateToServiceAccounts(srv.id) : onNavigateSection?.('accounts'); }} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"><Users className="h-3.5 w-3.5" /> Accounts</button>
-                        <button type="button" onClick={() => { setOpenServiceActionsId(null); void duplicateService(srv); }} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"><Copy className="h-3.5 w-3.5" /> Duplicate service</button>
+                        {!isArchivedService && (
+                          <button type="button" role="menuitem" onClick={() => { setOpenServiceActionsId(null); setDetailedServiceId(srv.id); openAddPlan(srv); }} className="service-card-menu-item flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"><Plus className="h-3.5 w-3.5" /> Add Plan</button>
+                        )}
+                        <button type="button" role="menuitem" onClick={() => { setOpenServiceActionsId(null); setDetailedServiceId(srv.id); }} className="service-card-menu-item flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"><FileText className="h-3.5 w-3.5" /> View Plans</button>
+                        <button type="button" role="menuitem" onClick={() => { setOpenServiceActionsId(null); void duplicateService(srv); }} className="service-card-menu-item flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"><Copy className="h-3.5 w-3.5" /> Duplicate</button>
                         {!isArchivedService && (
                           <button
                             type="button"
+                            role="menuitem"
                             onClick={() => {
                               setOpenServiceActionsId(null);
                               void toggleServiceStatus(srv);
                             }}
-                            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                            className="service-card-menu-item flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
                           >
                             <CheckCircle2 className="h-3.5 w-3.5" /> {srv.status === 'active' ? 'Deactivate' : 'Activate'}
                           </button>
                         )}
                         <button
                           type="button"
+                          role="menuitem"
                           onClick={() => {
                             setOpenServiceActionsId(null);
                             const url = getServiceWebsiteUrl(srv);
                             window.open(url, '_blank', 'noopener,noreferrer');
                           }}
-                          className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                          className="service-card-menu-item flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
                         >
                           <ExternalLink className="h-3.5 w-3.5" /> Open website
                         </button>
                         {isArchivedService ? (
                           <button
                             type="button"
+                            role="menuitem"
                             onClick={() => {
                               setOpenServiceActionsId(null);
                               void handleRestore(srv.id, srv.name);
                             }}
-                            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                            className="service-card-menu-item flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-xs text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
                           >
                             <RotateCcw className="h-3.5 w-3.5" /> Restore service
                           </button>
                         ) : (
                           <button
                             type="button"
+                            role="menuitem"
                             onClick={() => {
                               setOpenServiceActionsId(null);
                               setServiceToDelete(srv);
                             }}
-                            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                            className="service-card-menu-item flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-xs text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
                           >
                             <Trash2 className="h-3.5 w-3.5" /> Delete service
                           </button>
@@ -1589,7 +1767,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         </div>
       ) : (
         /* PREMIUM TABLE VIEW */
-        <div className="bg-white dark:bg-[#111726] rounded-2xl border border-slate-200/80 dark:border-slate-800/90 shadow-2xs overflow-hidden">
+        <div className="service-table overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xs dark:border-slate-800/90 dark:bg-[#111726]">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -1646,7 +1824,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                             {srv.logoUrl ? (
                               <img src={srv.logoUrl} alt={srv.name} className="w-full h-full object-cover" />
                             ) : (
-                              <span aria-hidden="true" className="text-sm font-bold">{srv.name.trim().charAt(0).toUpperCase() || '?'}</span>
+                              <Icon className="h-4 w-4" aria-hidden="true" />
                             )}
                           </div>
                           <div>
@@ -1780,8 +1958,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 
       {/* 5. SERVICE DETAILS PAGE */}
       {detailedService && (
-        <div className="space-y-6 text-xs">
-          <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+        <div className="service-detail-page space-y-6 text-xs">
+          <div className="service-detail-heading flex flex-col gap-3 border-b border-slate-200 pb-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <button
                 type="button"
@@ -1804,9 +1982,9 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             </div>
           </div>
 
-          <div className="space-y-6 text-xs">
+          <div className="service-detail-content space-y-6 text-xs">
             {/* Header info banner */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800">
+            <div className="service-detail-hero flex flex-col justify-between gap-4 rounded-xl border border-slate-200/60 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/60 sm:flex-row sm:items-center">
               <div className="flex items-center gap-3">
                 <div
                   className="w-12 h-12 rounded-xl flex items-center justify-center text-white shrink-0 shadow-xs overflow-hidden"
@@ -1850,7 +2028,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               </div>
 
               {/* Action buttons */}
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="service-detail-hero-actions flex flex-wrap items-center gap-2">
                 {detailedService.status === 'active'
                   && detailedService.planDetails?.some(plan => plan.status === 'active')
                   && detailedService.settings?.subscriptionEnabled !== false
@@ -1882,7 +2060,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={openAddPlan}
+                  onClick={() => openAddPlan()}
                   className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-500"
                 >
                   <Plus className="h-3.5 w-3.5" /> Add Plan
@@ -1899,7 +2077,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             )}
 
             {/* Quick KPI stats grid */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+            <div className="service-detail-kpis grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
               <div className="rounded-xl border border-slate-200/80 bg-white p-3 text-center dark:border-slate-800 dark:bg-slate-800">
                 <div className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Total Plans</div>
                 <div className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white">{detailedService.planDetails?.length || detailedService.plans?.length || 0}</div>
@@ -1967,7 +2145,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               </button>
             </div>
 
-            <nav aria-label="Service detail sections" className="sticky top-0 z-10 -mx-2 flex gap-1 overflow-x-auto border-y border-slate-200 bg-white/95 px-2 py-2 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+            <nav aria-label="Service detail sections" className="service-detail-nav sticky top-0 z-10 -mx-2 flex gap-1 overflow-x-auto border-y border-slate-200 bg-white/95 px-2 py-2 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
               {[
                 ['service-detail-information', 'Service Information'],
                 ['service-detail-plans', 'Plans & Pricing'],
@@ -2004,7 +2182,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={openAddPlan}
+                  onClick={() => openAddPlan()}
                   className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-500"
                 >
                   <Plus className="h-3.5 w-3.5" /> Add Plan
@@ -2416,7 +2594,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                   ['autoCalculateExpiry', 'Auto-calculate expiry date'],
                   ['renewalReminderEnabled', 'Enable renewal reminder'],
                 ] as const).map(([key, label]) => <label key={key} className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span className="text-sm text-slate-700 dark:text-slate-300">{label}</span><input type="checkbox" checked={formSettings[key]} onChange={event => setFormSettings(previous => ({ ...previous, [key]: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>)}
-                {formSettings.renewalReminderEnabled && <label className="block max-w-xs space-y-1.5"><span className="font-medium">Reminder days before expiry</span><select value={formSettings.reminderDays} onChange={event => setFormSettings(previous => ({ ...previous, reminderDays: Number(event.target.value) }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{[3, 5, 7, 14, 30].map(days => <option key={days} value={days}>{days} days</option>)}</select>{formErrors.reminderDays && <span role="alert" className="text-xs text-rose-600">{formErrors.reminderDays}</span>}</label>}
+                {formSettings.renewalReminderEnabled && <label className="block max-w-xs space-y-1.5"><span className="font-medium">Reminder days before expiry</span><select value={formSettings.reminderDays} onChange={event => setFormSettings(previous => ({ ...previous, reminderDays: Number(event.target.value) }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{[3, 5, 7, 14, 30].map(days => <option key={days} value={days}>{formatDurationDays(days)}</option>)}</select>{formErrors.reminderDays && <span role="alert" className="text-xs text-rose-600">{formErrors.reminderDays}</span>}</label>}
               </section>
             )}
 
@@ -2578,7 +2756,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Renewal Settings</p>
               <label className="flex min-h-10 items-center justify-between gap-3"><span>Renewal Enabled</span><input type="checkbox" checked={planRenewalEnabled} onChange={event => setPlanRenewalEnabled(event.target.checked)} className="h-4 w-4 accent-emerald-600" /></label>
               {planRenewalEnabled && <label className="flex min-h-10 items-center justify-between gap-3"><span>Renewal Reminder</span><input type="checkbox" checked={planReminderEnabled} onChange={event => setPlanReminderEnabled(event.target.checked)} className="h-4 w-4 accent-emerald-600" /></label>}
-              {planRenewalEnabled && planReminderEnabled && <label className="block max-w-xs space-y-1.5"><span>Reminder days before expiry</span><select value={planReminderDays} onChange={event => setPlanReminderDays(Number(event.target.value))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{[3, 5, 7, 14, 30].map(days => <option key={days} value={days}>{days} days</option>)}</select></label>}
+              {planRenewalEnabled && planReminderEnabled && <label className="block max-w-xs space-y-1.5"><span>Reminder days before expiry</span><select value={planReminderDays} onChange={event => setPlanReminderDays(Number(event.target.value))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{[3, 5, 7, 14, 30].map(days => <option key={days} value={days}>{formatDurationDays(days)}</option>)}</select></label>}
             </div>
             <label className="block max-w-xs space-y-1.5"><span className="text-sm font-medium text-slate-700 dark:text-slate-300">Sort Order</span><input type="number" value={planSortOrder} onChange={event => setPlanSortOrder(Number(event.target.value))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
             {planFormError && <p role="alert" className="text-sm text-rose-600">{planFormError}</p>}

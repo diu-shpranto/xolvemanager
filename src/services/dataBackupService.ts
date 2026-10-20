@@ -21,7 +21,13 @@ import { isBusinessNotification } from './localStorageStore';
 import { buildCustomerCrmMetrics } from '../utils/customerCrm';
 import { getAccountCapacity } from '../utils/resourceManagement';
 import { getInvoiceDisplayStatus } from '../utils/invoiceUtils';
-import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus, getSalePayments } from '../utils/saleUtils';
+import {
+  getPaymentSaleAllocation,
+  getSaleDueAmount,
+  getSalePaidAmount,
+  getSalePaymentStatus,
+  getSalePayments,
+} from '../utils/saleUtils';
 import { createBackupChecksum, verifyBackupChecksum } from '../utils/backupIntegrity';
 
 export const DATA_VERSION = 1;
@@ -555,6 +561,40 @@ export function validateBackup(input: unknown): BackupValidation {
     if (item.saleId && !sales.has(String(item.saleId))) errors.push(`Payment ${String(item.id)} references a missing sale.`);
     if (item.invoiceId && !invoices.has(String(item.invoiceId))) errors.push(`Payment ${String(item.id)} references a missing invoice.`);
     if (typeof item.amount !== 'number' || !Number.isFinite(item.amount) || item.amount < 0) errors.push(`Payment ${String(item.id)} has an invalid amount.`);
+    if (item.advanceCreditAmount !== undefined
+      && (typeof item.advanceCreditAmount !== 'number' || !Number.isFinite(item.advanceCreditAmount)
+        || item.advanceCreditAmount < 0 || item.advanceCreditAmount > (Number(item.amount) || 0))) {
+      errors.push(`Payment ${String(item.id)} has an invalid advance credit amount.`);
+    }
+    for (const collection of ['allocations', 'refundedSaleAllocations'] as const) {
+      if (item[collection] === undefined) continue;
+      if (!Array.isArray(item[collection])) {
+        errors.push(`Payment ${String(item.id)} has invalid ${collection}.`);
+        continue;
+      }
+      for (const allocation of item[collection]) {
+        if (!isRecord(allocation)
+          || typeof allocation.saleId !== 'string'
+          || !sales.has(allocation.saleId)
+          || typeof allocation.amount !== 'number'
+          || !Number.isFinite(allocation.amount)
+          || allocation.amount < 0) {
+          errors.push(`Payment ${String(item.id)} has an invalid sale allocation.`);
+        }
+      }
+    }
+    if (item.refundedAdvanceCreditAmount !== undefined
+      && (typeof item.refundedAdvanceCreditAmount !== 'number'
+        || !Number.isFinite(item.refundedAdvanceCreditAmount)
+        || item.refundedAdvanceCreditAmount < 0
+        || item.refundedAdvanceCreditAmount > (Number(item.amount) || 0))) {
+      errors.push(`Payment ${String(item.id)} has an invalid refunded advance credit amount.`);
+    }
+    if (item.refundOfPaymentId !== undefined
+      && (typeof item.refundOfPaymentId !== 'string'
+        || !getIds(arrays.payments).has(item.refundOfPaymentId))) {
+      errors.push(`Payment ${String(item.id)} references a missing refunded payment.`);
+    }
     if (!dateIsValid(item.paymentDate)) errors.push(`Payment ${String(item.id)} has an invalid date.`);
     if (!['paid', 'pending', 'partial', 'failed', 'refunded'].includes(String(item.paymentStatus))) errors.push(`Payment ${String(item.id)} has an invalid status.`);
   });
@@ -739,7 +779,7 @@ export function exportSalesCSV(
     const paymentMethods = [...linkedPayments.reduce((groups, payment) => {
       if (payment.paymentStatus !== 'paid' && payment.paymentStatus !== 'partial') return groups;
       const method = payment.paymentMethodName || payment.paymentMethod;
-      groups.set(method, (groups.get(method) || 0) + (Number(payment.amount) || 0));
+      groups.set(method, (groups.get(method) || 0) + getPaymentSaleAllocation(payment, sale));
       return groups;
     }, new Map<string, number>())].map(([method, amount]) => `${method}: ${amount}`);
     const status = getSalePaymentStatus(sale, payments);
