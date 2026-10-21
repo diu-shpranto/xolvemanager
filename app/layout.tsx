@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { productBrand } from '../src/config/brand';
 import './globals.css';
 
-const productTitle = `${productBrand.name} — ${productBrand.description}`;
+const productTitle = productBrand.name;
 const productDescription = 'XolveManager is a business management dashboard for customer records, subscriptions, sales, payments, service accounts, renewals, notifications, and reports.';
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
 const metadataBase = siteUrl ? new URL(siteUrl) : undefined;

@@ -21,6 +21,7 @@ import {
   UserCheck,
   Wifi,
   WifiOff,
+  LayoutDashboard,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { NavSection } from './Sidebar';
@@ -85,8 +86,6 @@ export const TopNav: React.FC<TopNavProps> = ({
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showCommandCenter, setShowCommandCenter] = useState(false);
   const [isConnectionNoticeDismissed, setIsConnectionNoticeDismissed] = useState(false);
-  const businessLogoUrl = settings.invoiceLogoDataUrl?.trim() || settings.invoiceLogoUrl?.trim();
-  const [businessLogoFailed, setBusinessLogoFailed] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const notifPanelRef = useRef<HTMLDivElement>(null);
   const notificationCloseButtonRef = useRef<HTMLButtonElement>(null);
@@ -96,10 +95,6 @@ export const TopNav: React.FC<TopNavProps> = ({
   useEffect(() => {
     setIsConnectionNoticeDismissed(false);
   }, [pwa.isOnline, pwa.updateAvailable, pwa.updatePending]);
-
-  useEffect(() => {
-    setBusinessLogoFailed(false);
-  }, [businessLogoUrl]);
 
   // Close dropdowns on click outside
   useEffect(() => {
@@ -267,14 +262,7 @@ export const TopNav: React.FC<TopNavProps> = ({
             aria-label={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to dashboard'}
             title={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to dashboard'}
           >
-            {businessLogoUrl && !businessLogoFailed
-              ? <img
-                src={businessLogoUrl}
-                alt=""
-                className="app-topbar-business-logo-image"
-                onError={() => setBusinessLogoFailed(true)}
-              />
-              : <ProductLogo size="compact" markOnly className="app-topbar-business-logo" />}
+            <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
           </button>
           <span className="app-topbar-business-copy">
             <span className="app-topbar-business-label">{language === 'bn' ? 'বর্তমান ব্যবসা' : 'Current business'}</span>
