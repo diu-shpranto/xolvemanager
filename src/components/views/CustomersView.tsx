@@ -52,6 +52,7 @@ import {
   getCustomerAdvanceCredit,
   getPaymentRecognizedAmount,
   getSaleDueAmount,
+  getSaleLineItems,
   getSalePaidAmount,
   getSalePaymentStatus,
 } from '../../utils/saleUtils';
@@ -463,7 +464,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       service,
       payments,
       settings,
-      subscriptions.find(subscription => subscription.id === invoice.subscriptionId || subscription.id === sale.subscriptionId)
+      subscriptions.find(subscription => subscription.id === invoice.subscriptionId || subscription.id === sale.subscriptionId),
+      services,
+      subscriptions
     );
   };
 
@@ -1836,7 +1839,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 <li key={sale.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 dark:border-slate-800">
                   <button type="button" onClick={() => openCustomerDetails(customer.id)} className="min-w-0 text-left">
                     <span className="block truncate text-xs font-semibold text-slate-900 dark:text-white">{customer.name} · {sale.invoiceNo}</span>
-                    <span className="block truncate text-[11px] text-slate-500">{sale.plan} · {formatAppDate(sale.date, language)} · Due {formatCurrency(due, sale.currency)}</span>
+                    <span className="block text-[11px] text-slate-500">{getSaleLineItems(sale).map(item => `${services.find(service => service.id === item.serviceId)?.name || 'Service'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`).join('; ')} · {formatAppDate(sale.date, language)} · Due {formatCurrency(due, sale.currency)}</span>
                   </button>
                   <div className="flex gap-1.5">
                     {onAddPaymentForCustomer && <button type="button" onClick={() => onAddPaymentForCustomer(customer.id)} className="rounded-md bg-amber-600 px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-amber-700">Add Payment</button>}
@@ -2419,7 +2422,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       <div key={sale.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-800">
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-semibold text-slate-800 dark:text-slate-100">
-                            {formatAppDate(sale.date, language)} · {services.find(service => service.id === sale.serviceId)?.name || '—'} · {sale.plan || '—'}
+                            {formatAppDate(sale.date, language)} · {getSaleLineItems(sale).map(item => `${services.find(service => service.id === item.serviceId)?.name || '—'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`).join('; ')}
                           </div>
                           <div className="mt-0.5 text-slate-500 dark:text-slate-400">{sale.invoiceNo}</div>
                         </div>

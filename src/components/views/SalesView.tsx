@@ -32,7 +32,7 @@ import type { Sale, PaymentMethod, PaymentStatus } from '../../types';
 import { formatAppDate, formatCurrency, getTodayDateString, getSubscriptionStatusForTimeZone } from '../../utils/dateUtils';
 import { getCustomerDisplayName, getCustomerOptionLabel, resolveSaleCustomer } from '../../utils/relationships';
 import { createRecordId } from '../../services/localStorageStore';
-import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus, getSalePayments } from '../../utils/saleUtils';
+import { getSaleDueAmount, getSaleLineItems, getSalePaidAmount, getSalePaymentStatus, getSalePayments } from '../../utils/saleUtils';
 import { getDefaultPaymentMethod, getPaymentBreakdownForSale, normalizePaymentMethods, paymentMethodRequiresTransactionId } from '../../utils/paymentMethods';
 import { buildInvoiceSaleDetails } from '../../utils/invoiceUtils';
 import { convertReportCurrency, getReportDateBounds, isWithinDateBounds } from '../../utils/reportMetrics';
@@ -60,6 +60,14 @@ type SalesDateFilter = ReportDatePreset;
 type SalesStatusFilter = 'all' | PaymentStatus;
 type SalesSort = 'newest' | 'oldest' | 'highest' | 'lowest' | 'highest_due' | 'lowest_due' | 'customer' | 'service' | 'status';
 const salesPageSize = 15;
+
+function renderBreakableCurrency(value: string): React.ReactNode {
+  return value.split(/([,٬٫.])/u).map((part, index) =>
+    /^[,٬٫.]$/u.test(part)
+      ? <React.Fragment key={index}>{part}<wbr /></React.Fragment>
+      : part
+  );
+}
 
 function isValidPaymentDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -294,7 +302,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
       srv,
       businessPayments,
       settings,
-      subscriptions.find(subscription => subscription.id === invoice.subscriptionId || subscription.id === sale.subscriptionId)
+      subscriptions.find(subscription => subscription.id === invoice.subscriptionId || subscription.id === sale.subscriptionId),
+      services,
+      subscriptions
     );
   };
 
@@ -401,6 +411,10 @@ export const SalesView: React.FC<SalesViewProps> = ({
       ? undefined
       : customerId ? customersById.get(customerId) : undefined;
     const service = servicesById.get(sale.serviceId);
+    const lineItems = getSaleLineItems(sale);
+    const itemSummary = lineItems.map(item =>
+      `${servicesById.get(item.serviceId)?.name || 'Service unavailable'} · ${item.plan} × ${item.quantity}`
+    ).join(' | ');
     const account = accountsById.get(sale.accountId || subscription?.accountId || '');
     const invoice = invoicesBySaleId.get(sale.id);
     const salePayments = getSalePayments(sale, businessPayments);
@@ -408,6 +422,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
       sale,
       customer,
       service,
+      lineItems,
+      itemSummary,
       subscription,
       account,
       invoice,
@@ -419,7 +435,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
       searchable: normalizeSearchText([
         sale.id, sale.invoiceNo, invoice?.invoiceNumber, sale.date,
         customer?.name, customer?.email, customer?.phone, customer?.whatsapp,
-        service?.name, sale.plan, sale.planId, subscription?.id,
+        service?.name, sale.plan, sale.planId, itemSummary,
+        ...lineItems.flatMap(item => [servicesById.get(item.serviceId)?.name, item.plan, item.planId]),
+        subscription?.id,
         account?.email, account?.username,
         ...salePayments.map(payment => payment.transactionId),
         sale.transactionId,
@@ -438,21 +456,21 @@ export const SalesView: React.FC<SalesViewProps> = ({
     const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
 
     const results = salesSearchRows.filter(row => {
-      const { sale, customer, service, subscription, salePayments, paymentStatus, subscriptionStatus, searchable } = row;
+      const { sale, customer, service, lineItems, subscription, salePayments, paymentStatus, subscriptionStatus, searchable } = row;
       if (saleIdFilterSet.size && !saleIdFilterSet.has(sale.id)) return false;
       const phoneMatches = phoneQuery.length >= 3
         && [customer?.phone, customer?.whatsapp].some(phone => phone && normalizePhoneDigits(phone).includes(phoneQuery));
 
       if (query && !searchable.includes(query) && !phoneMatches) return false;
       if (!isWithinDateBounds(sale.date, dateBounds)) return false;
-      if (selectedServiceId !== 'all' && sale.serviceId !== selectedServiceId) return false;
+      if (selectedServiceId !== 'all' && !lineItems.some(item => item.serviceId === selectedServiceId)) return false;
       if (selectedPaymentMethod !== 'all'
         && sale.paymentMethod !== selectedPaymentMethod
         && !salePayments.some(payment => (payment.paymentMethodName || payment.paymentMethod) === selectedPaymentMethod)) return false;
       if (selectedCustomer !== 'all' && customer?.id !== selectedCustomer) return false;
       if (selectedPlanId !== 'all') {
-        if (sale.planId !== selectedPlanId
-          && (!selectedPlan || sale.serviceId !== selectedPlan.serviceId || sale.plan !== selectedPlan.plan.name)) return false;
+        if (!lineItems.some(item => item.planId === selectedPlanId
+          || (selectedPlan && item.serviceId === selectedPlan.serviceId && item.plan === selectedPlan.plan.name))) return false;
       }
       if (selectedPaymentStatus !== 'all' && paymentStatus !== selectedPaymentStatus) return false;
       if (selectedSubscriptionStatus !== 'all' && subscriptionStatus !== selectedSubscriptionStatus) return false;
@@ -825,32 +843,63 @@ export const SalesView: React.FC<SalesViewProps> = ({
         ) : pageSales.map(sale => {
           const customer = resolveSaleCustomer(sale, customers, subscriptions);
           const service = services.find(item => item.id === sale.serviceId);
+          const saleItems = getSaleLineItems(sale);
           const subscription = subscriptions.find(item => item.id === sale.subscriptionId);
+          const invoiceNumber = invoices.find(item => item.saleId === sale.id)?.invoiceNumber || sale.invoiceNo;
           const paid = getSalePaidAmount(sale, businessPayments);
           const due = getSaleDueAmount(sale, businessPayments);
           const status = getSalePaymentStatus(sale, businessPayments);
           return (
-            <article key={sale.id} className="sales-order-card rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs transition-colors hover:border-violet-200 dark:border-slate-800 dark:bg-[#151C28] dark:hover:border-violet-900">
-              <div className="flex items-start justify-between gap-3">
+            <article key={sale.id} className="sales-order-card min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs transition-colors hover:border-violet-200 dark:border-slate-800 dark:bg-[#151C28] dark:hover:border-violet-900 sm:p-4">
+              <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5">
                 <div className="min-w-0">
-                  <button type="button" aria-label={`View sale ${sale.id}`} onClick={() => setReceiptSale(sale)} className="font-mono text-sm font-bold text-violet-700 hover:underline dark:text-violet-300">{invoices.find(item => item.saleId === sale.id)?.invoiceNumber || sale.invoiceNo}</button>
-                  <button type="button" onClick={() => customer && onViewCustomer(customer.id)} disabled={!customer} className="mt-1 block max-w-full text-left text-xs font-semibold text-slate-900 disabled:cursor-default dark:text-white"><CustomerNameWithType customer={customer} nameClassName="min-w-0 break-words" /></button>
-                  <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{service?.name || 'Service unavailable'} · {sale.plan}</p>
-                  <p className="mt-0.5 truncate font-mono text-[10px] text-slate-400">{sale.id}{sale.renewalOfSubscriptionId ? ' · Renewal Sale' : ''}</p>
+                  {saleItems.map((item, index) => (
+                    <p key={`${item.id}-${index}`} className="break-words text-sm font-bold leading-5 text-slate-900 dark:text-white">
+                      {servicesById.get(item.serviceId)?.name || 'Service unavailable'} · {item.plan}{item.quantity > 1 ? ` × ${item.quantity}` : ''}
+                    </p>
+                  ))}
+                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Sale date · {formatAppDate(sale.date, language)}</p>
                 </div>
-                <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${status === 'paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : status === 'partial' || status === 'pending' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'}`}>{status}</span>
+                <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold capitalize ${status === 'paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : status === 'partial' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' : status === 'pending' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'}`}>{status === 'refunded' ? 'Refunded' : status}</span>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 text-xs dark:border-slate-800">
-                <div><span className="text-slate-400">Date</span><div className="mt-0.5 font-medium text-slate-700 dark:text-slate-200">{formatAppDate(sale.date, language)}</div></div>
-                <div><span className="text-slate-400">Total</span><div className="mt-0.5 font-semibold text-slate-900 dark:text-white">{formatCurrency(sale.amount, sale.currency)}</div></div>
-                <div><span className="text-slate-400">Paid</span><div className="mt-0.5 font-medium text-emerald-700 dark:text-emerald-300">{formatCurrency(paid, sale.currency)}</div></div>
-                <div><span className="text-slate-400">Due</span><div className="mt-0.5 font-medium text-amber-700 dark:text-amber-300">{formatCurrency(due, sale.currency)}</div></div>
-                {subscription && <div className="col-span-2"><span className="text-slate-400">Subscription</span><div className="mt-0.5 font-medium text-slate-700 dark:text-slate-200">{formatAppDate(subscription.startDate, language)} – {formatAppDate(subscription.expiryDate, language)} · {getSubscriptionStatus(subscription, service, settings.reminderNoticeDays).replace('_', ' ')}</div></div>}
+              <div className="mt-2 flex min-w-0 items-center gap-1.5 border-t border-slate-100 pt-2 dark:border-slate-800">
+                <span className="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">Invoice</span>
+                <button type="button" title={invoiceNumber} aria-label={`View invoice ${invoiceNumber}`} onClick={() => handleOpenInvoiceJpg(sale)} className="min-w-0 truncate whitespace-nowrap font-mono text-xs font-semibold text-violet-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:text-violet-300">
+                  {invoiceNumber}
+                </button>
+                {sale.renewalOfSubscriptionId && <span className="ml-auto shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">Renewal</span>}
               </div>
-              <div className="mt-3 flex flex-wrap justify-end gap-2">
-                {due > 0 && <button type="button" onClick={() => openPaymentDialog(sale)} className="min-h-10 rounded-lg border border-violet-200 px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950/40">Add Payment</button>}
-                <button type="button" onClick={() => handleOpenInvoiceJpg(sale)} className="min-h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Invoice</button>
-                <button type="button" onClick={() => setReceiptSale(sale)} className="min-h-10 rounded-lg bg-slate-100 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">View</button>
+              <div className="mt-2 flex min-w-0 items-baseline justify-between gap-2">
+                <button type="button" onClick={() => customer && onViewCustomer(customer.id)} disabled={!customer} className="min-w-0 text-left text-xs font-semibold text-slate-800 hover:text-violet-700 disabled:cursor-default dark:text-slate-200 dark:hover:text-violet-300">
+                  <CustomerNameWithType customer={customer} nameClassName="min-w-0 break-words" />
+                </button>
+                <span className="max-w-[42%] shrink text-right font-mono text-[10px] text-slate-400" title={sale.id}>{sale.id}</span>
+              </div>
+              <div className="mt-3 grid min-w-0 grid-cols-3 gap-1.5 border-t border-slate-100 pt-3 text-xs dark:border-slate-800 sm:gap-2">
+                <div className="min-w-0 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/60">
+                  <span className="text-slate-500 dark:text-slate-400">Total</span>
+                  <div title={formatCurrency(sale.amount, sale.currency)} className="mt-0.5 whitespace-normal break-normal font-mono text-[clamp(0.6875rem,3vw,0.875rem)] font-semibold tabular-nums text-slate-900 dark:text-white">{renderBreakableCurrency(formatCurrency(sale.amount, sale.currency))}</div>
+                </div>
+                <div className="min-w-0 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/60">
+                  <span className="text-slate-500 dark:text-slate-400">Paid</span>
+                  <div title={formatCurrency(paid, sale.currency)} className="mt-0.5 whitespace-normal break-normal font-mono text-[clamp(0.6875rem,3vw,0.875rem)] font-medium tabular-nums text-emerald-700 dark:text-emerald-300">{renderBreakableCurrency(formatCurrency(paid, sale.currency))}</div>
+                </div>
+                <div className={`min-w-0 rounded-lg p-2 ${due > 0 ? 'bg-amber-50 dark:bg-amber-950/30' : 'bg-slate-50 dark:bg-slate-800/60'}`}>
+                  <span className={due > 0 ? 'text-amber-800 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'}>Due</span>
+                  <div title={formatCurrency(due, sale.currency)} className={`mt-0.5 whitespace-normal break-normal font-mono text-[clamp(0.6875rem,3vw,0.875rem)] font-semibold tabular-nums ${due > 0 ? 'text-amber-800 dark:text-amber-300' : 'text-slate-900 dark:text-white'}`}>{renderBreakableCurrency(formatCurrency(due, sale.currency))}</div>
+                </div>
+              </div>
+              {subscription && <div className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                <span className="font-semibold">Subscription</span>
+                <span className="ml-1">{formatAppDate(subscription.startDate, language)} – {formatAppDate(subscription.expiryDate, language)} · {getSubscriptionStatus(subscription, service, settings.reminderNoticeDays).replace('_', ' ')}</span>
+              </div>}
+              <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                <button type="button" onClick={() => setReceiptSale(sale)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-slate-100 px-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"><Eye className="h-3.5 w-3.5 shrink-0" />View Sale</button>
+                <button type="button" onClick={() => handleOpenInvoiceJpg(sale)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-violet-200 px-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950/40"><Receipt className="h-3.5 w-3.5 shrink-0" />View Invoice</button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {due > 0 && <button type="button" onClick={() => openPaymentDialog(sale)} className="min-h-10 flex-1 rounded-lg border border-violet-200 px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950/40">Add Payment</button>}
+                {customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: due > 0 ? 'payment_reminder' : 'custom_message' })} aria-label={`Compose WhatsApp message for ${customer.name}`} className="inline-flex min-h-10 flex-1 items-center justify-center gap-1 rounded-lg border border-emerald-200 px-3 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</button>}
               </div>
             </article>
           );
@@ -927,11 +976,19 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
                       <td className="py-3 px-4">
                         <span className="font-semibold text-slate-900 dark:text-white block">
-                          {srv?.name || 'Service'}
+                          {getSaleLineItems(sale).map((item, index) => (
+                            <span key={`${item.id}-${index}`} className="block max-w-[210px] truncate" title={`${servicesById.get(item.serviceId)?.name || 'Service'} · ${item.plan} × ${item.quantity}`}>
+                              {servicesById.get(item.serviceId)?.name || 'Service'} · {item.plan}{item.quantity > 1 ? ` × ${item.quantity}` : ''}
+                            </span>
+                          ))}
                         </span>
                       </td>
 
-                      <td className="py-3 px-4 text-slate-600 dark:text-slate-300">{sale.plan}</td>
+                      <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
+                        {getSaleLineItems(sale).map((item, index) => (
+                          <span key={`${item.id}-${index}`} className="block">{item.plan}{item.quantity > 1 ? ` × ${item.quantity}` : ''}</span>
+                        ))}
+                      </td>
                       <td className="py-3 px-4">
                         {subscription ? (
                           <button type="button" onClick={() => onViewSubscription(subscription.id)} className="text-left font-semibold text-emerald-700 hover:underline dark:text-emerald-300">

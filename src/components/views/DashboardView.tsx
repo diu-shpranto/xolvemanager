@@ -85,7 +85,7 @@ import {
   normalizeDashboardLayout,
 } from '../../utils/dashboardLayout';
 import { getCustomerDisplayName, resolveSaleCustomer } from '../../utils/relationships';
-import { getSalePaidAmount, getSalePaymentStatus } from '../../utils/saleUtils';
+import { getSaleLineItems, getSalePaidAmount, getSalePaymentStatus } from '../../utils/saleUtils';
 import { getPaymentMethodSummary, normalizePaymentMethods } from '../../utils/paymentMethods';
 import {
   calculateActiveSubscriptions,
@@ -1524,7 +1524,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         serviceById.get(invoice.serviceId),
         scopedPayments,
         settings,
-        subscriptionById.get(invoice.subscriptionId || sale.subscriptionId || '')
+        subscriptionById.get(invoice.subscriptionId || sale.subscriptionId || ''),
+        scopedServices,
+        scopedSubscriptions
       );
       const generated = await generateInvoiceJpg(details, language);
       downloadInvoiceJpg(generated.blob, generated.fileName);
@@ -1816,13 +1818,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           ) : <div className="dashboard-attention-list">
             {dashboardAttentionSales.map(({ sale, due, dueDate }) => {
               const customer = customerById.get(sale.customerId);
-              const service = serviceById.get(sale.serviceId);
+              const itemSummary = getSaleLineItems(sale).map(item =>
+                `${serviceById.get(item.serviceId)?.name || 'Service unavailable'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`
+              ).join('; ');
               const daysLate = Math.max(0, -getDaysDifference(dueDate));
               return <article key={`payment-${sale.id}`} className="dashboard-attention-item">
                 <span className="dashboard-attention-icon dashboard-attention-icon--payment"><Wallet aria-hidden="true" /></span>
                 <div className="dashboard-attention-copy">
                   <strong>{getCustomerDisplayName(customer)}</strong>
-                  <span>{service?.name || 'Service unavailable'} · {sale.plan}</span>
+                  <span>{itemSummary}</span>
                 </div>
                 <div className="dashboard-attention-meta">
                   <strong>{formatCurrency(due, sale.currency)}</strong>
@@ -1938,12 +1942,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="dashboard-recent-sales">
             {centralRecentSales.slice(0, 5).map(sale => {
               const customer = customerById.get(sale.customerId);
-              const service = serviceById.get(sale.serviceId);
+              const itemSummary = getSaleLineItems(sale).map(item =>
+                `${serviceById.get(item.serviceId)?.name || 'Service unavailable'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`
+              ).join('; ');
               const financial = getSalePaymentSummary(sale, scopedPayments, sale.currency);
               return <article key={sale.id} className="dashboard-recent-sale">
                 <div className="dashboard-recent-sale-customer">
                   <strong>{getCustomerDisplayName(customer)}</strong>
-                  <span>{service?.name || 'Service unavailable'} · {sale.plan}</span>
+                  <span>{itemSummary}</span>
                 </div>
                 <span className="dashboard-recent-sale-date">{formatAppDate(sale.date, language)}</span>
                 <span className="dashboard-recent-sale-amount">{formatCurrency(financial.revenue, sale.currency)}</span>
@@ -2083,17 +2089,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <thead><tr className="border-b border-slate-200 text-slate-500 dark:border-slate-800"><th className="p-2">Date</th><th className="p-2">Customer</th><th className="p-2">Service / Plan</th><th className="p-2">Amount</th><th className="p-2">Paid</th><th className="p-2">Due</th><th className="p-2">Status</th><th className="p-2">Actions</th></tr></thead>
                   <tbody>{centralRecentSales.map(sale => {
                     const customer = customerById.get(sale.customerId);
-                    const service = serviceById.get(sale.serviceId);
+                    const itemSummary = getSaleLineItems(sale).map(item =>
+                      `${serviceById.get(item.serviceId)?.name || 'Service unavailable'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`
+                    ).join('; ');
                     const financial = getSalePaymentSummary(sale, scopedPayments, currency);
-                    return <tr key={sale.id} className="border-b border-slate-100 dark:border-slate-800"><td className="p-2 whitespace-nowrap">{formatAppDate(sale.date, language)}</td><td className="p-2">{getCustomerDisplayName(customer)}</td><td className="p-2">{service?.name || 'Service unavailable'}<span className="block text-[10px] text-slate-500">{sale.plan}</span></td><td className="p-2 font-mono font-semibold">{formatCurrency(financial.revenue, currency)}</td><td className="p-2 font-mono">{formatCurrency(financial.paid, currency)}</td><td className="p-2 font-mono">{formatCurrency(financial.due, currency)}</td><td className="p-2"><PaymentStatusBadge status={getSalePaymentStatus(sale, scopedPayments)} /></td><td className="p-2"><div className="flex gap-1"><button type="button" onClick={() => onViewSale(sale.id)} className="rounded px-2 py-1 font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300">View</button><button type="button" aria-label={`View customer for ${sale.invoiceNo}`} onClick={() => onSelectCustomer(sale.customerId)} className="rounded px-2 py-1 font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300">Customer</button>{invoiceBySaleId.has(sale.id) && <button type="button" aria-label={`View invoice ${sale.invoiceNo}`} onClick={() => onViewInvoice(invoiceBySaleId.get(sale.id)!.invoiceId)} className="rounded px-2 py-1 font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300">Invoice</button>}</div></td></tr>;
+                    return <tr key={sale.id} className="border-b border-slate-100 dark:border-slate-800"><td className="p-2 whitespace-nowrap">{formatAppDate(sale.date, language)}</td><td className="p-2">{getCustomerDisplayName(customer)}</td><td className="p-2">{itemSummary}</td><td className="p-2 font-mono font-semibold">{formatCurrency(financial.revenue, currency)}</td><td className="p-2 font-mono">{formatCurrency(financial.paid, currency)}</td><td className="p-2 font-mono">{formatCurrency(financial.due, currency)}</td><td className="p-2"><PaymentStatusBadge status={getSalePaymentStatus(sale, scopedPayments)} /></td><td className="p-2"><div className="flex gap-1"><button type="button" onClick={() => onViewSale(sale.id)} className="rounded px-2 py-1 font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300">View</button><button type="button" aria-label={`View customer for ${sale.invoiceNo}`} onClick={() => onSelectCustomer(sale.customerId)} className="rounded px-2 py-1 font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300">Customer</button>{invoiceBySaleId.has(sale.id) && <button type="button" aria-label={`View invoice ${sale.invoiceNo}`} onClick={() => onViewInvoice(invoiceBySaleId.get(sale.id)!.invoiceId)} className="rounded px-2 py-1 font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300">Invoice</button>}</div></td></tr>;
                   })}</tbody>
                 </table>
               </div>
               <div className="space-y-2 md:hidden">{centralRecentSales.map(sale => {
                 const customer = customerById.get(sale.customerId);
-                const service = serviceById.get(sale.serviceId);
+                const itemSummary = getSaleLineItems(sale).map(item =>
+                  `${serviceById.get(item.serviceId)?.name || 'Service unavailable'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`
+                ).join('; ');
                 const financial = getSalePaymentSummary(sale, scopedPayments, currency);
-                return <article key={sale.id} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800"><div className="flex justify-between gap-2"><div className="min-w-0"><p className="truncate font-semibold">{getCustomerDisplayName(customer)}</p><p className="mt-1 text-[11px] text-slate-500">{service?.name || 'Service unavailable'} · {sale.plan}</p></div><p className="shrink-0 font-mono text-xs font-bold">{formatCurrency(financial.revenue, currency)}</p></div><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><span className="text-[10px] text-slate-500">{formatAppDate(sale.date, language)}</span><PaymentStatusBadge status={getSalePaymentStatus(sale, scopedPayments)} /></div><p className="mt-2 text-[11px] text-slate-600 dark:text-slate-300">Paid {formatCurrency(financial.paid, currency)} · Due {formatCurrency(financial.due, currency)}</p><div className="mt-2 flex gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><button type="button" onClick={() => onViewSale(sale.id)}>View Sale</button><button type="button" onClick={() => onSelectCustomer(sale.customerId)}>Customer</button>{invoiceBySaleId.has(sale.id) && <button type="button" onClick={() => onViewInvoice(invoiceBySaleId.get(sale.id)!.invoiceId)}>Invoice</button>}</div></article>;
+                return <article key={sale.id} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800"><div className="flex justify-between gap-2"><div className="min-w-0"><p className="truncate font-semibold">{getCustomerDisplayName(customer)}</p><p className="mt-1 text-[11px] text-slate-500">{itemSummary}</p></div><p className="shrink-0 font-mono text-xs font-bold">{formatCurrency(financial.revenue, currency)}</p></div><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><span className="text-[10px] text-slate-500">{formatAppDate(sale.date, language)}</span><PaymentStatusBadge status={getSalePaymentStatus(sale, scopedPayments)} /></div><p className="mt-2 text-[11px] text-slate-600 dark:text-slate-300">Paid {formatCurrency(financial.paid, currency)} · Due {formatCurrency(financial.due, currency)}</p><div className="mt-2 flex gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><button type="button" onClick={() => onViewSale(sale.id)}>View Sale</button><button type="button" onClick={() => onSelectCustomer(sale.customerId)}>Customer</button>{invoiceBySaleId.has(sale.id) && <button type="button" onClick={() => onViewInvoice(invoiceBySaleId.get(sale.id)!.invoiceId)}>Invoice</button>}</div></article>;
               })}</div>
             </>
           )}
@@ -2151,9 +2161,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {outstandingSales.length === 0 ? <p className="py-8 text-center text-xs text-slate-500">No outstanding balances.</p> : (
             <div className="space-y-2">{outstandingSales.slice(0, 8).map(({ sale, financial, invoice }) => {
               const customer = customerById.get(sale.customerId);
-              const service = serviceById.get(sale.serviceId);
+              const itemSummary = getSaleLineItems(sale).map(item =>
+                `${serviceById.get(item.serviceId)?.name || 'Service unavailable'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`
+              ).join('; ');
               const daysDue = Math.max(0, -getDaysDifference(sale.date));
-              return <article key={sale.id} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-semibold">{getCustomerDisplayName(customer)}</p><p className="mt-0.5 text-[11px] text-slate-500">{invoice?.invoiceNumber || sale.invoiceNo} · {service?.name || 'Service unavailable'} · {sale.plan}</p><p className="mt-1 text-[10px] text-slate-500">Due for {daysDue} days</p></div><div className="text-right text-[11px]"><p>Total {formatCurrency(financial.revenue, currency)}</p><p>Paid {formatCurrency(financial.paid, currency)}</p><p className="font-bold text-amber-700 dark:text-amber-300">Due {formatCurrency(financial.due, currency)}</p></div></div><div className="mt-2 flex flex-wrap gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><button type="button" onClick={() => onViewSale(sale.id)}>View Sale / Add Payment</button>{customer && <button type="button" onClick={() => onSelectCustomer(customer.id)}>View Customer</button>}{customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })}>WhatsApp Reminder</button>}{invoice && <button type="button" onClick={() => onViewInvoice(invoice.invoiceId)}>View Invoice</button>}</div></article>;
+              return <article key={sale.id} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-semibold">{getCustomerDisplayName(customer)}</p><p className="mt-0.5 text-[11px] text-slate-500">{invoice?.invoiceNumber || sale.invoiceNo} · {itemSummary}</p><p className="mt-1 text-[10px] text-slate-500">Due for {daysDue} days</p></div><div className="text-right text-[11px]"><p>Total {formatCurrency(financial.revenue, currency)}</p><p>Paid {formatCurrency(financial.paid, currency)}</p><p className="font-bold text-amber-700 dark:text-amber-300">Due {formatCurrency(financial.due, currency)}</p></div></div><div className="mt-2 flex flex-wrap gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><button type="button" onClick={() => onViewSale(sale.id)}>View Sale / Add Payment</button>{customer && <button type="button" onClick={() => onSelectCustomer(customer.id)}>View Customer</button>}{customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })}>WhatsApp Reminder</button>}{invoice && <button type="button" onClick={() => onViewInvoice(invoice.invoiceId)}>View Invoice</button>}</div></article>;
             })}</div>
           )}
         </DashboardPanel>
@@ -3980,7 +3992,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               ) : (
                 recentSales.map(sale => {
                   const cust = resolveSaleCustomer(sale, customers, subscriptions);
-                  const srv = services.find(sv => sv.id === sale.serviceId);
+                  const saleItemsSummary = getSaleLineItems(sale).map(item =>
+                    `${services.find(service => service.id === item.serviceId)?.name || 'Service unavailable'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`
+                  ).join('; ');
 
                   return (
                     <div
@@ -4003,7 +4017,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                          {srv?.name} · {sale.plan} · {sale.invoiceNo}
+                          {saleItemsSummary} · {sale.invoiceNo}
                         </p>
                       </div>
 

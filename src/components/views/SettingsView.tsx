@@ -37,6 +37,7 @@ import { usePwaState } from '../../hooks/usePwaState';
 import { getDemoDataPreview } from '../../services/demoDataService';
 import { inspectStorageDurability, requestStoragePersistence, type StorageDurabilityInfo } from '../../services/storageDurability';
 import { formatAppDateTime } from '../../utils/dateUtils';
+import { getActiveDataEnvironment, getStorageKey } from '../../services/localStorageStore';
 
 type SettingsSection =
   | 'business' | 'branding' | 'invoice' | 'payments' | 'subscriptions'
@@ -134,14 +135,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
     if (initialSection) setActiveSection(initialSection);
   }, [initialSection]);
 
-  const metadataKey = `sqp_data_management_v1_${currentBusiness?.businessId ?? 'local'}`;
+  const metadataKey = getStorageKey(`sqp_data_management_v1_${currentBusiness?.businessId ?? 'local'}`);
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(metadataKey);
       setBackupMetadata(stored ? JSON.parse(stored) as Record<string, string> : {});
       let bytes = 0;
+      const demoPrefix = 'xolvemanager.demo.v1.';
+      const isDemo = getActiveDataEnvironment() === 'demo';
       for (let index = 0; index < window.localStorage.length; index += 1) {
         const key = window.localStorage.key(index);
+        if (isDemo && key && !key.startsWith(demoPrefix)) continue;
         if (key) bytes += (key.length + (window.localStorage.getItem(key)?.length ?? 0)) * 2;
       }
       setStorageBytes(bytes);
@@ -192,7 +196,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
     key: 'lastBackupAt' | 'lastRestoreAt' | 'lastExportAt' | 'lastImportAt',
     targetBusinessId = currentBusiness?.businessId
   ): boolean => {
-    const targetKey = `sqp_data_management_v1_${targetBusinessId ?? 'local'}`;
+    const targetKey = getStorageKey(`sqp_data_management_v1_${targetBusinessId ?? 'local'}`);
     try {
       const stored = window.localStorage.getItem(targetKey);
       const previous = stored

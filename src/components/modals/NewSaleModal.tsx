@@ -17,6 +17,7 @@ import {
   Receipt,
   Share2,
   Search,
+  X,
   ChevronLeft,
   ChevronRight,
   UserRound,
@@ -38,8 +39,13 @@ import {
 } from '../../utils/invoiceGenerator';
 import { buildInvoiceSaleDetails } from '../../utils/invoiceUtils';
 import { getAvailableProfiles, isAccountOperational } from '../../utils/resourceManagement';
-import { getSaleDueAmount } from '../../utils/saleUtils';
+import { amountToMinorUnits, getSaleDueAmount, minorUnitsToAmount } from '../../utils/saleUtils';
 import { createRecordId } from '../../services/localStorageStore';
+import type { NewSaleLineItemPayload } from '../../context/AppContext';
+
+interface SaleItemDraft extends NewSaleLineItemPayload {
+  currency: AppCurrency;
+}
 
 interface NewSaleModalProps {
   isOpen: boolean;
@@ -91,8 +97,11 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const [serviceId, setServiceId] = useState(preselectedServiceId || (services.find(s => s.status === 'active' && !s.isArchived)?.id || ''));
   const [plan, setPlan] = useState('');
   const [planId, setPlanId] = useState(preselectedPlanId || '');
-  const [accountId, setAccountId] = useState('');
-  const [profileId, setProfileId] = useState('');
+  const [itemAllocations, setItemAllocations] = useState<{ accountId: string; profileId: string }[]>([
+    { accountId: '', profileId: '' },
+  ]);
+  const accountId = itemAllocations[0]?.accountId || '';
+  const profileId = itemAllocations[0]?.profileId || '';
   const [startDate, setStartDate] = useState(getTodayDateString(settings.businessProfile?.timeZone));
   const [durationDays, setDurationDays] = useState(settings.subscriptionDefaults?.durationDays ?? 30);
   const [currency, setCurrency] = useState<AppCurrency>(globalCurrency);
@@ -121,6 +130,14 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
   const [discountValue, setDiscountValue] = useState(0);
   const [amountPaidInput, setAmountPaidInput] = useState('');
+  const [itemQuantity, setItemQuantity] = useState(1);
+  const [itemDrafts, setItemDrafts] = useState<SaleItemDraft[]>([]);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(() =>
+    preselectedServiceId ? [preselectedServiceId] : []
+  );
+  const [isCurrentItemActive, setIsCurrentItemActive] = useState(true);
+  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
+  const selectedServiceQueue = selectedServiceIds;
   const submissionLock = useRef(false);
   const resourcePresetApplied = useRef(false);
   const saleOperationId = useRef(createRecordId('new-sale-operation'));
@@ -155,7 +172,10 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   }, [preselectedCustomerId]);
 
   useEffect(() => {
-    if (preselectedServiceId) setServiceId(preselectedServiceId);
+    if (preselectedServiceId) {
+      setServiceId(preselectedServiceId);
+      setSelectedServiceIds([preselectedServiceId]);
+    }
   }, [preselectedServiceId]);
 
   useEffect(() => {
@@ -195,15 +215,13 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   }, [serviceId, services]);
 
   const handleServiceChange = (nextServiceId: string) => {
-    setServiceId(nextServiceId);
-    setPlan('');
-    setPlanId('');
-    setAccountId('');
-    setProfileId('');
-    setDiscountMode('fixed');
-    setDiscountValue(0);
-    setPaymentStatus('paid');
-    setAmountPaidInput('');
+    setIsCurrentItemActive(false);
+    setSelectedServiceIds(current => {
+      const selectedIds = current;
+      return selectedIds.includes(nextServiceId)
+        ? selectedIds.filter(id => id !== nextServiceId)
+        : [...selectedIds, nextServiceId];
+    });
   };
 
   const handlePlanChange = (selectedPlan: NonNullable<(typeof services)[number]['planDetails']>[number]) => {
@@ -212,24 +230,35 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     setDurationDays(selectedPlan.durationDays);
     setCurrency(selectedPlan.currency);
     setPrice(selectedPlan.price);
-    setAccountId('');
-    setProfileId('');
-    setDiscountMode('fixed');
-    setDiscountValue(0);
-    setPaymentStatus('paid');
-    setAmountPaidInput('');
+    setItemAllocations([{ accountId: '', profileId: '' }]);
+    setIsCurrentItemActive(true);
+    if (itemDrafts.length === 0) {
+      setDiscountMode('fixed');
+      setDiscountValue(0);
+      setPaymentStatus('paid');
+      setAmountPaidInput('');
+    }
   };
 
   // When account changes, update available profile
-  const handleAccountChange = (accId: string) => {
-    setAccountId(accId);
+  const handleAccountChange = (accId: string, unitIndex = 0) => {
     const acc = accounts.find(a => a.id === accId);
-    if (profileRequired && acc && acc.profiles && acc.profiles.length > 0) {
-      const availableProfile = getAvailableProfiles([acc], serviceId, planId, undefined, settings.businessProfile?.timeZone)[0]?.profile;
-      setProfileId(availableProfile?.id || '');
-    } else {
-      setProfileId('');
-    }
+    const reservedByOtherUnits = new Set(itemAllocations.flatMap((allocation, index) =>
+      index !== unitIndex && allocation.accountId && allocation.profileId
+        ? [`${allocation.accountId}:${allocation.profileId}`]
+        : []
+    ));
+    const availableProfile = profileRequired && acc
+      ? getAvailableProfiles([acc], serviceId, planId, undefined, settings.businessProfile?.timeZone)
+        .find(pair => !reservedProfileIds.has(`${pair.account.id}:${pair.profile.id}`)
+          && !reservedByOtherUnits.has(`${pair.account.id}:${pair.profile.id}`))
+        ?.profile
+      : undefined;
+    setItemAllocations(current => current.map((allocation, index) =>
+      index === unitIndex
+        ? { accountId: accId, profileId: availableProfile?.id || '' }
+        : allocation
+    ));
   };
 
   // Calculated expiry date
@@ -264,9 +293,21 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const profileRequired = selectedService?.settings?.usesProfiles === true
     || selectedService?.settings?.profileAssignmentRequired === true;
   const serviceUsesAccounts = selectedService?.settings?.usesAccounts === true || profileRequired;
+  const reservedProfileIds = useMemo(() => new Set(itemDrafts.flatMap((item, index) =>
+    index === editingItemIndex ? [] :
+    (item.units || []).flatMap(unit => unit.accountId && unit.profileId
+      ? [`${unit.accountId}:${unit.profileId}`]
+      : [])
+  )), [itemDrafts, editingItemIndex]);
+  const reservedFullAccountIds = useMemo(() => new Set(itemDrafts.flatMap((item, index) =>
+    index === editingItemIndex ? [] :
+    (item.units || []).flatMap(unit => unit.accountId && !unit.profileId ? [unit.accountId] : [])
+  )), [itemDrafts, editingItemIndex]);
   const availableProfilePairs = useMemo(
-    () => getAvailableProfiles(accounts, serviceId, planId, undefined, settings.businessProfile?.timeZone).filter(({ account }) =>
-      !subscriptions.some(subscription =>
+    () => getAvailableProfiles(accounts, serviceId, planId, undefined, settings.businessProfile?.timeZone).filter(({ account, profile }) =>
+      !reservedProfileIds.has(`${account.id}:${profile.id}`)
+      && !reservedFullAccountIds.has(account.id)
+      && !subscriptions.some(subscription =>
         subscription.accountId === account.id
         && !subscription.profileId
         && ['active', 'expiring_soon'].includes(
@@ -274,7 +315,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         )
       )
     ),
-    [accounts, serviceId, planId, subscriptions, selectedService, settings.reminderNoticeDays, settings.businessProfile?.timeZone]
+    [accounts, serviceId, planId, subscriptions, selectedService, settings.reminderNoticeDays, settings.businessProfile?.timeZone, reservedProfileIds]
   );
   const availableAccounts = useMemo(
     () => accounts.filter(a =>
@@ -283,6 +324,8 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       && isAccountOperational(a, settings.businessProfile?.timeZone)
       && a.allowNewAssignment !== false
       && (!profileRequired || availableProfilePairs.some(pair => pair.account.id === a.id))
+      && (profileRequired || !reservedFullAccountIds.has(a.id))
+      && (profileRequired || ![...reservedProfileIds].some(key => key.startsWith(`${a.id}:`)))
       && (profileRequired || (
         !['Assigned', 'Full'].includes(a.status)
         && !a.profiles.some(profile => profile.status === 'Assigned' || Boolean(profile.assignedCustomerId))
@@ -294,11 +337,8 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         )
       ))
     ),
-    [accounts, serviceId, planId, profileRequired, availableProfilePairs, subscriptions, selectedService, settings.reminderNoticeDays, settings.businessProfile?.timeZone]
+    [accounts, serviceId, planId, profileRequired, availableProfilePairs, reservedFullAccountIds, reservedProfileIds, subscriptions, selectedService, settings.reminderNoticeDays, settings.businessProfile?.timeZone]
   );
-  const availableProfiles = availableAccounts.some(account => account.id === selectedAccount?.id)
-    ? availableProfilePairs.filter(pair => pair.account.id === selectedAccount?.id).map(pair => pair.profile)
-    : [];
   useEffect(() => {
     if (!isOpen) {
       resourcePresetApplied.current = false;
@@ -313,8 +353,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       && !item.assignedCustomerId
     );
     if (profileRequired && !profile) return;
-    setAccountId(account.id);
-    setProfileId(profile?.id || '');
+    setItemAllocations(current => current.map((allocation, index) => index === 0
+      ? { accountId: account.id, profileId: profile?.id || '' }
+      : allocation));
     resourcePresetApplied.current = true;
   }, [isOpen, preselectedAccountId, preselectedProfileId, availableAccounts, profileRequired]);
   const activeCustomers = useMemo(
@@ -329,13 +370,95 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     return matches.slice(0, 50);
   }, [activeCustomers, debouncedCustomerSearch]);
   const selectedCustomer = customers.find(c => c.id === customerId && !c.isArchived && c.status !== 'archived');
-  const selectedProfile = selectedAccount?.profiles?.find(p => p.id === profileId);
-  const subtotal = Number(price);
-  const discountAmount = Math.min(
-    Number.isFinite(subtotal) && subtotal > 0 ? subtotal : 0,
-    discountMode === 'percentage' ? subtotal * Math.max(0, Number(discountValue) || 0) / 100 : Math.max(0, Number(discountValue) || 0)
+  const allocationCapacity = profileRequired ? availableProfilePairs.length : availableAccounts.length;
+  const allocationRows = Array.from({ length: serviceUsesAccounts ? Math.max(1, itemQuantity) : 1 }, (_, index) =>
+    itemAllocations[index] || { accountId: '', profileId: '' }
   );
-  const totalAmount = Math.max(0, subtotal - discountAmount);
+  const accountsForUnit = (unitIndex: number) => availableAccounts.filter(account =>
+    profileRequired
+      || !itemAllocations.some((allocation, index) => index !== unitIndex && allocation.accountId === account.id)
+  );
+  const profilesForUnit = (unitIndex: number, unitAccountId: string) =>
+    availableProfilePairs
+      .filter(pair => pair.account.id === unitAccountId
+        && !itemAllocations.some((allocation, index) =>
+          index !== unitIndex
+          && allocation.accountId === unitAccountId
+          && allocation.profileId === pair.profile.id
+        ))
+      .map(pair => pair.profile);
+  const updateQuantity = (quantity: number) => {
+    if (serviceUsesAccounts && Number.isSafeInteger(quantity) && quantity > allocationCapacity) {
+      setStepError(`Only ${allocationCapacity} inventory unit${allocationCapacity === 1 ? '' : 's'} are currently available.`);
+      return;
+    }
+    setItemQuantity(quantity);
+    if (!Number.isSafeInteger(quantity) || quantity < 1) return;
+    setItemAllocations(current => Array.from(
+      { length: quantity },
+      (_, index) => current[index] || { accountId: '', profileId: '' }
+    ));
+  };
+  const handleEditSaleItem = (index: number) => {
+    const item = itemDrafts[index];
+    if (!item) return;
+    if (isCurrentItemActive && selectedPlan && selectedService) {
+      const currentItem: SaleItemDraft = {
+        serviceId,
+        serviceNameSnapshot: selectedService.name,
+        plan,
+        planId,
+        quantity: itemQuantity,
+        unitPrice: Number(price),
+        startDate,
+        durationDays: Number(durationDays),
+        ...(serviceUsesAccounts ? {
+          units: allocationRows.map(allocation => ({
+            accountId: allocation.accountId || undefined,
+            profileId: allocation.profileId || undefined,
+          })),
+        } : {}),
+        currency,
+      };
+      setItemDrafts(current => [...current, currentItem]);
+      setSelectedServiceIds(current => current.filter(id => id !== serviceId));
+      setIsCurrentItemActive(false);
+    }
+    setEditingItemIndex(index);
+    setIsCurrentItemActive(true);
+    setServiceId(item.serviceId);
+    setPlan(item.plan);
+    setPlanId(item.planId || '');
+    setItemQuantity(item.quantity);
+    setItemAllocations(Array.from(
+      { length: item.quantity },
+      (_, unitIndex) => ({
+        accountId: item.units?.[unitIndex]?.accountId || '',
+        profileId: item.units?.[unitIndex]?.profileId || '',
+      })
+    ));
+    setStartDate(item.startDate);
+    setDurationDays(item.durationDays);
+    setCurrency(item.currency);
+    setPrice(item.unitPrice);
+    setStep(2);
+  };
+  const selectedProfile = selectedAccount?.profiles?.find(p => p.id === profileId);
+  const currentItemSubtotal = isCurrentItemActive && Number.isSafeInteger(itemQuantity) && itemQuantity > 0
+    ? minorUnitsToAmount(amountToMinorUnits(Number(price)) * itemQuantity)
+    : 0;
+  const subtotal = minorUnitsToAmount(
+    itemDrafts.reduce((total, item, index) => total + (index === editingItemIndex
+      ? 0
+      : amountToMinorUnits(item.unitPrice) * item.quantity), 0)
+      + amountToMinorUnits(currentItemSubtotal)
+  );
+  const subtotalMinor = amountToMinorUnits(subtotal);
+  const requestedDiscountMinor = discountMode === 'percentage'
+    ? Math.round(subtotalMinor * Math.max(0, Number(discountValue) || 0) / 100)
+    : amountToMinorUnits(Math.max(0, Number(discountValue) || 0));
+  const discountAmount = minorUnitsToAmount(Math.min(subtotalMinor, requestedDiscountMinor));
+  const totalAmount = minorUnitsToAmount(Math.max(0, subtotalMinor - amountToMinorUnits(discountAmount)));
   const amountPaid = paymentStatus === 'paid'
     ? totalAmount
     : paymentStatus === 'partial'
@@ -390,10 +513,14 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
           status: 'Available' as const,
         })),
       });
-      setAccountId(added.id);
-      setProfileId(profileRequired
-        ? added.profiles.find(profile => profile.status === 'Available')?.id || ''
-        : '');
+      setItemAllocations(current => current.map((allocation, index) => index === 0
+        ? {
+          accountId: added.id,
+          profileId: profileRequired
+            ? added.profiles.find(profile => profile.status === 'Available')?.id || ''
+            : '',
+        }
+        : allocation));
       setNewAccountEmail('');
       setNewAccountPassword('');
       setIsAddingAccount(false);
@@ -464,6 +591,93 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     }
   };
 
+  const handleAddSaleItem = () => {
+    if (!isCurrentItemActive) {
+      setStep(1);
+      return;
+    }
+    if (!selectedService || !selectedPlan
+      || selectedService.status !== 'active'
+      || selectedService.isArchived
+      || selectedService.settings?.subscriptionEnabled === false
+      || selectedService.advanced?.allowNewSubscriptions === false
+      || selectedService.advanced?.showInNewSale === false) {
+      reportValidationError('Choose an active service and plan before adding this item.', 1);
+      return;
+    }
+    if (!Number.isSafeInteger(itemQuantity) || itemQuantity < 1) {
+      reportValidationError('Item quantity must be a positive whole number.', 3);
+      return;
+    }
+    if (!Number.isFinite(Number(price)) || Number(price) <= 0) {
+      reportValidationError('Sale item price must be greater than zero.', 3);
+      return;
+    }
+    if (serviceUsesAccounts && allocationRows.some(allocation =>
+      !allocation.accountId || (profileRequired && !allocation.profileId)
+    )) {
+      reportValidationError('Select a distinct available account or profile for every item unit.', 3);
+      return;
+    }
+    if (new Set(itemAllocations.filter(allocation => allocation.accountId).map(allocation =>
+      profileRequired ? `${allocation.accountId}:${allocation.profileId}` : allocation.accountId
+    )).size !== itemAllocations.filter(allocation => allocation.accountId).length) {
+      reportValidationError('The same account, profile, or slot cannot be allocated twice in this sale.', 3);
+      return;
+    }
+    if (serviceUsesAccounts && allocationRows.some((allocation, index) =>
+      !accountsForUnit(index).some(account => account.id === allocation.accountId)
+      || (profileRequired && !profilesForUnit(index, allocation.accountId).some(profile => profile.id === allocation.profileId))
+    )) {
+      reportValidationError('One or more selected inventory units are no longer available.', 3);
+      return;
+    }
+    if (itemDrafts.some((item, index) => index !== editingItemIndex && item.currency !== currency)) {
+      reportValidationError('All items in one sale must use the same currency.', 2);
+      return;
+    }
+    if (!startDate || !Number.isFinite(Date.parse(`${startDate}T00:00:00`))
+      || !Number.isSafeInteger(Number(durationDays)) || Number(durationDays) < 1
+      || calculatedExpiryDate <= startDate) {
+      reportValidationError('Enter a valid start date and duration.', 3);
+      return;
+    }
+
+    const unitAllocations = serviceUsesAccounts
+      ? allocationRows.map(allocation => ({
+        accountId: allocation.accountId,
+        ...(allocation.profileId ? { profileId: allocation.profileId } : {}),
+      }))
+      : undefined;
+    const lineItem: SaleItemDraft = {
+      serviceId,
+      serviceNameSnapshot: selectedService.name,
+      plan,
+      planId,
+      quantity: itemQuantity,
+      unitPrice: Number(price),
+      startDate,
+      durationDays: Number(durationDays),
+      ...(unitAllocations ? { units: unitAllocations } : {}),
+      currency,
+    };
+    const wasEditing = editingItemIndex !== null;
+    setItemDrafts(current => editingItemIndex === null
+      ? [...current, lineItem]
+      : current.map((item, index) => index === editingItemIndex ? lineItem : item));
+    const remainingServiceIds = selectedServiceQueue.filter(id => wasEditing || id !== serviceId);
+    setSelectedServiceIds(remainingServiceIds);
+    setEditingItemIndex(null);
+    setIsCurrentItemActive(remainingServiceIds.length > 0);
+    setServiceId(remainingServiceIds[0] || '');
+    setPlan('');
+    setPlanId('');
+    setItemAllocations([{ accountId: '', profileId: '' }]);
+    setItemQuantity(1);
+    setStepError('');
+    setStep(remainingServiceIds.length > 0 ? 2 : 1);
+  };
+
   const handleSaveSale = async (e: React.FormEvent) => {
     e.preventDefault();
     setStepError('');
@@ -476,35 +690,44 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       reportValidationError('The selected customer is no longer available. Select a current customer record.', 0);
       return;
     }
-    if (!serviceId) {
+    if (isCurrentItemActive && !serviceId) {
       reportValidationError('Please choose a service.', 1);
       return;
     }
-    if (
+    if (isCurrentItemActive && (
       !selectedService
       || selectedService.status !== 'active'
       || selectedService.isArchived
       || selectedService.settings?.subscriptionEnabled === false
       || selectedService.advanced?.allowNewSubscriptions === false
       || selectedService.advanced?.showInNewSale === false
-    ) {
+    )) {
       reportValidationError('This service is no longer available. Choose an active service.', 1);
       return;
     }
     const selectedServicePlan = selectedService.planDetails?.find(item => item.id === planId);
-    if (!selectedServicePlan || selectedServicePlan.status !== 'active' || selectedServicePlan.name !== plan) {
+    if (isCurrentItemActive && (!selectedServicePlan || selectedServicePlan.status !== 'active' || selectedServicePlan.name !== plan)) {
       reportValidationError('The selected plan is no longer available. Choose a plan for this service.', 2);
       return;
     }
-    if (Number(durationDays) !== selectedServicePlan.durationDays || Number(price) !== selectedServicePlan.price || currency !== selectedServicePlan.currency) {
+    if (isCurrentItemActive && selectedServicePlan
+      && (Number(durationDays) !== selectedServicePlan.durationDays || Number(price) !== selectedServicePlan.price || currency !== selectedServicePlan.currency)) {
       reportValidationError('Price and duration must match the selected plan. Select the correct active plan.', 2);
       return;
     }
-    if (!startDate || !Number.isFinite(Date.parse(`${startDate}T00:00:00`)) || !Number.isSafeInteger(Number(durationDays)) || Number(durationDays) < 1 || calculatedExpiryDate <= startDate) {
+    if (isCurrentItemActive && (!Number.isSafeInteger(itemQuantity) || itemQuantity < 1)) {
+      reportValidationError('Item quantity must be a positive whole number.', 3);
+      return;
+    }
+    if (isCurrentItemActive && itemDrafts.some((item, index) => index !== editingItemIndex && item.currency !== currency)) {
+      reportValidationError('All items in one sale must use the same currency.', 2);
+      return;
+    }
+    if (isCurrentItemActive && (!startDate || !Number.isFinite(Date.parse(`${startDate}T00:00:00`)) || !Number.isSafeInteger(Number(durationDays)) || Number(durationDays) < 1 || calculatedExpiryDate <= startDate)) {
       reportValidationError('Enter a valid start date and duration.', 3);
       return;
     }
-    if (!Number.isFinite(Number(price)) || Number(price) < 0) {
+    if (isCurrentItemActive && (!Number.isFinite(Number(price)) || Number(price) < 0)) {
       reportValidationError('Enter a valid sale price.', 3);
       return;
     }
@@ -512,20 +735,17 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       reportValidationError('Enter a valid price and discount.', 3);
       return;
     }
-    if (serviceUsesAccounts && !accountId) {
-      reportValidationError('Select an account for this service.', 3);
+    if (isCurrentItemActive && serviceUsesAccounts && allocationRows.some(allocation =>
+      !allocation.accountId || (profileRequired && !allocation.profileId)
+    )) {
+      reportValidationError('Select a valid allocation for every inventory-backed unit.', 3);
       return;
     }
-    if (accountId && !availableAccounts.some(account => account.id === accountId)) {
-      reportValidationError('The selected account is no longer available. Choose another account or use manual fulfillment.', 3);
-      return;
-    }
-    if (profileRequired && !profileId) {
-      reportValidationError('Select an available profile for this service.', 3);
-      return;
-    }
-    if (profileId && !availableProfiles.some(profile => profile.id === profileId)) {
-      reportValidationError('The selected profile is no longer available. Choose another profile or use manual fulfillment.', 3);
+    if (isCurrentItemActive && serviceUsesAccounts && allocationRows.some((allocation, index) =>
+      !accountsForUnit(index).some(account => account.id === allocation.accountId)
+      || (profileRequired && !profilesForUnit(index, allocation.accountId).some(profile => profile.id === allocation.profileId))
+    )) {
+      reportValidationError('An inventory allocation is no longer available. Review each selected account or profile.', 3);
       return;
     }
 
@@ -554,15 +774,41 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     setIsSubmitting(true);
     try {
       await new Promise<void>(resolve => window.setTimeout(resolve, 0));
-      const result = createSale({
-        customerId,
+      const currentLineItem: SaleItemDraft | undefined = isCurrentItemActive ? {
         serviceId,
+        serviceNameSnapshot: selectedService?.name || 'Service unavailable',
         plan,
         planId,
-        accountId: accountId || undefined,
-        profileId: profileId || undefined,
+        quantity: itemQuantity,
+        unitPrice: Number(price),
         startDate,
         durationDays: Number(durationDays),
+        ...(serviceUsesAccounts ? {
+          units: allocationRows.map(allocation => ({
+            accountId: allocation.accountId || undefined,
+            profileId: allocation.profileId || undefined,
+          })),
+        } : {}),
+        currency,
+      } : undefined;
+      const requestedItems = itemDrafts
+        .filter((_, index) => index !== editingItemIndex)
+        .concat(currentLineItem ? [currentLineItem] : []);
+      if (!requestedItems.length) {
+        reportValidationError('Add at least one item before creating the sale.', 1);
+        return;
+      }
+      const primaryItem = requestedItems[0];
+      const primaryAllocation = primaryItem.units?.[0];
+      const result = createSale({
+        customerId,
+        serviceId: primaryItem.serviceId,
+        plan: primaryItem.plan,
+        planId: primaryItem.planId,
+        accountId: primaryAllocation?.accountId,
+        profileId: primaryAllocation?.profileId,
+        startDate: primaryItem.startDate,
+        durationDays: primaryItem.durationDays,
         subtotal,
         discount: discountAmount,
         price: totalAmount,
@@ -575,12 +821,15 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         senderNumber: senderNumber.trim() || undefined,
         notes,
         operationId: saleOperationId.current,
+        ...(requestedItems.length > 1 || requestedItems.some(item => item.quantity > 1) ? {
+          lineItems: requestedItems.map(({ currency: _currency, ...item }) => item),
+        } : {}),
       });
 
       const cust = customers.find(c => c.id === customerId);
-      const srv = services.find(s => s.id === serviceId);
-      const acc = accounts.find(a => a.id === accountId);
-      const prof = acc?.profiles?.find(p => p.id === profileId);
+      const srv = services.find(s => s.id === primaryItem.serviceId);
+      const acc = accounts.find(a => a.id === primaryAllocation?.accountId);
+      const prof = acc?.profiles?.find(p => p.id === primaryAllocation?.profileId);
 
       const invoicePayload: InvoiceSaleDetails = {
         ...buildInvoiceSaleDetails(
@@ -590,11 +839,13 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
           srv,
           [result.payment],
           settings,
-          result.subscription
+          result.subscription,
+          services,
+          subscriptions
         ),
         allocation: prof?.profileName
           ? undefined
-          : accountId
+          : primaryAllocation?.accountId
             ? 'Full account access'
             : 'Digital license',
         profileName: prof?.profileName,
@@ -684,6 +935,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       || senderNumber.trim()
       || notes.trim()
       || paymentNote.trim()
+      || itemDrafts.length > 0
       || startDate !== getTodayDateString(settings.businessProfile?.timeZone)
       || paymentStatus !== 'paid'
       || (preselectedCustomerId && customerId === preselectedCustomerId)
@@ -715,6 +967,11 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     setDiscountValue(0);
     setAmountPaidInput('');
     setPaymentStatus('paid');
+    setItemQuantity(1);
+    setItemDrafts([]);
+    setSelectedServiceIds(preselectedServiceId ? [preselectedServiceId] : []);
+    setIsCurrentItemActive(true);
+    setEditingItemIndex(null);
     setStep(0);
     setShowCustomerPicker(!customerId);
   };
@@ -725,36 +982,78 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       reportValidationError('Select a customer before continuing.');
       return;
     }
-    if (step === 1 && (!selectedService || selectedService.status !== 'active' || selectedService.isArchived)) {
-      reportValidationError('Choose an active service before continuing.');
+    if (step === 1) {
+      const servicesToConfigure = selectedServiceQueue;
+      if (!servicesToConfigure.length && itemDrafts.length) {
+        setStep(4);
+        return;
+      }
+      const firstService = eligibleServices.find(service => service.id === servicesToConfigure[0]);
+      if (!firstService) {
+        reportValidationError('Choose at least one active service before continuing.');
+        return;
+      }
+      const firstServiceRequiresProfiles = firstService.settings?.usesProfiles === true
+        || firstService.settings?.profileAssignmentRequired === true;
+      const firstServiceTracksInventory = firstService.settings?.usesAccounts === true || firstServiceRequiresProfiles;
+      if (firstServiceTracksInventory) {
+        const available = firstServiceRequiresProfiles
+          ? getAvailableProfiles(accounts, firstService.id, undefined, undefined, settings.businessProfile?.timeZone).length
+          : accounts.filter(account =>
+            account.serviceId === firstService.id
+            && isAccountOperational(account, settings.businessProfile?.timeZone)
+            && account.allowNewAssignment !== false
+            && !['Assigned', 'Full'].includes(account.status)
+          ).length;
+        if (!available) {
+          reportValidationError('No inventory is available for this service. Choose another service or update inventory.', 1);
+          return;
+        }
+      }
+      setServiceId(firstService.id);
+      setIsCurrentItemActive(true);
+      setStep(2);
       return;
     }
     if (step === 2 && !selectedService?.planDetails?.some(item => item.id === planId && item.status === 'active')) {
       reportValidationError('Choose an active plan before continuing.');
       return;
     }
+    if (step === 2 && (!Number.isSafeInteger(itemQuantity) || itemQuantity < 1)) {
+      reportValidationError('Quantity must be a positive whole number.', 2);
+      return;
+    }
+    if (step === 2 && serviceUsesAccounts && itemQuantity > allocationCapacity) {
+      reportValidationError(`Only ${allocationCapacity} inventory unit${allocationCapacity === 1 ? '' : 's'} are currently available.`, 2);
+      return;
+    }
     if (step === 2 && selectedPlan && (Number(durationDays) !== selectedPlan.durationDays || Number(price) !== selectedPlan.price || currency !== selectedPlan.currency)) {
       reportValidationError('Price and duration must match the selected plan.');
       return;
     }
-    if (step === 3 && profileRequired && accountId && !availableProfiles.some(profile => profile.id === profileId)) {
-      reportValidationError('Choose an available profile, or switch to manual fulfillment.');
+    if (step === 3 && isCurrentItemActive && serviceUsesAccounts && allocationRows.some(allocation =>
+      !allocation.accountId || (profileRequired && !allocation.profileId)
+    )) {
+      reportValidationError('Select a distinct account or profile for every item unit.');
       return;
     }
-    if (step === 3 && serviceUsesAccounts && !accountId) {
-      reportValidationError('Select an account for this service.');
+    if (step === 3 && isCurrentItemActive && serviceUsesAccounts && allocationRows.some((allocation, index) =>
+      !accountsForUnit(index).some(account => account.id === allocation.accountId)
+      || (profileRequired && !profilesForUnit(index, allocation.accountId).some(profile => profile.id === allocation.profileId))
+    )) {
+      reportValidationError('One or more selected inventory units are no longer available.');
       return;
     }
-    if (step === 3 && profileRequired && !profileId) {
-      reportValidationError('Select an available profile for this service.');
-      return;
-    }
-    if (step === 3 && (!startDate || !Number.isFinite(Date.parse(`${startDate}T00:00:00`)) || !Number.isSafeInteger(Number(durationDays)) || Number(durationDays) < 1 || calculatedExpiryDate <= startDate)) {
+    if (step === 3 && isCurrentItemActive && (!startDate || !Number.isFinite(Date.parse(`${startDate}T00:00:00`)) || !Number.isSafeInteger(Number(durationDays)) || Number(durationDays) < 1 || calculatedExpiryDate <= startDate)) {
       reportValidationError('Enter a valid start date and duration.');
       return;
     }
-    if (step === 3 && (!Number.isFinite(subtotal) || subtotal <= 0 || discountValue < 0 || (discountMode === 'fixed' && discountValue > subtotal) || (discountMode === 'percentage' && discountValue > 100) || totalAmount <= 0)) {
-      reportValidationError('Enter a valid price and discount.');
+    if (step === 3 && ((!isCurrentItemActive && itemDrafts.length === 0)
+      || (isCurrentItemActive && (!Number.isSafeInteger(itemQuantity) || itemQuantity < 1))
+      || !Number.isFinite(subtotal) || subtotal <= 0 || discountValue < 0
+      || (discountMode === 'fixed' && discountValue > subtotal)
+      || (discountMode === 'percentage' && discountValue > 100) || totalAmount <= 0)) {
+      reportValidationError('Enter at least one valid item, price, and discount.');
       return;
     }
     if (step === 3 && paymentStatus === 'partial' && !(amountPaid > 0 && amountPaid < totalAmount)) {
@@ -771,6 +1070,10 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     }
     if (step === 3 && paymentStatus === 'paid' && amountPaid !== totalAmount) {
       reportValidationError('Paid amount must equal the total.');
+      return;
+    }
+    if (step === 3 && isCurrentItemActive && selectedServiceQueue.some(id => id !== serviceId)) {
+      handleAddSaleItem();
       return;
     }
     setStep(current => current === 0 && isPreselectedServiceReady ? 2 : Math.min(current + 1, 4));
@@ -855,42 +1158,78 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     ? steps.filter((_, index) => index !== 1)
     : steps;
   const visibleStepIndexes = visibleSteps.map(item => steps.indexOf(item));
+  const summaryLineCount = itemDrafts.length - (editingItemIndex === null ? 0 : 1) + (isCurrentItemActive ? 1 : 0);
+  const summaryUnitCount = itemDrafts.reduce(
+    (total, item, index) => total + (index === editingItemIndex ? 0 : item.quantity),
+    0
+  ) + (isCurrentItemActive ? itemQuantity : 0);
+  const getItemAllocationSummary = (item: SaleItemDraft) => (item.units || []).map(unit => {
+    const account = accounts.find(candidate => candidate.id === unit.accountId);
+    const profile = account?.profiles.find(candidate => candidate.id === unit.profileId);
+    return [account?.email, profile?.profileName].filter(Boolean).join(' · ');
+  }).filter(Boolean).join(', ');
   const orderSummary = (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-bold text-slate-900 dark:text-white">Order Summary</h3>
-        <Receipt className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+        <Receipt className="w-4 h-4 text-violet-600 dark:text-violet-400" />
       </div>
-      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-3.5 space-y-3">
-        <div>
-          <p className="text-sm font-semibold text-slate-900 dark:text-white">{selectedService?.name || 'Choose a service'}</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">{plan || 'Choose a plan'}</p>
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5 dark:border-slate-700 dark:bg-slate-800/60">
+        <div className="space-y-2">
+          <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{summaryLineCount} line{summaryLineCount === 1 ? '' : 's'} · {summaryUnitCount} unit{summaryUnitCount === 1 ? '' : 's'}</p>
+          {itemDrafts.map((item, index) => {
+            if (index === editingItemIndex) return null;
+            const lineSubtotal = minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity);
+            const allocations = getItemAllocationSummary(item);
+            return (
+              <div key={`${item.serviceId}-${item.planId}-${index}`} className="min-w-0 border-t border-slate-200 pt-2 dark:border-slate-700">
+                <div className="flex min-w-0 items-start justify-between gap-2">
+                  <p className="min-w-0 break-words text-xs font-semibold text-slate-900 dark:text-white">
+                    {item.serviceNameSnapshot || services.find(service => service.id === item.serviceId)?.name || 'Service'} · {item.plan}
+                  </p>
+                  <span className="shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(lineSubtotal, item.currency)}</span>
+                </div>
+                <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                  {item.quantity} × {formatCurrency(item.unitPrice, item.currency)} · {formatDurationDays(item.durationDays)}
+                </p>
+                {allocations && <p className="mt-0.5 break-words text-[11px] text-slate-500 dark:text-slate-400">Fulfillment: {allocations}</p>}
+              </div>
+            );
+          })}
+          {isCurrentItemActive && (
+            <div className="min-w-0 border-t border-slate-200 pt-2 dark:border-slate-700">
+              <div className="flex min-w-0 items-start justify-between gap-2">
+                <p className="min-w-0 break-words text-xs font-semibold text-slate-900 dark:text-white">{selectedService?.name || 'Choose a service'} · {plan || 'Choose a plan'}</p>
+                <span className="shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(currentItemSubtotal, currency)}</span>
+              </div>
+              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                {itemQuantity} × {formatCurrency(Number(price) || 0, currency)} · {formatDurationDays(Number(durationDays) || 0)}
+              </p>
+              {selectedAccount && <p className="mt-0.5 break-words text-[11px] text-slate-500 dark:text-slate-400">Fulfillment: {selectedAccount.email}{selectedProfile ? ` · ${selectedProfile.profileName}` : ''}</p>}
+            </div>
+          )}
         </div>
-        <div className="space-y-2 border-t border-slate-200 dark:border-slate-700 pt-3 text-xs">
+        <div className="space-y-2 border-t border-slate-200 pt-3 text-xs dark:border-slate-700">
           <div className="flex justify-between gap-3">
             <span className="text-slate-500 dark:text-slate-400">Customer</span>
-            <span className="text-right font-medium text-slate-800 dark:text-slate-200">{selectedCustomer?.name || 'Not selected'}</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-slate-500 dark:text-slate-400">Duration</span>
-            <span className="font-medium text-slate-800 dark:text-slate-200">{Number(durationDays) || 0} days</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-slate-500 dark:text-slate-400">Account / Profile</span>
-            <span className="max-w-[155px] truncate text-right font-medium text-slate-800 dark:text-slate-200">
-              {selectedAccount ? `${selectedAccount.email}${selectedProfile ? ` · ${selectedProfile.profileName}` : ''}` : 'Manual fulfillment'}
-            </span>
+            <span className="min-w-0 break-words text-right font-medium text-slate-800 dark:text-slate-200">{selectedCustomer?.name || 'Not selected'}</span>
           </div>
         </div>
-        <div className="flex items-end justify-between border-t border-slate-200 dark:border-slate-700 pt-3">
-          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Total</span>
-          <span className="font-mono text-xl font-extrabold tabular-nums text-emerald-700 dark:text-emerald-300">
-            {formatCurrency(totalAmount, currency)}
-          </span>
+        <div className="space-y-2 border-t border-slate-200 pt-3 text-xs dark:border-slate-700">
+          <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Subtotal</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(subtotal, currency)}</span></div>
+          <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Sale discount</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">−{formatCurrency(discountAmount, currency)}</span></div>
+          <div className="flex items-end justify-between gap-3 border-t border-slate-200 pt-2 dark:border-slate-700">
+            <span className="font-bold text-slate-900 dark:text-white">Grand total</span>
+            <span className="whitespace-nowrap font-mono text-lg font-extrabold tabular-nums text-violet-700 dark:text-violet-300">{formatCurrency(totalAmount, currency)}</span>
+          </div>
+          {step >= 3 && <>
+            <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Initial payment</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(amountPaid, currency)}</span></div>
+            <div className="flex justify-between gap-3"><span className="font-semibold text-slate-700 dark:text-slate-300">Outstanding due</span><span className="whitespace-nowrap font-semibold tabular-nums text-amber-700 dark:text-amber-300">{formatCurrency(dueAmount, currency)}</span></div>
+          </>}
         </div>
       </div>
       <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-        Price and duration start from the existing service defaults; review before confirming.
+        Sale discount applies to the combined subtotal. Each line retains its selected plan price and duration.
       </p>
     </div>
   );
@@ -920,10 +1259,30 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 : 'Subscription activated. Your customer-ready JPG receipt is available below.'
             : language === 'bn'
             ? 'কাস্টমার, সার্ভিস, অ্যাকাউন্ট ও প্রোফাইল নির্বাচন করে সরাসরি বিক্রয় রেকর্ড করুন।'
-            : 'A guided transaction workspace for customer, service, fulfillment, payment, and invoice.'
+            : 'Create one customer sale with separate services, plans, and fulfillment details.'
         }
-        maxWidth="4xl"
+        maxWidth="5xl"
         protectUnsavedChanges={!completedSaleData}
+        footer={!completedSaleData ? (
+          <nav aria-label="Sale workflow navigation" className="flex items-center justify-between gap-2 sm:gap-3">
+            {step > 0 ? <button type="button" onClick={() => {
+              const currentIndex = visibleStepIndexes.indexOf(step);
+              setStep(visibleStepIndexes[Math.max(currentIndex - 1, 0)]);
+            }} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-800 sm:px-3"><ChevronLeft className="h-4 w-4" />Back</button> : <button type="button" onClick={handleModalClose} className="inline-flex min-h-11 shrink-0 items-center rounded-lg px-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-800 sm:px-3">{t('cancel')}</button>}
+            {step < steps.length - 1 ? (
+              <button type="button" onClick={handleContinue} disabled={step === 1 && selectedServiceQueue.length === 0 && itemDrafts.length === 0} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:px-4">
+                <span className="sm:hidden">Continue</span>
+                <span className="hidden sm:inline">{step === 1 ? selectedServiceQueue.length ? `Continue with ${selectedServiceQueue.length} service${selectedServiceQueue.length === 1 ? '' : 's'}` : 'Review items' : 'Continue'}</span>
+                <ChevronRight className="h-4 w-4 shrink-0" />
+              </button>
+            ) : (
+              <button type="submit" form="new-sale-form" disabled={isSubmitting || !selectedCustomer || (!isCurrentItemActive && itemDrafts.length === 0) || (isCurrentItemActive && (!selectedService || !selectedPlan)) || !Number.isFinite(totalAmount) || totalAmount <= 0 || !Number.isFinite(amountPaid) || amountPaid < 0 || amountPaid > totalAmount || (isCurrentItemActive && Number(durationDays) < 1)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:px-4">
+                {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                <span className="truncate">{isSubmitting ? 'Completing Sale…' : 'Confirm & Create Sale'}</span>
+              </button>
+            )}
+          </nav>
+        ) : undefined}
       >
         {/* AFTER SALE FLOW: SUCCESS & INVOICE SCREEN */}
         {completedSaleData ? (
@@ -967,36 +1326,49 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 </span>
               </div>
 
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Service & Plan</span>
-                <span className="font-semibold text-slate-900 dark:text-white">
-                  {completedSaleData.serviceName} · {completedSaleData.planName}
-                </span>
-              </div>
-
-              {(completedSaleData.profileName || completedSaleData.allocation) && (
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Account / Profile</span>
-                  <span className="font-medium text-slate-700 dark:text-slate-300">
-                    {completedSaleData.profileName
-                      ? `Profile: ${completedSaleData.profileName}`
-                      : completedSaleData.allocation}
-                  </span>
+              {completedSaleData.lineItems?.length ? (
+                <div className="space-y-2 border-y border-slate-200/70 py-3 dark:border-slate-700">
+                  <p className="font-bold text-slate-700 dark:text-slate-300">Items ({completedSaleData.lineItems.length} lines)</p>
+                  {completedSaleData.lineItems.map((item, index) => (
+                    <div key={`${item.serviceName}-${item.planName}-${index}`} className="flex min-w-0 items-start justify-between gap-3 rounded-lg bg-white/70 px-3 py-2 dark:bg-slate-900/50">
+                      <div className="min-w-0">
+                        <p className="break-words font-semibold text-slate-900 dark:text-white">{item.serviceName} · {item.planName}</p>
+                        <p className="mt-0.5 text-slate-600 dark:text-slate-300">{item.quantity} × {formatCurrency(item.unitPrice, item.currency)} = {formatCurrency(item.subtotal, item.currency)}</p>
+                        <p className="mt-0.5 text-slate-500 dark:text-slate-400">
+                          {item.durationDays ? `${formatDurationDays(item.durationDays)} · ` : ''}
+                          {item.startDate ? formatAppDate(item.startDate, language) : '—'} to {item.expiryDate ? formatAppDate(item.expiryDate, language) : '—'}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-500">Service & Plan</span>
+                    <span className="text-right font-semibold text-slate-900 dark:text-white">{completedSaleData.serviceName} · {completedSaleData.planName}</span>
+                  </div>
+                  {(completedSaleData.profileName || completedSaleData.allocation) && (
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500">Account / Profile</span>
+                      <span className="text-right font-medium text-slate-700 dark:text-slate-300">
+                        {completedSaleData.profileName ? `Profile: ${completedSaleData.profileName}` : completedSaleData.allocation}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-500">Duration & Validity</span>
+                    <span className="text-right font-medium text-slate-700 dark:text-slate-300">
+                      {completedSaleData.durationLabel || (completedSaleData.durationDays ? `${completedSaleData.durationDays} Days` : 'Duration unavailable')} ({completedSaleData.startDate ? formatAppDate(completedSaleData.startDate, language) : '—'} to {completedSaleData.expiryDate ? formatAppDate(completedSaleData.expiryDate, language) : '—'})
+                    </span>
+                  </div>
+                </>
               )}
 
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Duration & Validity</span>
-                <span className="text-slate-700 dark:text-slate-300 font-medium">
-                {completedSaleData.durationLabel || (completedSaleData.durationDays ? `${completedSaleData.durationDays} Days` : 'Duration unavailable')} ({completedSaleData.startDate ? formatAppDate(completedSaleData.startDate, language) : '—'} to {completedSaleData.expiryDate ? formatAppDate(completedSaleData.expiryDate, language) : '—'})
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between pt-2 border-t border-slate-200/70 dark:border-slate-700">
-                <span className="font-bold text-slate-700 dark:text-slate-300">Total · Paid · Due</span>
-                <span className="font-mono font-extrabold text-base text-emerald-600 dark:text-emerald-400">
-                  {formatCurrency(completedSaleData.amount, completedSaleData.currency)} · {formatCurrency(completedSaleData.amountPaid ?? completedSaleData.amount, completedSaleData.currency)} · {formatCurrency(completedSaleData.amountDue ?? 0, completedSaleData.currency)}
-                </span>
+              <div className="grid gap-3 border-t border-slate-200/70 pt-3 dark:border-slate-700 sm:grid-cols-3">
+                <div><p className="text-[11px] font-medium text-slate-500">Total</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-slate-900 dark:text-white">{formatCurrency(completedSaleData.amount, completedSaleData.currency)}</p></div>
+                <div><p className="text-[11px] font-medium text-slate-500">Paid</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{formatCurrency(completedSaleData.amountPaid ?? completedSaleData.amount, completedSaleData.currency)}</p></div>
+                <div><p className="text-[11px] font-medium text-slate-500">Due</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-amber-700 dark:text-amber-300">{formatCurrency(completedSaleData.amountDue ?? 0, completedSaleData.currency)}</p></div>
               </div>
             </div>
 
@@ -1015,7 +1387,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                   type="button"
                   onClick={() => setIsInvoicePreviewOpen(true)}
                   disabled={isDownloadingDirect || isSharingDirect}
-                  className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-3.5 py-2.5 bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                   title="Preview the generated JPG invoice"
                 >
                   <FileText className="w-4 h-4" />
@@ -1124,6 +1496,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         ) : (
           /* STANDARD NEW SALE FORM */
           <form
+            id="new-sale-form"
             onSubmit={handleSaveSale}
             onKeyDown={event => {
               if (
@@ -1137,33 +1510,39 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
             }}
             className="space-y-4"
           >
-            <ol aria-label="Sale progress" className="flex items-center gap-1 sm:gap-2">
-              {visibleSteps.map((item, visibleIndex) => {
-                const index = visibleStepIndexes[visibleIndex];
-                const Icon = item.icon;
-                const isCurrent = step === index;
-                const isComplete = step > index;
-                return (
-                  <li key={item.label} className="flex min-w-0 flex-1 items-center">
-                    <button type="button" onClick={() => index < step && setStep(index)} disabled={index > step} aria-current={isCurrent ? 'step' : undefined} className={`flex min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-2 text-left text-[11px] font-semibold sm:gap-2 sm:px-2.5 sm:text-xs ${isCurrent ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300' : isComplete ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
-                      <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${isCurrent || isComplete ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>{isComplete ? <Check className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}</span>
-                      <span className="hidden truncate sm:inline">{item.label}</span>
-                    </button>
-                    {visibleIndex < visibleSteps.length - 1 && <span className="mx-0.5 h-px min-w-1 flex-1 bg-slate-200 dark:bg-slate-700" />}
-                  </li>
-                );
-              })}
-            </ol>
+              <div className="rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2.5 dark:border-violet-900/60 dark:bg-violet-950/20">
+                <div className="mb-2 flex items-center justify-between gap-3 md:hidden">
+                  <span className="text-xs font-semibold text-violet-900 dark:text-violet-200">{visibleSteps[visibleStepIndexes.indexOf(step)]?.label || 'Sale'}</span>
+                  <span className="shrink-0 text-[11px] font-medium tabular-nums text-violet-700 dark:text-violet-300">Step {visibleStepIndexes.indexOf(step) + 1} of {visibleSteps.length}</span>
+                </div>
+                <ol aria-label="Sale progress" className="flex min-w-0 items-center gap-1 sm:gap-2">
+                  {visibleSteps.map((item, visibleIndex) => {
+                    const index = visibleStepIndexes[visibleIndex];
+                    const Icon = item.icon;
+                    const isCurrent = step === index;
+                    const isComplete = index < step;
+                    return (
+                      <li key={item.label} className="flex min-w-0 flex-1 items-center">
+                        <button type="button" onClick={() => index < step && setStep(index)} disabled={index > step} aria-current={isCurrent ? 'step' : undefined} aria-label={`${item.label}${isComplete ? ', completed' : isCurrent ? ', current step' : ', upcoming'}`} className={`flex min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1.5 text-left text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:gap-2 sm:px-2.5 ${isCurrent ? 'bg-white text-violet-900 shadow-sm ring-1 ring-violet-200 dark:bg-slate-900 dark:text-violet-200 dark:ring-violet-800' : isComplete ? 'text-violet-700 dark:text-violet-300' : 'text-slate-400 dark:text-slate-500'}`}>
+                          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${isCurrent ? 'bg-violet-600 text-white' : isComplete ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/70 dark:text-violet-200' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{isComplete ? <Check className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}</span>
+                          <span className="hidden truncate md:inline">{item.label}</span>
+                        </button>
+                        {visibleIndex < visibleSteps.length - 1 && <span className={`mx-0.5 h-px min-w-1 flex-1 ${isComplete ? 'bg-violet-300 dark:bg-violet-800' : 'bg-slate-200 dark:bg-slate-700'}`} />}
+                      </li>
+                    );
+                  })}
+                </ol>
+            </div>
 
             {stepError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{stepError}</p>}
 
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
               <div className="min-w-0 space-y-4">
                 {step === 0 && (
                   <section aria-labelledby="sale-customer-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div><h2 id="sale-customer-title" className="text-base font-bold text-slate-900 dark:text-white">Choose a customer</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Search by name, phone, or email. The sale is linked to the selected customer record.</p></div>
-                      <button type="button" onClick={() => setIsCreatingCustomer(value => !value)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-950/40"><Plus className="h-3.5 w-3.5" />{isCreatingCustomer ? 'Choose existing' : 'Add customer'}</button>
+                      <button type="button" onClick={() => setIsCreatingCustomer(value => !value)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-violet-200 px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950/40"><Plus className="h-3.5 w-3.5" />{isCreatingCustomer ? 'Choose existing' : 'Add customer'}</button>
                     </div>
                     {selectedCustomer && !showCustomerPicker && !isCreatingCustomer ? (
                       <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
@@ -1199,35 +1578,113 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
                 {step === 1 && (
                   <section aria-labelledby="sale-service-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
-                    <div><h2 id="sale-service-title" className="text-base font-bold text-slate-900 dark:text-white">Choose a service</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Select an active service for the sale.</p></div>
-                    <label className="relative block"><span className="sr-only">Search services</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="search" value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} placeholder="Search services..." className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
-                    {filteredServices.length ? <div className="grid gap-2.5 sm:grid-cols-2">{filteredServices.map(service => {
-                      const isSelected = service.id === serviceId;
+                    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="sale-service-title" className="text-base font-bold text-slate-900 dark:text-white">Choose services</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Select one or more services. Each can have its own plan, quantity, and fulfillment details.</p></div><span className="inline-flex min-h-7 items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 text-[11px] font-semibold text-violet-800 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-200">{selectedServiceQueue.length} selected</span></div>
+                    {itemDrafts.length > 0 && <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50/50 p-3 dark:border-violet-800 dark:bg-violet-950/20">
+                      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-xs font-bold text-slate-800 dark:text-slate-100">Items in this sale ({itemDrafts.length})</h3><span className="text-xs text-slate-600 dark:text-slate-300">Choose another service or review the current items.</span></div>
+                      {itemDrafts.map((item, index) => <div key={`${item.serviceId}-${item.planId}-${index}`} className="flex min-w-0 items-start justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs dark:bg-slate-900">
+                        <div className="min-w-0"><p className="break-words font-semibold text-slate-900 dark:text-white">{item.serviceNameSnapshot || services.find(candidate => candidate.id === item.serviceId)?.name || 'Service'} · {item.plan}</p><p className="text-slate-600 dark:text-slate-300">{item.quantity} × {formatCurrency(item.unitPrice, item.currency)} = {formatCurrency(minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity), item.currency)} · {formatDurationDays(item.durationDays)}</p></div>
+                        <div className="flex shrink-0 gap-1"><button type="button" onClick={() => handleEditSaleItem(index)} className="min-h-8 rounded-md px-2 font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-slate-800">Edit</button><button type="button" onClick={() => setItemDrafts(current => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remove ${item.plan} item`} className="min-h-8 rounded-md px-2 font-semibold text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-slate-800">Remove</button></div>
+                      </div>)}
+                    </div>}
+                    <label className="relative block"><span className="sr-only">Search services</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="search" value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} placeholder="Search services..." className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-10 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />{serviceSearch && <button type="button" onClick={() => setServiceSearch('')} aria-label="Clear service search" className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-violet-600 dark:hover:bg-slate-800 dark:hover:text-white"><X className="h-4 w-4" /></button>}</label>
+                    {selectedServiceQueue.length > 0 && <p role="status" className="text-xs font-medium text-slate-600 dark:text-slate-300">Choose any available service below. Selected services stay selected while searching.</p>}
+                    {filteredServices.length ? <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-2.5">{filteredServices.map(service => {
+                      const isSelected = selectedServiceQueue.includes(service.id);
                       const hasActivePlans = Boolean(service.planDetails?.some(item => item.status === 'active'));
-                                      const serviceAccounts = accounts.filter(account =>
-                                        account.serviceId === service.id
-                                        && !['Inactive', 'Suspended', 'Expired'].includes(account.status)
-                                      );
-                                      const capacity = serviceAccounts.reduce((count, account) =>
-                                        count + account.profiles.filter(profile => profile.status === 'Available').length, 0);
-                      const defaultPrice = currency === 'BDT' ? service.defaultPriceBDT ?? service.defaultPrice ?? 0 : service.defaultPriceUSD ?? service.defaultPrice ?? 0;
-                      return <button key={service.id} type="button" onClick={() => hasActivePlans && handleServiceChange(service.id)} disabled={!hasActivePlans} aria-pressed={isSelected} title={hasActivePlans ? undefined : 'No active plans; manage this service to add a plan'} className={`flex min-w-0 items-center gap-3 rounded-xl border p-3.5 text-left transition-all focus-visible:outline-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-60 ${isSelected ? 'border-emerald-500 bg-emerald-50/70 ring-1 ring-emerald-500/20 dark:border-emerald-700 dark:bg-emerald-950/30' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600'}`} style={service.color ? { borderLeftWidth: 3, borderLeftColor: service.color } : undefined}><span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-sm font-bold dark:bg-slate-800">{service.logoUrl ? <img src={service.logoUrl} alt="" className="h-6 w-6 object-contain" /> : <span aria-hidden="true">{service.name.trim().charAt(0).toUpperCase() || '?'}</span>}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-900 dark:text-white">{service.name}</span><span className="block truncate text-xs text-slate-500 dark:text-slate-400">{service.description || service.category} · {service.planDetails?.filter(item => item.status === 'active').length || 0} active plans</span></span><span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${!hasActivePlans ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' : capacity ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : service.settings?.usesAccounts ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>{!hasActivePlans ? 'No active plans' : capacity ? `${capacity} available` : service.settings?.usesAccounts ? 'No account' : 'Available'}</span></button>;
+                      const requiresProfiles = service.settings?.usesProfiles === true
+                        || service.settings?.profileAssignmentRequired === true;
+                      const tracksInventory = service.settings?.usesAccounts === true || requiresProfiles;
+                      const capacity = !tracksInventory
+                        ? undefined
+                        : requiresProfiles
+                          ? getAvailableProfiles(accounts, service.id, undefined, undefined, settings.businessProfile?.timeZone)
+                            .filter(({ account, profile }) =>
+                              !reservedProfileIds.has(`${account.id}:${profile.id}`)
+                              && !reservedFullAccountIds.has(account.id)
+                              && !subscriptions.some(subscription =>
+                                subscription.accountId === account.id
+                                && subscription.profileId === profile.id
+                                && ['active', 'expiring_soon'].includes(
+                                  getSubscriptionStatus(subscription, service, settings.reminderNoticeDays)
+                                )
+                              )
+                            ).length
+                          : accounts.filter(account =>
+                            account.serviceId === service.id
+                            && isAccountOperational(account, settings.businessProfile?.timeZone)
+                            && account.allowNewAssignment !== false
+                            && !['Assigned', 'Full'].includes(account.status)
+                            && !account.profiles.some(profile => profile.status === 'Assigned' || Boolean(profile.assignedCustomerId))
+                            && !reservedFullAccountIds.has(account.id)
+                            && ![...reservedProfileIds].some(key => key.startsWith(`${account.id}:`))
+                            && !subscriptions.some(subscription =>
+                              subscription.accountId === account.id
+                              && !subscription.profileId
+                              && ['active', 'expiring_soon'].includes(
+                                getSubscriptionStatus(subscription, service, settings.reminderNoticeDays)
+                              )
+                            )
+                          ).length;
+                      const availabilityLabel = !hasActivePlans
+                        ? 'No active plans'
+                        : !tracksInventory
+                          ? 'No tracked inventory'
+                          : capacity
+                            ? `${capacity} ${requiresProfiles ? 'profiles' : 'accounts'} available`
+                            : `No available ${requiresProfiles ? 'profiles' : 'accounts'}`;
+                      return <button key={service.id} type="button" onClick={() => handleServiceChange(service.id)} disabled={!hasActivePlans || (tracksInventory && capacity === 0)} aria-pressed={isSelected} title={!hasActivePlans ? 'No active plans; manage this service to add a plan' : tracksInventory && capacity === 0 ? 'No available inventory for this service' : undefined} className={`grid min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_1.75rem] items-start gap-x-3 gap-y-2 rounded-xl border p-3.5 text-left transition-all focus-visible:outline-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed disabled:opacity-60 ${isSelected ? 'border-violet-500 bg-violet-50/70 ring-1 ring-violet-500/20 dark:border-violet-700 dark:bg-violet-950/30' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600'}`} style={service.color ? { borderLeftWidth: 3, borderLeftColor: service.color } : undefined}><span className="row-span-2 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-sm font-bold dark:bg-slate-800">{service.logoUrl ? <img src={service.logoUrl} alt="" className="h-6 w-6 object-contain" /> : <span aria-hidden="true">{service.name.trim().charAt(0).toUpperCase() || '?'}</span>}</span><span className="min-w-0"><span className="block break-words text-sm font-semibold text-slate-900 dark:text-white">{service.name}</span><span className="mt-0.5 block break-words text-xs leading-4 text-slate-500 dark:text-slate-400">{service.description || service.category} · {service.planDetails?.filter(item => item.status === 'active').length || 0} active plans</span>{isSelected && <span className="mt-1 block text-[10px] font-semibold text-violet-800 dark:text-violet-300">Selected for this sale</span>}</span><span className="flex h-7 w-7 items-center justify-center">{isSelected && <CheckCircle2 aria-hidden="true" className="h-5 w-5 text-violet-700 dark:text-violet-300" />}</span><span className={`col-start-2 col-span-2 max-w-full justify-self-start rounded-full px-2 py-1 text-[10px] font-semibold leading-4 ${!hasActivePlans ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' : tracksInventory && !capacity ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' : tracksInventory ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>{availabilityLabel}</span></button>;
                     })}</div> : eligibleServices.length ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">No services match your search.</p> : <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><p>There are no active services available for sale.</p><button type="button" onClick={onAddService} className="mt-3 inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-amber-700 px-3 text-xs font-semibold text-white hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"><Plus className="h-3.5 w-3.5" />Add Service</button></div>}
                   </section>
                 )}
 
                 {step === 2 && (
                   <section aria-labelledby="sale-plan-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
-                    <div><h2 id="sale-plan-title" className="text-base font-bold text-slate-900 dark:text-white">Choose a plan</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Only plans for the selected service are shown here.</p></div>
-                    {selectedService && <div className="space-y-3">{selectedService.planDetails?.some(item => item.status === 'active') ? <div className="grid gap-2 sm:grid-cols-2">{selectedService.planDetails.filter(item => item.status === 'active').map(servicePlan => <button key={servicePlan.id} type="button" onClick={() => handlePlanChange(servicePlan)} aria-pressed={planId === servicePlan.id} className={`flex min-h-12 items-center justify-between gap-3 rounded-lg border px-3.5 py-3 text-left text-sm font-medium focus-visible:outline-2 focus-visible:outline-emerald-600 ${planId === servicePlan.id ? 'border-emerald-500 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200' : 'border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'}`}><span><span className="block">{servicePlan.name}</span><span className="mt-0.5 block text-xs font-normal text-slate-500">{formatCurrency(servicePlan.price, servicePlan.currency)} · {servicePlan.duration ?? servicePlan.durationDays} {servicePlan.durationUnit || 'Days'}{servicePlan.profileCapacity ? ` · ${servicePlan.profileCapacity} profiles` : ''}</span></span>{planId === servicePlan.id && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />}</button>)}</div> : <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><p>No active plans are available for this service.</p><button type="button" onClick={onAddService} className="mt-2 font-semibold underline">Manage services and plans</button></div>}</div>}
-                    {selectedPlan && <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
-                      <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">{t('price')} · {t('currency')}</span><p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-base font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{selectedPlan ? formatCurrency(selectedPlan.price, selectedPlan.currency) : 'Choose an active plan'}</p><span className="block text-[11px] font-normal">Price and currency are set by the selected plan.</span></div>
-                      <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">Duration</span><p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{selectedPlan ? `${selectedPlan.durationDays} days` : 'Choose a plan'}</p></div>
-                    </div>}
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Discount</span><div className="flex gap-2"><input aria-label="Discount amount" type="number" min={0} max={discountMode === 'percentage' ? 100 : subtotal} step={currency === 'USD' ? '0.01' : '1'} value={discountValue} onChange={event => setDiscountValue(Number(event.target.value))} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /><select aria-label="Discount type" value={discountMode} onChange={event => setDiscountMode(event.target.value as 'fixed' | 'percentage')} className="rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="fixed">Fixed</option><option value="percentage">Percent</option></select></div></label>
-                      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800/60"><div className="flex justify-between"><span className="text-slate-500">Plan Price</span><span>{formatCurrency(subtotal || 0, currency)}</span></div><div className="flex justify-between"><span className="text-slate-500">Discount</span><span>−{formatCurrency(discountAmount, currency)}</span></div><div className="flex justify-between border-t border-slate-200 pt-2 font-bold dark:border-slate-700"><span>Total</span><span className="text-emerald-700 dark:text-emerald-300">{formatCurrency(totalAmount, currency)}</span></div></div>
+                    <div>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <h2 id="sale-plan-title" className="text-base font-bold text-slate-900 dark:text-white">Configure each service</h2>
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose a plan for each selected service. Each configuration becomes a separate line in this one sale.</p>
+                        </div>
+                        <button type="button" onClick={() => setStep(1)} className="min-h-9 rounded-lg px-2.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40">Change services</button>
+                      </div>
+                      {(itemDrafts.length > 0 || selectedServiceQueue.length > 0) && (
+                        <div className="mt-3 space-y-2 rounded-xl border border-violet-100 bg-violet-50/40 p-3 dark:border-violet-900/50 dark:bg-violet-950/20">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100">Selected items and services</h3>
+                            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{itemDrafts.length} configured · {selectedServiceQueue.length} to configure</span>
+                          </div>
+                          {itemDrafts.map((item, index) => (
+                            <div key={`${item.serviceId}-${item.planId}-${index}`} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
+                              <div className="min-w-0">
+                                <p className="break-words text-xs font-semibold text-slate-900 dark:text-white">{item.serviceNameSnapshot || services.find(service => service.id === item.serviceId)?.name || 'Service'} · {item.plan}</p>
+                                <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{item.quantity} × {formatCurrency(item.unitPrice, item.currency)} · {formatDurationDays(item.durationDays)}</p>
+                              </div>
+                              <button type="button" onClick={() => handleEditSaleItem(index)} className="min-h-9 shrink-0 rounded-md px-2.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40">Edit item</button>
+                            </div>
+                          ))}
+                          {selectedServiceQueue.map(id => {
+                            const queuedService = services.find(service => service.id === id);
+                            const isCurrent = id === serviceId;
+                            return <div key={id} className={`flex min-w-0 items-center justify-between gap-2 rounded-lg border px-3 py-2 ${isCurrent ? 'border-violet-300 bg-white dark:border-violet-800 dark:bg-slate-900' : 'border-slate-200 bg-white/70 dark:border-slate-700 dark:bg-slate-900/70'}`}>
+                              <p className="min-w-0 break-words text-xs font-semibold text-slate-800 dark:text-slate-100">{queuedService?.name || 'Selected service'}</p>
+                              <span className={`shrink-0 text-[10px] font-semibold ${isCurrent ? 'text-violet-700 dark:text-violet-300' : 'text-slate-500 dark:text-slate-400'}`}>{isCurrent ? 'Configure now' : 'Up next'}</span>
+                            </div>;
+                          })}
+                        </div>
+                      )}
                     </div>
+                    {selectedService && <div className="space-y-3">
+                      <div className="flex items-center gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-sm font-bold text-violet-800 dark:bg-violet-900/60 dark:text-violet-200">{selectedService.name.trim().charAt(0).toUpperCase() || '?'}</span>
+                        <div className="min-w-0"><p className="break-words text-sm font-bold text-slate-900 dark:text-white">{selectedService.name}</p><p className="text-[11px] text-slate-500 dark:text-slate-400">Select one active plan for this line</p></div>
+                      </div>
+                      {selectedService.planDetails?.some(item => item.status === 'active') ? <div className="grid gap-2 sm:grid-cols-2">{selectedService.planDetails.filter(item => item.status === 'active').map(servicePlan => <button key={servicePlan.id} type="button" onClick={() => handlePlanChange(servicePlan)} aria-pressed={planId === servicePlan.id} className={`flex min-h-14 items-center justify-between gap-3 rounded-xl border px-3.5 py-3 text-left text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-violet-600 ${planId === servicePlan.id ? 'border-violet-500 bg-violet-50 text-violet-950 ring-1 ring-violet-500/20 dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-100' : 'border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'}`}><span className="min-w-0"><span className="block break-words font-semibold">{servicePlan.name}</span><span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-slate-400">{formatCurrency(servicePlan.price, servicePlan.currency)} · {formatDurationDays(servicePlan.durationDays)}{servicePlan.profileCapacity ? ` · ${servicePlan.profileCapacity} profiles` : ''}</span></span>{planId === servicePlan.id && <CheckCircle2 className="h-4 w-4 shrink-0 text-violet-700 dark:text-violet-300" />}</button>)}</div> : <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><p>No active plans are available for this service.</p><button type="button" onClick={onAddService} className="mt-2 font-semibold underline">Manage services and plans</button></div>}
+                    </div>}
+                    {selectedPlan && <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 dark:border-slate-700 dark:bg-slate-800/40 sm:grid-cols-3">
+                      <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">{t('price')} per unit</span><p className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-mono text-base font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{formatCurrency(selectedPlan.price, selectedPlan.currency)}</p><span className="block text-[11px] font-normal">Set by the selected plan.</span></div>
+                      <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">Duration</span><p className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{formatDurationDays(selectedPlan.durationDays)}</p><span className="block text-[11px] font-normal">This line's subscription duration.</span></div>
+                      <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Quantity</span><input aria-label={`${selectedService.name} quantity`} type="number" min={1} max={serviceUsesAccounts ? allocationCapacity : undefined} step={1} value={itemQuantity} onChange={event => updateQuantity(Number(event.target.value))} aria-describedby={`sale-quantity-help-${selectedService.id}`} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /><span id={`sale-quantity-help-${selectedService.id}`} className="block text-[11px] font-normal">{serviceUsesAccounts ? `${allocationCapacity} distinct inventory unit${allocationCapacity === 1 ? '' : 's'} available. One account or profile is required per unit.` : 'This service does not require tracked inventory.'}</span></label>
+                    </div>}
                   </section>
                 )}
 
@@ -1235,15 +1692,24 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                   <section aria-labelledby="sale-fulfillment-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
                     <div><h2 id="sale-fulfillment-title" className="text-base font-bold text-slate-900 dark:text-white">Account and profile</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose active inventory for this service. Account credentials and profile PINs are never displayed.</p></div>
                     {serviceUsesAccounts && <div className="space-y-3">
-                      {availableAccounts.length ? <label className="block space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Account *</span><select value={accountId} onChange={e => handleAccountChange(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="">Select an account</option>{availableAccounts.map(account => <option key={account.id} value={account.id}>{account.email} · {account.plan} · {profileRequired ? `${account.profiles.filter(profile => profile.status === 'Available' && !profile.assignedCustomerId).length} profiles available` : 'Full account access'}</option>)}</select></label> : <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30"><p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{profileRequired ? 'No available profiles for this plan.' : 'No available account found.'}</p><div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => setIsAddingAccount(value => !value)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-amber-700 px-3 text-xs font-semibold text-white"><Plus className="h-3.5 w-3.5" />Add Account</button>{onViewAccounts && <button type="button" onClick={onViewAccounts} className="inline-flex min-h-9 items-center rounded-lg border border-amber-800 px-3 text-xs font-semibold text-amber-900 dark:text-amber-200">View Accounts</button>}</div></div>}
+                      {allocationRows.map((allocation, unitIndex) => {
+                        const unitAccounts = accountsForUnit(unitIndex);
+                        const unitProfiles = profilesForUnit(unitIndex, allocation.accountId);
+                        return <div key={unitIndex} className="grid gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700 sm:grid-cols-2">
+                          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 sm:col-span-2">Unit {unitIndex + 1} allocation</p>
+                          <label className="block space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Account *</span><select value={allocation.accountId} onChange={event => handleAccountChange(event.target.value, unitIndex)} disabled={!unitAccounts.length} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="">{unitAccounts.length ? 'Select an account' : 'No available account'}</option>{unitAccounts.map(account => <option key={account.id} value={account.id}>{account.email} · {account.plan}{profileRequired ? ` · ${account.profiles.filter(profile => profile.status === 'Available' && !profile.assignedCustomerId).length} profiles` : ' · Full account'}</option>)}</select></label>
+                          {profileRequired && <label className="block space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Profile *</span><select value={allocation.profileId} onChange={event => setItemAllocations(current => current.map((item, index) => index === unitIndex ? { ...item, profileId: event.target.value } : item))} disabled={!unitProfiles.length} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="">{unitProfiles.length ? 'Select an available profile' : 'No available profile'}</option>{unitProfiles.map(profile => <option key={profile.id} value={profile.id}>{profile.profileName}</option>)}</select></label>}
+                          {!unitAccounts.length && <p className="text-xs text-amber-700 dark:text-amber-300 sm:col-span-2">No available inventory for this unit. Add or free an account before continuing.</p>}
+                        </div>;
+                      })}
+                      {!availableAccounts.length && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30"><p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{profileRequired ? 'No available profiles for this plan.' : 'No available account found.'}</p><div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => setIsAddingAccount(value => !value)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-amber-700 px-3 text-xs font-semibold text-white"><Plus className="h-3.5 w-3.5" />Add Account</button>{onViewAccounts && <button type="button" onClick={onViewAccounts} className="inline-flex min-h-9 items-center rounded-lg border border-amber-800 px-3 text-xs font-semibold text-amber-900 dark:text-amber-200">View Accounts</button>}</div></div>}
                       {isAddingAccount && <div className="grid gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700 sm:grid-cols-2">
                         <label className="space-y-1 text-xs font-medium"><span>Account email *</span><input required type="email" value={newAccountEmail} onChange={event => setNewAccountEmail(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
                         <label className="space-y-1 text-xs font-medium"><span>Password</span><input type="password" value={newAccountPassword} onChange={event => setNewAccountPassword(event.target.value)} autoComplete="new-password" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
                         {profileRequired && <label className="space-y-1 text-xs font-medium"><span>Profile slots</span><input type="number" min={1} step={1} value={newAccountProfileCount} onChange={event => setNewAccountProfileCount(Number(event.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>}
-                        <button type="button" onClick={handleQuickAddAccount} disabled={isAddingAccount} className="self-end rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{isAddingAccount ? 'Adding…' : 'Save & Select Account'}</button>
+                        <button type="button" onClick={handleQuickAddAccount} disabled={isAddingAccount} className="self-end rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-60">{isAddingAccount ? 'Adding…' : 'Save & Select Account'}</button>
                       </div>}
                     </div>}
-                    {profileRequired && selectedAccount && <label className="block space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Available Profile *</span><select value={profileId} onChange={e => setProfileId(e.target.value)} disabled={!availableProfiles.length} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="">{availableProfiles.length ? 'Choose an available profile' : 'No available profiles for this account'}</option>{availableProfiles.map(profile => <option key={profile.id} value={profile.id}>{profile.profileName} · Available</option>)}</select>{!availableProfiles.length && <span className="block text-amber-700 dark:text-amber-300">No available profiles for this plan. {onViewAccounts && <button type="button" onClick={onViewAccounts} className="underline">View Accounts</button>}</span>}</label>}
                     {selectedAccount && <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs dark:border-slate-700 dark:bg-slate-800/60"><p className="font-semibold text-slate-900 dark:text-white">{selectedAccount.email}</p><p className="mt-1 text-slate-500 dark:text-slate-400">{selectedProfile ? `${selectedProfile.profileName} · Available${selectedProfile.pin ? ' · PIN protected' : ''}` : selectedAccount.profiles?.length ? 'Select an available profile to continue.' : 'Full account allocation; no profile slots are configured.'}</p></div>}
                     <div className="grid gap-3 sm:grid-cols-2">
                       <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Start date</span><input aria-label="Sale start date" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
@@ -1251,11 +1717,11 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                     </div>
                     <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
                       <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">{t('price')} · {t('currency')}</span><p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-base font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{selectedPlan ? formatCurrency(selectedPlan.price, selectedPlan.currency) : 'Choose an active plan'}</p><span className="block text-[11px] font-normal">Price and currency are set by the selected plan.</span></div>
-                      <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">Duration</span><p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{selectedPlan ? `${selectedPlan.durationDays} days` : 'Choose a plan'}</p></div>
+                      <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">Duration</span><p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{selectedPlan ? formatDurationDays(selectedPlan.durationDays) : 'Choose a plan'}</p></div>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Discount</span><div className="flex gap-2"><input aria-label="Discount amount" type="number" min={0} max={discountMode === 'percentage' ? 100 : subtotal} step={currency === 'USD' ? '0.01' : '1'} value={discountValue} onChange={event => setDiscountValue(Number(event.target.value))} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /><select aria-label="Discount type" value={discountMode} onChange={event => setDiscountMode(event.target.value as 'fixed' | 'percentage')} className="rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="fixed">Fixed</option><option value="percentage">Percent</option></select></div></label>
-                      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800/60"><div className="flex justify-between"><span className="text-slate-500">Plan Price</span><span>{formatCurrency(subtotal || 0, currency)}</span></div><div className="flex justify-between"><span className="text-slate-500">Discount</span><span>−{formatCurrency(discountAmount, currency)}</span></div><div className="flex justify-between border-t border-slate-200 pt-2 font-bold dark:border-slate-700"><span>Total</span><span className="text-emerald-700 dark:text-emerald-300">{formatCurrency(totalAmount, currency)}</span></div></div>
+                      <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Sale discount</span><div className="flex gap-2"><input aria-label="Discount amount" type="number" min={0} max={discountMode === 'percentage' ? 100 : subtotal} step={currency === 'USD' ? '0.01' : '1'} value={discountValue} onChange={event => setDiscountValue(Number(event.target.value))} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /><select aria-label="Discount type" value={discountMode} onChange={event => setDiscountMode(event.target.value as 'fixed' | 'percentage')} className="rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="fixed">Fixed</option><option value="percentage">Percent</option></select></div></label>
+                      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800/60"><div className="flex justify-between"><span className="text-slate-500">Order subtotal</span><span>{formatCurrency(subtotal || 0, currency)}</span></div><div className="flex justify-between"><span className="text-slate-500">Sale discount</span><span>−{formatCurrency(discountAmount, currency)}</span></div><div className="flex justify-between border-t border-slate-200 pt-2 font-bold dark:border-slate-700"><span>Grand total</span><span className="text-emerald-700 dark:text-emerald-300">{formatCurrency(totalAmount, currency)}</span></div></div>
                     </div>
                   </section>
                 )}
@@ -1279,18 +1745,38 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 {step === 4 && (
                   <section aria-labelledby="sale-review-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
                     <div><h2 id="sale-review-title" className="text-base font-bold text-slate-900 dark:text-white">Review Sale</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Check customer, fulfillment, dates, and payment before creating the sale. Use Edit to return to a step.</p></div>
+                    {itemDrafts.length > 0 && <div className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                      <h3 className="text-xs font-bold text-slate-700 dark:text-slate-200">Items in this sale</h3>
+                      {itemDrafts.map((item, index) => index === editingItemIndex ? null : (
+                        <div key={`${item.serviceId}-${item.planId}-${index}`} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/70">
+                          <div className="min-w-0">
+                            <p className="break-words font-semibold text-slate-900 dark:text-white">{item.serviceNameSnapshot || services.find(candidate => candidate.id === item.serviceId)?.name || 'Service'} · {item.plan}</p>
+                            <p className="text-slate-500 dark:text-slate-400">{item.quantity} × {formatCurrency(item.unitPrice, item.currency)} = {formatCurrency(minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity), item.currency)} · {formatAppDate(item.startDate, language)} · {formatDurationDays(item.durationDays)}</p>
+                            {getItemAllocationSummary(item) && <p className="mt-0.5 break-words text-slate-500 dark:text-slate-400">Fulfillment: {getItemAllocationSummary(item)}</p>}
+                          </div>
+                          <div className="flex shrink-0 gap-1"><button type="button" onClick={() => handleEditSaleItem(index)} className="rounded-md px-2 py-1 font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-slate-700">Edit</button><button type="button" onClick={() => setItemDrafts(current => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remove ${item.plan} item`} className="rounded-md px-2 py-1 font-semibold text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">Remove</button></div>
+                        </div>
+                      ))}
+                    </div>}
+                    {isCurrentItemActive && <div className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-2.5 dark:border-emerald-800 dark:bg-emerald-950/30">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-bold text-slate-900 dark:text-white">{selectedService?.name || 'Service'} · {plan || 'Plan'}</p>
+                        <p className="text-[11px] text-slate-600 dark:text-slate-300">{itemQuantity} × {formatCurrency(Number(price) || 0, currency)} = {formatCurrency(currentItemSubtotal, currency)} · {formatAppDate(startDate, language)} · {formatDurationDays(Number(durationDays))}</p>
+                      </div>
+                    </div>}
+                    <button type="button" onClick={handleAddSaleItem} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-violet-300 bg-white px-4 text-sm font-semibold text-violet-800 hover:bg-violet-50 dark:border-violet-700 dark:bg-slate-900 dark:text-violet-300 dark:hover:bg-violet-950/50"><Plus className="h-4 w-4" />Add Another Item</button>
                     <dl className="grid gap-3 rounded-xl bg-slate-50 p-4 text-xs dark:bg-slate-800/60 sm:grid-cols-2">
                       <div><dt className="flex items-center justify-between text-slate-500">Customer <button type="button" onClick={() => setStep(0)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{selectedCustomer?.name || 'Not selected'} · WhatsApp: {selectedCustomer?.whatsapp || selectedCustomer?.phone || 'Not set'}{selectedCustomer?.email ? ` · ${selectedCustomer.email}` : ''}</dd></div>
-                      <div><dt className="flex items-center justify-between text-slate-500">Service <button type="button" onClick={() => setStep(1)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{selectedService?.name || 'Not selected'}</dd></div>
-                      <div><dt className="text-slate-500">Plan</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{plan || 'Not selected'}</dd></div>
-                      {serviceUsesAccounts && <div><dt className="text-slate-500">Account</dt><dd className="mt-1 break-all font-semibold text-slate-900 dark:text-white">{selectedAccount?.email || 'Not selected'}</dd></div>}
-                      {profileRequired && <div><dt className="text-slate-500">Profile</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{selectedProfile?.profileName || 'Not selected'}</dd></div>}
-                      <div><dt className="flex items-center justify-between text-slate-500">Start Date <button type="button" onClick={() => setStep(3)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{formatAppDate(startDate, language)}</dd></div>
-                      <div><dt className="text-slate-500">End Date</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{formatAppDate(calculatedExpiryDate, language)} · {formatDurationDays(durationDays)}</dd></div>
+                      {isCurrentItemActive && <div><dt className="flex items-center justify-between text-slate-500">Service <button type="button" onClick={() => setStep(1)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{selectedService?.name || 'Not selected'}</dd></div>}
+                      {isCurrentItemActive && <div><dt className="text-slate-500">Plan</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{plan || 'Not selected'}</dd></div>}
+                      {isCurrentItemActive && serviceUsesAccounts && <div><dt className="text-slate-500">Account</dt><dd className="mt-1 break-all font-semibold text-slate-900 dark:text-white">{selectedAccount?.email || 'Not selected'}</dd></div>}
+                      {isCurrentItemActive && profileRequired && <div><dt className="text-slate-500">Profile</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{selectedProfile?.profileName || 'Not selected'}</dd></div>}
+                      {isCurrentItemActive && <div><dt className="flex items-center justify-between text-slate-500">Start Date <button type="button" onClick={() => setStep(3)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{formatAppDate(startDate, language)}</dd></div>}
+                      {isCurrentItemActive && <div><dt className="text-slate-500">End Date</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{formatAppDate(calculatedExpiryDate, language)} · {formatDurationDays(durationDays)}</dd></div>}
                       <div><dt className="flex items-center justify-between text-slate-500">Payment <button type="button" onClick={() => setStep(3)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold capitalize text-slate-900 dark:text-white">{paymentStatus} · {paymentMethod}</dd></div>
                     </dl>
                     <div className="space-y-2 rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-700">
-                      <div className="flex justify-between"><span className="text-slate-500">Plan Price</span><span>{formatCurrency(subtotal, currency)}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-500">Items ({itemDrafts.length - (editingItemIndex === null ? 0 : 1) + (isCurrentItemActive ? 1 : 0)} lines · {itemDrafts.reduce((sum, item, index) => sum + (index === editingItemIndex ? 0 : item.quantity), 0) + (isCurrentItemActive ? itemQuantity : 0)} units)</span><span>{formatCurrency(subtotal, currency)}</span></div>
                       <div className="flex justify-between"><span className="text-slate-500">Discount</span><span>−{formatCurrency(discountAmount, currency)}</span></div>
                       <div className="flex justify-between border-t border-slate-200 pt-2 font-semibold dark:border-slate-700"><span>Total</span><span>{formatCurrency(totalAmount, currency)}</span></div>
                       <div className="flex justify-between"><span className="text-slate-500">Paid</span><span>{formatCurrency(amountPaid, currency)}</span></div>
@@ -1301,14 +1787,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
               </div>
               <aside className="hidden h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 lg:sticky lg:top-2 lg:block">{orderSummary}</aside>
             </div>
-            <details className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-900 lg:hidden"><summary className="cursor-pointer text-sm font-semibold text-slate-900 dark:text-white">Order summary · {formatCurrency(Number(price) || 0, currency)}</summary><div className="pt-3">{orderSummary}</div></details>
-            <div className="sticky bottom-[-20px] z-10 -mx-6 flex items-center justify-between gap-3 border-t border-slate-200/90 bg-white/95 px-6 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
-              {step > 0 ? <button type="button" onClick={() => {
-                const currentIndex = visibleStepIndexes.indexOf(step);
-                setStep(visibleStepIndexes[Math.max(currentIndex - 1, 0)]);
-              }} className="inline-flex min-h-10 items-center gap-1 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-300 dark:hover:bg-slate-800"><ChevronLeft className="h-4 w-4" />Back</button> : <button type="button" onClick={handleModalClose} className="inline-flex min-h-10 items-center rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-300 dark:hover:bg-slate-800">{t('cancel')}</button>}
-              {step < steps.length - 1 ? <button type="button" onClick={handleContinue} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">Continue<ChevronRight className="h-4 w-4" /></button> : <button type="submit" disabled={isSubmitting || !selectedCustomer || !selectedService || !selectedPlan || !Number.isFinite(totalAmount) || totalAmount <= 0 || !Number.isFinite(amountPaid) || amountPaid < 0 || amountPaid > totalAmount || Number(durationDays) < 1} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">{isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{isSubmitting ? 'Completing Sale…' : 'Confirm & Create Sale'}</button>}
-            </div>
+            <details className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-900 lg:hidden"><summary className="cursor-pointer text-sm font-semibold text-slate-900 dark:text-white">Order summary · {formatCurrency(totalAmount, currency)}</summary><div className="pt-3">{orderSummary}</div></details>
           </form>
         )}
       </Modal>

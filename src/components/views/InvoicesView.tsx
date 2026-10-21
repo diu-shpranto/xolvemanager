@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Eye, FilePlus2, FileText, Search, Share2, MessageCircle } from 'lucide-react';
+import { Copy, Download, Eye, FilePlus2, FileText, Search, Share2, MessageCircle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { getCustomerOptionLabel } from '../../utils/relationships';
@@ -22,7 +22,7 @@ import {
   InvoiceDisplayStatus,
 } from '../../utils/invoiceUtils';
 import { formatAppDate, formatCurrency, getDateInTimeZone, getTodayDateString } from '../../utils/dateUtils';
-import { getSaleDueAmount, getSalePaidAmount, getSalePayments } from '../../utils/saleUtils';
+import { getSaleDueAmount, getSaleLineItems, getSalePaidAmount, getSalePayments } from '../../utils/saleUtils';
 import { normalizePhoneDigits, normalizeSearchText } from '../../services/globalSearch';
 import { exportInvoicesCSV } from '../../services/dataBackupService';
 import { downloadCSV } from '../../utils/csvParser';
@@ -163,6 +163,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
       if (!sale) return [];
       const customer = customersById.get(invoice.customerId) || customersById.get(sale.customerId);
       const service = servicesById.get(invoice.serviceId) || servicesById.get(sale.serviceId);
+      const saleItems = getSaleLineItems(sale);
       const linkedPayments = getSalePayments(sale, payments);
       const paid = getSalePaidAmount(sale, payments);
       const due = getSaleDueAmount(sale, payments);
@@ -171,13 +172,14 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
       const searchable = normalizeSearchText([
         invoice.invoiceId, invoice.invoiceNumber, customer?.name, customer?.phone, customer?.whatsapp,
         customer?.email, date, formatAppDate(date, language), service?.name, sale.plan, sale.id,
+        ...saleItems.flatMap(item => [servicesById.get(item.serviceId)?.name, item.plan]),
         ...linkedPayments.map(payment => payment.transactionId),
       ].filter(Boolean).join(' '));
       const phoneMatches = phoneQuery.length >= 3
         && [customer?.phone, customer?.whatsapp].some(phone => phone && normalizePhoneDigits(phone).includes(phoneQuery));
       if (query && !searchable.includes(query) && !phoneMatches) return [];
       if (selectedStatus !== 'all' && status !== selectedStatus) return [];
-      if (selectedServiceId !== 'all' && sale.serviceId !== selectedServiceId) return [];
+      if (selectedServiceId !== 'all' && !saleItems.some(item => item.serviceId === selectedServiceId)) return [];
       if (selectedCustomerId !== 'all' && sale.customerId !== selectedCustomerId) return [];
       if (selectedMethod !== 'all'
         && !linkedPayments.some(payment => (payment.paymentMethodName || payment.paymentMethod) === selectedMethod)
@@ -223,11 +225,23 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     servicesById.get(invoice.serviceId) || servicesById.get(sale.serviceId),
     payments,
     settings,
-    subscriptionsById.get(invoice.subscriptionId || sale.subscriptionId || '')
+    subscriptionsById.get(invoice.subscriptionId || sale.subscriptionId || ''),
+    services,
+    subscriptions
   );
   const handleView = (invoice: Invoice, sale: Sale) => {
     setSelectedInvoiceData(invoiceData(invoice, sale));
     setIsPreviewOpen(true);
+  };
+
+  const copyInvoiceNumber = async (invoiceNumber: string) => {
+    try {
+      await navigator.clipboard.writeText(invoiceNumber);
+      showToast('Invoice number copied.', 'success');
+    } catch (error) {
+      console.error('Could not copy invoice number:', error);
+      showToast('Could not copy the invoice number. Check browser clipboard permissions.', 'error');
+    }
   };
 
   useEffect(() => {
@@ -436,13 +450,13 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {pageRows.map(({ invoice, sale, customer, service, paid, due, status, agingDays }) => (
                     <tr key={invoice.invoiceId} className="text-slate-700 dark:text-slate-200">
-                      <td className="px-3 py-3 font-mono font-semibold text-violet-800 dark:text-violet-300">{invoice.invoiceNumber}<div className="mt-1 font-sans text-[10px] font-normal text-slate-400">{invoice.invoiceId}</div></td>
+                      <td className="whitespace-nowrap px-3 py-3 font-mono font-semibold text-violet-800 dark:text-violet-300">{invoice.invoiceNumber}<div className="mt-1 font-sans text-[10px] font-normal text-slate-400">{invoice.invoiceId}</div></td>
                       <td className="px-3 py-3">{formatAppDate(invoice.invoiceDate, language)}</td>
                       <td className="px-3 py-3"><button type="button" onClick={() => customer && onViewCustomer(customer.id)} disabled={!customer} className="text-left font-semibold hover:text-violet-700 disabled:cursor-default dark:hover:text-violet-300"><CustomerNameWithType customer={customer} /></button><div className="mt-0.5 text-[10px] text-slate-400">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
-                      <td className="px-3 py-3">{service?.name || 'Service unavailable'}<div className="mt-1 text-[10px] text-slate-400">{sale.plan}</div></td>
-                      <td className="px-3 py-3 font-semibold">{formatCurrency(sale.amount, sale.currency)}</td>
-                      <td className="px-3 py-3">{formatCurrency(paid, sale.currency)}</td>
-                      <td className="px-3 py-3 font-semibold">{formatCurrency(due, sale.currency)}</td>
+                      <td className="px-3 py-3">{getSaleLineItems(sale).map((item, index) => <div key={`${item.id}-${index}`} className="mb-1 last:mb-0">{servicesById.get(item.serviceId)?.name || 'Service unavailable'}<div className="mt-1 text-[10px] text-slate-400">{item.plan}{item.quantity > 1 ? ` × ${item.quantity}` : ''}</div></div>)}</td>
+                      <td className="whitespace-nowrap px-3 py-3 font-semibold tabular-nums">{formatCurrency(sale.amount, sale.currency)}</td>
+                      <td className="whitespace-nowrap px-3 py-3 tabular-nums">{formatCurrency(paid, sale.currency)}</td>
+                      <td className="whitespace-nowrap px-3 py-3 font-semibold tabular-nums">{formatCurrency(due, sale.currency)}</td>
                       <td className="px-3 py-3">{due > 0 ? getOutstandingAgingBucket(agingDays) : '—'}</td>
                       <td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${statusClass[status]}`}>{statusLabel[status]}</span></td>
                       <td className="px-3 py-3"><div className="flex items-center gap-1">
@@ -462,26 +476,39 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
           </div>
           <div className="grid gap-3 lg:hidden">
             {pageRows.map(({ invoice, sale, customer, service, paid, due, status, agingDays }) => (
-              <article key={invoice.invoiceId} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0"><div className="truncate font-mono text-sm font-bold text-violet-800 dark:text-violet-300">{invoice.invoiceNumber}</div><div className="mt-1 text-xs text-slate-500">{formatAppDate(invoice.invoiceDate, language)}</div></div>
+              <article key={invoice.invoiceId} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 sm:p-4">
+                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+                  <div className="flex min-w-0 items-start gap-1.5">
+                    <div className="min-w-0 flex-1">
+                      <div title={invoice.invoiceNumber} className="truncate whitespace-nowrap font-mono text-sm font-bold text-violet-800 dark:text-violet-300">{invoice.invoiceNumber}</div>
+                      <div className="mt-1 text-xs text-slate-500">{formatAppDate(invoice.invoiceDate, language)}</div>
+                    </div>
+                    <button type="button" title="Copy full invoice number" aria-label={`Copy full invoice number ${invoice.invoiceNumber}`} onClick={() => void copyInvoiceNumber(invoice.invoiceNumber)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-800">
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                   <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${statusClass[status]}`}>{statusLabel[status]}</span>
                 </div>
                 <button type="button" onClick={() => customer && onViewCustomer(customer.id)} disabled={!customer} className="mt-3 text-left text-sm font-semibold text-slate-800 disabled:cursor-default dark:text-slate-200"><CustomerNameWithType customer={customer} /></button>
-                <div className="mt-1 text-xs text-slate-500">{service?.name || 'Service unavailable'} · {sale.plan}</div>
-                <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-                  <div><div className="text-slate-400">Total</div><div className="mt-0.5 font-semibold">{formatCurrency(sale.amount, sale.currency)}</div></div>
-                  <div><div className="text-slate-400">Paid / Due</div><div className="mt-0.5 font-semibold">{formatCurrency(paid, sale.currency)} / {formatCurrency(due, sale.currency)}</div></div>
-                  {due > 0 && <div className="col-span-2 text-slate-500">Outstanding {getOutstandingAgingBucket(agingDays)}</div>}
+                <div className="mt-1 break-words text-xs text-slate-500">{getSaleLineItems(sale).map((item, index) => <span key={`${item.id}-${index}`} className="block">{servicesById.get(item.serviceId)?.name || 'Service unavailable'} · {item.plan}{item.quantity > 1 ? ` × ${item.quantity}` : ''}</span>)}</div>
+                <div className="mt-3 grid min-w-0 grid-cols-3 gap-1.5 text-[11px] sm:gap-3 sm:text-xs">
+                  <div className="min-w-0 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70"><div className="text-slate-500 dark:text-slate-400">Total</div><div title={formatCurrency(sale.amount, sale.currency)} className="mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[clamp(0.625rem,3vw,0.75rem)] font-semibold tabular-nums tracking-tight">{formatCurrency(sale.amount, sale.currency)}</div></div>
+                  <div className="min-w-0 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70"><div className="text-slate-500 dark:text-slate-400">Paid</div><div title={formatCurrency(paid, sale.currency)} className="mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[clamp(0.625rem,3vw,0.75rem)] font-semibold tabular-nums tracking-tight">{formatCurrency(paid, sale.currency)}</div></div>
+                  <div className="min-w-0 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70"><div className="text-slate-500 dark:text-slate-400">Due</div><div title={formatCurrency(due, sale.currency)} className="mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[clamp(0.625rem,3vw,0.75rem)] font-semibold tabular-nums tracking-tight">{formatCurrency(due, sale.currency)}</div></div>
+                  {due > 0 && <div className="col-span-3 text-slate-500">Outstanding {getOutstandingAgingBucket(agingDays)}</div>}
                 </div>
-                <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-                  <button type="button" onClick={() => handleView(invoice, sale)} className="customer-primary-action inline-flex min-h-10 items-center gap-1 rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white"><Eye className="h-3.5 w-3.5" />View</button>
-                  <button type="button" onClick={() => void handleDownload(invoice, sale)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700"><Download className="h-3.5 w-3.5" />JPG</button>
-                  <button type="button" onClick={() => void handleShare(invoice, sale)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700"><Share2 className="h-3.5 w-3.5" />Share</button>
-                  {customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, invoiceId: invoice.invoiceId, saleId: sale.id, templateId: 'invoice_ready' })} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</button>}
-                  {due > 0 && <button type="button" onClick={() => onAddPayment(sale.id, customer?.id)} className="rounded-lg px-2 py-2 text-xs font-semibold text-violet-700 dark:text-violet-300">Add payment</button>}
-                  {countActiveInvoiceReminders(reminders, invoice.invoiceId, sale.id) > 0 && <button type="button" onClick={() => onNavigateSection?.('reminders')} className="rounded-lg px-2 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300">Open reminders ({countActiveInvoiceReminders(reminders, invoice.invoiceId, sale.id)})</button>}
-                  <button type="button" onClick={() => onViewSale(sale.id)} className="rounded-lg px-2 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300">Sale details</button>
+                <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => handleView(invoice, sale)} className="customer-primary-action inline-flex min-h-10 min-w-0 items-center justify-center gap-1 rounded-lg bg-violet-700 px-2 py-2 text-xs font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"><Eye className="h-3.5 w-3.5 shrink-0" />View Invoice</button>
+                    <button type="button" onClick={() => void handleDownload(invoice, sale)} className="inline-flex min-h-10 min-w-0 items-center justify-center gap-1 rounded-lg border border-slate-200 px-2 py-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-700"><Download className="h-3.5 w-3.5 shrink-0" />Download JPG</button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => void handleShare(invoice, sale)} className="inline-flex min-h-10 flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700"><Share2 className="h-3.5 w-3.5" />Share</button>
+                    {customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, invoiceId: invoice.invoiceId, saleId: sale.id, templateId: 'invoice_ready' })} className="inline-flex min-h-10 flex-1 items-center justify-center gap-1 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</button>}
+                    {due > 0 && <button type="button" onClick={() => onAddPayment(sale.id, customer?.id)} className="min-h-10 flex-1 rounded-lg px-2 py-2 text-xs font-semibold text-violet-700 dark:text-violet-300">Add payment</button>}
+                    {countActiveInvoiceReminders(reminders, invoice.invoiceId, sale.id) > 0 && <button type="button" onClick={() => onNavigateSection?.('reminders')} className="min-h-10 flex-1 rounded-lg px-2 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300">Open reminders ({countActiveInvoiceReminders(reminders, invoice.invoiceId, sale.id)})</button>}
+                    <button type="button" onClick={() => onViewSale(sale.id)} className="min-h-10 flex-1 rounded-lg px-2 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300">Sale details</button>
+                  </div>
                 </div>
               </article>
             ))}

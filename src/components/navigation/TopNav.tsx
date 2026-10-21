@@ -543,6 +543,16 @@ export const TopNav: React.FC<TopNavProps> = ({
           {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
         </button>
 
+        {currentUser?.isDemo && (
+          <span
+            className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-200 sm:px-2.5 sm:text-xs"
+            aria-label="Demo Mode"
+            title="Demo Mode — isolated sample data"
+          >
+            {language === 'bn' ? 'ডেমো' : 'Demo Mode'}
+          </span>
+        )}
+
         {/* Profile Menu */}
         <div ref={userRef} className="relative pl-0.5">
           <button
@@ -570,6 +580,18 @@ export const TopNav: React.FC<TopNavProps> = ({
                 </div>
               </div>
               <div className="py-1">
+                {currentUser?.isDemo && (
+                  <button
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      onLogout();
+                    }}
+                    className="app-profile-option w-full text-violet-700 dark:text-violet-300"
+                    role="menuitem"
+                  >
+                    {language === 'bn' ? 'ডেমো মোড থেকে বের হন' : 'Exit Demo Mode'}
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     onNavigate('settings');

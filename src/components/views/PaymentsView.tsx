@@ -26,9 +26,12 @@ import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
 import { formatAppDate, formatCurrency, getDaysDifference, getDateInTimeZone, getTodayDateString } from '../../utils/dateUtils';
 import { getCustomerDisplayName, getCustomerOptionLabel, resolvePaymentCustomer } from '../../utils/relationships';
 import {
+  amountToMinorUnits,
   getCustomerAdvanceCredit,
+  getPaymentCashSaleAllocation,
   getPaymentRefundTotals,
   getSaleDueAmount,
+  getSaleLineItems,
   getSalePaidAmount,
   getSalePaymentStatus,
   getSalePayments,
@@ -141,6 +144,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     activityLogs,
     ensureInvoiceForSale,
     recordSalePayment,
+    applyCustomerAdvanceToSale,
     recordPaymentRefund,
     addPayment,
     logActivity,
@@ -183,7 +187,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const [selectedInvoiceData, setSelectedInvoiceData] = useState<ReturnType<typeof buildInvoiceSaleDetails> | null>(null);
 
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
-  const [newPaymentMode, setNewPaymentMode] = useState<'sale' | 'advance'>('sale');
+  const [newPaymentMode, setNewPaymentMode] = useState<'sale' | 'advance' | 'apply-advance'>('sale');
   const [saleSearch, setSaleSearch] = useState('');
   const [newSaleId, setNewSaleId] = useState('');
   const [newAmount, setNewAmount] = useState('');
@@ -195,7 +199,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const [newNotes, setNewNotes] = useState('');
   const [newCustomerFilter, setNewCustomerFilter] = useState('all');
   const [isSaving, setIsSaving] = useState(false);
-  const [duplicatePayment, setDuplicatePayment] = useState<Payment | null>(null);
+  const [possibleDuplicateConfirmed, setPossibleDuplicateConfirmed] = useState(false);
   const operationId = useRef('');
   const isSavingRef = useRef(false);
 
@@ -267,6 +271,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
   const customersById = useMemo(() => new Map(customers.map(customer => [customer.id, customer])), [customers]);
   const servicesById = useMemo(() => new Map(services.map(service => [service.id, service])), [services]);
+  const saleItemLabel = (sale: Sale): string => getSaleLineItems(sale).map(item =>
+    `${servicesById.get(item.serviceId)?.name || 'Service'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`
+  ).join('; ');
   const subscriptionsById = useMemo(() => new Map(subscriptions.map(subscription => [subscription.id, subscription])), [subscriptions]);
   const invoicesBySaleId = useMemo(() => new Map(invoices.map(invoice => [invoice.saleId, invoice])), [invoices]);
   const salesById = useMemo(() => new Map(sales.map(sale => [sale.id, sale])), [sales]);
@@ -287,14 +294,25 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const paymentsBySaleId = useMemo(() => {
     const index = new Map<string, Payment[]>();
     payments.forEach(payment => {
-      const sale = paymentSales.get(payment.id);
-      if (!sale) return;
-      const linked = index.get(sale.id) || [];
-      linked.push(payment);
-      index.set(sale.id, linked);
+      const saleIds = new Set([
+        payment.saleId,
+        ...(payment.allocations || []).map(allocation => allocation.saleId),
+        ...(payment.refundedSaleAllocations || []).map(allocation => allocation.saleId),
+      ].filter((saleId): saleId is string => Boolean(saleId)));
+      if (!saleIds.size) {
+        const legacySale = paymentSales.get(payment.id);
+        if (legacySale) saleIds.add(legacySale.id);
+      }
+      saleIds.forEach(saleId => {
+        const sale = salesById.get(saleId);
+        if (!sale || sale.customerId !== payment.customerId || sale.currency !== payment.currency) return;
+        const linked = index.get(sale.id) || [];
+        linked.push(payment);
+        index.set(sale.id, linked);
+      });
     });
     return index;
-  }, [payments, paymentSales]);
+  }, [payments, paymentSales, salesById]);
 
   const paymentMethods = useMemo(() => normalizePaymentMethods(settings.paymentPreferences?.methods), [settings.paymentPreferences?.methods]);
   const activePaymentMethods = paymentMethods.filter(method => method.enabled).map(method => method.name) as PaymentMethod[];
@@ -336,6 +354,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         ? invoices.find(item => item.invoiceId === payment.invoiceId)
         : sale ? invoicesBySaleId.get(sale.id) : undefined;
       const service = sale ? servicesById.get(sale.serviceId) : undefined;
+      const saleItems = sale ? getSaleLineItems(sale) : [];
       const fields = [
         payment.id,
         payment.transactionId || '',
@@ -345,7 +364,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         invoice?.invoiceNumber || sale?.invoiceNo || '',
         sale?.id || payment.saleId || '',
         service?.name || '',
-        sale?.plan || '',
+        ...saleItems.flatMap(item => [servicesById.get(item.serviceId)?.name || '', item.plan]),
         payment.paymentMethodName || payment.paymentMethod,
       ];
       const queryMatch = !query || fields.some(field => normalizeSearchText(field).includes(query))
@@ -355,7 +374,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       const matchesMethod = selectedMethod === 'all' || (payment.paymentMethodName || payment.paymentMethod) === selectedMethod;
       const matchesStatus = selectedStatus === 'all' || payment.paymentStatus === selectedStatus;
       const matchesDate = !dateRange || (payment.paymentDate >= dateRange[0] && payment.paymentDate <= dateRange[1]);
-      const matchesService = selectedService === 'all' || sale?.serviceId === selectedService;
+      const matchesService = selectedService === 'all' || saleItems.some(item => item.serviceId === selectedService);
       const matchesCustomer = selectedCustomer === 'all' || payment.customerId === selectedCustomer;
       const amountInBdt = convertReportCurrency(payment.amount, payment.currency, 'BDT');
       const matchesAmount = selectedAmount === 'all'
@@ -375,14 +394,15 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     const found = outstandingSales.filter(item => {
       const customer = customersById.get(item.sale.customerId);
       const service = servicesById.get(item.sale.serviceId);
-      const fields = [customer?.name || '', customer?.phone || '', customer?.email || '', item.invoice?.invoiceNumber || item.sale.invoiceNo, item.sale.id, item.sale.plan, service?.name || ''];
+      const saleItems = getSaleLineItems(item.sale);
+      const fields = [customer?.name || '', customer?.phone || '', customer?.email || '', item.invoice?.invoiceNumber || item.sale.invoiceNo, item.sale.id, service?.name || '', ...saleItems.flatMap(line => [line.plan, servicesById.get(line.serviceId)?.name || ''])];
       const queryMatch = !query || fields.some(field => normalizeSearchText(field).includes(query))
         || (queryDigits.length >= 3 && customer?.phone ? normalizePhoneDigits(customer.phone).includes(queryDigits) : false);
       const matchesMethod = selectedMethod === 'all' || (paymentsBySaleId.get(item.sale.id) || []).some(payment =>
         (payment.paymentMethodName || payment.paymentMethod) === selectedMethod
       );
       const matchesStatus = selectedStatus === 'all' || item.status === selectedStatus;
-      const matchesService = selectedService === 'all' || item.sale.serviceId === selectedService;
+      const matchesService = selectedService === 'all' || saleItems.some(line => line.serviceId === selectedService);
       const matchesCustomer = selectedCustomer === 'all' || item.sale.customerId === selectedCustomer;
       const matchesDate = !dateRange || (item.dueReferenceDate >= dateRange[0] && item.dueReferenceDate <= dateRange[1]);
       const dueInBdt = convertReportCurrency(item.due, item.sale.currency, 'BDT');
@@ -481,16 +501,17 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     const due = getSaleDueAmount(sale, linkedPayments);
     if (due <= 0 || getSalePaymentStatus(sale, linkedPayments) === 'refunded') return false;
     if (newCustomerFilter !== 'all' && sale.customerId !== newCustomerFilter) return false;
+    if (newPaymentMode === 'apply-advance' && sale.currency !== newAdvanceCurrency) return false;
     const query = normalizeSearchText(saleSearch);
     if (!query) return true;
     const customer = customersById.get(sale.customerId);
-    const service = servicesById.get(sale.serviceId);
+    const itemLabel = saleItemLabel(sale);
     const invoice = invoicesBySaleId.get(sale.id);
-    const fields = [sale.id, sale.invoiceNo, invoice?.invoiceNumber || '', customer?.name || '', customer?.phone || '', service?.name || '', sale.plan];
+    const fields = [sale.id, sale.invoiceNo, invoice?.invoiceNumber || '', customer?.name || '', customer?.phone || '', itemLabel];
     const digits = normalizePhoneDigits(saleSearch);
     return fields.some(field => normalizeSearchText(field).includes(query))
       || (digits.length >= 3 && customer?.phone ? normalizePhoneDigits(customer.phone).includes(digits) : false);
-  }).sort((left, right) => right.date.localeCompare(left.date)), [sales, paymentsBySaleId, newCustomerFilter, saleSearch, customersById, servicesById, invoicesBySaleId]);
+  }).sort((left, right) => right.date.localeCompare(left.date)), [sales, paymentsBySaleId, newCustomerFilter, newPaymentMode, newAdvanceCurrency, saleSearch, customersById, servicesById, invoicesBySaleId]);
   const newSale = salesById.get(newSaleId);
   const newSaleCustomer = newSale ? customersById.get(newSale.customerId) : undefined;
   const newSaleService = newSale ? servicesById.get(newSale.serviceId) : undefined;
@@ -498,6 +519,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const newSalePayments = newSale ? paymentsBySaleId.get(newSale.id) || [] : [];
   const newSaleDue = newSale ? getSaleDueAmount(newSale, newSalePayments) : 0;
   const parsedNewAmountMinor = parseAmountToMinorUnits(newAmount);
+  const availableAdvance = newCustomerFilter === 'all'
+    ? 0
+    : getCustomerAdvanceCredit(payments, newCustomerFilter, newPaymentMode === 'advance' ? newAdvanceCurrency : newSale?.currency || newAdvanceCurrency);
   const newPaymentAllocation = splitPaymentAllocation(
     parsedNewAmountMinor === null ? 0 : minorUnitsToAmount(parsedNewAmountMinor),
     newSaleDue
@@ -508,16 +532,18 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     return payments.find(payment => payment.transactionId?.trim().toLocaleLowerCase() === transactionId);
   }, [newTransactionId, newSale, payments]);
   const possibleDuplicate = useMemo(() => {
-    if (!newSale || !newAmount || !newPaymentDate) return null;
-    const amount = Number(newAmount);
-    if (!Number.isFinite(amount)) return null;
-    return payments.find(payment =>
-      (payment.saleId === newSale.id || paymentSales.get(payment.id)?.id === newSale.id)
-      && payment.paymentMethod === newMethod
-      && payment.paymentDate === newPaymentDate
-      && Math.abs(Number(payment.amount) - amount) < 0.005
-    ) || null;
-  }, [newSale, newAmount, newPaymentDate, newMethod, payments, paymentSales]);
+    if (newPaymentMode !== 'sale' || !newSale || parsedNewAmountMinor === null || !newPaymentDate) return null;
+    return payments.find(payment => {
+      const cashAllocationMinor = amountToMinorUnits(getPaymentCashSaleAllocation(payment, newSale));
+      return (payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial')
+        && payment.customerId === newSale.customerId
+        && payment.currency === newSale.currency
+        && cashAllocationMinor > 0
+        && payment.paymentMethod === newMethod
+        && payment.paymentDate === newPaymentDate
+        && cashAllocationMinor === parsedNewAmountMinor;
+    }) || null;
+  }, [newPaymentMode, newSale, parsedNewAmountMinor, newPaymentDate, newMethod, payments]);
 
   const saveCustomerFollowUp = (
     customerId: string,
@@ -555,7 +581,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     setNewNotes('');
     setNewCustomerFilter(customerId || preselectedCustomerId || 'all');
     setNewAdvanceCurrency(currency);
-    setDuplicatePayment(null);
+    setPossibleDuplicateConfirmed(false);
     operationId.current = createRecordId('sale-payment-operation');
     setIsAddPaymentOpen(true);
   };
@@ -563,9 +589,16 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const handleRecordPayment = (event: React.FormEvent) => {
     event.preventDefault();
     if (isSaving || isSavingRef.current) return;
-    if (newPaymentMode === 'sale' && !newSale) return;
-    if (newPaymentMode === 'advance' && newCustomerFilter === 'all') {
+    if (newPaymentMode !== 'advance' && !newSale) {
+      showToast(newPaymentMode === 'apply-advance' ? 'Choose an outstanding sale for this advance application.' : 'Choose an outstanding sale.', 'error');
+      return;
+    }
+    if (newPaymentMode !== 'sale' && newCustomerFilter === 'all') {
       showToast('Choose a customer for this advance payment.', 'error');
+      return;
+    }
+    if (newPaymentMode === 'apply-advance' && newSale?.customerId !== newCustomerFilter) {
+      showToast('Choose a sale belonging to the selected customer.', 'error');
       return;
     }
     if (parsedNewAmountMinor === null || parsedNewAmountMinor <= 0) {
@@ -573,37 +606,58 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       return;
     }
     const amount = minorUnitsToAmount(parsedNewAmountMinor);
+    if (newPaymentMode === 'apply-advance') {
+      const availableMinor = amountToMinorUnits(availableAdvance);
+      const dueMinor = amountToMinorUnits(newSaleDue);
+      if (parsedNewAmountMinor > availableMinor) {
+        showToast('The application amount exceeds the customer’s available advance credit.', 'error');
+        return;
+      }
+      if (parsedNewAmountMinor > dueMinor) {
+        showToast('The application amount exceeds this sale’s outstanding due.', 'error');
+        return;
+      }
+    }
     if (newPaymentMode === 'sale' && newStatus !== 'paid'
       && parsedNewAmountMinor > (parseAmountToMinorUnits(newSaleDue) ?? 0)) {
       showToast('Pending or failed payment attempts cannot exceed the outstanding balance.', 'error');
       return;
     }
-    if (!isValidDate(newPaymentDate) || newPaymentDate > getTodayDateString(settings.businessProfile?.timeZone)) {
+    if (newPaymentMode !== 'apply-advance'
+      && (!isValidDate(newPaymentDate) || newPaymentDate > getTodayDateString(settings.businessProfile?.timeZone))) {
       showToast('Choose a valid payment date that is not in the future.', 'error');
       return;
     }
-    if (!activePaymentMethods.includes(newMethod)) {
+    if (newPaymentMode !== 'apply-advance' && !activePaymentMethods.includes(newMethod)) {
       showToast('Choose an active payment method from Settings.', 'error');
       return;
     }
-    if (paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId) && !newTransactionId.trim()) {
+    if (newPaymentMode !== 'apply-advance'
+      && paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId)
+      && !newTransactionId.trim()) {
       showToast('Enter the required transaction ID.', 'error');
       return;
     }
     if (duplicateTransaction) {
-      setDuplicatePayment(duplicateTransaction);
       showToast('Possible duplicate payment. Review the existing payment before continuing.', 'error');
       return;
     }
-    if (possibleDuplicate) {
-      setDuplicatePayment(possibleDuplicate);
-      showToast('Possible duplicate payment. Review the existing payment before continuing.', 'error');
+    if (possibleDuplicate && !possibleDuplicateConfirmed) {
+      showToast('Review the similar payment and confirm this is a separate receipt before continuing.', 'error');
       return;
     }
     isSavingRef.current = true;
     setIsSaving(true);
     try {
-      if (newPaymentMode === 'advance') {
+      if (newPaymentMode === 'apply-advance' && newSale) {
+        const appliedAmount = applyCustomerAdvanceToSale(
+          newCustomerFilter,
+          newSale.id,
+          amount,
+          operationId.current
+        );
+        showToast(`${formatCurrency(appliedAmount, newSale.currency)} existing advance credit applied to the sale. No new cash was recorded.`, 'success');
+      } else if (newPaymentMode === 'advance') {
         addPayment({
           operationId: operationId.current,
           customerId: newCustomerFilter,
@@ -643,6 +697,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       setNewAmount('');
       setNewTransactionId('');
       setNewNotes('');
+      setPossibleDuplicateConfirmed(false);
     } catch (error) {
       console.error('Payment could not be recorded:', error);
       showToast(error instanceof Error ? error.message : 'Payment could not be recorded. Please try again.', 'error');
@@ -661,7 +716,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       servicesById.get(invoice.serviceId),
       payments,
       settings,
-      subscriptionsById.get(invoice.subscriptionId || sale.subscriptionId || '')
+      subscriptionsById.get(invoice.subscriptionId || sale.subscriptionId || ''),
+      services,
+      subscriptions
     );
     setSelectedInvoiceData(details);
   };
@@ -936,7 +993,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                             <ul className="mt-2 space-y-2">
                               {summary.transactions.map(transaction => (
                                 <li key={transaction.sale.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70">
-                                  <span className="min-w-0 flex-1">{servicesById.get(transaction.sale.serviceId)?.name || 'Service'} · {transaction.sale.plan} · {transaction.invoice?.invoiceNumber || transaction.sale.invoiceNo}</span>
+                                  <span className="min-w-0 flex-1">{saleItemLabel(transaction.sale)} · {transaction.invoice?.invoiceNumber || transaction.sale.invoiceNo}</span>
                                   <strong>{formatCurrency(transaction.due, transaction.sale.currency)}</strong>
                                   <button type="button" onClick={() => openAddPayment(summary.customer.id, transaction.sale.id)} className="rounded-md bg-violet-700 px-2 py-1 text-[10px] font-semibold text-white hover:bg-violet-600">Record Payment</button>
                                   <button type="button" onClick={() => onNavigateSection?.('sales', transaction.sale.id)} className="rounded-md border border-slate-200 px-2 py-1 text-[10px] font-semibold dark:border-slate-700">Sale</button>
@@ -1006,7 +1063,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                       <ul className="mt-2 space-y-2">
                         {summary.transactions.map(transaction => (
                           <li key={transaction.sale.id} className="space-y-2 rounded-lg bg-slate-50 p-3 text-xs dark:bg-slate-800/70">
-                            <p className="font-semibold">{servicesById.get(transaction.sale.serviceId)?.name || 'Service'} · {transaction.sale.plan}</p>
+                            <p className="font-semibold">{saleItemLabel(transaction.sale)}</p>
                             <p className="break-all text-slate-500">{transaction.invoice?.invoiceNumber || transaction.sale.invoiceNo} · Due {formatCurrency(transaction.due, transaction.sale.currency)}</p>
                             <div className="flex flex-wrap gap-2">
                               <button type="button" onClick={() => openAddPayment(summary.customer.id, transaction.sale.id)} className="min-h-9 rounded-lg bg-violet-700 px-3 text-xs font-semibold text-white">Record Payment</button>
@@ -1171,13 +1228,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   const sale = paymentSales.get(payment.id);
                   const customer = resolvePaymentCustomer(payment, customers, sales, subscriptions);
                   const invoice = payment.invoiceId ? invoices.find(item => item.invoiceId === payment.invoiceId) : undefined;
-                  const service = sale ? servicesById.get(sale.serviceId) : undefined;
                   return <tr id={`payment-${payment.id}`} key={payment.id} className={focusedPaymentIdState === payment.id ? 'bg-violet-50 dark:bg-violet-950/30' : ''}>
                     <td className="px-3 py-3 font-mono font-semibold text-slate-700 dark:text-slate-200">{payment.id}</td>
                     <td className="whitespace-nowrap px-3 py-3">{formatAppDate(payment.paymentDate, language)}</td>
                     <td className="px-3 py-3"><div className="font-semibold text-slate-900 dark:text-white"><CustomerNameWithType customer={customer} /></div><div className="text-[10px] text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
                     <td className="px-3 py-3"><div>{invoice?.invoiceNumber || sale?.invoiceNo || '—'}</div><div className="font-mono text-[10px] text-slate-500">{sale?.id || payment.saleId || 'Unlinked legacy payment'}</div></td>
-                    <td className="px-3 py-3">{service?.name || '—'}{sale?.plan && <div className="text-[10px] text-slate-500">{sale.plan}</div>}</td>
+                    <td className="px-3 py-3">{sale ? saleItemLabel(sale) : '—'}</td>
                     <td className="px-3 py-3">{methodLabel(payment.paymentMethodName || payment.paymentMethod)}</td>
                     <td className="whitespace-nowrap px-3 py-3 font-mono font-bold">{formatCurrency(payment.amount, payment.currency)}</td>
                     <td className="px-3 py-3"><PaymentStatusBadge status={payment.paymentStatus} className={statusStyle(payment.paymentStatus)} icon={statusIcon(payment.paymentStatus)} /></td>
@@ -1192,9 +1248,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             {pagePayments.map(payment => {
               const sale = paymentSales.get(payment.id);
               const customer = resolvePaymentCustomer(payment, customers, sales, subscriptions);
-              const service = sale ? servicesById.get(sale.serviceId) : undefined;
               return <article id={`payment-${payment.id}`} key={payment.id} className={`space-y-2 p-4 ${focusedPaymentIdState === payment.id ? 'bg-violet-50 dark:bg-violet-950/30' : ''}`}>
-                <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-mono text-xs text-slate-500">{payment.id}</p><h3 className="mt-1 text-sm font-bold text-slate-900 dark:text-white"><CustomerNameWithType customer={customer} nameClassName="min-w-0 break-words" /></h3><p className="text-xs text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</p><p className="text-xs text-slate-500">{service?.name || 'Payment'}{sale?.plan ? ` · ${sale.plan}` : ''}</p></div><span className="shrink-0 font-mono font-bold">{formatCurrency(payment.amount, payment.currency)}</span></div>
+                <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-mono text-xs text-slate-500">{payment.id}</p><h3 className="mt-1 text-sm font-bold text-slate-900 dark:text-white"><CustomerNameWithType customer={customer} nameClassName="min-w-0 break-words" /></h3><p className="text-xs text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</p><p className="break-words text-xs text-slate-500">{sale ? saleItemLabel(sale) : 'Payment'}</p></div><span className="shrink-0 font-mono font-bold">{formatCurrency(payment.amount, payment.currency)}</span></div>
                 <div className="flex flex-wrap items-center justify-between gap-2"><PaymentStatusBadge status={payment.paymentStatus} className={statusStyle(payment.paymentStatus)} icon={statusIcon(payment.paymentStatus)} /><span className="text-xs text-slate-500">{methodLabel(payment.paymentMethodName || payment.paymentMethod)} · {formatAppDate(payment.paymentDate, language)}</span></div>
                 <div className="flex items-center justify-between gap-2"><span className="truncate font-mono text-[11px] text-slate-500">{payment.transactionId || 'No transaction ID'}</span><button type="button" onClick={() => openPaymentDetails(payment)} className="min-h-9 shrink-0 rounded-lg px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/40">View details</button></div>
               </article>;
@@ -1210,12 +1265,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {pageOutstanding.map(({ sale, invoice, due, paid, lastPayment, dueReferenceDate }) => {
                   const customer = customersById.get(sale.customerId);
-                  const service = servicesById.get(sale.serviceId);
+                  const itemLabel = saleItemLabel(sale);
                   const days = getAgingDays(dueReferenceDate, settings.businessProfile?.timeZone);
                   return <tr key={sale.id}>
                     <td className="px-4 py-3"><div className="font-semibold"><CustomerNameWithType customer={customer} /></div><div className="text-[10px] text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
                     <td className="px-4 py-3">{invoice?.invoiceNumber || sale.invoiceNo}<div className="font-mono text-[10px] text-slate-500">{sale.id}</div></td>
-                    <td className="px-4 py-3">{service?.name || '—'}<div className="text-[10px] text-slate-500">{sale.plan}</div></td>
+                    <td className="px-4 py-3">{itemLabel}</td>
                     <td className="px-4 py-3">{formatCurrency(sale.amount, sale.currency)}</td><td className="px-4 py-3">{formatCurrency(paid, sale.currency)}</td>
                     <td className="px-4 py-3 font-bold text-amber-700 dark:text-amber-300">{formatCurrency(due, sale.currency)}</td>
                     <td className="px-4 py-3">{lastPayment ? formatAppDate(lastPayment.paymentDate, language) : '—'}</td>
@@ -1231,7 +1286,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               const customer = customersById.get(sale.customerId);
               const days = getAgingDays(dueReferenceDate, settings.businessProfile?.timeZone);
               return <article key={sale.id} className="space-y-3 p-4">
-                <div className="flex items-start justify-between gap-2"><div><h3 className="font-bold"><CustomerNameWithType customer={customer} /></h3><p className="text-xs text-slate-500">{servicesById.get(sale.serviceId)?.name || 'Service'} · {sale.plan}</p><p className="mt-1 text-[11px] text-slate-500">{invoice?.invoiceNumber || sale.invoiceNo}</p></div><p className="font-mono font-bold text-amber-700 dark:text-amber-300">{formatCurrency(due, sale.currency)} due</p></div>
+                <div className="flex items-start justify-between gap-2"><div><h3 className="font-bold"><CustomerNameWithType customer={customer} /></h3><p className="text-xs text-slate-500">{saleItemLabel(sale)}</p><p className="mt-1 text-[11px] text-slate-500">{invoice?.invoiceNumber || sale.invoiceNo}</p></div><p className="font-mono font-bold text-amber-700 dark:text-amber-300">{formatCurrency(due, sale.currency)} due</p></div>
                 <dl className="grid grid-cols-2 gap-2 text-xs"><div><dt className="text-slate-500">Total / Paid</dt><dd>{formatCurrency(sale.amount, sale.currency)} / {formatCurrency(paid, sale.currency)}</dd></div><div><dt className="text-slate-500">Outstanding</dt><dd>{formatDurationDays(days)} · {getAgingBucket(days, formatNumber, language === 'bn' ? 'দিন' : 'days')}</dd></div><div><dt className="text-slate-500">Last payment</dt><dd>{lastPayment ? formatAppDate(lastPayment.paymentDate, language) : 'None'}</dd></div></dl>
                 <div className="flex flex-wrap gap-2"><button type="button" onClick={() => openAddPayment(sale.customerId, sale.id)} className="min-h-9 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white hover:bg-violet-700">Add Payment</button>{customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-emerald-200 px-3 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp Reminder</button>}<button type="button" onClick={() => onNavigateSection?.('sales', sale.id)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Sale</button><button type="button" onClick={() => openInvoice(sale)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Invoice</button><button type="button" onClick={() => onNavigateSection?.('customers', sale.customerId)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">Customer</button></div>
               </article>;
@@ -1248,28 +1303,27 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         <div className="flex gap-2"><button type="button" disabled={currentPage <= 1} onClick={() => setPage(value => Math.max(1, value - 1))} className="min-h-9 rounded-lg border border-slate-200 px-3 font-semibold disabled:opacity-40 dark:border-slate-700">Previous</button><button type="button" disabled={currentPage >= totalPages} onClick={() => setPage(value => Math.min(totalPages, value + 1))} className="min-h-9 rounded-lg border border-slate-200 px-3 font-semibold disabled:opacity-40 dark:border-slate-700">Next</button></div>
       </nav>}
 
-      <Modal isOpen={isAddPaymentOpen} onClose={() => { if (!isSaving) setIsAddPaymentOpen(false); }} title={newPaymentMode === 'advance' ? 'Record Customer Advance' : 'Record Payment'} subtitle={newPaymentMode === 'advance' ? 'Record money received for a customer with no sale allocation.' : 'Allocate a payment to an outstanding sale; any excess becomes customer advance credit.'} maxWidth="lg">
+      <Modal isOpen={isAddPaymentOpen} onClose={() => { if (!isSaving) setIsAddPaymentOpen(false); }} title={newPaymentMode === 'advance' ? 'Record Customer Advance' : newPaymentMode === 'apply-advance' ? 'Apply Existing Advance to Due' : 'Record Payment'} subtitle={newPaymentMode === 'advance' ? 'Record money received for a customer with no sale allocation.' : newPaymentMode === 'apply-advance' ? 'Use existing customer credit to reduce an outstanding sale. No new cash is recorded.' : 'Allocate a payment to an outstanding sale; any excess becomes customer advance credit.'} maxWidth="lg">
         <form onSubmit={handleRecordPayment} className="space-y-4">
-          <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800" aria-label="Payment allocation type">
-            <button type="button" aria-pressed={newPaymentMode === 'sale'} onClick={() => { setNewPaymentMode('sale'); setNewSaleId(''); setNewAmount(''); setDuplicatePayment(null); }} className={`min-h-10 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'sale' ? 'bg-white text-violet-700 shadow-xs dark:bg-slate-700 dark:text-violet-200' : 'text-slate-600 dark:text-slate-300'}`}>Pay an outstanding sale</button>
-            <button type="button" aria-pressed={newPaymentMode === 'advance'} onClick={() => { setNewPaymentMode('advance'); setNewSaleId(''); setNewAmount(''); setDuplicatePayment(null); }} className={`min-h-10 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'advance' ? 'bg-white text-violet-700 shadow-xs dark:bg-slate-700 dark:text-violet-200' : 'text-slate-600 dark:text-slate-300'}`}>Customer advance</button>
+          <div className="grid gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800 sm:grid-cols-3" aria-label="Payment action">
+            <button type="button" aria-pressed={newPaymentMode === 'sale'} onClick={() => { setNewPaymentMode('sale'); setNewSaleId(''); setNewAmount(''); setPossibleDuplicateConfirmed(false); }} className={`min-h-10 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'sale' ? 'bg-white text-violet-700 shadow-xs dark:bg-slate-700 dark:text-violet-200' : 'text-slate-600 dark:text-slate-300'}`}>Receive New Payment</button>
+            <button type="button" aria-pressed={newPaymentMode === 'advance'} onClick={() => { setNewPaymentMode('advance'); setNewSaleId(''); setNewAmount(''); setPossibleDuplicateConfirmed(false); }} className={`min-h-10 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'advance' ? 'bg-white text-violet-700 shadow-xs dark:bg-slate-700 dark:text-violet-200' : 'text-slate-600 dark:text-slate-300'}`}>Record Advance</button>
+            <button type="button" aria-pressed={newPaymentMode === 'apply-advance'} onClick={() => { setNewPaymentMode('apply-advance'); setNewSaleId(''); setNewAmount(''); setSaleSearch(''); setNewCustomerFilter(newSale?.customerId || preselectedCustomerId || 'all'); setNewAdvanceCurrency(newSale?.currency || currency); setPossibleDuplicateConfirmed(false); }} className={`min-h-10 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'apply-advance' ? 'bg-white text-violet-700 shadow-xs dark:bg-slate-700 dark:text-violet-200' : 'text-slate-600 dark:text-slate-300'}`}>Apply Existing Advance</button>
           </div>
-          {newPaymentMode === 'sale' ? <>
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Find sale or invoice
-              <span className="relative mt-1.5 block"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input autoFocus value={saleSearch} onChange={event => setSaleSearch(event.target.value)} placeholder="Invoice, customer, phone, service or sale ID" className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></span>
-            </label>
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Outstanding sale *
-              <select required value={newSaleId} onChange={event => { setNewSaleId(event.target.value); setNewAmount(''); setNewTransactionId(''); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white">
-                <option value="">Choose a sale</option>
-                {eligibleSales.map(sale => {
-                  const customer = customersById.get(sale.customerId);
-                  const due = getSaleDueAmount(sale, paymentsBySaleId.get(sale.id) || []);
-                  return <option key={sale.id} value={sale.id}>{getCustomerDisplayName(customer)} · WA: {customer?.whatsapp || customer?.phone || 'Not set'} · {servicesById.get(sale.serviceId)?.name || 'Service'} · {invoicesBySaleId.get(sale.id)?.invoiceNumber || sale.invoiceNo} · Due {formatCurrency(due, sale.currency)}</option>;
-                })}
+          {newPaymentMode === 'apply-advance' && <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Customer *
+              <select required value={newCustomerFilter === 'all' ? '' : newCustomerFilter} onChange={event => { setNewCustomerFilter(event.target.value || 'all'); setNewSaleId(''); setNewAmount(''); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+                <option value="">Choose a customer</option>{customers.filter(customer => !customer.isArchived).map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}
               </select>
             </label>
-            {!eligibleSales.length && <p role="status" className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">No sales with an outstanding balance were found. Choose Customer advance to record an unallocated receipt.</p>}
-          </> : <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Currency *
+              <select value={newAdvanceCurrency} onChange={event => { setNewAdvanceCurrency(event.target.value as AppCurrency); setNewSaleId(''); setNewAmount(''); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="BDT">BDT — ৳</option><option value="USD">USD — $</option></select>
+            </label>
+            {newCustomerFilter !== 'all' && <p className="rounded-lg bg-violet-50 p-3 text-sm text-violet-900 dark:bg-violet-950/30 dark:text-violet-200 sm:col-span-2">
+              Available advance credit: <strong className="font-mono">{formatCurrency(availableAdvance, newAdvanceCurrency)}</strong>
+            </p>}
+          </div>}
+          {newPaymentMode === 'advance' && <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Customer *
               <select required value={newCustomerFilter === 'all' ? '' : newCustomerFilter} onChange={event => setNewCustomerFilter(event.target.value || 'all')} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
                 <option value="">Choose a customer</option>{customers.filter(customer => !customer.isArchived).map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}
@@ -1278,8 +1332,80 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Currency *
               <select value={newAdvanceCurrency} onChange={event => setNewAdvanceCurrency(event.target.value as AppCurrency)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="BDT">BDT — ৳</option><option value="USD">USD — $</option></select>
             </label>
-            {newCustomerFilter !== 'all' && <p className="text-xs text-slate-500 sm:col-span-2">Available advance: {formatCurrency(getCustomerAdvanceCredit(payments, newCustomerFilter, newAdvanceCurrency), newAdvanceCurrency)} · This receipt will add new customer credit, not revenue.</p>}
+            {newCustomerFilter !== 'all' && <p className="text-xs text-slate-500 sm:col-span-2">Current advance: {formatCurrency(getCustomerAdvanceCredit(payments, newCustomerFilter, newAdvanceCurrency))} · Recording this receipt adds new customer credit, not revenue.</p>}
           </div>}
+          {newPaymentMode === 'sale' && <>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Find sale or invoice
+              <span className="relative mt-1.5 block"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input autoFocus value={saleSearch} onChange={event => setSaleSearch(event.target.value)} placeholder="Invoice, customer, phone, service or sale ID" className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></span>
+            </label>
+          </>}
+          {newPaymentMode !== 'advance' && <>
+            <fieldset className="min-w-0">
+              <legend className="text-sm font-semibold text-slate-700 dark:text-slate-200">{newPaymentMode === 'apply-advance' ? 'Outstanding sale for this customer *' : 'Outstanding sale *'}</legend>
+              <div className="mt-1.5 max-h-64 space-y-2 overflow-y-auto overscroll-contain rounded-xl pr-1">
+                {eligibleSales.map(sale => {
+                  const customer = customersById.get(sale.customerId);
+                  const due = getSaleDueAmount(sale, paymentsBySaleId.get(sale.id) || []);
+                  const selected = newSaleId === sale.id;
+                  return (
+                    <label
+                      key={sale.id}
+                      className={`grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_5rem] items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-violet-500 ${
+                        selected
+                          ? 'border-violet-500 bg-violet-50/70 dark:border-violet-500 dark:bg-violet-950/30'
+                          : 'border-slate-200 bg-white hover:border-violet-300 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-violet-700'
+                      }`}
+                    >
+                      <input
+                        className="sr-only"
+                        type="radio"
+                        name="outstanding-sale"
+                        required
+                        value={sale.id}
+                        checked={selected}
+                        onChange={() => {
+                          setNewSaleId(sale.id);
+                          setNewAmount('');
+                          setNewTransactionId('');
+                          setPossibleDuplicateConfirmed(false);
+                        }}
+                      />
+                      <span className="min-w-0">
+                        <span className="block break-words text-sm font-semibold leading-5 text-slate-900 dark:text-white">
+                          {getCustomerDisplayName(customer)}
+                        </span>
+                        <span className="mt-0.5 block break-words text-xs leading-4 text-slate-500 dark:text-slate-400">
+                          {customer?.whatsapp || customer?.phone || 'No phone number'}
+                        </span>
+                        <span className="mt-1 block break-words text-xs font-medium leading-4 text-violet-700 dark:text-violet-300">
+                          {saleItemLabel(sale)}
+                        </span>
+                      </span>
+                      <span className="flex min-w-0 flex-col items-end gap-2">
+                        <span className="max-w-full text-right leading-4 [overflow-wrap:anywhere]">
+                          <span className="block text-[10px] font-medium text-slate-500 dark:text-slate-400">Due</span>
+                          <span className="block text-xs font-bold tabular-nums text-amber-800 dark:text-amber-300">
+                            {formatCurrency(due, sale.currency)}
+                          </span>
+                        </span>
+                        <span
+                          aria-hidden="true"
+                          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                            selected
+                              ? 'border-violet-600 bg-violet-600 dark:border-violet-400 dark:bg-violet-400'
+                              : 'border-slate-400 bg-white dark:border-slate-500 dark:bg-slate-900'
+                          }`}
+                        >
+                          {selected && <span className="h-1.5 w-1.5 rounded-full bg-white dark:bg-slate-900" />}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+            {!eligibleSales.length && <p role="status" className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">{newPaymentMode === 'apply-advance' ? newCustomerFilter === 'all' ? 'Choose a customer to find their outstanding sales.' : 'This customer has no outstanding sales in the selected currency.' : 'No sales with an outstanding balance were found. Choose Record Advance to record an unallocated receipt.'}</p>}
+          </>}
           {newSale && <section aria-label="Selected sale balance" className="grid gap-3 rounded-xl border border-violet-200 bg-violet-50/60 p-3 text-sm dark:border-violet-900 dark:bg-violet-950/20 sm:grid-cols-2">
             <div><p className="text-xs text-slate-500">Customer</p><p className="font-semibold"><CustomerNameWithType customer={newSaleCustomer} /></p><p className="text-xs text-slate-500">{newSaleCustomer?.phone || newSaleCustomer?.email || ''}</p></div>
             <div><p className="text-xs text-slate-500">Sale</p><p className="font-semibold">{newSaleService?.name || 'Service'} · {newSale.plan}</p><p className="text-xs text-slate-500">{newSaleInvoice?.invoiceNumber || newSale.invoiceNo}</p></div>
@@ -1287,41 +1413,53 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             <div><p className="text-xs text-slate-500">Remaining balance</p><p className="font-mono font-bold text-amber-800 dark:text-amber-300">{formatCurrency(newSaleDue, newSale.currency)}</p></div>
           </section>}
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Amount received *
-              <input required type="number" min="0.01" step="0.01" inputMode="decimal" value={newAmount} onChange={event => { setNewAmount(event.target.value); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">{newPaymentMode === 'apply-advance' ? 'Amount to apply *' : 'Amount received *'}
+              <input required type="number" min="0.01" max={newPaymentMode === 'apply-advance' ? Math.min(availableAdvance, newSaleDue) : undefined} step="0.01" inputMode="decimal" value={newAmount} onChange={event => { setNewAmount(event.target.value); setPossibleDuplicateConfirmed(false); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
             </label>
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Payment date *
-              <input required type="date" max={getTodayDateString(settings.businessProfile?.timeZone)} value={newPaymentDate} onChange={event => { setNewPaymentDate(event.target.value); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
-            </label>
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Payment method *
-              <select required value={newMethod} onChange={event => { setNewMethod(event.target.value as PaymentMethod); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
-                {activePaymentMethods.map(method => <option key={method} value={method}>{methodLabel(method)}</option>)}
-              </select>
-            </label>
+            {newPaymentMode !== 'apply-advance' && <>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Payment date *
+                <input required type="date" max={getTodayDateString(settings.businessProfile?.timeZone)} value={newPaymentDate} onChange={event => { setNewPaymentDate(event.target.value); setPossibleDuplicateConfirmed(false); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+              </label>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Payment method *
+                <select required value={newMethod} onChange={event => { setNewMethod(event.target.value as PaymentMethod); setPossibleDuplicateConfirmed(false); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+                  {activePaymentMethods.map(method => <option key={method} value={method}>{methodLabel(method)}</option>)}
+                </select>
+              </label>
+            </>}
             {newPaymentMode === 'sale' && <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Payment status *
               <select required value={newStatus} onChange={event => setNewStatus(event.target.value as Extract<PaymentStatus, 'paid' | 'pending' | 'failed'>)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
                 <option value="paid">Received</option><option value="pending">Pending</option><option value="failed">Failed</option>
               </select>
             </label>}
-            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Transaction ID {paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId) ? '*' : '(optional)'}
-              <input required={paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId)} value={newTransactionId} onChange={event => { setNewTransactionId(event.target.value); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
-            </label>
+            {newPaymentMode !== 'apply-advance' && <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Transaction ID {paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId) ? '*' : '(optional)'}
+              <input required={paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId)} value={newTransactionId} onChange={event => { setNewTransactionId(event.target.value); setPossibleDuplicateConfirmed(false); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+            </label>}
           </div>
           {newPaymentMode === 'sale' && newStatus === 'paid' && newSale && parsedNewAmountMinor !== null && parsedNewAmountMinor > 0 && <section aria-label="Payment allocation preview" className="rounded-xl border border-violet-200 bg-violet-50/60 p-3 text-sm dark:border-violet-900 dark:bg-violet-950/20">
             <p className="font-semibold text-slate-900 dark:text-white">Allocation preview</p>
             <div className="mt-2 flex justify-between gap-3"><span className="text-slate-600 dark:text-slate-300">Applied to outstanding sale</span><span className="font-mono font-semibold">{formatCurrency(newPaymentAllocation.allocatedAmount, newSale.currency)}</span></div>
             <div className="mt-1 flex justify-between gap-3"><span className="text-slate-600 dark:text-slate-300">Added to customer advance</span><span className="font-mono font-semibold">{formatCurrency(newPaymentAllocation.advanceCreditAmount, newSale.currency)}</span></div>
           </section>}
-          <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Note <span className="font-normal text-slate-500">(optional)</span>
+          {newPaymentMode === 'apply-advance' && newSale && parsedNewAmountMinor !== null && parsedNewAmountMinor > 0 && <section aria-label="Advance application preview" className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/20">
+            <p className="font-semibold text-slate-900 dark:text-white">Advance application preview</p>
+            <div className="mt-2 flex justify-between gap-3"><span className="text-slate-600 dark:text-slate-300">Applied to outstanding sale</span><span className="font-mono font-semibold">{formatCurrency(minorUnitsToAmount(Math.min(parsedNewAmountMinor, amountToMinorUnits(newSaleDue))), newSale.currency)}</span></div>
+            <div className="mt-1 flex justify-between gap-3"><span className="text-slate-600 dark:text-slate-300">Advance remaining</span><span className="font-mono font-semibold">{formatCurrency(minorUnitsToAmount(Math.max(0, amountToMinorUnits(availableAdvance) - parsedNewAmountMinor)), newSale.currency)}</span></div>
+            {(parsedNewAmountMinor > amountToMinorUnits(newSaleDue) || parsedNewAmountMinor > amountToMinorUnits(availableAdvance)) && <p role="alert" className="mt-2 text-xs font-semibold text-rose-700 dark:text-rose-300">Amount exceeds the sale due or available advance credit.</p>}
+            <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">This moves existing advance credit to the sale; it does not record a new cash receipt.</p>
+          </section>}
+          {newPaymentMode !== 'apply-advance' && <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Note <span className="font-normal text-slate-500">(optional)</span>
             <input value={newNotes} onChange={event => setNewNotes(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
-          </label>
+          </label>}
           {duplicateTransaction && <DuplicateWarning payment={duplicateTransaction} onReview={() => { setIsAddPaymentOpen(false); openPaymentDetails(duplicateTransaction); }} />}
           {!duplicateTransaction && possibleDuplicate && <DuplicateWarning payment={possibleDuplicate} onReview={() => { setIsAddPaymentOpen(false); openPaymentDetails(possibleDuplicate); }} />}
-          {duplicatePayment && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">A matching payment exists. Review it before recording another payment.</p>}
-          <p className="text-xs text-slate-500">Only active payment methods from Settings are selectable. Sale allocations are limited to the outstanding amount; any excess is saved as customer advance credit and is not auto-applied to another sale.</p>
+          {possibleDuplicate && <label className="flex min-h-11 items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+            <input type="checkbox" checked={possibleDuplicateConfirmed} onChange={event => setPossibleDuplicateConfirmed(event.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-violet-600" />
+            <span>I reviewed the similar received payment and confirm this is a separate receipt for the remaining balance.</span>
+          </label>}
+          {newPaymentMode !== 'apply-advance' && <p className="text-xs text-slate-500">Only active payment methods from Settings are selectable. Sale allocations are limited to the outstanding amount; any excess is saved as customer advance credit and is not auto-applied to another sale.</p>}
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
             <button type="button" disabled={isSaving} onClick={() => setIsAddPaymentOpen(false)} className="min-h-10 rounded-xl px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800">Cancel</button>
-            <button type="submit" disabled={isSaving || (newPaymentMode === 'sale' ? !newSale : newCustomerFilter === 'all') || parsedNewAmountMinor === null || !activePaymentMethods.length || Boolean(duplicateTransaction || possibleDuplicate)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">{isSaving ? <><Clock3 className="h-4 w-4 animate-spin" /> Recording payment…</> : newPaymentMode === 'advance' ? 'Record Advance' : 'Record Payment'}</button>
+            <button type="submit" disabled={isSaving || (newPaymentMode !== 'advance' && !newSale) || (newPaymentMode !== 'sale' && newCustomerFilter === 'all') || parsedNewAmountMinor === null || (newPaymentMode !== 'apply-advance' && !activePaymentMethods.length) || Boolean(duplicateTransaction || (possibleDuplicate && !possibleDuplicateConfirmed)) || (newPaymentMode === 'apply-advance' && (parsedNewAmountMinor <= 0 || parsedNewAmountMinor > amountToMinorUnits(availableAdvance) || parsedNewAmountMinor > amountToMinorUnits(newSaleDue)))} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">{isSaving ? <><Clock3 className="h-4 w-4 animate-spin" /> Saving…</> : newPaymentMode === 'advance' ? 'Record Advance' : newPaymentMode === 'apply-advance' ? 'Apply Advance to Sale' : 'Record Payment'}</button>
           </div>
         </form>
       </Modal>
@@ -1417,8 +1555,26 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           </section>}
           {selectedSaleForPayment && <section className="space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
             <div className="flex items-center justify-between"><h3 className="text-sm font-bold">Payment History</h3><span className="text-xs text-slate-500">{selectedHistory.length} records</span></div>
-            <ol className="space-y-2">{selectedHistory.map(payment => <li key={payment.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/70"><span>{formatAppDate(payment.paymentDate, language)} · {methodLabel(payment.paymentMethodName || payment.paymentMethod)}{payment.transactionId ? ` · ${payment.transactionId}` : ''}</span><span className="font-semibold">{formatCurrency(payment.amount, payment.currency)} · {payment.paymentStatus}</span></li>)}</ol>
-            <div className="flex justify-between border-t border-slate-100 pt-2 text-sm font-bold dark:border-slate-700"><span>Total received</span><span>{formatCurrency(selectedSalePaid, selectedSaleForPayment.currency)}</span></div>
+            <ol className="space-y-2">{selectedHistory.map(payment => {
+              const saleAllocations = payment.allocations?.filter(allocation => allocation.saleId === selectedSaleForPayment.id) || [];
+              const advanceMinor = saleAllocations
+                .filter(allocation => allocation.fundingSource === 'advance_credit')
+                .reduce((total, allocation) => total + amountToMinorUnits(allocation.amount), 0);
+              const allocatedMinor = saleAllocations.reduce(
+                (total, allocation) => total + amountToMinorUnits(allocation.amount),
+                0
+              );
+              const cashMinor = Math.max(0, allocatedMinor - advanceMinor);
+              return <li key={`${payment.id}:${saleAllocations.map(allocation => allocation.id || allocation.advanceApplicationId || allocation.saleId).join('|')}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/70">
+                <span>{formatAppDate(payment.paymentDate, language)} · {advanceMinor > 0 && cashMinor === 0 ? 'Customer advance applied' : methodLabel(payment.paymentMethodName || payment.paymentMethod)}{payment.transactionId && cashMinor > 0 ? ` · ${payment.transactionId}` : ''}</span>
+                <span className="text-right font-semibold">
+                  {cashMinor > 0 && <span className="block">{formatCurrency(minorUnitsToAmount(cashMinor), payment.currency)} received</span>}
+                  {advanceMinor > 0 && <span className="block">{formatCurrency(minorUnitsToAmount(advanceMinor), payment.currency)} from advance</span>}
+                  {allocatedMinor === 0 && <span>{formatCurrency(payment.amount, payment.currency)} · {payment.paymentStatus}</span>}
+                </span>
+              </li>;
+            })}</ol>
+            <div className="flex justify-between border-t border-slate-100 pt-2 text-sm font-bold dark:border-slate-700"><span>Total applied to sale</span><span>{formatCurrency(selectedSalePaid, selectedSaleForPayment.currency)}</span></div>
             <div className="flex justify-between text-sm"><span className="text-slate-500">Remaining</span><span className="font-semibold">{formatCurrency(selectedSaleDue, selectedSaleForPayment.currency)}</span></div>
           </section>}
           {selectedInvoiceForPayment && selectedSaleForPayment && <section className="space-y-2 border-t border-slate-100 pt-4 dark:border-slate-800">

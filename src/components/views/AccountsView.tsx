@@ -5,7 +5,6 @@ import {
   Eye,
   EyeOff,
   Copy,
-  Check,
   Edit2,
   Trash2,
   Users,
@@ -45,6 +44,7 @@ import { formatAppDate, formatCurrency, getDaysDifferenceForTimeZone, getSubscri
 import { createRecordId } from '../../services/localStorageStore';
 import { normalizeSearchText } from '../../services/globalSearch';
 import { getAccountCapacity, getAccountInventoryMetrics, getAvailableProfiles, isAccountOperational, RESOURCE_CAPACITY_THRESHOLDS } from '../../utils/resourceManagement';
+import { getSaleSubscriptionIds } from '../../utils/saleUtils';
 import { ProfileEditModal } from './ProfileEditModal';
 
 function getCategoryIcon(category?: ServiceCategory) {
@@ -435,6 +435,16 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
 
   const toggleExpand = (accId: string) => {
     setExpandedAccountIds(prev => ({ ...prev, [accId]: !prev[accId] }));
+  };
+
+  const copyAccountId = async (accountId: string) => {
+    try {
+      await navigator.clipboard.writeText(accountId);
+      showToast('Account ID copied.', 'success');
+    } catch (error) {
+      console.error('Could not copy account ID.', error);
+      showToast('Could not copy the account ID. Check browser clipboard permissions.', 'error');
+    }
   };
 
   const openAddModal = () => {
@@ -1122,7 +1132,11 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
             const relatedSales = sales.filter(sale =>
               sale.accountId === acc.id
               || acc.profiles.some(profile => profile.id === sale.profileId)
-              || Boolean(sale.subscriptionId && relatedSubscriptionIds.has(sale.subscriptionId))
+              || sale.lineItems?.some(line => line.units.some(unit =>
+                unit.accountId === acc.id
+                || acc.profiles.some(profile => profile.id === unit.profileId)
+              ))
+              || getSaleSubscriptionIds(sale).some(subscriptionId => relatedSubscriptionIds.has(subscriptionId))
             );
             const relatedActivity = activityLogs
               .filter(log => log.accountId === acc.id || acc.profiles.some(profile => profile.id === log.profileId))
@@ -1133,46 +1147,34 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
             const isExpired = daysRemaining !== null && daysRemaining < 0;
             const isExpiringSoon = daysRemaining !== null && daysRemaining >= 0 && daysRemaining <= 7;
 
-            const accountStatus = isExpired
-              ? 'Expired'
-              : hasFullAccountAllocation || (!profileRequired && hasProfileAllocation)
-                ? 'Assigned'
-                : profileRequired && !hasAvailableProfile && hasProfileAllocation
-                  ? 'Full'
-                  : acc.status;
-            const statusStyles: Record<AccountStatus, { text: string; cls: string; dot: string }> = {
-              Available: {
-                text: language === 'bn' ? 'সক্রিয়' : 'Active',
-                cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/60',
-                dot: 'bg-emerald-500',
-              },
-              Assigned: {
-                text: language === 'bn' ? 'বরাদ্দ' : 'Assigned',
-                cls: 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200/80 dark:border-blue-800/60',
-                dot: 'bg-blue-500',
-              },
-              Full: {
-                text: language === 'bn' ? 'পূর্ণ' : 'Full',
-                cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/60',
-                dot: 'bg-amber-500',
-              },
-              Expired: {
-                text: language === 'bn' ? 'মেয়াদ শেষ' : 'Expired',
-                cls: 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200/80 dark:border-rose-800/60',
-                dot: 'bg-rose-500',
-              },
-              Suspended: {
-                text: language === 'bn' ? 'স্থগিত' : 'Suspended',
-                cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/60',
-                dot: 'bg-amber-500',
-              },
-              Inactive: {
-                text: language === 'bn' ? 'নিষ্ক্রিয়' : 'Inactive',
-                cls: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200/80 dark:border-slate-700/80',
-                dot: 'bg-slate-400',
-              },
-            };
-            const statusInfo = statusStyles[accountStatus];
+            const isOperational = isAccountOperational(acc, settings.businessProfile?.timeZone);
+            const allocationStatus = !isOperational
+              ? 'Unavailable'
+              : inventory.dataReviewRequired
+                ? 'Review required'
+                : profileRequired
+                  ? inventory.capacity === 0
+                    ? 'No slots configured'
+                    : inventory.assignedProfiles >= inventory.capacity
+                      ? 'Fully allocated'
+                      : inventory.assignedProfiles > 0
+                        ? 'Partially allocated'
+                        : inventory.availableProfiles > 0
+                          ? 'Available'
+                          : 'Unavailable'
+                : hasFullAccountAllocation || hasProfileAllocation
+                  ? 'Fully allocated'
+                  : 'Available';
+            const allocationLabel = language === 'bn'
+              ? ({
+                Available: 'উপলব্ধ',
+                'Partially allocated': 'আংশিক বরাদ্দ',
+                'Fully allocated': 'সম্পূর্ণ বরাদ্দ',
+                Unavailable: 'অনুপলব্ধ',
+                'Review required': 'পর্যালোচনা দরকার',
+                'No slots configured': 'স্লট সেট করা নেই',
+              } as const)[allocationStatus]
+              : allocationStatus;
 
             return (
               <div
@@ -1180,92 +1182,64 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                 id={`account-${acc.id}`}
                 className="account-inventory-card transition-colors"
               >
-                {/* 3. ACCOUNT CARD HEADER & DETAILS */}
-                <div className="account-inventory-card-header p-3 sm:p-3.5 flex flex-col xl:flex-row xl:items-center justify-between gap-2.5">
-                  {/* Service and account details */}
-                  <div className="account-identity flex items-start gap-3 min-w-0 flex-1">
-                    {/* Service Category/Brand Icon Avatar */}
-                    <div className="account-provider-mark flex h-8 w-8 items-center justify-center shrink-0">
-                      {srv?.logoUrl ? (
-                        <img src={srv.logoUrl} alt={srv.name} className="h-5 w-5 object-contain" />
-                      ) : (
-                        <CategoryIcon className="h-4 w-4" aria-hidden="true" />
-                      )}
+                <div className="account-inventory-card-header">
+                  <div className="account-card-main">
+                    <div className="account-card-identity">
+                      <div className="account-provider-mark">
+                        {srv?.logoUrl ? (
+                          <img src={srv.logoUrl} alt="" className="h-5 w-5 object-contain" />
+                        ) : (
+                          <CategoryIcon className="h-4 w-4" aria-hidden="true" />
+                        )}
+                      </div>
+                      <div className="account-identity-copy">
+                        <p className="account-provider-name">{srv?.name || 'Service'}</p>
+                        <h3 className="account-name">{acc.name || acc.email || acc.username || 'Account'}</h3>
+                        {acc.name && <p className="account-email">{acc.email || acc.username || 'No account identifier'}</p>}
+                        <div className="account-type-badges">
+                          <span className="account-selling-type">                          {language === 'bn' ? (profileRequired ? 'প্রোফাইল / স্লট' : 'সম্পূর্ণ অ্যাকাউন্ট') : (profileRequired ? 'Profile / slot' : 'Full account')}</span>
+                          <span className={`account-lifecycle-badge ${isOperational ? 'is-active' : 'is-inactive'}`}>
+                            <span aria-hidden="true" />
+                            {isOperational ? (language === 'bn' ? 'সক্রিয়' : 'Active') : (language === 'bn' ? 'নিষ্ক্রিয়' : 'Inactive')}
+                          </span>
+                          <span className={`account-availability-badge is-${allocationStatus.toLowerCase().replaceAll(' ', '-')}`}>
+                            {allocationLabel}
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="account-identity-copy min-w-0 flex-1 space-y-1">
-                      {/* Email + Service Tag + Status Badge */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="account-name font-semibold text-sm text-slate-900 dark:text-white tracking-tight break-all">
-                          {acc.name || acc.email}
-                        </span>
-
-                        <span className="account-provider-name">
-                          {srv?.name || 'Service'}
-                        </span>
-
-                        {/* Semantic Account Status */}
-                        <span
-                          className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border ${statusInfo.cls}`}
+                    <div className="account-card-meta">
+                      <div className="account-id-row">
+                        <span className="account-id-value" title={acc.id}>ID · {acc.id}</span>
+                        <button
+                          type="button"
+                          onClick={() => void copyAccountId(acc.id)}
+                          className="account-copy-id"
+                          aria-label={`Copy ID ${acc.id}`}
                         >
-                          <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`} />
-                          <span>{statusInfo.text}</span>
-                        </span>
+                          <Copy aria-hidden="true" />
+                          <span>Copy ID</span>
+                        </button>
                       </div>
-                      {acc.name && (
-                        <p className="account-email text-xs text-slate-500 dark:text-slate-400">{acc.email}</p>
-                      )}
-                      <p className="font-mono text-[10px] text-slate-400 dark:text-slate-500">Account ID · {acc.id}</p>
-
-                      {/* Secondary Meta Row: Tier + Expiration */}
-                      <div className="account-meta flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
-                        <span className="font-medium text-slate-700 dark:text-slate-300">
-                          {acc.plan}
-                        </span>
-
+                      <div className="account-plan-expiry">
+                        <span className="account-plan-name">{acc.plan || (language === 'bn' ? 'প্ল্যান উল্লেখ নেই' : 'Plan not specified')}</span>
                         {acc.expiryDate && (
-                          <>
-                            <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
-                            <span
-                              className={`inline-flex items-center gap-1 ${
-                                isExpired
-                                  ? 'text-rose-600 dark:text-rose-400 font-semibold'
-                                  : isExpiringSoon
-                                  ? 'text-amber-600 dark:text-amber-400 font-semibold'
-                                  : 'text-slate-600 dark:text-slate-300'
-                              }`}
-                            >
-                              <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
-                              <span>
-                                {language === 'bn' ? 'মেয়াদ:' : 'Expires:'}{' '}
-                                {formatAppDate(acc.expiryDate, language)}
-                              </span>
-                              {isExpiringSoon && !isExpired && (
-                                <span className="text-[10px] bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400 px-1.5 py-0.2 rounded font-bold">
-                                  {daysRemaining}d left
-                                </span>
-                              )}
-                            </span>
-                          </>
-                        )}
-
-                        {acc.notes && (
-                          <>
-                            <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
-                            <span className="text-slate-400 dark:text-slate-500 text-[11px] truncate max-w-[200px]" title={acc.notes}>
-                              {acc.notes}
-                            </span>
-                          </>
+                          <span className={`account-expiry ${isExpired ? 'is-expired' : isExpiringSoon ? 'is-expiring' : ''}`}>
+                            <Calendar aria-hidden="true" />
+                            <span>{language === 'bn' ? 'মেয়াদ:' : 'Expires:'} {formatAppDate(acc.expiryDate, language)}</span>
+                            {isExpiringSoon && !isExpired && <span className="account-expiry-countdown">{daysRemaining}d left</span>}
+                          </span>
                         )}
                       </div>
+                      {acc.notes && <p className="account-card-notes" title={acc.notes}>{acc.notes}</p>}
                     </div>
                   </div>
 
-                  {/* Profile counts */}
-                  <div className="account-capacity-summary flex flex-col justify-center">
+                  <div className="account-capacity-summary">
                     {profileRequired ? <>
                       <div className="account-capacity-label">
-                        <span>Profile slots</span>
+                        <span>{acc.plan.toLowerCase().includes('family') ? 'Family slots' : 'Profile slots'}</span>
                         <span className="font-mono tabular-nums">{assignedCount}<span className="account-capacity-divider">/</span>{totalProfiles}</span>
                       </div>
                       <div className="account-capacity-track" role="progressbar" aria-label={`${assignedCount} of ${totalProfiles} profiles assigned`} aria-valuemin={0} aria-valuemax={totalProfiles} aria-valuenow={Math.min(assignedCount, totalProfiles)}>
@@ -1286,12 +1260,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                           {capacity.status}
                         </span>
                       </div>
-                    </> : <div className="space-y-1 text-xs">
-                      <p className="font-semibold text-slate-700 dark:text-slate-200">Selling model · Full account</p>
-                      <p className={hasFullAccountAllocation || hasProfileAllocation ? 'font-semibold text-amber-700 dark:text-amber-300' : 'font-semibold text-emerald-700 dark:text-emerald-300'}>
-                        {hasFullAccountAllocation || hasProfileAllocation ? 'Allocated' : 'Available'}
-                      </p>
-                    </div>}
+                    </> : <p className="account-capacity-full-account">{language === 'bn' ? 'সম্পূর্ণ অ্যাকাউন্ট' : 'Full account'} · {allocationLabel}</p>}
                     {profileRequired && <p className={`mt-1 text-[10px] font-semibold ${
                     inventory.health === 'Review required' || inventory.health === 'Expired'
                       ? 'text-rose-600 dark:text-rose-400'
@@ -1303,50 +1272,47 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                     </p>}
                   </div>
 
-                  {/* Account actions */}
-                  <div className="account-inventory-actions flex items-center gap-1.5 flex-wrap sm:flex-nowrap justify-between sm:justify-end shrink-0">
+                  <div className="account-inventory-actions">
+                    <button
+                      type="button"
+                      onClick={() => toggleExpand(acc.id)}
+                      className="account-action-view"
+                      aria-expanded={isExpanded}
+                      aria-label={`${isExpanded ? 'Hide' : 'View'} account details for ${acc.name || acc.email}`}
+                    >
+                      <Eye aria-hidden="true" />
+                      <span>{isExpanded ? 'Hide' : 'View'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(acc)}
+                      className="account-action-edit"
+                      aria-label="Edit account"
+                    >
+                      <Edit2 aria-hidden="true" />
+                      <span>Edit</span>
+                    </button>
                     {onCreateSaleForAccount && (srv?.settings?.usesAccounts || srv?.settings?.profileAssignmentRequired || srv?.settings?.usesProfiles) && <button
                       type="button"
                       onClick={() => onCreateSaleForAccount({ accountId: acc.id, serviceId: acc.serviceId, planId: acc.planId })}
                       disabled={!accountCanBeSold}
                       title={accountCanBeSold ? 'Start a sale using this saved account' : 'No compatible available inventory or active plan'}
-                      className="min-h-10 rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="account-action-sell"
                     >
                       Sell
                     </button>}
-                    <button
-                      onClick={() => openEditModal(acc)}
-                      className="min-h-10 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-violet-50 hover:text-violet-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-violet-300"
-                      title="Edit account"
-                      aria-label="Edit account"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => updateAccount(acc.id, { status: acc.status === 'Inactive' ? 'Available' : 'Inactive' })}
-                      className="min-h-10 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-                      aria-label={acc.status === 'Inactive' ? 'Activate account' : 'Deactivate account'}
-                    >
-                      {acc.status === 'Inactive' ? 'Activate' : 'Deactivate'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(acc)}
-                      className="min-h-10 rounded-lg px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/30"
-                      aria-label="Delete account"
-                    >
-                      Delete
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleExpand(acc.id)}
-                      className="min-h-10 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-violet-300"
-                      aria-expanded={isExpanded}
-                      aria-label={`${isExpanded ? 'Hide' : 'View'} profiles for ${acc.name || acc.email}`}
-                    >
-                      {isExpanded ? 'Hide' : 'View'}
-                    </button>
+                    <details className="account-action-menu">
+                      <summary aria-label="More account actions"><span aria-hidden="true">···</span></summary>
+                      <div className="account-action-menu-items">
+                        <button
+                          type="button"
+                          onClick={() => updateAccount(acc.id, { status: acc.status === 'Inactive' ? 'Available' : 'Inactive' })}
+                        >
+                          {acc.status === 'Inactive' ? 'Activate' : 'Deactivate'}
+                        </button>
+                        <button type="button" onClick={() => handleDelete(acc)} className="is-destructive">Delete</button>
+                      </div>
+                    </details>
                   </div>
                 </div>
 

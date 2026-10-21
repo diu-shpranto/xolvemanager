@@ -7,6 +7,7 @@ import {
   hasLocalAccount,
   resetLocalPassword,
   restoreLocalSession,
+  signInWithDemoAccount,
   signInLocally,
   signOutLocally,
 } from '../src/services/localAuthService.ts';
@@ -101,4 +102,15 @@ test('local owner lifecycle keeps auth separate from business records', async ()
   assert.equal(localStorage.getItem(AUTH_SESSION_KEY), null);
   assert.equal(localStorage.getItem('sqp_customers_v2'), '[{"id":"preserved-customer"}]');
   assert.equal(JSON.stringify([...localStorage.values.entries()]).includes(rotatedKey), false);
+
+  const activeProductionSession = {
+    version: 1,
+    uid: user.uid,
+    sessionId: 'f'.repeat(64),
+  };
+  localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(activeProductionSession));
+  await assert.rejects(signInWithDemoAccount(), { code: 'DEMO_SESSION_CONFLICT' });
+  assert.equal(localStorage.getItem(AUTH_SESSION_KEY), JSON.stringify(activeProductionSession));
+  assert.equal(sessionStorage.getItem('xolvemanager.auth.demo-session.v1'), null);
+  assert.equal(localStorage.getItem('xolvemanager.demo.v1.sqp_customers_v2'), null);
 });

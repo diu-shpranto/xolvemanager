@@ -8,7 +8,7 @@ import type {
   Service,
   Subscription,
 } from '../types';
-import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus } from './saleUtils.ts';
+import { getSaleDueAmount, getSaleLineAllocations, getSalePaidAmount, getSalePaymentStatus } from './saleUtils.ts';
 
 export type ReportDatePreset =
   | 'today'
@@ -202,6 +202,33 @@ export function calculateSalesFinancialSummary(
   };
 }
 
+function calculateAttributedSalesSummary(
+  sales: Sale[],
+  payments: Payment[],
+  currency: AppCurrency,
+  matches: (item: ReturnType<typeof getSaleLineAllocations>[number]['item']) => boolean
+): SalesFinancialSummary {
+  const rows = sales.filter(isValidRevenueSale).flatMap(sale => {
+    const attributed = getSaleLineAllocations(sale)
+      .filter(line => matches(line.item))
+      .reduce((sum, line) => sum + line.amount, 0);
+    if (attributed <= 0) return [];
+    const share = sale.amount > 0 ? attributed / sale.amount : 0;
+    return [{ sale, attributed, share }];
+  });
+  const revenue = rows.reduce((sum, row) =>
+    sum + convertReportCurrency(row.attributed, row.sale.currency, currency), 0);
+  return {
+    salesCount: new Set(rows.map(row => row.sale.id)).size,
+    revenue,
+    paid: rows.reduce((sum, row) =>
+      sum + convertReportCurrency(getSalePaidAmount(row.sale, payments) * row.share, row.sale.currency, currency), 0),
+    due: rows.reduce((sum, row) =>
+      sum + convertReportCurrency(getSaleDueAmount(row.sale, payments) * row.share, row.sale.currency, currency), 0),
+    averageSale: rows.length ? revenue / new Set(rows.map(row => row.sale.id)).size : 0,
+  };
+}
+
 export function calculateSalesCount(sales: Sale[]): number {
   return sales.filter(isValidRevenueSale).length;
 }
@@ -286,9 +313,11 @@ export function calculateServicePerformance(
   services.forEach(service => groups.set(service.id, []));
   sales.forEach(sale => {
     if (!sale?.serviceId) return;
-    const group = groups.get(sale.serviceId) || [];
-    group.push(sale);
-    groups.set(sale.serviceId, group);
+    getSaleLineAllocations(sale).forEach(({ item }) => {
+      const group = groups.get(item.serviceId) || [];
+      if (!group.some(existing => existing.id === sale.id)) group.push(sale);
+      groups.set(item.serviceId, group);
+    });
   });
   subscriptions.forEach(subscription => {
     if (subscription.serviceId && !groups.has(subscription.serviceId)) {
@@ -296,8 +325,14 @@ export function calculateServicePerformance(
     }
   });
   return [...groups.entries()].map(([serviceId, groupedSales]) => {
-    const financials = calculateSalesFinancialSummary(groupedSales, payments, currency);
-    const relatedSubscriptionIds = new Set(groupedSales.map(sale => sale.subscriptionId).filter(Boolean));
+    const financials = calculateAttributedSalesSummary(
+      groupedSales, payments, currency, item => item.serviceId === serviceId
+    );
+    const relatedSubscriptionIds = new Set(groupedSales.flatMap(sale =>
+      getSaleLineAllocations(sale).flatMap(({ item }) =>
+        item.units.map(unit => unit.subscriptionId)
+      )
+    ));
     const groupedSaleIds = new Set(groupedSales.map(sale => sale.id));
     const serviceSubscriptions = subscriptions.filter(subscription => subscription.serviceId === serviceId);
     return {
@@ -357,16 +392,18 @@ export function calculatePlanPerformance(
   });
   sales.forEach(sale => {
     if (!sale?.serviceId) return;
-    const planId = sale.planId || sale.plan || '';
-    const key = makeKey(sale.serviceId, planId);
-    const group = groups.get(key) || {
-      serviceId: sale.serviceId,
-      planId,
-      planName: sale.plan || 'Plan information unavailable',
-      sales: [],
-    };
-    group.sales.push(sale);
-    groups.set(key, group);
+    getSaleLineAllocations(sale).forEach(({ item }) => {
+      const planId = item.planId || item.plan || '';
+      const key = makeKey(item.serviceId, planId);
+      const group = groups.get(key) || {
+        serviceId: item.serviceId,
+        planId,
+        planName: item.plan || 'Plan information unavailable',
+        sales: [],
+      };
+      if (!group.sales.some(existing => existing.id === sale.id)) group.sales.push(sale);
+      groups.set(key, group);
+    });
   });
   return [...groups.values()].map(group => {
     const { serviceId, planId, planName } = group;
@@ -375,7 +412,12 @@ export function calculatePlanPerformance(
     const resolvedPlanName = service?.planDetails?.find(plan => plan.id === planId)?.name
       || planName
       || 'Plan information unavailable';
-    const financials = calculateSalesFinancialSummary(groupedSales, payments, currency);
+    const financials = calculateAttributedSalesSummary(
+      groupedSales,
+      payments,
+      currency,
+      item => item.serviceId === serviceId && (item.planId || item.plan) === planId
+    );
     const matchingSubscriptions = subscriptions.filter(subscription =>
       subscription.serviceId === serviceId
       && (subscription.planId ? subscription.planId === planId : subscription.plan === planName)

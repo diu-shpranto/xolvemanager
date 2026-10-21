@@ -45,7 +45,7 @@ import {
   getComparisonDateBounds,
   sumPaymentRecords,
 } from '../../utils/reportMetrics';
-import { getSalePaymentStatus } from '../../utils/saleUtils';
+import { getSaleLineItems, getSalePaymentStatus } from '../../utils/saleUtils';
 import { getPaymentMethodSummary, normalizePaymentMethods } from '../../utils/paymentMethods';
 import { getCustomerDisplayName, getCustomerOptionLabel } from '../../utils/relationships';
 import { getOpenReminders, getOverdueReminders } from '../../services/reminderEngine';
@@ -284,8 +284,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   }, [businessExpenses, businessProfitabilityCosts]);
   const profitDateRangeValid = datePreset !== 'custom' || Boolean(customStart && customEnd && customStart <= customEnd);
   const profitSales = useMemo(() => businessSales.filter(sale =>
-    (serviceFilter === 'all' || sale.serviceId === serviceFilter)
-    && (planFilter === 'all' || sale.planId === planFilter)
+    (serviceFilter === 'all' || getSaleLineItems(sale).some(item => item.serviceId === serviceFilter))
+    && (planFilter === 'all' || getSaleLineItems(sale).some(item => item.planId === planFilter))
     && (customerFilter === 'all' || sale.customerId === customerFilter)
     && (statusFilter === 'all' || getSalePaymentStatus(sale, businessPayments) === statusFilter)
   ), [businessSales, serviceFilter, planFilter, customerFilter, statusFilter, businessPayments]);
@@ -433,8 +433,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     if (statusFilter !== 'all' && payment.paymentStatus !== statusFilter) return false;
     const sale = getPaymentSale(payment, businessSales, businessSubscriptions);
     if ((serviceFilter !== 'all' || planFilter !== 'all') && !sale) return false;
-    if (serviceFilter !== 'all' && sale?.serviceId !== serviceFilter) return false;
-    if (planFilter !== 'all' && sale?.planId !== planFilter) return false;
+    if (serviceFilter !== 'all' && !getSaleLineItems(sale!).some(item => item.serviceId === serviceFilter)) return false;
+    if (planFilter !== 'all' && !getSaleLineItems(sale!).some(item => item.planId === planFilter)) return false;
     return !sale || statusFilter === 'all' || getSalePaymentStatus(sale, businessPayments) === statusFilter;
   }), [reportFinancialLedger, businessPayments, businessSales, businessSubscriptions,
     customerFilter, statusFilter, serviceFilter, planFilter]);
@@ -447,8 +447,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   [financialRecords, currency]);
 
   const matchesDimensions = useCallback((sale: Sale, includeStatus = true): boolean => {
-    if (serviceFilter !== 'all' && sale.serviceId !== serviceFilter) return false;
-    if (planFilter !== 'all' && sale.planId !== planFilter) return false;
+    if (serviceFilter !== 'all' && !getSaleLineItems(sale).some(item => item.serviceId === serviceFilter)) return false;
+    if (planFilter !== 'all' && !getSaleLineItems(sale).some(item => item.planId === planFilter)) return false;
     if (customerFilter !== 'all' && sale.customerId !== customerFilter) return false;
     const currentStatus = getSalePaymentStatus(sale, businessPayments);
     if (includeStatus && statusFilter !== 'all' && currentStatus !== statusFilter) return false;
@@ -1146,7 +1146,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       ] : []),
       ...reportSales.map(sale => {
         const financial = calculateSalesFinancialSummary([sale], businessPayments, currency);
-        return ['Sales', sale.invoiceNo, sale.date, sale.plan, getCustomerDisplayName(businessCustomers.find(item => item.id === sale.customerId)), businessServices.find(item => item.id === sale.serviceId)?.name || 'Service unavailable', '', '', financial.revenue, financial.paid, financial.due, currency, getSalePaymentStatus(sale, businessPayments), sale.id];
+        const items = getSaleLineItems(sale);
+        return ['Sales', sale.invoiceNo, sale.date, items.map(item => `${item.plan} × ${item.quantity}`).join('; '), getCustomerDisplayName(businessCustomers.find(item => item.id === sale.customerId)), items.map(item => `${businessServices.find(service => service.id === item.serviceId)?.name || 'Service unavailable'} × ${item.quantity}`).join('; '), '', '', financial.revenue, financial.paid, financial.due, currency, getSalePaymentStatus(sale, businessPayments), sale.id];
       }),
       ...reportPayments.map(payment => ['Payments', payment.id, payment.paymentDate, payment.paymentMethodName || payment.paymentMethod, getCustomerDisplayName(businessCustomers.find(item => item.id === payment.customerId)), '', '', payment.financialAccountId ? financialAccountById.get(payment.financialAccountId)?.name || '' : '', convertReportCurrency(payment.amount, payment.currency, currency), '', '', currency, payment.paymentStatus, payment.transactionId || '']),
       ...reportExpenses.map(expense => ['Expenses', expense.id, expense.date, expense.description, '', '', expenseCategories.find(category => category.id === expense.categoryId)?.name || 'Uncategorized', financialAccountById.get(expense.accountId)?.name || 'Account unavailable', convertReportCurrency(expense.amount, expense.currency, currency), '', '', currency, 'Recorded', expense.reference || '']),
@@ -1155,8 +1156,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       ...customerMetrics.map(customer => ['Customers', customer.customerId, '', customer.customerName, customer.phone, '', '', '', customer.spent, customer.paid, customer.due, currency, `${customer.salesCount} sales · ${customer.activeSubscriptions} active subscriptions`, '']),
       ...serviceMetrics.map(service => ['Services', service.serviceId, '', service.serviceName, '', service.serviceName, '', '', service.revenue, service.paid, service.due, currency, `${service.salesCount} sales · ${service.activeSubscriptions} active subscriptions`, '']),
       ...planMetrics.map(plan => ['Plans', plan.planId, '', `${plan.serviceName} · ${plan.planName}`, '', plan.serviceName, plan.planName, '', plan.revenue, plan.paid, plan.due, currency, `${plan.salesCount} sales · ${plan.activeSubscriptions} active subscriptions`, '']),
-      ...invoiceRows.map(row => ['Invoices', row.invoice.invoiceNumber, row.invoice.invoiceDate, row.sale.plan, row.customer?.name || 'Customer unavailable', row.service?.name || 'Service unavailable', '', '', row.revenue, row.paid, row.due, currency, row.status, row.invoice.invoiceId]),
-      ...outstandingRows.map(row => ['Receivables', row.invoice?.invoiceNumber || row.sale.invoiceNo, row.invoice?.invoiceDate || row.sale.date, row.sale.plan, row.customer?.name || 'Customer unavailable', row.service?.name || 'Service unavailable', '', '', row.total, row.paid, row.due, currency, row.status, row.sale.id]),
+      ...invoiceRows.map(row => ['Invoices', row.invoice.invoiceNumber, row.invoice.invoiceDate, getSaleLineItems(row.sale).map(item => `${item.plan} × ${item.quantity}`).join('; '), row.customer?.name || 'Customer unavailable', getSaleLineItems(row.sale).map(item => `${businessServices.find(service => service.id === item.serviceId)?.name || 'Service unavailable'} × ${item.quantity}`).join('; '), '', '', row.revenue, row.paid, row.due, currency, row.status, row.invoice.invoiceId]),
+      ...outstandingRows.map(row => ['Receivables', row.invoice?.invoiceNumber || row.sale.invoiceNo, row.invoice?.invoiceDate || row.sale.date, getSaleLineItems(row.sale).map(item => `${item.plan} × ${item.quantity}`).join('; '), row.customer?.name || 'Customer unavailable', getSaleLineItems(row.sale).map(item => `${businessServices.find(service => service.id === item.serviceId)?.name || 'Service unavailable'} × ${item.quantity}`).join('; '), '', '', row.total, row.paid, row.due, currency, row.status, row.sale.id]),
       ...dimensionFilteredLedger.filter(entry => entry.type !== 'opening_balance' && isWithinDateBounds(entry.date, bounds)).map(entry => ['Cash Flow', entry.id, entry.date, entry.description, entry.customerName || '', '', entry.categoryName, financialAccountById.get(entry.accountId)?.name || 'Account unavailable', convertReportCurrency(entry.amount, entry.currency, currency) * (entry.direction === 'out' || entry.direction === 'transfer' ? -1 : 1), '', '', currency, entry.type, entry.reference]),
       ...paymentMethods.map(method => ['Payment Methods', method.methodId, bounds.start, method.methodName, '', '', '', '', method.received, '', '', currency, `${method.transactionCount} transactions`, '']),
       ...accountPeriodSummary.map(account => ['Financial Accounts', account.accountId, bounds.start, account.accountName, '', '', '', account.accountName, account.closingBalance, account.moneyIn, account.moneyOut, currency, `${account.transactionCount} transactions`, '']),

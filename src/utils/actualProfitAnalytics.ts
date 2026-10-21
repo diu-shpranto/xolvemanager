@@ -8,12 +8,16 @@ import type {
   Service,
 } from '../types';
 import { convertReportCurrency, type DateBounds } from './reportMetrics.ts';
+import { getSaleLineAllocations } from './saleUtils';
 
 export type ProfitDatePreset = 'today' | 'last_7_days' | 'last_30_days' | 'month' | 'custom';
 export type ProfitBreakdown = 'service' | 'plan' | 'unit' | 'customer_type';
 
 export interface ActualProfitSaleRow {
   sale: Sale;
+  serviceId: string;
+  planId?: string;
+  lineItemId: string;
   serviceName: string;
   customerName: string;
   customerType: 'Customer' | 'Reseller';
@@ -148,41 +152,72 @@ export function buildActualProfitAnalytics({
       && Number.isFinite(Number(sale.amount))
       && Number(sale.amount) > 0
     )
-    .map(sale => {
+    .flatMap(sale => {
       const customer = customerById.get(sale.customerId);
-      const service = serviceById.get(sale.serviceId);
       const accountCostSnapshot = typeof sale.actualCostSnapshot === 'number'
         && Number.isFinite(sale.actualCostSnapshot)
         && sale.actualCostSnapshot >= 0
         && sale.actualCostCurrency
         ? { amount: sale.actualCostSnapshot, currency: sale.actualCostCurrency }
         : undefined;
-      const allocatedCost = accountCostSnapshot
-        ? convertMoney(accountCostSnapshot.amount, accountCostSnapshot.currency, currency)
-        : saleCostRecords.get(sale.id) ?? null;
       const refunded = refundsBySale.get(sale.id) || 0;
       const adjustment = adjustmentsBySale.get(sale.id) || 0;
-      const grossSales = convertMoney(Number(sale.amount), sale.currency, currency);
-      return {
-        sale,
-        serviceName: service?.name || 'Unknown service',
-        customerName: customer?.name || 'Unknown customer',
-        customerType: customer?.customerType === 'Reseller' ? 'Reseller' as const : 'Customer' as const,
-        unit: sale.accountId
-          ? sale.profileId ? 'Profile / family slot' : 'Full account'
-          : 'Digital / unassigned',
-        grossSales,
-        allocatedCost,
-        costSource: accountCostSnapshot ? 'account_snapshot' as const
-          : allocatedCost === null ? 'unknown' as const : 'sale_cost_record' as const,
-        grossProfit: allocatedCost === null ? null : roundMoney(grossSales - allocatedCost),
-        margin: allocatedCost === null || grossSales <= 0 ? null : roundMoney((grossSales - allocatedCost) / grossSales * 100),
-        refunded: roundMoney(refunded),
-        adjustment: roundMoney(adjustment),
-      };
+      const lineAllocations = getSaleLineAllocations(sale);
+      const baseAmountTotal = lineAllocations.reduce((sum, line) => sum + line.item.amount, 0);
+      return lineAllocations.map(({ item, amount }) => {
+        const service = serviceById.get(item.serviceId);
+        const unitCosts = item.units.map(unit =>
+          typeof unit.actualCostSnapshot === 'number'
+            && Number.isFinite(unit.actualCostSnapshot)
+            && unit.actualCostSnapshot >= 0
+            && unit.actualCostCurrency
+            ? { amount: unit.actualCostSnapshot, currency: unit.actualCostCurrency }
+            : undefined
+        );
+        const lineCostSnapshot = unitCosts.length > 0
+          && unitCosts.every(cost => cost && cost.currency === unitCosts[0]?.currency)
+          ? {
+            amount: unitCosts.reduce((sum, cost) => sum + (cost?.amount || 0), 0),
+            currency: unitCosts[0]!.currency,
+          }
+          : undefined;
+        const proportionalShare = baseAmountTotal > 0 ? item.amount / baseAmountTotal : 0;
+        const aggregateCost = accountCostSnapshot
+          ? convertMoney(accountCostSnapshot.amount, accountCostSnapshot.currency, currency) * proportionalShare
+          : saleCostRecords.has(sale.id)
+            ? (saleCostRecords.get(sale.id) || 0) * proportionalShare
+            : null;
+        const allocatedCost = lineCostSnapshot
+          ? convertMoney(lineCostSnapshot.amount, lineCostSnapshot.currency, currency)
+          : aggregateCost;
+        const grossSales = convertMoney(amount, sale.currency, currency);
+        const lineShare = sale.amount > 0 ? amount / sale.amount : 0;
+        const unitAllocation = item.units[0];
+        return {
+          sale,
+          serviceId: item.serviceId,
+          planId: item.planId,
+          lineItemId: item.id,
+          serviceName: service?.name || 'Unknown service',
+          customerName: customer?.name || 'Unknown customer',
+          customerType: customer?.customerType === 'Reseller' ? 'Reseller' as const : 'Customer' as const,
+          unit: unitAllocation?.accountId
+            ? unitAllocation.profileId ? 'Profile / family slot' : 'Full account'
+            : 'Digital / unassigned',
+          grossSales,
+          allocatedCost: allocatedCost === null ? null : roundMoney(allocatedCost),
+          costSource: lineCostSnapshot ? 'account_snapshot' as const
+            : allocatedCost === null ? 'unknown' as const
+              : accountCostSnapshot ? 'account_snapshot' as const : 'sale_cost_record' as const,
+          grossProfit: allocatedCost === null ? null : roundMoney(grossSales - allocatedCost),
+          margin: allocatedCost === null || grossSales <= 0 ? null : roundMoney((grossSales - allocatedCost) / grossSales * 100),
+          refunded: roundMoney(refunded * lineShare),
+          adjustment: roundMoney(adjustment * lineShare),
+        };
+      });
     });
 
-  const unknownCostSales = saleRows.filter(row => row.allocatedCost === null).length;
+  const unknownCostSales = new Set(saleRows.filter(row => row.allocatedCost === null).map(row => row.sale.id)).size;
   const grossSales = roundMoney(saleRows.reduce((sum, row) => sum + row.grossSales, 0));
   const actualAllocatedCost = roundMoney(saleRows.reduce((sum, row) => sum + (row.allocatedCost || 0), 0));
   allRecordedRefunds = roundMoney(allRecordedRefunds);
@@ -205,13 +240,14 @@ export function buildActualProfitAnalytics({
     return [...groups.entries()].map(([id, group]) => {
       const salesTotal = roundMoney(group.rows.reduce((sum, row) => sum + row.grossSales, 0));
       const costTotal = roundMoney(group.rows.reduce((sum, row) => sum + (row.allocatedCost || 0), 0));
-      const unknown = group.rows.filter(row => row.allocatedCost === null).length;
+      const unknown = new Set(group.rows.filter(row => row.allocatedCost === null).map(row => row.sale.id)).size;
+      const saleIds = [...new Set(group.rows.map(row => row.sale.id))];
       return {
         id,
         name: group.name,
         firstSaleId: group.rows[0].sale.id,
-        saleIds: group.rows.map(row => row.sale.id),
-        salesCount: group.rows.length,
+        saleIds,
+        salesCount: saleIds.length,
         grossSales: salesTotal,
         allocatedCost: costTotal,
         grossProfit: unknown === 0 ? roundMoney(salesTotal - costTotal) : null,
@@ -249,10 +285,10 @@ export function buildActualProfitAnalytics({
     adjustments,
     unknownCostSales,
     trend,
-    byService: groupRows(row => ({ id: row.sale.serviceId, name: row.serviceName })),
+    byService: groupRows(row => ({ id: row.serviceId, name: row.serviceName })),
     byPlan: groupRows(row => ({
-      id: `${row.sale.serviceId}:${row.sale.planId || row.sale.plan}`,
-      name: `${row.serviceName} · ${servicePlanNames.get(`${row.sale.serviceId}:${row.sale.planId}`) || row.sale.plan}`,
+      id: `${row.serviceId}:${row.planId || row.sale.plan}`,
+      name: `${row.serviceName} · ${servicePlanNames.get(`${row.serviceId}:${row.planId}`) || row.sale.plan}`,
     })),
     byUnit: groupRows(row => ({ id: row.unit, name: row.unit })),
     byCustomerType: groupRows(row => ({ id: row.customerType, name: row.customerType })),

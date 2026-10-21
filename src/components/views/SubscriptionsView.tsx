@@ -75,7 +75,7 @@ import { getExpiryWhatsAppTemplateId } from '../../utils/whatsappService';
 import { createRecordId } from '../../services/localStorageStore';
 import { InvoiceSaleDetails } from '../../utils/invoiceGenerator';
 import { buildInvoiceSaleDetails } from '../../utils/invoiceUtils';
-import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus } from '../../utils/saleUtils';
+import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus, getSaleSubscriptionIds } from '../../utils/saleUtils';
 import { getDefaultPaymentMethod, normalizePaymentMethods, paymentMethodRequiresTransactionId } from '../../utils/paymentMethods';
 import { getAccountCapacity, getAvailableProfiles, isAccountOperational } from '../../utils/resourceManagement';
 import { normalizePhoneDigits, normalizeSearchText } from '../../services/globalSearch';
@@ -273,7 +273,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     const saleBySubscriptionId = new Map<string, typeof sales[number]>();
     const saleById = new Map(sales.map(sale => [sale.id, sale]));
     sales.forEach(sale => {
-      if (sale.subscriptionId) saleBySubscriptionId.set(sale.subscriptionId, sale);
+      getSaleSubscriptionIds(sale).forEach(subscriptionId => saleBySubscriptionId.set(subscriptionId, sale));
     });
     const paymentBySaleId = new Map<string, typeof payments>();
     const paymentBySubscriptionId = new Map<string, typeof payments>();
@@ -454,7 +454,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     if (!selectedSub) return null;
     const linkedSaleIds = new Set(
       sales
-        .filter(sale => sale.subscriptionId === selectedSub.id)
+        .filter(sale => getSaleSubscriptionIds(sale).includes(selectedSub.id))
         .map(sale => sale.id)
     );
     return payments.find(payment =>
@@ -469,7 +469,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   const selectedSale = useMemo(() => {
     if (!selectedSub) return null;
     return sales.find(sale => sale.id === selectedSub.saleId)
-      || sales.find(sale => sale.subscriptionId === selectedSub.id)
+      || sales.find(sale => getSaleSubscriptionIds(sale).includes(selectedSub.id))
       || null;
   }, [selectedSub, sales]);
 
@@ -513,7 +513,9 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       services.find(service => service.id === invoice.serviceId),
       payments,
       settings,
-      selectedSub
+      selectedSub,
+      services,
+      subscriptions
     ));
   };
 

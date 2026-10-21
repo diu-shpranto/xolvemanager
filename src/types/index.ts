@@ -598,6 +598,7 @@ export interface Sale {
   actualCostSnapshot?: number;
   actualCostCurrency?: AppCurrency;
   actualCostAllocation?: 'full_account' | 'profile_slot';
+  lineItems?: SaleLineItem[];
   currency: AppCurrency;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
@@ -609,6 +610,32 @@ export interface Sale {
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface SaleLineItemUnit {
+  subscriptionId: string;
+  accountId?: string;
+  profileId?: string;
+  actualCostSnapshot?: number;
+  actualCostCurrency?: AppCurrency;
+  actualCostAllocation?: 'full_account' | 'profile_slot';
+}
+
+export interface SaleLineItem {
+  id: string;
+  serviceId: string;
+  serviceNameSnapshot?: string;
+  planId?: string;
+  plan: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  discount: number;
+  amount: number;
+  currency: AppCurrency;
+  startDate: string;
+  durationDays: number;
+  units: SaleLineItemUnit[];
 }
 
 export interface Invoice {
@@ -664,9 +691,13 @@ export interface Payment {
 }
 
 export interface PaymentAllocation {
+  id?: string;
   saleId: string;
   invoiceId?: string;
   amount: number;
+  fundingSource?: 'advance_credit';
+  advanceApplicationId?: string;
+  createdAt?: string;
 }
 
 export type ActivityType = 

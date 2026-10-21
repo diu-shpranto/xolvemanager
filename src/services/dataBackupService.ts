@@ -24,6 +24,7 @@ import { getInvoiceDisplayStatus } from '../utils/invoiceUtils';
 import {
   getPaymentSaleAllocation,
   getSaleDueAmount,
+  getSaleLineItems,
   getSalePaidAmount,
   getSalePaymentStatus,
   getSalePayments,
@@ -710,6 +711,99 @@ export function validateBackup(input: unknown): BackupValidation {
     }
     if (!dateIsValid(item.date)) errors.push(`Sale ${String(item.id)} has an invalid date.`);
     if (!['paid', 'pending', 'partial', 'failed', 'refunded'].includes(String(item.paymentStatus))) errors.push(`Sale ${String(item.id)} has an invalid payment status.`);
+    if (item.lineItems !== undefined) {
+      if (!Array.isArray(item.lineItems) || item.lineItems.length === 0) {
+        errors.push(`Sale ${String(item.id)} has an invalid line-item list.`);
+      } else {
+        let lineAmountMinor = 0;
+        const fullAccountIds = new Set<string>();
+        const profileAllocationIds = new Set<string>();
+        item.lineItems.forEach((line, lineIndex) => {
+          const lineLabel = `Sale ${String(item.id)} item ${lineIndex + 1}`;
+          if (!isRecord(line)) {
+            errors.push(`${lineLabel} is invalid.`);
+            return;
+          }
+          if (!services.has(String(line.serviceId))) errors.push(`${lineLabel} references a missing service.`);
+          if (!serviceHasPlan(line.serviceId, line.planId, line.plan)) errors.push(`${lineLabel} references a missing plan.`);
+          if (!Number.isSafeInteger(line.quantity) || Number(line.quantity) < 1) errors.push(`${lineLabel} has an invalid quantity.`);
+          if (typeof line.unitPrice !== 'number' || !Number.isFinite(line.unitPrice) || line.unitPrice <= 0) errors.push(`${lineLabel} has an invalid unit price.`);
+          if (typeof line.subtotal !== 'number' || !Number.isFinite(line.subtotal) || line.subtotal < 0) errors.push(`${lineLabel} has an invalid subtotal.`);
+          if (typeof line.discount !== 'number' || !Number.isFinite(line.discount) || line.discount < 0 || line.discount > Number(line.subtotal)) errors.push(`${lineLabel} has an invalid discount.`);
+          if (typeof line.amount !== 'number' || !Number.isFinite(line.amount) || line.amount < 0) errors.push(`${lineLabel} has an invalid total.`);
+          if (line.currency !== item.currency) errors.push(`${lineLabel} uses a different currency from its sale.`);
+          if (!dateIsValid(line.startDate) || !Number.isSafeInteger(line.durationDays) || Number(line.durationDays) < 1) {
+            errors.push(`${lineLabel} has an invalid subscription period.`);
+          }
+          const expectedSubtotal = Math.round(Number(line.unitPrice) * Number(line.quantity) * 100);
+          if (Number.isSafeInteger(expectedSubtotal) && Math.abs(expectedSubtotal - Math.round(Number(line.subtotal) * 100)) > 0) {
+            errors.push(`${lineLabel} subtotal does not match quantity and unit price.`);
+          }
+          if (Math.abs(Math.round((Number(line.subtotal) - Number(line.discount)) * 100) - Math.round(Number(line.amount) * 100)) > 0) {
+            errors.push(`${lineLabel} total does not match its subtotal and discount.`);
+          }
+          if (typeof line.amount === 'number' && Number.isFinite(line.amount)) {
+            lineAmountMinor += Math.round(line.amount * 100);
+          }
+          if (!Array.isArray(line.units) || line.units.length !== Number(line.quantity)) {
+            errors.push(`${lineLabel} must have one subscription unit for each quantity.`);
+            return;
+          }
+          line.units.forEach(unit => {
+            if (!isRecord(unit)) {
+              errors.push(`${lineLabel} has an invalid unit allocation.`);
+              return;
+            }
+            const linkedSubscription = arrays.subscriptions.find(candidate =>
+              isRecord(candidate) && candidate.id === unit.subscriptionId
+            );
+            if (!linkedSubscription || !isRecord(linkedSubscription)) {
+              errors.push(`${lineLabel} references a missing subscription unit.`);
+              return;
+            }
+            if (linkedSubscription.saleId !== item.id
+              || linkedSubscription.customerId !== item.customerId
+              || linkedSubscription.serviceId !== line.serviceId
+              || linkedSubscription.planId !== line.planId
+              || linkedSubscription.startDate !== line.startDate
+              || linkedSubscription.durationDays !== line.durationDays
+              || linkedSubscription.accountId !== unit.accountId
+              || linkedSubscription.profileId !== unit.profileId) {
+              errors.push(`${lineLabel} conflicts with its linked subscription.`);
+            }
+            if (unit.accountId && !accounts.has(String(unit.accountId))) errors.push(`${lineLabel} references a missing account.`);
+            if (unit.profileId && (!unit.accountId || !profiles.has(String(unit.profileId))
+              || profileAccounts.get(String(unit.profileId)) !== unit.accountId)) {
+              errors.push(`${lineLabel} references a missing or unrelated profile.`);
+            }
+            if (unit.accountId && unit.profileId) {
+              const key = `${unit.accountId}:${unit.profileId}`;
+              if (profileAllocationIds.has(key)) errors.push(`${lineLabel} allocates a profile more than once.`);
+              if (fullAccountIds.has(String(unit.accountId))) errors.push(`${lineLabel} mixes a full account with profile allocations.`);
+              profileAllocationIds.add(key);
+            } else if (unit.accountId) {
+              if (fullAccountIds.has(String(unit.accountId))) errors.push(`${lineLabel} allocates a full account more than once.`);
+              if ([...profileAllocationIds].some(key => key.startsWith(`${unit.accountId}:`))) {
+                errors.push(`${lineLabel} mixes a full account with profile allocations.`);
+              }
+              fullAccountIds.add(String(unit.accountId));
+            }
+            for (const field of ['actualCostSnapshot'] as const) {
+              if (unit[field] !== undefined && (typeof unit[field] !== 'number' || !Number.isFinite(unit[field]) || unit[field] < 0)) {
+                errors.push(`${lineLabel} has an invalid unit cost snapshot.`);
+              }
+            }
+            if (unit.actualCostCurrency !== undefined && !['BDT', 'USD'].includes(String(unit.actualCostCurrency))) {
+              errors.push(`${lineLabel} has an invalid unit cost currency.`);
+            }
+          });
+        });
+        const expectedSaleAmount = Math.round((lineAmountMinor - Math.round((Number(item.discount) || 0) * 100)) / 100 * 100);
+        if (Number.isFinite(Number(item.amount)) && Math.abs(expectedSaleAmount - Math.round(Number(item.amount) * 100)) > 1) {
+          errors.push(`Sale ${String(item.id)} total does not match its line items and discount.`);
+        }
+      }
+    }
   });
   arrays.payments.forEach(item => {
     if (!isRecord(item)) return;
@@ -941,7 +1035,7 @@ export function exportSalesCSV(
   ], sales.map(sale => {
     const invoice = invoices.find(item => item.saleId === sale.id);
     const customer = customers.find(item => item.id === sale.customerId);
-    const service = services.find(item => item.id === sale.serviceId);
+    const saleItems = getSaleLineItems(sale);
     const subscription = subscriptions.find(item => item.id === sale.subscriptionId);
     const linkedPayments = getSalePayments(sale, payments);
     const paymentMethods = [...linkedPayments.reduce((groups, payment) => {
@@ -957,10 +1051,13 @@ export function exportSalesCSV(
       sale.date,
       customer?.name,
       customer?.phone || customer?.whatsapp,
-      service?.name,
-      sale.plan,
-      sale.subscriptionId,
-      subscription ? `${subscription.startDate} to ${subscription.expiryDate}` : '',
+      saleItems.map(item => `${services.find(candidate => candidate.id === item.serviceId)?.name || 'Service unavailable'} × ${item.quantity}`).join('; '),
+      saleItems.map(item => `${item.plan} × ${item.quantity}`).join('; '),
+      saleItems.flatMap(item => item.units.map(unit => unit.subscriptionId)).join('; ') || sale.subscriptionId,
+      saleItems.flatMap(item => item.units.map(unit => {
+        const unitSubscription = subscriptions.find(candidate => candidate.id === unit.subscriptionId);
+        return unitSubscription ? `${unitSubscription.startDate} to ${unitSubscription.expiryDate}` : '';
+      })).filter(Boolean).join('; ') || (subscription ? `${subscription.startDate} to ${subscription.expiryDate}` : ''),
       sale.amount,
       getSalePaidAmount(sale, payments),
       getSaleDueAmount(sale, payments),

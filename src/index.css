@@ -3325,6 +3325,11 @@ button.dashboard-metric:hover {
   min-height: 0;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  scroll-padding-block: 20px;
+}
+
+.app-modal-body label > span:first-child + :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  margin-top: 0.5rem;
 }
 
 @media (max-width: 639px) {
@@ -5018,6 +5023,59 @@ button.dashboard-metric:hover {
 
   .auth-security-note .auth-security-limit {
     font-size: 0.6rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .auth-page {
+    box-sizing: border-box;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+  }
+
+  .auth-frame {
+    min-height: 0;
+    overflow: visible;
+    background: transparent;
+  }
+
+  .auth-story {
+    display: none;
+  }
+
+  .auth-panel {
+    min-height: 0;
+    align-items: flex-start;
+    padding: 0;
+    background: transparent;
+  }
+
+  .auth-card {
+    width: 100%;
+    padding: 1rem;
+  }
+
+  .auth-panel-header {
+    margin-bottom: 0.85rem;
+  }
+
+  .auth-heading {
+    margin-bottom: 0.85rem;
+  }
+
+  .auth-heading h2,
+  .auth-success h2 {
+    font-size: clamp(1.35rem, 6vw, 1.65rem);
+    overflow-wrap: anywhere;
+  }
+
+  .auth-intro {
+    margin-top: 0.35rem;
+  }
+
+  .auth-form {
+    gap: 0.7rem;
   }
 }
 
@@ -11547,6 +11605,480 @@ button.dashboard-metric:hover {
   color: #d7d1e5;
   font-size: 0.88rem;
   line-height: 1.8;
+}
+
+.account-inventory-card-header {
+  grid-template-columns: minmax(0, 1fr) minmax(9rem, 12rem) auto;
+  align-items: start;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.account-card-main {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.8rem;
+}
+
+.account-card-identity {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.account-card-identity .account-provider-mark {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #e9e4f2;
+  border-radius: 0.75rem;
+  background: #f8f6fc;
+}
+
+.account-identity-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 0.18rem;
+}
+
+.account-identity-copy .account-provider-name {
+  overflow-wrap: anywhere;
+  color: #716c80;
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.account-identity-copy .account-name {
+  overflow-wrap: anywhere;
+  color: #241d35;
+  font-size: 1rem;
+  font-weight: 760;
+  letter-spacing: -0.025em;
+  line-height: 1.3;
+}
+
+.account-identity-copy .account-email {
+  overflow-wrap: anywhere;
+  color: #777286;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.account-type-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.account-selling-type,
+.account-lifecycle-badge,
+.account-availability-badge {
+  display: inline-flex;
+  min-height: 1.45rem;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.account-selling-type {
+  border-color: #e4def0;
+  color: #625674;
+  background: #f7f4fb;
+}
+
+.account-lifecycle-badge.is-active {
+  border-color: #bbecd3;
+  color: #187448;
+  background: #effbf4;
+}
+
+.account-lifecycle-badge.is-inactive {
+  border-color: #e3e1e8;
+  color: #696575;
+  background: #f5f4f7;
+}
+
+.account-lifecycle-badge > span {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.account-availability-badge.is-available,
+.account-availability-badge.is-partially-allocated {
+  border-color: #d8d0fb;
+  color: #6543b5;
+  background: #f5f2ff;
+}
+
+.account-availability-badge.is-fully-allocated,
+.account-availability-badge.is-review-required,
+.account-availability-badge.is-no-slots-configured {
+  border-color: #f2dda8;
+  color: #8a6213;
+  background: #fff9e9;
+}
+
+.account-availability-badge.is-unavailable {
+  border-color: #f2cbd0;
+  color: #a03c4a;
+  background: #fff4f5;
+}
+
+.account-card-meta {
+  display: grid;
+  min-width: 0;
+  gap: 0.35rem;
+  border-top: 1px solid #efedf4;
+  padding-top: 0.55rem;
+}
+
+.account-id-row,
+.account-plan-expiry {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
+}
+
+.account-id-value {
+  min-width: 0;
+  overflow: hidden;
+  color: #858092;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-copy-id {
+  display: inline-flex;
+  min-height: 2rem;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 0.45rem;
+  padding: 0.25rem 0.45rem;
+  color: #6747b2;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.account-copy-id svg,
+.account-expiry svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  flex: 0 0 auto;
+}
+
+.account-copy-id:hover {
+  background: #f3efff;
+}
+
+.account-plan-name {
+  overflow-wrap: anywhere;
+  color: #494458;
+  font-size: 0.69rem;
+  font-weight: 650;
+}
+
+.account-expiry {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.3rem;
+  color: #696579;
+  font-size: 0.67rem;
+  line-height: 1.4;
+}
+
+.account-expiry.is-expired {
+  color: #b33e4c;
+  font-weight: 700;
+}
+
+.account-expiry.is-expiring {
+  color: #9a6b12;
+  font-weight: 700;
+}
+
+.account-expiry-countdown {
+  border-radius: 999px;
+  padding: 0.1rem 0.35rem;
+  background: #fff3d6;
+  color: #8a6213;
+  font-size: 0.59rem;
+}
+
+.account-card-notes {
+  overflow-wrap: anywhere;
+  color: #898597;
+  font-size: 0.66rem;
+  line-height: 1.4;
+}
+
+.account-capacity-full-account {
+  color: #686478;
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.account-inventory-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.account-inventory-actions > button,
+.account-action-menu > summary {
+  display: inline-flex;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid #e9e5ef;
+  border-radius: 0.65rem;
+  padding: 0.5rem 0.7rem;
+  color: #5c566b;
+  background: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.account-inventory-actions > button svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: 0 0 auto;
+}
+
+.account-inventory-actions > .account-action-view {
+  border-color: #6d45bd;
+  color: #fff;
+  background: #6d45bd;
+}
+
+.account-inventory-actions > .account-action-view:hover {
+  background: #5e36a9;
+}
+
+.account-inventory-actions > .account-action-edit:hover,
+.account-action-menu > summary:hover {
+  border-color: #d8cff1;
+  color: #5e36a9;
+  background: #f7f4ff;
+}
+
+.account-inventory-actions > .account-action-sell {
+  border-color: #168258;
+  color: #fff;
+  background: #168258;
+}
+
+.account-inventory-actions > .account-action-sell:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.account-action-menu {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.account-action-menu > summary {
+  list-style: none;
+  font-size: 1.15rem;
+  letter-spacing: 0.08em;
+}
+
+.account-action-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.account-action-menu-items {
+  display: grid;
+  min-width: 8rem;
+  gap: 0.15rem;
+  border: 1px solid #e8e4ef;
+  border-radius: 0.7rem;
+  padding: 0.3rem;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 22, 54, 0.12);
+}
+
+.account-action-menu-items button {
+  min-height: 2.5rem;
+  border-radius: 0.45rem;
+  padding: 0.5rem 0.65rem;
+  color: #4f4a5d;
+  font-size: 0.68rem;
+  text-align: left;
+}
+
+.account-action-menu-items button:hover {
+  background: #f3f0f8;
+}
+
+.account-action-menu-items .is-destructive {
+  color: #b63848;
+}
+
+.account-inventory-actions :is(button, summary):focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+.dark .account-card-identity .account-provider-mark {
+  border-color: #393047;
+  background: #211b2d;
+}
+
+.dark .account-identity-copy .account-name {
+  color: #f0edf6;
+}
+
+.dark .account-identity-copy .account-email,
+.dark .account-identity-copy .account-provider-name,
+.dark .account-id-value,
+.dark .account-card-notes {
+  color: #aaa5b8;
+}
+
+.dark .account-selling-type,
+.dark .account-lifecycle-badge.is-inactive,
+.dark .account-inventory-actions > button,
+.dark .account-action-menu > summary,
+.dark .account-action-menu-items {
+  border-color: #393047;
+  color: #d7d2e2;
+  background: #211d2c;
+}
+
+.dark .account-lifecycle-badge.is-active {
+  border-color: #245a43;
+  color: #91ddb6;
+  background: #14271f;
+}
+
+.dark .account-availability-badge.is-available,
+.dark .account-availability-badge.is-partially-allocated {
+  border-color: #49366f;
+  color: #c9b8ff;
+  background: #281f3d;
+}
+
+.dark .account-availability-badge.is-fully-allocated,
+.dark .account-availability-badge.is-review-required {
+  border-color: #6e5325;
+  color: #eacb7c;
+  background: #302716;
+}
+
+.dark .account-availability-badge.is-unavailable {
+  border-color: #673942;
+  color: #f2a6af;
+  background: #321d25;
+}
+
+.dark .account-card-meta {
+  border-top-color: #302b3d;
+}
+
+.dark .account-plan-name,
+.dark .account-expiry,
+.dark .account-capacity-full-account {
+  color: #c6c0d2;
+}
+
+.dark .account-copy-id {
+  color: #c9b8ff;
+}
+
+.dark .account-copy-id:hover,
+.dark .account-action-menu-items button:hover {
+  background: #302541;
+}
+
+.dark .account-action-menu-items button {
+  color: #d7d2e2;
+}
+
+.dark .account-inventory-actions > .account-action-view {
+  border-color: #8058d1;
+  color: #fff;
+  background: #7049bd;
+}
+
+.dark .account-inventory-actions > .account-action-sell {
+  border-color: #168258;
+  color: #fff;
+  background: #168258;
+}
+
+@media (max-width: 767px) {
+  .account-inventory-card-header {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.8rem;
+    padding: 0.85rem;
+  }
+
+  .account-capacity-summary {
+    max-width: none;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #eeecf2;
+    border-radius: 0.7rem;
+    background: #fbfaff;
+  }
+
+  .account-inventory-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+    gap: 0.4rem;
+  }
+
+  .account-inventory-actions > button {
+    width: 100%;
+  }
+
+  .account-action-menu[open] {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .account-action-menu > summary {
+    width: 100%;
+  }
+
+  .account-action-menu-items {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 0.35rem;
+  }
+
+  .dark .account-capacity-summary {
+    border-color: #393047;
+    background: #1d1a27;
+  }
 }
 
 .about-mission__vision {

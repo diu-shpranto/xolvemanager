@@ -1,7 +1,10 @@
+import { setActiveDataEnvironment } from './localStorageStore.ts';
+
 export const AUTH_ACCOUNTS_KEY = 'xolvemanager.auth.accounts.v1';
 export const AUTH_SESSION_KEY = 'xolvemanager.auth.session.v1';
 export const AUTH_LOGOUT_SIGNAL_KEY = 'xolvemanager.auth.logout-signal.v1';
 export const AUTH_STATE_EVENT = 'xolvemanager:auth-state';
+export const DEMO_SESSION_KEY = 'xolvemanager.auth.demo-session.v1';
 export const PASSWORD_ITERATIONS = 600_000;
 
 export interface LocalAuthUser {
@@ -9,6 +12,7 @@ export interface LocalAuthUser {
   email: string;
   name: string;
   role: 'owner';
+  isDemo?: boolean;
 }
 
 interface PasswordCredential {
@@ -46,6 +50,7 @@ export type AuthErrorCode =
   | 'WEAK_PASSWORD'
   | 'PASSWORD_MISMATCH'
   | 'INVALID_RECOVERY_KEY'
+  | 'DEMO_SESSION_CONFLICT'
   | 'STORAGE_FAILURE';
 
 export class LocalAuthError extends Error {
@@ -259,19 +264,64 @@ const signalOtherTabs = (): void => {
 };
 
 export const DEMO_OWNER_EMAIL = 'demo@xolvemanager.com';
-export const DEMO_OWNER_PASSWORD = 'Demo@1234';
+const DEMO_USER: LocalAuthUser = {
+  uid: 'a'.repeat(64),
+  email: DEMO_OWNER_EMAIL,
+  name: 'Demo User',
+  role: 'owner',
+  isDemo: true,
+};
 
 export const hasLocalAccount = (): boolean => Boolean(readDatabase());
 
 export const signInWithDemoAccount = async (): Promise<LocalAuthUser> => {
-  const database = readDatabase();
-  if (!database) {
-    await createOwnerAccount('Demo Owner', DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD, DEMO_OWNER_PASSWORD);
+  const browser = getBrowserWindow();
+  if (readSession()) {
+    throw new LocalAuthError(
+      'DEMO_SESSION_CONFLICT',
+      'Sign out of the registered account before entering Demo Mode.'
+    );
   }
-  return signInLocally(DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD);
+  setActiveDataEnvironment('demo');
+  try {
+    const { initializeDemoWorkspace } = await import('./demoWorkspaceService.ts');
+    initializeDemoWorkspace();
+    const sessionId = randomHex(32);
+    browser.sessionStorage.setItem(DEMO_SESSION_KEY, JSON.stringify({
+      version: 1,
+      uid: DEMO_USER.uid,
+      sessionId,
+    }));
+    notifyAuthStateChange();
+    return { ...DEMO_USER };
+  } catch (error) {
+    browser.sessionStorage.removeItem(DEMO_SESSION_KEY);
+    setActiveDataEnvironment('production');
+    throw error;
+  }
 };
 
 export const restoreLocalSession = (): LocalAuthUser | null => {
+  const browser = getBrowserWindow();
+  let demoSession: unknown = null;
+  try {
+    const rawDemoSession = browser.sessionStorage.getItem(DEMO_SESSION_KEY);
+    demoSession = rawDemoSession === null ? null : JSON.parse(rawDemoSession);
+  } catch (error) {
+    console.error('The demo session could not be read.', error);
+    throw new LocalAuthError('STORAGE_FAILURE', 'The local demo session could not be read.');
+  }
+  if (isRecord(demoSession)
+    && demoSession.version === 1
+    && demoSession.uid === DEMO_USER.uid
+    && typeof demoSession.sessionId === 'string'
+    && /^[a-f0-9]{64}$/.test(demoSession.sessionId)) {
+    setActiveDataEnvironment('demo');
+    return { ...DEMO_USER };
+  }
+  if (demoSession !== null) browser.sessionStorage.removeItem(DEMO_SESSION_KEY);
+  setActiveDataEnvironment('production');
+
   const session = readSession();
   if (!session) return null;
   const database = readDatabase();
@@ -290,6 +340,7 @@ export const createOwnerAccount = async (
   password: string,
   confirmation: string
 ): Promise<{ user: LocalAuthUser; recoveryKey: string }> => {
+  setActiveDataEnvironment('production');
   const normalizedName = name.trim();
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedName || normalizedName.length > 100) {
@@ -335,6 +386,7 @@ export const signInLocally = async (
   email: string,
   password: string
 ): Promise<LocalAuthUser> => {
+  setActiveDataEnvironment('production');
   const normalizedEmail = normalizeEmail(email);
   if (!isValidAuthEmail(normalizedEmail)) {
     throw new LocalAuthError('INVALID_EMAIL', 'Enter a valid email address.');
@@ -377,6 +429,14 @@ export const signInLocally = async (
 };
 
 export const signOutLocally = (broadcast = true): void => {
+  const browser = getBrowserWindow();
+  if (browser.sessionStorage.getItem(DEMO_SESSION_KEY) !== null) {
+    browser.sessionStorage.removeItem(DEMO_SESSION_KEY);
+    setActiveDataEnvironment('production');
+    notifyAuthStateChange();
+    return;
+  }
+
   let failure: unknown;
   try {
     const session = readSession();
@@ -405,6 +465,7 @@ export const resetLocalPassword = async (
   password: string,
   confirmation: string
 ): Promise<{ recoveryKey: string }> => {
+  setActiveDataEnvironment('production');
   const normalizedEmail = normalizeEmail(email);
   if (!isValidAuthEmail(normalizedEmail)) {
     throw new LocalAuthError('INVALID_EMAIL', 'Enter a valid email address.');

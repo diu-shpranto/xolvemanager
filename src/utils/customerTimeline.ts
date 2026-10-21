@@ -8,7 +8,7 @@ import type {
   Subscription,
 } from '../types';
 import { getSubscriptionStatus } from './dateUtils.ts';
-import { getSalePaymentStatus } from './saleUtils.ts';
+import { getSaleLineItems, getSalePaymentStatus } from './saleUtils.ts';
 
 export type CustomerTimelineType = 'sale' | 'payment' | 'subscription' | 'refund' | 'invoice';
 
@@ -54,6 +54,11 @@ export function buildCustomerTimeline({
     serviceById.get(serviceId || '')?.name,
     plan,
   ].filter((value): value is string => Boolean(value?.trim())).join(' · ');
+  const getSaleDescription = (sale: Sale) => getSaleLineItems(sale).map(item => [
+    serviceById.get(item.serviceId)?.name,
+    item.plan,
+    item.quantity > 1 ? `× ${item.quantity}` : undefined,
+  ].filter(Boolean).join(' · ')).join('; ');
 
   sales.forEach(sale => {
     addEvent({
@@ -62,7 +67,7 @@ export function buildCustomerTimeline({
       recordId: sale.id,
       timestamp: sale.createdAt || sale.date,
       title: 'Sale recorded',
-      description: getDescription(sale.serviceId, sale.plan) || sale.invoiceNo || 'Sale',
+      description: getSaleDescription(sale) || getDescription(sale.serviceId, sale.plan) || sale.invoiceNo || 'Sale',
       amount: sale.amount,
       currency: sale.currency,
       status: getSalePaymentStatus(sale, payments),
@@ -78,7 +83,7 @@ export function buildCustomerTimeline({
         recordId: sale.id,
         timestamp: completionActivity.timestamp,
         title: completionActivity.title || 'Sale completed',
-        description: getDescription(sale.serviceId, sale.plan) || sale.invoiceNo || 'Sale',
+        description: getSaleDescription(sale) || getDescription(sale.serviceId, sale.plan) || sale.invoiceNo || 'Sale',
         amount: sale.amount,
         currency: sale.currency,
         status: 'Completed',

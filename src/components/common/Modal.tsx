@@ -10,7 +10,7 @@ interface ModalProps {
   subtitle?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
+  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl';
   protectUnsavedChanges?: boolean;
 }
 
@@ -155,15 +155,43 @@ export const Modal: React.FC<ModalProps> = ({
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeButtonRef.current?.focus();
 
+    let revealFrame = 0;
+    const revealFocusedControl = () => {
+      window.cancelAnimationFrame(revealFrame);
+      revealFrame = window.requestAnimationFrame(() => {
+        const body = dialogRef.current?.querySelector<HTMLElement>('.app-modal-body');
+        const focused = document.activeElement;
+        if (!body || !(focused instanceof HTMLElement) || !body.contains(focused)) return;
+        const control = focused.closest<HTMLElement>('input, select, textarea, [contenteditable="true"]');
+        if (!control) return;
+        const field = control.closest<HTMLLabelElement>('label')
+          || (control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement
+            ? control.labels?.[0]
+            : null)
+          || control;
+
+        const fieldBounds = field.getBoundingClientRect();
+        const bodyBounds = body.getBoundingClientRect();
+        const visibleTop = bodyBounds.top + 20;
+        const visibleBottom = bodyBounds.bottom - 20;
+        if (fieldBounds.top < visibleTop) {
+          body.scrollTop -= visibleTop - fieldBounds.top;
+        } else if (fieldBounds.bottom > visibleBottom) {
+          body.scrollTop += fieldBounds.bottom - visibleBottom;
+        }
+      });
+    };
     const visualViewport = window.visualViewport;
     const updateViewport = () => {
       if (!overlayRef.current || !visualViewport) return;
       overlayRef.current.style.setProperty('--app-visual-viewport-height', `${visualViewport.height}px`);
       overlayRef.current.style.setProperty('--app-visual-viewport-offset-top', `${visualViewport.offsetTop}px`);
+      revealFocusedControl();
     };
     updateViewport();
     visualViewport?.addEventListener('resize', updateViewport);
     visualViewport?.addEventListener('scroll', updateViewport);
+    overlayRef.current?.addEventListener('focusin', revealFocusedControl);
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -196,6 +224,8 @@ export const Modal: React.FC<ModalProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       visualViewport?.removeEventListener('resize', updateViewport);
       visualViewport?.removeEventListener('scroll', updateViewport);
+      overlayRef.current?.removeEventListener('focusin', revealFocusedControl);
+      window.cancelAnimationFrame(revealFrame);
       returnFocusRef.current?.focus({ preventScroll: true });
       returnFocusRef.current = null;
     };
@@ -211,6 +241,7 @@ export const Modal: React.FC<ModalProps> = ({
     '2xl': 'max-w-2xl',
     '3xl': 'max-w-3xl',
     '4xl': 'max-w-4xl',
+    '5xl': 'max-w-5xl',
   }[maxWidth];
 
   return createPortal((

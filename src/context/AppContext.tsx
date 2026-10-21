@@ -13,6 +13,7 @@ import {
   BusinessNotification,
   PaymentMethod,
   PaymentStatus,
+  SaleLineItem,
   Language,
   AppCurrency,
   ServicePlan,
@@ -51,8 +52,13 @@ import {
 import { getCustomerDisplayName } from '../utils/relationships';
 import {
   amountToMinorUnits,
+  applyAdvanceCreditToSale as buildAdvanceCreditApplication,
   findPaymentByOperationId,
+  getCustomerAdvanceCredit,
+  getSaleDueAmount,
+  getSaleSubscriptionIds,
   getPaymentSaleAllocation,
+  getPaymentAvailableAdvanceCredit,
   getPaymentRefundTotals,
   getSalePaidAmount,
   getSalePaymentStatus,
@@ -93,6 +99,7 @@ import {
 } from '../services/businessStore';
 import {
   createRecordId,
+  getStorageKey,
   getStorageWarnings,
   getAccounts,
   getCustomers,
@@ -183,6 +190,19 @@ export interface NewSalePayload {
   notes?: string;
   renewalOfSubscriptionId?: string;
   operationId?: string;
+  lineItems?: NewSaleLineItemPayload[];
+}
+
+export interface NewSaleLineItemPayload {
+  serviceId: string;
+  serviceNameSnapshot?: string;
+  plan: string;
+  planId?: string;
+  quantity: number;
+  unitPrice: number;
+  startDate: string;
+  durationDays: number;
+  units?: { accountId?: string; profileId?: string }[];
 }
 
 export interface CurrentAdminUser {
@@ -192,6 +212,7 @@ export interface CurrentAdminUser {
   photoURL?: string | null;
   role: 'super_admin' | 'admin' | 'owner';
   businessId?: string | null;
+  isDemo?: boolean;
 }
 
 interface AppContextType {
@@ -286,6 +307,12 @@ interface AppContextType {
     saleId: string,
     payment: Omit<Payment, 'id' | 'saleId' | 'subscriptionId'> & { operationId?: string }
   ) => Payment;
+  applyCustomerAdvanceToSale: (
+    customerId: string,
+    saleId: string,
+    amount: number,
+    operationId: string
+  ) => number;
   recordPaymentRefund: (
     paymentId: string,
     amount: number,
@@ -1040,7 +1067,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     const intervalDays = { daily: 1, weekly: 7, monthly: 30 } as const;
     const businessId = currentBusiness?.businessId ?? 'local';
     try {
-      const metadata = JSON.parse(window.localStorage.getItem(`sqp_data_management_v1_${businessId}`) ?? '{}') as Record<string, unknown>;
+      const metadata = JSON.parse(window.localStorage.getItem(getStorageKey(`sqp_data_management_v1_${businessId}`)) ?? '{}') as Record<string, unknown>;
       const lastBackupAt = typeof metadata.lastBackupAt === 'string' ? metadata.lastBackupAt : '';
       const parsedBackupDate = Date.parse(lastBackupAt);
       const elapsedDays = Number.isFinite(parsedBackupDate)
@@ -2938,6 +2965,82 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     payload: NewSalePayload
   ): { subscription: Subscription; sale: Sale; payment: Payment; invoice: Invoice } => {
     assertFinancialDateOpen(getTodayDateString(settings.businessProfile?.timeZone));
+    const requestedLineItems = payload.lineItems?.length
+      ? payload.lineItems
+      : [{
+        serviceId: payload.serviceId,
+        plan: payload.plan,
+        planId: payload.planId,
+        quantity: 1,
+        unitPrice: payload.price,
+        startDate: payload.startDate,
+        durationDays: payload.durationDays,
+        units: [{ accountId: payload.accountId, profileId: payload.profileId }],
+      }];
+    if (payload.lineItems?.length) {
+      const firstItem = requestedLineItems[0];
+      if (firstItem.serviceId !== payload.serviceId
+        || firstItem.plan !== payload.plan
+        || firstItem.planId !== payload.planId
+        || firstItem.startDate !== payload.startDate
+        || firstItem.durationDays !== payload.durationDays
+        || firstItem.units?.[0]?.accountId !== payload.accountId
+        || firstItem.units?.[0]?.profileId !== payload.profileId) {
+        throw new Error('The primary sale item does not match the sale details.');
+      }
+    }
+    let requestedSubtotalMinor = 0;
+    const lineServices = requestedLineItems.map(item => {
+      if (!Number.isSafeInteger(item.quantity) || item.quantity < 1
+        || !Number.isSafeInteger(item.durationDays) || item.durationDays < 1
+        || !Number.isFinite(Date.parse(`${item.startDate}T00:00:00`))
+        || !Number.isFinite(item.unitPrice) || item.unitPrice <= 0) {
+        throw new Error('A sale item has an invalid quantity, price, or subscription period.');
+      }
+      const unitPriceMinor = amountToMinorUnits(item.unitPrice);
+      const itemSubtotalMinor = unitPriceMinor * item.quantity;
+      if (unitPriceMinor <= 0 || !Number.isSafeInteger(itemSubtotalMinor)) {
+        throw new Error('A sale item price or quantity is too large.');
+      }
+      requestedSubtotalMinor += itemSubtotalMinor;
+      if (!Number.isSafeInteger(requestedSubtotalMinor)) {
+        throw new Error('The sale total is too large.');
+      }
+      const itemService = services.find(candidate => candidate.id === item.serviceId);
+      const itemPlan = itemService?.planDetails?.find(candidate =>
+        candidate.id === item.planId && candidate.status === 'active'
+      );
+      if (!itemService
+        || itemService.status !== 'active'
+        || itemService.isArchived
+        || itemService.settings?.subscriptionEnabled === false
+        || itemService.advanced?.allowNewSubscriptions === false
+        || itemService.advanced?.showInNewSale === false
+        || (item.planId && (!itemPlan
+          || itemPlan.name !== item.plan
+          || itemPlan.durationDays !== item.durationDays
+          || itemPlan.price !== item.unitPrice
+          || itemPlan.currency !== payload.currency))) {
+        throw new Error(`The selected service or plan "${item.plan}" is no longer available.`);
+      }
+      const requiresAccount = Boolean(itemService.settings?.usesAccounts
+        || itemService.settings?.usesProfiles
+        || itemService.settings?.profileAssignmentRequired);
+      const requiresProfile = Boolean(itemService.settings?.usesProfiles
+        || itemService.settings?.profileAssignmentRequired);
+      const units = item.units || [];
+      if (requiresAccount && units.length !== item.quantity) {
+        throw new Error(`Select a distinct account or profile for each ${itemService.name} unit.`);
+      }
+      if (!requiresAccount && units.length > 0 && units.length !== item.quantity) {
+        throw new Error(`The ${itemService.name} allocation list does not match its quantity.`);
+      }
+      return { item, service: itemService, requiresAccount, requiresProfile, units };
+    });
+    if (payload.lineItems?.length
+      && requestedSubtotalMinor !== amountToMinorUnits(payload.subtotal ?? payload.price)) {
+      throw new Error('The sale subtotal does not match its item quantities and unit prices.');
+    }
     const customer = customers.find(item => item.id === payload.customerId && !item.isArchived && item.status !== 'archived');
     const service = services.find(item => item.id === payload.serviceId);
     const plan = service?.planDetails?.find(item => item.id === payload.planId && item.status === 'active');
@@ -2980,6 +3083,24 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       if (priorSale) {
         const priorSubscription = subscriptions.find(item => item.id === priorSale.subscriptionId);
         const priorPayment = payments.find(item => item.id === priorSale.paymentId);
+        const lineItemsMatch = payload.lineItems?.length
+          ? Boolean(priorSale.lineItems
+            && priorSale.lineItems.length === payload.lineItems.length
+            && payload.lineItems.every((item, index) => {
+              const saved = priorSale.lineItems?.[index];
+              return saved?.serviceId === item.serviceId
+                && saved.planId === item.planId
+                && saved.plan === item.plan
+                && saved.quantity === item.quantity
+                && saved.unitPrice === item.unitPrice
+                && saved.startDate === item.startDate
+                && saved.durationDays === item.durationDays
+                && item.units?.every((unit, unitIndex) =>
+                  saved.units[unitIndex]?.accountId === unit.accountId
+                  && saved.units[unitIndex]?.profileId === unit.profileId
+                ) !== false;
+            }))
+          : !priorSale.lineItems?.length;
         if (priorSale.customerId !== payload.customerId
           || priorSale.serviceId !== payload.serviceId
           || (payload.planId !== undefined && priorSale.planId !== payload.planId)
@@ -2988,7 +3109,8 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
           || priorSale.amount !== payload.price
           || priorSale.amountPaid !== amountPaid
           || priorSubscription?.startDate !== payload.startDate
-          || priorSubscription?.durationDays !== payload.durationDays) {
+          || priorSubscription?.durationDays !== payload.durationDays
+          || !lineItemsMatch) {
           throw new Error('This sale operation ID was already used for different sale details.');
         }
         if (priorSubscription && priorPayment) {
@@ -3097,6 +3219,93 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
           ))));
       if (!renewingSameAssignment) throw new Error('This profile is already assigned to an active subscription.');
     }
+    const selectedFullAccounts = new Set<string>();
+    const selectedProfiles = new Set<string>();
+    if (payload.accountId && !profileRequired) selectedFullAccounts.add(payload.accountId);
+    if (payload.accountId && payload.profileId) selectedProfiles.add(`${payload.accountId}:${payload.profileId}`);
+    for (const { item, service: itemService, requiresAccount, requiresProfile, units } of lineServices) {
+      for (let unitIndex = 0; unitIndex < item.quantity; unitIndex += 1) {
+        const allocation = units[unitIndex] || {};
+        const isPrimaryUnit = item === requestedLineItems[0] && unitIndex === 0;
+        if (isPrimaryUnit) continue;
+        if (!requiresAccount && !allocation.accountId && !allocation.profileId) continue;
+        if (requiresAccount && !allocation.accountId) {
+          throw new Error(`An account is required for every ${itemService.name} unit.`);
+        }
+        const allocatedAccount = allocation.accountId
+          ? accounts.find(candidate =>
+            candidate.id === allocation.accountId
+            && candidate.serviceId === itemService.id
+            && (!item.planId || !candidate.planId || candidate.planId === item.planId)
+            && isAccountOperational(candidate, settings.businessProfile?.timeZone)
+          )
+          : undefined;
+        if (allocation.accountId && !allocatedAccount) {
+          throw new Error(`An account selected for ${itemService.name} is no longer available.`);
+        }
+        if (allocatedAccount?.allowNewAssignment === false) {
+          throw new Error(`New assignments are disabled for an account selected for ${itemService.name}.`);
+        }
+        const allocatedProfile = allocatedAccount && allocation.profileId
+          ? allocatedAccount.profiles.find(candidate =>
+            candidate.id === allocation.profileId
+            && candidate.status === 'Available'
+            && !candidate.assignedCustomerId
+            && (!candidate.expiryDate || getDaysDifference(candidate.expiryDate) >= 0)
+          )
+          : undefined;
+        if (requiresProfile && !allocatedProfile) {
+          throw new Error(`Choose an available profile for every ${itemService.name} unit.`);
+        }
+        if (allocation.profileId && !requiresProfile) {
+          throw new Error(`${itemService.name} does not support profile-based allocation.`);
+        }
+        if (allocatedAccount && !requiresProfile) {
+          const activeSubs = subscriptions.filter(candidate =>
+            candidate.accountId === allocatedAccount.id
+            && ['active', 'expiring_soon'].includes(
+              getSubscriptionStatus(candidate, itemService, settings.reminderNoticeDays)
+            )
+          );
+          if (activeSubs.length > 0
+            || allocatedAccount.profiles.some(candidate =>
+              candidate.status === 'Assigned' || Boolean(candidate.assignedCustomerId)
+            )
+            || ['Assigned', 'Full'].includes(allocatedAccount.status)) {
+            throw new Error(`An account selected for ${itemService.name} is already allocated.`);
+          }
+          if (selectedFullAccounts.has(allocatedAccount.id)) {
+            throw new Error('The same full account cannot be allocated more than once in one sale.');
+          }
+          if ([...selectedProfiles].some(key => key.startsWith(`${allocatedAccount.id}:`))) {
+            throw new Error('A full account cannot be allocated with profiles in the same sale.');
+          }
+          selectedFullAccounts.add(allocatedAccount.id);
+        }
+        if (allocatedAccount && requiresProfile) {
+          const allocationKey = `${allocatedAccount.id}:${allocatedProfile?.id || ''}`;
+          if (selectedFullAccounts.has(allocatedAccount.id)) {
+            throw new Error('A profile cannot be allocated from an account sold as a full account in the same sale.');
+          }
+          if (selectedProfiles.has(allocationKey)) {
+            throw new Error('The same profile cannot be allocated more than once in one sale.');
+          }
+          selectedProfiles.add(allocationKey);
+          if (getAccountCapacity(allocatedAccount).available <= 0) {
+            throw new Error(`The account selected for ${itemService.name} has no profile capacity available.`);
+          }
+          if (subscriptions.some(candidate =>
+            candidate.accountId === allocatedAccount.id
+            && candidate.profileId === allocatedProfile?.id
+            && ['active', 'expiring_soon'].includes(
+              getSubscriptionStatus(candidate, itemService, settings.reminderNoticeDays)
+            )
+          )) {
+            throw new Error('A profile selected for this sale already belongs to an active subscription.');
+          }
+        }
+      }
+    }
 
     const invoiceNo = generateInvoiceNo([
       ...sales.map(sale => sale.invoiceNo),
@@ -3104,14 +3313,40 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     ], settings.invoicePreferences?.prefix || 'INV-', settings.businessProfile?.timeZone);
     const expiryDate = calculateExpiryDate(payload.startDate, payload.durationDays);
     const saleId = createRecordId('sale');
-    const subscriptionId = createRecordId('subscription');
     const paymentId = createRecordId('payment');
-    const allocatedAccountCost = paymentStatus === 'failed' || !payload.accountId
-      ? undefined
-      : (() => {
-        const account = accounts.find(item => item.id === payload.accountId && item.serviceId === payload.serviceId);
-        return account ? allocateAccountPurchaseCost(account, Boolean(payload.profileId)) : undefined;
-      })();
+    const lineItemSubscriptions = lineServices.map(({ item, service: itemService, units }) =>
+      Array.from({ length: item.quantity }, (_, unitIndex) => {
+        const allocation = units[unitIndex] || {};
+        const unitAccount = allocation.accountId
+          ? accounts.find(candidate => candidate.id === allocation.accountId && candidate.serviceId === itemService.id)
+          : undefined;
+        const unitCost = paymentStatus === 'failed' || !unitAccount
+          ? undefined
+          : allocateAccountPurchaseCost(unitAccount, Boolean(allocation.profileId));
+        return {
+          item,
+          service: itemService,
+          allocation,
+          unitCost,
+          subscriptionId: createRecordId('subscription'),
+        };
+      })
+    );
+    const subscriptionId = lineItemSubscriptions[0][0].subscriptionId;
+    const allAllocatedCosts = lineItemSubscriptions.flat().map(unit => unit.unitCost);
+    const allocatedCostCurrency = allAllocatedCosts[0]?.currency;
+    const allocatedAccountCost = allAllocatedCosts.length > 0
+      && allAllocatedCosts.every(cost => cost && cost.currency === allocatedCostCurrency)
+      ? {
+        amount: allAllocatedCosts.reduce((total, cost) => total + (cost?.amount || 0), 0),
+        currency: allocatedCostCurrency!,
+        allocation: allAllocatedCosts.every(cost => cost?.allocation === 'profile_slot')
+          ? 'profile_slot' as const
+          : allAllocatedCosts.every(cost => cost?.allocation === 'full_account')
+            ? 'full_account' as const
+            : undefined,
+      }
+      : undefined;
 
     // 1. Create Subscription
     const newSub: Subscription = {
@@ -3129,7 +3364,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       startDate: payload.startDate,
       durationDays: payload.durationDays,
       expiryDate,
-      price: payload.price,
+      price: payload.lineItems?.length ? requestedLineItems[0].unitPrice : payload.price,
       currency: payload.currency,
       paymentStatus,
       ...(paymentStatus === 'failed' ? {
@@ -3146,6 +3381,59 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       createdAt: getTodayDateString(settings.businessProfile?.timeZone),
       createdBy: currentUser?.uid || 'admin',
     };
+    const extraSubscriptions = lineItemSubscriptions.flat().slice(1).map(unit => ({
+      id: unit.subscriptionId,
+      ...(currentBusiness?.businessId ? { businessId: currentBusiness.businessId } : {}),
+      saleId,
+      paymentId,
+      customerId: payload.customerId,
+      serviceId: unit.item.serviceId,
+      accountId: unit.allocation.accountId,
+      profileId: unit.allocation.profileId,
+      planId: unit.item.planId || getPlanId(unit.item.serviceId, unit.item.plan),
+      plan: unit.item.plan,
+      startDate: unit.item.startDate,
+      durationDays: unit.item.durationDays,
+      expiryDate: calculateExpiryDate(unit.item.startDate, unit.item.durationDays),
+      price: unit.item.unitPrice,
+      currency: payload.currency,
+      paymentStatus,
+      ...(paymentStatus === 'failed' ? {
+        status: 'cancelled' as const,
+        cancelledAt: new Date().toISOString(),
+        cancellationReason: 'Payment failed before inventory was allocated.',
+      } : {}),
+      notes: payload.notes,
+      createdAt: getTodayDateString(settings.businessProfile?.timeZone),
+      createdBy: currentUser?.uid || 'admin',
+    } satisfies Subscription));
+    const persistedLineItems: SaleLineItem[] | undefined = payload.lineItems?.length
+      ? lineServices.map(({ item }, itemIndex) => ({
+        id: `sale-item-${saleId}-${itemIndex + 1}`,
+        serviceId: item.serviceId,
+        ...(item.serviceNameSnapshot ? { serviceNameSnapshot: item.serviceNameSnapshot } : {}),
+        planId: item.planId || getPlanId(item.serviceId, item.plan),
+        plan: item.plan,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        subtotal: minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity),
+        discount: 0,
+        amount: minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity),
+        currency: payload.currency,
+        startDate: item.startDate,
+        durationDays: item.durationDays,
+        units: lineItemSubscriptions[itemIndex].map(unit => ({
+          subscriptionId: unit.subscriptionId,
+          ...(unit.allocation.accountId ? { accountId: unit.allocation.accountId } : {}),
+          ...(unit.allocation.profileId ? { profileId: unit.allocation.profileId } : {}),
+          ...(unit.unitCost ? {
+            actualCostSnapshot: unit.unitCost.amount,
+            actualCostCurrency: unit.unitCost.currency,
+            actualCostAllocation: unit.unitCost.allocation,
+          } : {}),
+        })),
+      }))
+      : undefined;
 
     // 2. Create Sale
     const newSale: Sale = {
@@ -3162,13 +3450,14 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       serviceId: payload.serviceId,
       plan: payload.plan,
       amount: payload.price,
+      ...(persistedLineItems ? { lineItems: persistedLineItems } : {}),
       subtotal,
       discount,
       amountPaid,
       ...(allocatedAccountCost ? {
         actualCostSnapshot: allocatedAccountCost.amount,
         actualCostCurrency: allocatedAccountCost.currency,
-        actualCostAllocation: allocatedAccountCost.allocation,
+        ...(allocatedAccountCost.allocation ? { actualCostAllocation: allocatedAccountCost.allocation } : {}),
       } : {}),
       currency: payload.currency,
       paymentMethod: payload.paymentMethod,
@@ -3214,7 +3503,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       ),
       creationLogPending: true,
     };
-    let nextSubscriptions: Subscription[] = [newSub, ...subscriptions];
+    let nextSubscriptions: Subscription[] = [newSub, ...extraSubscriptions, ...subscriptions];
     if (payload.renewalOfSubscriptionId) {
       const renewedSubscription = subscriptions.find(item => item.id === payload.renewalOfSubscriptionId);
       if (!renewedSubscription) throw new Error('The subscription being renewed is no longer available.');
@@ -3248,30 +3537,41 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     const nextSales = [newSale, ...sales];
     const nextPayments = [newPayment, ...payments];
     const nextInvoices = [newInvoice, ...invoices.filter(invoice => invoice.saleId !== newSale.id)];
-    const nextAccounts = paymentStatus !== 'failed' && payload.accountId && payload.profileId
-      ? accounts.map(item => item.id === payload.accountId ? {
-        ...item,
-        profiles: item.profiles.map(itemProfile => itemProfile.id === payload.profileId ? {
-          ...itemProfile,
-          assignedCustomerId: payload.customerId,
-          subscriptionId: newSub.id,
-          status: 'Assigned' as const,
-          updatedAt: new Date().toISOString(),
-        } : itemProfile),
-      } : item)
+    const assignedProfiles = lineItemSubscriptions.flat().flatMap(unit =>
+      unit.allocation.accountId && unit.allocation.profileId
+        ? [{ accountId: unit.allocation.accountId, profileId: unit.allocation.profileId, subscriptionId: unit.subscriptionId }]
+        : []
+    );
+    const nextAccounts = paymentStatus !== 'failed' && assignedProfiles.length > 0
+      ? accounts.map(item => {
+        const assignments = assignedProfiles.filter(allocation => allocation.accountId === item.id);
+        return assignments.length > 0 ? {
+          ...item,
+          profiles: item.profiles.map(itemProfile => {
+            const assignment = assignments.find(candidate => candidate.profileId === itemProfile.id);
+            return assignment ? {
+              ...itemProfile,
+              assignedCustomerId: payload.customerId,
+              subscriptionId: assignment.subscriptionId,
+              status: 'Assigned' as const,
+              updatedAt: new Date().toISOString(),
+            } : itemProfile;
+          }),
+        } : item;
+      })
       : accounts;
     persistRelatedRecordsAtomically({
       subscriptions: nextSubscriptions,
       sales: nextSales,
       payments: nextPayments,
       invoices: nextInvoices,
-      ...(paymentStatus !== 'failed' && payload.accountId && payload.profileId ? { accounts: nextAccounts } : {}),
+      ...(paymentStatus !== 'failed' && assignedProfiles.length > 0 ? { accounts: nextAccounts } : {}),
     });
     setSubscriptions(nextSubscriptions);
     setSales(nextSales);
     setPayments(nextPayments);
     setInvoices(nextInvoices);
-    if (paymentStatus !== 'failed' && payload.accountId && payload.profileId) setAccounts(nextAccounts);
+    if (paymentStatus !== 'failed' && assignedProfiles.length > 0) setAccounts(nextAccounts);
     logActivity({
       type: 'invoice_created',
       title: 'Invoice Created',
@@ -3632,8 +3932,8 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       Math.min(amountToMinorUnits(sale.amount), amountToMinorUnits(recordedPaid) + amountToMinorUnits(allocation.allocatedAmount))
     );
     const paymentStatus: PaymentStatus = paymentData.paymentStatus === 'paid'
-      ? amountPaid >= sale.amount ? 'paid' : 'partial'
-      : recordedPaid >= sale.amount ? 'paid' : recordedPaid > 0 ? 'partial' : 'pending';
+      ? amountToMinorUnits(amountPaid) >= amountToMinorUnits(sale.amount) ? 'paid' : 'partial'
+      : amountToMinorUnits(recordedPaid) >= amountToMinorUnits(sale.amount) ? 'paid' : recordedPaid > 0 ? 'partial' : 'pending';
     const recognizedPaid = paymentData.paymentStatus === 'paid' ? amountPaid : recordedPaid;
     const recognizedDue = minorUnitsToAmount(Math.max(0, amountToMinorUnits(sale.amount) - amountToMinorUnits(recognizedPaid)));
 
@@ -3658,8 +3958,9 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     const nextInvoices = existingInvoice
       ? invoices.map(item => item.saleId === saleId ? updatedInvoice : item)
       : [updatedInvoice, ...invoices];
-    const nextSubscriptions = sale.subscriptionId
-      ? subscriptions.map(subscription => subscription.id === sale.subscriptionId
+    const saleSubscriptionIds = new Set(getSaleSubscriptionIds(sale));
+    const nextSubscriptions = saleSubscriptionIds.size > 0
+      ? subscriptions.map(subscription => saleSubscriptionIds.has(subscription.id)
         ? { ...subscription, paymentStatus, updatedAt: new Date().toISOString() }
         : subscription)
       : subscriptions;
@@ -3667,12 +3968,12 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       payments: nextPayments,
       sales: nextSales,
       invoices: nextInvoices,
-      ...(sale.subscriptionId ? { subscriptions: nextSubscriptions } : {}),
+      ...(saleSubscriptionIds.size > 0 ? { subscriptions: nextSubscriptions } : {}),
     });
     setPayments(nextPayments);
     setSales(nextSales);
     setInvoices(nextInvoices);
-    if (sale.subscriptionId) setSubscriptions(nextSubscriptions);
+    if (saleSubscriptionIds.size > 0) setSubscriptions(nextSubscriptions);
 
     const customer = getCustomerById(sale.customerId);
     const paymentWasReceived = paymentData.paymentStatus === 'paid';
@@ -3854,6 +4155,127 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     return newPayment;
   };
 
+  const applyCustomerAdvanceToSale = (
+    customerId: string,
+    saleId: string,
+    amount: number,
+    operationId: string
+  ): number => {
+    const sale = sales.find(item => item.id === saleId);
+    if (!sale) throw new Error('The selected sale could not be found.');
+    if (currentBusiness?.businessId && sale.businessId !== currentBusiness.businessId) {
+      throw new Error('This sale does not belong to the current business.');
+    }
+    if (sale.customerId !== customerId) {
+      throw new Error('Customer advance can only be applied to that customer’s sale.');
+    }
+    if (!customers.some(customer => customer.id === customerId)) {
+      throw new Error('The selected customer could not be found.');
+    }
+    const parsedAmount = parseAmountToMinorUnits(amount);
+    if (parsedAmount === null || parsedAmount <= 0) {
+      throw new Error('Enter a valid advance application amount greater than zero.');
+    }
+    const today = getTodayDateString(settings.businessProfile?.timeZone);
+    assertFinancialDateOpen(today);
+    const invoice = invoices.find(item => item.saleId === saleId);
+    const result = buildAdvanceCreditApplication(
+      payments,
+      sale,
+      minorUnitsToAmount(parsedAmount),
+      operationId,
+      new Date().toISOString(),
+      invoice?.invoiceId
+    );
+    if (result.alreadyApplied) return result.appliedAmount;
+
+    const hasExistingSettlement = payments.some(payment => getPaymentSaleAllocation(payment, sale) > 0);
+    const previousPaid = getSalePaidAmount(sale, payments);
+    const paymentAllocationBaseline = sale.paymentAllocationBaseline
+      ?? (hasExistingSettlement ? 0 : previousPaid);
+    const saleForCalculation = { ...sale, paymentAllocationBaseline };
+    const updatedSale = {
+      ...saleForCalculation,
+      amountPaid: minorUnitsToAmount(Math.min(
+        amountToMinorUnits(sale.amount),
+        amountToMinorUnits(previousPaid) + parsedAmount
+      )),
+      paymentStatus: getSalePaymentStatus(saleForCalculation, result.payments),
+      updatedAt: new Date().toISOString(),
+    };
+    const nextSales = sales.map(item => item.id === saleId ? updatedSale : item);
+    const recognizedPaid = getSalePaidAmount(updatedSale, result.payments);
+    const recognizedDue = getSaleDueAmount(updatedSale, result.payments);
+    const baseInvoice = invoice || {
+      ...createInvoiceRecord(
+        sale,
+        payments,
+        undefined,
+        currentBusiness?.businessId,
+        `invoice-${sale.id}`
+      ),
+      creationLogPending: true,
+    };
+    const updatedInvoice = {
+      ...baseInvoice,
+      paidAmount: recognizedPaid,
+      dueAmount: recognizedDue,
+      paymentStatus: getSalePaymentStatus(updatedSale, result.payments),
+      updatedAt: new Date().toISOString(),
+    };
+    const nextInvoices = invoice
+      ? invoices.map(item => item.saleId === saleId ? updatedInvoice : item)
+      : [updatedInvoice, ...invoices];
+    const saleSubscriptionIds = new Set(getSaleSubscriptionIds(sale));
+    const nextSubscriptions = saleSubscriptionIds.size > 0
+      ? subscriptions.map(subscription => saleSubscriptionIds.has(subscription.id)
+        ? { ...subscription, paymentStatus: updatedSale.paymentStatus, updatedAt: new Date().toISOString() }
+        : subscription)
+      : subscriptions;
+
+    persistRelatedRecordsAtomically({
+      payments: result.payments,
+      sales: nextSales,
+      invoices: nextInvoices,
+      ...(saleSubscriptionIds.size > 0 ? { subscriptions: nextSubscriptions } : {}),
+    });
+    setPayments(result.payments);
+    setSales(nextSales);
+    setInvoices(nextInvoices);
+    if (saleSubscriptionIds.size > 0) setSubscriptions(nextSubscriptions);
+
+    const customer = getCustomerById(customerId);
+    logActivity({
+      type: 'payment_recorded',
+      title: 'Advance Credit Applied',
+      description: `${formatCurrency(result.appliedAmount, sale.currency)} from existing customer advance was applied to sale ${sale.invoiceNo}. No new cash was received.`,
+      customerName: getCustomerDisplayName(customer),
+      entityType: 'sale',
+      entityId: sale.id,
+      customerId,
+      serviceId: sale.serviceId,
+      planId: sale.planId,
+      subscriptionId: sale.subscriptionId,
+      saleId: sale.id,
+      paymentId: result.payments.find(payment =>
+        payment.allocations?.some(allocation => allocation.advanceApplicationId === operationId)
+      )?.id,
+      invoiceId: updatedInvoice.invoiceId,
+      invoiceNumber: updatedInvoice.invoiceNumber,
+      amount: result.appliedAmount,
+      currency: sale.currency,
+      metadata: {
+        advanceApplicationId: operationId,
+        amount: result.appliedAmount,
+        paidAmount: recognizedPaid,
+        dueAmount: recognizedDue,
+        source: 'advance_credit',
+        cashReceived: 0,
+      },
+    });
+    return result.appliedAmount;
+  };
+
   const recordPaymentRefund = (
     paymentId: string,
     amountValue: number,
@@ -3912,9 +4334,8 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         totals.set(allocation.saleId, (totals.get(allocation.saleId) || 0) + amountToMinorUnits(allocation.amount));
         return totals;
       }, new Map<string, number>());
-    const availableAdvanceMinor = Math.max(
-      0,
-      amountToMinorUnits(Number(original.advanceCreditAmount) || 0) - amountToMinorUnits(refunds.advanceRefunded)
+    const availableAdvanceMinor = amountToMinorUnits(
+      getPaymentAvailableAdvanceCredit(original, payments)
     );
     const refundedAdvanceMinor = Math.min(amountMinor, availableAdvanceMinor);
     let remainingSaleRefundMinor = amountMinor - refundedAdvanceMinor;
@@ -3988,12 +4409,12 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         updatedAt: new Date().toISOString(),
       };
     }));
-    const affectedSubscriptionIds = new Set(
-      updatedSales.filter(sale => affectedSaleIds.has(sale.id) && sale.subscriptionId).map(sale => sale.subscriptionId as string)
-    );
+    const affectedSubscriptionIds = new Set(updatedSales
+      .filter(sale => affectedSaleIds.has(sale.id))
+      .flatMap(getSaleSubscriptionIds));
     setSubscriptions(previous => previous.map(subscription => {
       if (!affectedSubscriptionIds.has(subscription.id)) return subscription;
-      const sale = updatedSales.find(item => item.subscriptionId === subscription.id);
+      const sale = updatedSales.find(item => getSaleSubscriptionIds(item).includes(subscription.id));
       return sale
         ? { ...subscription, paymentStatus: sale.paymentStatus, updatedAt: new Date().toISOString() }
         : subscription;
@@ -5610,6 +6031,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         createSale,
         deleteSale,
         recordSalePayment,
+        applyCustomerAdvanceToSale,
         recordPaymentRefund,
         ensureInvoiceForSale,
         addPayment,

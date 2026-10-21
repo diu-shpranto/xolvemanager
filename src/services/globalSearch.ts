@@ -4,6 +4,8 @@ import type {
 } from '../types';
 import type { NavSection } from '../components/navigation/Sidebar';
 import { getSubscriptionStatus } from '../utils/dateUtils';
+import { getSaleLineItems } from '../utils/saleUtils';
+import { getStorageKey } from './localStorageStore';
 
 export type SearchEntity =
   | 'customers' | 'services' | 'plans' | 'accounts' | 'profiles'
@@ -167,13 +169,18 @@ export function buildSearchIndex(data: SearchData, timeZone?: string): GlobalSea
   data.sales.forEach(item => {
     const customer = customers.get(item.customerId);
     const service = services.get(item.serviceId);
+    const saleItems = getSaleLineItems(item);
+    const itemSummary = saleItems.map(line =>
+      `${services.get(line.serviceId)?.name ?? 'Service'} · ${line.plan}${line.quantity > 1 ? ` × ${line.quantity}` : ''}`
+    ).join('; ');
     const invoice = invoicesBySale.get(item.id);
     push({
       entity: 'sales', id: item.id, section: 'sales',
       title: item.invoiceNo || item.id, subtitle: customer?.name ?? 'Unknown customer',
-      detail: `${service?.name ?? 'Sale'} · ${item.date} · ${item.paymentStatus}`,
+      detail: `${itemSummary || service?.name || 'Sale'} · ${item.date} · ${item.paymentStatus}`,
       fields: [
         item.id, item.invoiceNo, item.plan, item.date, item.paymentStatus,
+        ...saleItems.flatMap(line => [line.plan, services.get(line.serviceId)?.name ?? '']),
         customer?.id ?? '', customer?.name ?? '', customer?.phone ?? '',
         customer?.whatsapp ?? '', customer?.email ?? '', service?.name ?? '',
       ],
@@ -187,18 +194,21 @@ export function buildSearchIndex(data: SearchData, timeZone?: string): GlobalSea
     const customer = customers.get(item.customerId || sale?.customerId || '');
     const relatedInvoice = invoice || (sale ? invoicesBySale.get(sale.id) : undefined);
     const service = sale ? services.get(sale.serviceId) : undefined;
+    const itemSummary = sale ? getSaleLineItems(sale).map(line =>
+      `${services.get(line.serviceId)?.name ?? 'Service'} · ${line.plan}${line.quantity > 1 ? ` × ${line.quantity}` : ''}`
+    ).join('; ') : '';
     push({
       entity: 'payments', id: item.id, section: 'payments',
       title: item.id, subtitle: customer?.name ?? 'Unknown customer',
-      detail: `${service?.name ?? 'Payment'}${sale?.plan ? ` · ${sale.plan}` : ''} · ${relatedInvoice?.invoiceNumber ?? sale?.invoiceNo ?? 'No invoice'} · ${item.paymentDate} · ${item.paymentStatus}`,
+      detail: `${itemSummary || service?.name || 'Payment'} · ${relatedInvoice?.invoiceNumber ?? sale?.invoiceNo ?? 'No invoice'} · ${item.paymentDate} · ${item.paymentStatus}`,
       fields: [
         item.id, item.transactionId ?? '', item.paymentDate, item.paymentStatus,
         item.paymentMethod, item.saleId ?? '', item.invoiceId ?? '',
         customer?.name ?? '', customer?.phone ?? '', customer?.whatsapp ?? '', customer?.email ?? '',
         relatedInvoice?.invoiceNumber ?? '', sale?.id ?? '', sale?.invoiceNo ?? '',
-        service?.name ?? '', sale?.plan ?? '',
+        service?.name ?? '', sale?.plan ?? '', itemSummary,
       ],
-    }, undefined, [customer?.name ?? '', customer?.phone ?? '', customer?.whatsapp ?? '', customer?.email ?? '', relatedInvoice?.invoiceNumber ?? '', item.saleId ?? '', service?.name ?? '', sale?.plan ?? '']);
+    }, undefined, [customer?.name ?? '', customer?.phone ?? '', customer?.whatsapp ?? '', customer?.email ?? '', relatedInvoice?.invoiceNumber ?? '', item.saleId ?? '', service?.name ?? '', sale?.plan ?? '', itemSummary]);
   });
   data.invoices.forEach(item => {
     const customer = customers.get(item.customerId);
@@ -296,7 +306,7 @@ export function searchRecords(index: GlobalSearchResult[], query: string): Globa
 
 export function getRecentSearchItems(businessId?: string): RecentSearchItem[] {
   try {
-    const raw = window.localStorage.getItem(recentStorageKey(businessId));
+    const raw = window.localStorage.getItem(getStorageKey(recentStorageKey(businessId)));
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -321,7 +331,7 @@ export function recordRecentSearchItem(
       { ...result, viewedAt: new Date().toISOString() },
       ...getRecentSearchItems(businessId).filter(item => item.entity !== result.entity || item.id !== result.id),
     ].slice(0, 20);
-    window.localStorage.setItem(recentStorageKey(businessId), JSON.stringify(next));
+    window.localStorage.setItem(getStorageKey(recentStorageKey(businessId)), JSON.stringify(next));
   } catch (error) {
     console.error('Could not save recently viewed search item.', error);
   }

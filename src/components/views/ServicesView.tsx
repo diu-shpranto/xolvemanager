@@ -62,6 +62,7 @@ import {
 import { formatAppDate, formatCurrency, getDaysDifference, getSubscriptionStatus, getSubscriptionReminderDays } from '../../utils/dateUtils';
 import { createRecordId } from '../../services/localStorageStore';
 import { getAccountCapacity, getServiceResourceSummary, isAccountOperational } from '../../utils/resourceManagement';
+import { getSaleLineItems } from '../../utils/saleUtils';
 import { calculatePlanPerformance, calculateSalesFinancialSummary, calculateServicePerformance, getLocalDateString } from '../../utils/reportMetrics';
 import { exportServicesCSV } from '../../services/dataBackupService';
 import { downloadCSV } from '../../utils/csvParser';
@@ -926,7 +927,9 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
     if (!detailedService) return;
     const isInUse = subscriptions.some(subscription =>
       subscription.serviceId === detailedService.id && subscription.planId === plan.id
-    ) || sales.some(sale => sale.serviceId === detailedService.id && sale.planId === plan.id)
+    ) || sales.some(sale => getSaleLineItems(sale).some(item =>
+      item.serviceId === detailedService.id && item.planId === plan.id
+    ))
       || accounts.some(account => account.serviceId === detailedService.id && account.planId === plan.id)
       || invoices.some(invoice => invoice.serviceId === detailedService.id && invoice.planId === plan.id);
     if (isInUse) {
@@ -2488,8 +2491,14 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               : 'Add Service'
           }
           maxWidth="4xl"
+          footer={
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" onClick={() => { setIsAddModalOpen(false); setEditingService(null); setFormErrors({}); setFormDuplicate(null); }} className="min-h-11 rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">{t('cancel')}</button>
+              <button type="submit" form="service-form" disabled={isSubmitting} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60">{isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}<span>{isSubmitting ? 'Saving...' : 'Save Service'}</span></button>
+            </div>
+          }
         >
-          <form onSubmit={handleSaveService} className="space-y-5 text-sm">
+          <form id="service-form" onSubmit={handleSaveService} className="space-y-5 text-sm">
             <nav aria-label="Service configuration sections" className="-mx-2 flex gap-1 overflow-x-auto border-b border-slate-200 px-2 pb-2 dark:border-slate-800">
               {SERVICE_FORM_TABS.map(tab => (
                 <button
@@ -2657,10 +2666,6 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 
             {formDuplicate && <div role="alert" className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><p>A service with this name already exists.</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => { setDetailedServiceId(formDuplicate.id); setFormDuplicate(null); setIsAddModalOpen(false); setEditingService(null); }} className="rounded-lg border border-amber-400 px-3 py-2 text-xs font-semibold">View Existing</button><button type="button" onClick={() => { setFormDuplicate(null); void saveService(true); }} className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-semibold text-white">{editingService ? 'Save Anyway' : 'Create Anyway'}</button></div></div>}
 
-            <div className="sticky bottom-0 -mx-6 flex flex-col-reverse gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur sm:flex-row sm:justify-end dark:border-slate-800 dark:bg-slate-900/95">
-              <button type="button" onClick={() => { setIsAddModalOpen(false); setEditingService(null); setFormErrors({}); setFormDuplicate(null); }} className="rounded-lg px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">{t('cancel')}</button>
-              <button type="submit" disabled={isSubmitting} className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60">{isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}<span>{isSubmitting ? 'Saving...' : 'Save Service'}</span></button>
-            </div>
           </form>
         </Modal>
       )}

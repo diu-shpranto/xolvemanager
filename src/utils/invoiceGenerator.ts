@@ -13,6 +13,19 @@ export interface InvoiceSaleDetails {
   customerPhone?: string;
   customerEmail?: string;
   serviceName: string;
+  lineItems?: {
+    serviceName: string;
+    planName: string;
+    quantity: number;
+    unitPrice: number;
+    subtotal: number;
+    discount?: number;
+    total?: number;
+    currency: AppCurrency;
+    startDate?: string;
+    expiryDate?: string;
+    durationDays?: number;
+  }[];
   serviceDescription?: string;
   serviceLogoUrl?: string;
   planName: string;
@@ -24,6 +37,8 @@ export interface InvoiceSaleDetails {
   expiryDate?: string;
   amount: number;
   amountPaid?: number;
+  amountReceived?: number;
+  advanceCreditApplied?: number;
   amountDue?: number;
   subtotal?: number;
   discount?: number;
@@ -72,16 +87,15 @@ export interface GeneratedInvoiceResult {
   height: number;
 }
 
-const WIDTH = 900;
-const HEIGHT = 1200;
 const FONT = 'Arial, "Noto Sans Bengali", "Noto Sans", sans-serif';
 const COLORS = {
   ink: '#17211f',
   muted: '#687572',
+  purple: '#6d28d9',
+  purpleLight: '#f3edff',
   green: '#087a57',
   greenLight: '#edf7f2',
   border: '#e2e9e6',
-  background: '#f6f8f7',
   white: '#ffffff',
   amber: '#9a5a00',
   amberLight: '#fff4d6',
@@ -102,29 +116,38 @@ function roundedRect(
   context.fill();
 }
 
-function drawText(
-  context: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  align: CanvasTextAlign = 'left'
-): void {
-  context.textAlign = align;
-  let value = text;
-  while (value.length > 1 && context.measureText(value).width > maxWidth) {
-    value = `${value.slice(0, -2)}…`;
+function wrapText(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    if (context.measureText(word).width > maxWidth) {
+      if (line) {
+        lines.push(line);
+        line = '';
+      }
+      let fragment = '';
+      for (const character of word) {
+        if (fragment && context.measureText(`${fragment}${character}`).width > maxWidth) {
+          lines.push(fragment);
+          fragment = character;
+        } else {
+          fragment += character;
+        }
+      }
+      line = fragment;
+      continue;
+    }
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && context.measureText(candidate).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
   }
-  context.fillText(value, x, y);
-}
-
-function drawDivider(context: CanvasRenderingContext2D, y: number): void {
-  context.strokeStyle = COLORS.border;
-  context.lineWidth = 2;
-  context.beginPath();
-  context.moveTo(92, y);
-  context.lineTo(WIDTH - 92, y);
-  context.stroke();
+  if (line) lines.push(line);
+  return lines.length ? lines : [''];
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -168,10 +191,38 @@ function formatInvoiceDate(date: string, language: Language): string {
 }
 
 export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Language = 'en'): Promise<GeneratedInvoiceResult> {
+  const invoiceItems = data.lineItems?.length
+    ? data.lineItems
+    : [{
+      serviceName: data.serviceName || 'Service unavailable',
+      planName: data.planName || 'Plan information unavailable',
+      quantity: 1,
+      unitPrice: data.subtotal ?? data.amount + (data.discount || 0),
+      subtotal: data.subtotal ?? data.amount + (data.discount || 0),
+      discount: data.discount || 0,
+      total: data.amount,
+      currency: data.currency,
+      startDate: data.startDate,
+      expiryDate: data.expiryDate,
+      durationDays: data.durationDays,
+    }];
+  const statusLabel = data.paymentStatus === 'paid'
+    ? 'PAID'
+    : data.paymentStatus === 'partial'
+      ? 'PARTIAL'
+      : data.paymentStatus === 'pending'
+        ? 'PENDING'
+        : data.paymentStatus.replace(/_/g, ' ').toUpperCase();
+  const paid = data.amountPaid ?? (data.paymentStatus === 'paid' ? data.amount : 0);
+  const due = data.amountDue ?? Math.max(0, data.amount - paid);
+  const received = data.amountReceived ?? paid;
+  const advanceCredit = data.advanceCreditApplied ?? Math.max(0, paid - received);
+  const itemDiscountTotal = invoiceItems.reduce((total, item) => total + (item.discount || 0), 0);
+  const invoiceDiscount = Math.max(0, (data.discount || 0) - itemDiscountTotal);
   const canvas = document.createElement('canvas');
-  canvas.width = WIDTH;
-  canvas.height = HEIGHT;
-  const context = canvas.getContext('2d');
+  canvas.width = 1000;
+  canvas.height = 10;
+  let context = canvas.getContext('2d');
   if (!context) throw new Error('Canvas 2D context is unavailable.');
 
   let logo: HTMLImageElement | null = null;
@@ -182,151 +233,306 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
       console.error('Invoice logo could not be loaded; generating a text-only header.', error);
     }
   }
-  context.fillStyle = COLORS.background;
-  context.fillRect(0, 0, WIDTH, HEIGHT);
-  context.fillStyle = COLORS.white;
-  roundedRect(context, 24, 24, WIDTH - 48, HEIGHT - 48, 24);
-
-  if (logo) {
-    const scale = Math.min(150 / logo.width, 112 / logo.height);
-    const logoWidth = logo.width * scale;
-    const logoHeight = logo.height * scale;
-    context.drawImage(logo, 72 + (150 - logoWidth) / 2, 62 + (112 - logoHeight) / 2, logoWidth, logoHeight);
-  }
-
-  context.fillStyle = COLORS.ink;
-  context.font = `800 38px ${FONT}`;
-  const hasLogo = Boolean(logo);
-  const businessNameX = hasLogo ? 254 : WIDTH / 2;
-  const businessNameWidth = hasLogo ? WIDTH - 326 : WIDTH - 184;
-  drawText(context, data.storeName?.trim() || 'Your Business', businessNameX, 112, businessNameWidth, hasLogo ? 'left' : 'center');
-  context.fillStyle = COLORS.muted;
-  context.font = `400 24px ${FONT}`;
-  const support = data.whatsappNumber?.trim();
-  if (data.tagline?.trim()) {
-    drawText(context, data.tagline.trim(), businessNameX, 154, businessNameWidth, hasLogo ? 'left' : 'center');
-  } else if (support) {
-    drawText(context, `WhatsApp: ${support}`, businessNameX, 154, businessNameWidth, hasLogo ? 'left' : 'center');
-  }
-  if (data.businessAddress?.trim()) {
-    context.font = `400 18px ${FONT}`;
-    context.fillStyle = COLORS.muted;
-    drawText(context, data.businessAddress.trim(), businessNameX, 184, businessNameWidth, hasLogo ? 'left' : 'center');
-  }
-  if (data.businessAddress?.trim()) {
-    context.font = `400 18px ${FONT}`;
-    context.fillStyle = COLORS.muted;
-    drawText(context, data.businessAddress.trim(), businessNameX, 184, businessNameWidth, hasLogo ? 'left' : 'center');
-  }
-
-  drawDivider(context, 210);
-
-  context.fillStyle = COLORS.green;
-  context.font = `800 30px ${FONT}`;
-  context.textAlign = 'left';
-  context.fillText('INVOICE', 92, 264);
-  context.fillStyle = COLORS.ink;
-  context.font = `700 24px ${FONT}`;
-  drawText(context, data.invoiceNo, 92, 308, 460);
-  context.fillStyle = COLORS.muted;
-  context.font = `400 22px ${FONT}`;
-  context.fillText(`Date: ${formatInvoiceDate(data.date, language)}`, 92, 344);
-  const status = data.paymentStatus.replace(/_/g, ' ').toUpperCase();
-  const statusColor = data.paymentStatus === 'paid'
-    ? COLORS.green
-    : data.paymentStatus === 'refunded' || data.paymentStatus === 'failed'
-      ? COLORS.red
-      : COLORS.amber;
-  const statusBackground = data.paymentStatus === 'paid'
-    ? COLORS.greenLight
-    : data.paymentStatus === 'refunded' || data.paymentStatus === 'failed'
-      ? COLORS.redLight
-      : COLORS.amberLight;
-  context.fillStyle = statusBackground;
-  roundedRect(context, WIDTH - 276, 244, 184, 48, 18);
-  context.fillStyle = statusColor;
-  context.font = `700 19px ${FONT}`;
-  context.textAlign = 'center';
-  context.fillText(status, WIDTH - 184, 275);
-
-  drawDivider(context, 378);
-
-  const sectionLabel = (label: string, y: number) => {
-    context.fillStyle = COLORS.green;
-    context.font = `700 19px ${FONT}`;
-    context.textAlign = 'left';
-    context.fillText(label, 92, y);
-  };
-  const primaryText = (text: string, y: number) => {
-    context.fillStyle = COLORS.ink;
-    context.font = `700 27px ${FONT}`;
-    drawText(context, text, 92, y, 716);
-  };
-  const secondaryText = (text: string, y: number) => {
-    context.fillStyle = COLORS.muted;
-    context.font = `400 22px ${FONT}`;
-    drawText(context, text, 92, y, 716);
-  };
-
-  sectionLabel('CUSTOMER', 414);
-  primaryText(`${data.customerName || 'Customer'}${data.customerType ? ` · ${data.customerType}` : ''}`, 454);
-  if (data.invoiceSettings?.showCustomerPhone !== false && data.customerPhone) secondaryText(data.customerPhone, 488);
-  drawDivider(context, 520);
-
-  sectionLabel('SERVICE & PLAN', 556);
-  primaryText(data.serviceName || 'Service unavailable', 596);
-  if (data.invoiceSettings?.showPlan !== false) secondaryText(data.planName || 'Plan information unavailable', 632);
-  let detailY = data.invoiceSettings?.showPlan !== false ? 668 : 632;
-  if (data.invoiceSettings?.showSubscriptionPeriod !== false && (data.durationLabel || (data.durationDays && data.durationDays > 0))) {
-    secondaryText(`Duration: ${data.durationLabel || `${data.durationDays} days`}`, detailY);
-    detailY += 36;
-  }
-  if (data.invoiceSettings?.showSubscriptionPeriod !== false && (data.startDate || data.expiryDate)) {
-    const period = [data.startDate && formatInvoiceDate(data.startDate, language), data.expiryDate && formatInvoiceDate(data.expiryDate, language)]
+  const lineLayouts = invoiceItems.map(item => {
+    context!.font = `700 20px ${FONT}`;
+    const title = `${item.serviceName}${data.invoiceSettings?.showPlan === false ? '' : ` · ${item.planName}`}`;
+    const titleLines = wrapText(context!, title, 290);
+    const period = [item.startDate && formatInvoiceDate(item.startDate, language), item.expiryDate && formatInvoiceDate(item.expiryDate, language)]
       .filter(Boolean)
       .join(' – ');
-    secondaryText(`Subscription period: ${period}`, detailY);
-  }
-  drawDivider(context, 738);
-
-  sectionLabel('PAYMENT SUMMARY', 778);
-  const paid = data.amountPaid ?? (data.paymentStatus === 'paid' ? data.amount : 0);
-  const due = data.amountDue ?? Math.max(0, data.amount - paid);
-  const paymentRow = (label: string, value: string, y: number, emphasis = false, valueColor?: string) => {
-    context.fillStyle = emphasis ? COLORS.ink : COLORS.muted;
-    context.font = `${emphasis ? '700' : '500'} ${emphasis ? '25' : '22'}px ${FONT}`;
-    context.textAlign = 'left';
-    context.fillText(label, 92, y);
-    context.fillStyle = valueColor || (emphasis ? COLORS.green : COLORS.ink);
-    drawText(context, value, WIDTH - 92, y, 430, 'right');
+    const detail = period;
+    context!.font = `400 15px ${FONT}`;
+    const detailLines = detail ? wrapText(context!, detail, 290) : [];
+    return { item, titleLines, detailLines, height: 22 + titleLines.length * 24 + detailLines.length * 19 };
+  });
+  const businessNameX = logo ? 160 : 72;
+  const brandWidth = logo ? 465 : 535;
+  context.font = `700 27px ${FONT}`;
+  const businessLines = wrapText(context, data.storeName?.trim() || 'Your Business', brandWidth);
+  context.font = `400 15px ${FONT}`;
+  const contactLines = [
+    data.tagline?.trim(),
+    data.contactPhone?.trim() && `Phone: ${data.contactPhone.trim()}`,
+    data.whatsappNumber?.trim() && data.whatsappNumber.trim() !== data.contactPhone?.trim() && `WhatsApp: ${data.whatsappNumber.trim()}`,
+    data.adminEmail?.trim(),
+    data.businessAddress?.trim(),
+  ].filter(Boolean).join(' · ');
+  const brandDetailLines = contactLines ? wrapText(context, contactLines, brandWidth) : [];
+  context.font = `700 20px ${FONT}`;
+  const customerNameLines = wrapText(
+    context,
+    `${data.customerName || 'Customer'}${data.customerType ? ` · ${data.customerType}` : ''}`,
+    360
+  );
+  context.font = `400 15px ${FONT}`;
+  const customerDetails = [
+    data.customerId && `Customer ID: ${data.customerId}`,
+    data.invoiceSettings?.showCustomerPhone !== false && data.customerPhone,
+    data.invoiceSettings?.showCustomerEmail !== false && data.customerEmail,
+  ].filter(Boolean);
+  const customerDetailLines = customerDetails.flatMap(line => wrapText(context!, line!, 360));
+  const paymentHistory = (data.paymentHistory || []).filter(payment => payment.amount > 0);
+  const transactionLines = data.invoiceSettings?.showTransactionId !== false && data.transactionId
+    ? wrapText(context, `Reference: ${data.transactionId}`, 420)
+    : [];
+  const paymentDateLines = data.paymentDate
+    ? wrapText(context, `Latest payment: ${formatInvoiceDate(data.paymentDate, language)}`, 420)
+    : [];
+  const methodText = data.invoiceSettings?.showPaymentMethod !== false
+    ? data.paymentMethodBreakdown?.map(item => `${item.methodName}: ${formatCurrency(item.amount, data.currency, language)}`).join(', ') || data.paymentMethod
+    : '';
+  context.font = `400 14px ${FONT}`;
+  const methodLines = methodText ? wrapText(context, `Method: ${methodText}`, 420) : [];
+  const senderLines = data.senderNumber ? wrapText(context, `Sender: ${data.senderNumber}`, 420) : [];
+  context.font = `400 15px ${FONT}`;
+  const footerNote = [data.invoiceFooter?.trim(), data.notes?.trim()].filter(Boolean).join(' · ');
+  const footerLines = footerNote ? wrapText(context, footerNote, 740) : [];
+  const footerContact = [
+    data.contactPhone && `Phone: ${data.contactPhone}`,
+    data.whatsappNumber && data.whatsappNumber !== data.contactPhone && `WhatsApp: ${data.whatsappNumber}`,
+    data.adminEmail,
+  ].filter(Boolean).join(' · ');
+  context.font = `400 12px ${FONT}`;
+  const footerContactLines = footerContact ? wrapText(context, footerContact, 800) : [];
+  const paymentHistoryLayouts = paymentHistory.map(payment => {
+    const title = `${formatInvoiceDate(payment.paymentDate, language)} · ${payment.paymentMethod}${payment.transactionId && data.invoiceSettings?.showTransactionId !== false ? ` · ${payment.transactionId}` : ''}`;
+    context!.font = `500 13px ${FONT}`;
+    const lines = wrapText(context!, title, 560);
+    return { payment, lines, height: Math.max(42, lines.length * 17 + 16) };
+  });
+  const paymentRows: { label: string; amount: number; emphasis?: boolean; color?: string }[] = [
+    { label: 'Subtotal', amount: data.subtotal ?? data.amount + (data.discount || 0) },
+    ...(itemDiscountTotal > 0 ? [{ label: 'Item discounts', amount: -itemDiscountTotal, color: COLORS.purple }] : []),
+    ...(invoiceDiscount > 0 ? [{ label: 'Invoice discount', amount: -invoiceDiscount, color: COLORS.purple }] : []),
+    { label: 'Grand total', amount: data.amount, emphasis: true },
+    { label: 'Amount paid / applied', amount: paid, color: COLORS.green },
+    ...(received > 0 ? [{ label: 'Cash received', amount: received }] : []),
+    ...(advanceCredit > 0 ? [{ label: 'Advance credit applied', amount: advanceCredit }] : []),
+    { label: 'Outstanding due', amount: due, emphasis: true, color: due > 0 ? COLORS.amber : COLORS.green },
+  ];
+  const headerEndLayout = Math.max(184, 94 + businessLines.length * 30 + brandDetailLines.length * 19);
+  const paymentDetailsLines = methodLines.length + paymentDateLines.length + transactionLines.length + senderLines.length;
+  const paymentDetailGroups = [methodLines, paymentDateLines, transactionLines, senderLines].filter(lines => lines.length).length;
+  const billDetailsEndOffset = Math.max(
+    64 + customerNameLines.length * 23 + customerDetailLines.length * 19,
+    61 + paymentDetailsLines * 19 + paymentDetailGroups * 5
+  );
+  const itemRowsHeight = lineLayouts.reduce((total, item) => total + item.height, 0);
+  const historyHeight = paymentHistoryLayouts.length
+    ? 49 + paymentHistoryLayouts.reduce((total, item) => total + item.height, 0) + 22
+    : 0;
+  const finalHeight = headerEndLayout
+    + billDetailsEndOffset + 26 + 28 + 18 + 32 + itemRowsHeight
+    + 56 + paymentRows.length * 31 + historyHeight
+    + 37 + 25 + footerContactLines.length * 17
+    + (footerLines.length ? 8 + footerLines.length * 17 : 0)
+    + 24;
+  canvas.height = finalHeight;
+  context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas 2D context is unavailable.');
+  context.fillStyle = COLORS.white;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  const contentLeft = 72;
+  const contentRight = canvas.width - 72;
+  const contentWidth = contentRight - contentLeft;
+  const writeLines = (
+    lines: string[],
+    x: number,
+    firstBaseline: number,
+    lineHeight: number,
+    color: string,
+    font: string,
+    maxWidth: number,
+    align: CanvasTextAlign = 'left'
+  ) => {
+    context!.fillStyle = color;
+    context!.font = font;
+    context!.textAlign = align;
+    lines.forEach((line, index) => context!.fillText(line, x, firstBaseline + index * lineHeight, maxWidth));
   };
-
-  paymentRow('Total', formatCurrency(data.amount, data.currency, language), 822, true);
-  paymentRow('Paid', formatCurrency(paid, data.currency, language), 866);
-  paymentRow('Due', formatCurrency(due, data.currency, language), 910, due > 0, due > 0 ? COLORS.amber : undefined);
-  if (data.invoiceSettings?.showPaymentMethod !== false) {
-    const methods = data.paymentMethodBreakdown?.map(item =>
-      `${item.methodName}: ${formatCurrency(item.amount, data.currency, language)}`
-    ).join(', ');
-    paymentRow('Method breakdown', methods || data.paymentMethod || 'Not specified', 954);
+  const divider = (y: number) => {
+    context!.strokeStyle = COLORS.border;
+    context!.lineWidth = 1;
+    context!.beginPath();
+    context!.moveTo(contentLeft, y);
+    context!.lineTo(contentRight, y);
+    context!.stroke();
+  };
+  const drawLabel = (text: string, y: number) => writeLines(
+    [text.toUpperCase()], contentLeft, y, 18, COLORS.purple, `700 13px ${FONT}`, contentWidth
+  );
+  let brandY = 68;
+  if (logo) {
+    const scale = Math.min(68 / logo.width, 68 / logo.height);
+    const logoWidth = logo.width * scale;
+    const logoHeight = logo.height * scale;
+    context.drawImage(logo, contentLeft, 52 + (68 - logoHeight) / 2, logoWidth, logoHeight);
   }
-
-  drawDivider(context, 1000);
-  context.fillStyle = COLORS.green;
-  context.font = `700 24px ${FONT}`;
-  context.textAlign = 'center';
-  context.fillText('Thank you for your purchase', WIDTH / 2, 1050);
+  writeLines(businessLines, businessNameX, brandY, 30, COLORS.ink, `700 27px ${FONT}`, brandWidth);
+  brandY += businessLines.length * 30 + 7;
+  writeLines(brandDetailLines, businessNameX, brandY, 19, COLORS.muted, `400 15px ${FONT}`, brandWidth);
+  context.fillStyle = COLORS.purple;
+  context.font = `800 25px ${FONT}`;
+  context.textAlign = 'right';
+  context.fillText('INVOICE', contentRight, 64);
+  context.fillStyle = COLORS.ink;
+  context.font = `700 17px ${FONT}`;
+  context.fillText(data.invoiceNo, contentRight, 92, 260);
   context.fillStyle = COLORS.muted;
-  context.font = `400 17px ${FONT}`;
-  if (support) context.fillText(`WhatsApp: ${support}`, WIDTH / 2, 1084);
-  if (data.contactPhone && data.contactPhone !== support) context.fillText(`Phone: ${data.contactPhone}`, WIDTH / 2, 1110);
-  if (data.invoiceFooter?.trim()) {
-    context.font = `400 16px ${FONT}`;
-    context.fillText(data.invoiceFooter.trim().slice(0, 110), WIDTH / 2, 1150);
+  context.font = `400 14px ${FONT}`;
+  context.fillText(`Date · ${formatInvoiceDate(data.date, language)}`, contentRight, 117);
+  const statusColor = data.paymentStatus === 'paid'
+    ? COLORS.green
+    : data.paymentStatus === 'failed' || data.paymentStatus === 'refunded'
+      ? COLORS.red
+      : data.paymentStatus === 'partial'
+        ? COLORS.purple
+        : COLORS.amber;
+  const statusBackground = data.paymentStatus === 'paid'
+    ? COLORS.greenLight
+    : data.paymentStatus === 'failed' || data.paymentStatus === 'refunded'
+      ? COLORS.redLight
+      : data.paymentStatus === 'partial'
+        ? COLORS.purpleLight
+        : COLORS.amberLight;
+  context.fillStyle = statusBackground;
+  roundedRect(context, contentRight - 112, 133, 112, 28, 9);
+  context.fillStyle = statusColor;
+  context.font = `700 12px ${FONT}`;
+  context.textAlign = 'center';
+  context.fillText(statusLabel, contentRight - 56, 152);
+  const headerEnd = Math.max(
+    184,
+    brandY + brandDetailLines.length * 19 + 12,
+    169
+  );
+  divider(headerEnd);
+  let y = headerEnd + 32;
+  drawLabel('Bill to', y);
+  y += 29;
+  writeLines(customerNameLines, contentLeft, y, 23, COLORS.ink, `700 20px ${FONT}`, 360);
+  const customerDetailY = y + customerNameLines.length * 23 + 3;
+  writeLines(customerDetailLines, contentLeft, customerDetailY, 19, COLORS.muted, `400 15px ${FONT}`, 360);
+  const paymentX = 520;
+  context.fillStyle = COLORS.purple;
+  context.font = `700 13px ${FONT}`;
+  context.textAlign = 'left';
+  context.fillText('PAYMENT DETAILS', paymentX, headerEnd + 32);
+  let detailY = headerEnd + 61;
+  for (const lines of [methodLines, paymentDateLines, transactionLines, senderLines]) {
+    if (!lines.length) continue;
+    writeLines(lines, paymentX, detailY, 19, COLORS.muted, `400 14px ${FONT}`, contentRight - paymentX);
+    detailY += lines.length * 19 + 5;
   }
-  if (data.invoiceFooter?.trim()) {
-    context.font = `400 16px ${FONT}`;
-    context.fillText(data.invoiceFooter.trim().slice(0, 110), WIDTH / 2, 1150);
+  y = Math.max(
+    customerDetailY + customerDetailLines.length * 19,
+    detailY
+  ) + 26;
+  divider(y);
+  y += 28;
+  drawLabel('Items and services', y);
+  y += 18;
+  const columns = [
+    { label: 'ITEM / SERVICE AND PLAN', x: contentLeft, width: 300, align: 'left' as const },
+    { label: 'DURATION', x: 386, width: 88, align: 'left' as const },
+    { label: 'QTY', x: 487, width: 44, align: 'right' as const },
+    { label: 'UNIT PRICE', x: 642, width: 106, align: 'right' as const },
+    { label: 'DISCOUNT', x: 770, width: 100, align: 'right' as const },
+    { label: 'LINE TOTAL', x: contentRight, width: 130, align: 'right' as const },
+  ];
+  context.fillStyle = COLORS.purpleLight;
+  context.fillRect(contentLeft, y, contentWidth, 32);
+  columns.forEach(column => {
+    context!.fillStyle = COLORS.muted;
+    context!.font = `700 10px ${FONT}`;
+    context!.textAlign = column.align;
+    context!.fillText(column.label, column.x, y + 20, column.width);
+  });
+  y += 32;
+  for (const layout of lineLayouts) {
+    const { item, titleLines, detailLines, height } = layout;
+    const rowTop = y;
+    writeLines(titleLines, contentLeft + 4, rowTop + 22, 23, COLORS.ink, `700 16px ${FONT}`, 292);
+    writeLines(detailLines, contentLeft + 4, rowTop + 22 + titleLines.length * 23, 18, COLORS.muted, `400 12px ${FONT}`, 292);
+    const itemDiscount = item.discount || 0;
+    const duration = item.durationDays ? `${item.durationDays} days` : '—';
+    const values = [
+      { text: duration, x: 386, width: 88, align: 'left' as const, color: COLORS.muted },
+      { text: String(item.quantity), x: 487, width: 44, align: 'right' as const, color: COLORS.ink },
+      { text: formatCurrency(item.unitPrice, item.currency, language), x: 642, width: 106, align: 'right' as const, color: COLORS.ink },
+      { text: formatCurrency(itemDiscount, item.currency, language), x: 770, width: 100, align: 'right' as const, color: COLORS.muted },
+      { text: formatCurrency(item.total ?? Math.max(0, item.subtotal - itemDiscount), item.currency, language), x: contentRight, width: 130, align: 'right' as const, color: COLORS.ink },
+    ];
+    values.forEach(value => {
+      context!.fillStyle = value.color;
+      context!.font = `500 13px ${FONT}`;
+      context!.textAlign = value.align;
+      context!.fillText(value.text, value.x, rowTop + 23, value.width);
+    });
+    y += height;
+    divider(y);
+  }
+  y += 28;
+  const summaryX = 500;
+  const summaryWidth = contentRight - summaryX;
+  const summaryTop = y;
+  context.fillStyle = '#fbfaff';
+  context.fillRect(summaryX, summaryTop, summaryWidth, paymentRows.length * 31 + 18);
+  let summaryY = summaryTop + 25;
+  for (const row of paymentRows) {
+    const isDiscount = row.amount < 0;
+    context.fillStyle = row.emphasis ? COLORS.ink : COLORS.muted;
+    context.font = `${row.emphasis ? '700' : '500'} ${row.emphasis ? '15' : '13'}px ${FONT}`;
+    context.textAlign = 'left';
+    context.fillText(row.label, summaryX + 12, summaryY);
+    context.fillStyle = row.color || COLORS.ink;
+    context.font = `${row.emphasis ? '700' : '500'} ${row.emphasis ? '15' : '13'}px ${FONT}`;
+    context.textAlign = 'right';
+    const amountText = formatCurrency(Math.abs(row.amount), data.currency, language);
+    context.fillText(`${isDiscount ? '− ' : ''}${amountText}`, contentRight - 12, summaryY);
+    if (row.label === 'Grand total') {
+      context.strokeStyle = COLORS.border;
+      context.beginPath();
+      context.moveTo(summaryX + 10, summaryY + 9);
+      context.lineTo(contentRight - 10, summaryY + 9);
+      context.stroke();
+    }
+    summaryY += 31;
+  }
+  y = summaryTop + paymentRows.length * 31 + 28;
+  if (paymentHistory.length) {
+    divider(y);
+    y += 27;
+    drawLabel('Payment history', y);
+    y += 22;
+    paymentHistoryLayouts.forEach(({ payment, lines, height }) => {
+      writeLines(lines, contentLeft, y + 15, 17, COLORS.muted, `500 13px ${FONT}`, 560);
+      context!.fillStyle = COLORS.ink;
+      context!.font = `700 13px ${FONT}`;
+      context!.textAlign = 'right';
+      context!.fillText(formatCurrency(payment.amount, payment.currency, language), contentRight, y + 15, 220);
+      y += height;
+      divider(y);
+    });
+    y += 22;
+  }
+  divider(y);
+  y += 37;
+  context.fillStyle = COLORS.purple;
+  context.font = `700 18px ${FONT}`;
+  context.textAlign = 'center';
+  context.fillText('Thank you for your business', canvas.width / 2, y);
+  y += 25;
+  context.font = `400 12px ${FONT}`;
+  context.fillStyle = COLORS.muted;
+  if (footerContactLines.length) {
+    writeLines(footerContactLines, canvas.width / 2, y, 17, COLORS.muted, `400 12px ${FONT}`, 800, 'center');
+    y += footerContactLines.length * 17;
+  }
+  if (footerLines.length) {
+    context.font = `400 12px ${FONT}`;
+    const start = y + 8;
+    writeLines(footerLines, canvas.width / 2, start, 17, COLORS.muted, `400 12px ${FONT}`, 800, 'center');
   }
 
   const blob = await canvasToBlob(canvas);
@@ -334,8 +540,8 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
     dataUrl: await blobToDataUrl(blob),
     blob,
     fileName: safeFileName(data.invoiceNo),
-    width: WIDTH,
-    height: HEIGHT,
+    width: canvas.width,
+    height: canvas.height,
   };
 }
 

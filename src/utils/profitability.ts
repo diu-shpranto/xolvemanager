@@ -10,8 +10,8 @@ import type {
   Service,
   Subscription,
 } from '../types';
-import { convertReportCurrency, isWithinDateBounds, type DateBounds } from './reportMetrics';
-import { getSaleDueAmount, getSalePaymentStatus } from './saleUtils';
+import { convertReportCurrency, isWithinDateBounds, type DateBounds } from './reportMetrics.ts';
+import { getSaleDueAmount, getSaleLineAllocations, getSalePaymentStatus } from './saleUtils.ts';
 import type { Payment } from '../types';
 
 export interface ProfitabilityFilters {
@@ -88,15 +88,40 @@ const isProfitabilityCost = (cost: ProfitabilityCost | Expense): cost is Profita
 const convertAmount = (amount: number, source: AppCurrency, target: AppCurrency): number =>
   convertReportCurrency(Number.isFinite(amount) ? amount : 0, source, target);
 
+const saleLineAmount = (
+  sale: Sale,
+  matches: (item: ReturnType<typeof getSaleLineAllocations>[number]['item']) => boolean
+): number => getSaleLineAllocations(sale)
+  .filter(line => matches(line.item))
+  .reduce((total, line) => total + line.amount, 0);
+
+const saleBelongsToService = (sale: Sale, serviceId: string): boolean =>
+  getSaleLineAllocations(sale).some(line => line.item.serviceId === serviceId);
+
+const getConfiguredSaleCost = (sale: Sale, services: Service[]): number =>
+  getSaleLineAllocations(sale).reduce((total, { item, amount }) => {
+    const service = services.find(candidate => candidate.id === item.serviceId);
+    const plan = service?.planDetails?.find(candidate => candidate.id === item.planId);
+    const type = plan?.directCostType || service?.defaultDirectCostType || 'none';
+    const configuredAmount = plan?.directCostType
+      ? plan.directCostAmount || 0
+      : service?.defaultDirectCostAmount || 0;
+    const lineCost = type === 'fixed_per_sale' || type === 'fixed_per_cycle'
+      ? configuredAmount * item.quantity
+      : type === 'percentage_of_sale' ? amount * configuredAmount / 100 : 0;
+    return total + lineCost;
+  }, 0);
+
 const getFilteredSales = (data: ProfitabilityData): Sale[] => {
   const filters = data.filters;
   return data.sales.filter(sale =>
     isRecognizedSale(sale)
     && isWithinDateBounds(sale.date, data.bounds)
-    && (!filters?.serviceId || sale.serviceId === filters.serviceId)
-    && (!filters?.planId || sale.planId === filters.planId)
+    && (!filters?.serviceId || saleBelongsToService(sale, filters.serviceId))
+    && (!filters?.planId || getSaleLineAllocations(sale).some(line => line.item.planId === filters.planId))
     && (!filters?.customerId || sale.customerId === filters.customerId)
-    && (!filters?.subscriptionId || sale.subscriptionId === filters.subscriptionId)
+    && (!filters?.subscriptionId || sale.subscriptionId === filters.subscriptionId
+      || sale.lineItems?.some(line => line.units.some(unit => unit.subscriptionId === filters.subscriptionId)))
     && (!filters?.paymentStatus || filters.paymentStatus === 'all'
       || getSalePaymentStatus(sale, data.payments) === filters.paymentStatus)
   );
@@ -153,8 +178,6 @@ const getCostSubscriptionId = (cost: ProfitabilityCost | Expense): string | unde
 const getCostSaleId = (cost: ProfitabilityCost | Expense): string | undefined =>
   isProfitabilityCost(cost) ? cost.saleId : undefined;
 
-const saleBelongsToService = (sale: Sale, serviceId: string): boolean => sale.serviceId === serviceId;
-
 const getCostShares = (cost: ProfitabilityCost | Expense, services: Service[], sales: Sale[], subscriptions: Subscription[]) => {
   const serviceId = getCostServiceId(cost);
   const allocation = getCostAllocation(cost);
@@ -188,19 +211,25 @@ export function getServiceProfitability(data: ProfitabilityData): ProfitabilityR
   const sales = getFilteredSales(data);
   const costs = getFilteredCosts(data);
   const rows = data.services.map(service => {
-    const serviceSales = sales.filter(sale => sale.serviceId === service.id);
-    const revenue = serviceSales.reduce((total, sale) => total + convertAmount(sale.amount, sale.currency, data.currency), 0);
+    const serviceSales = sales.filter(sale => saleBelongsToService(sale, service.id));
+    const revenue = serviceSales.reduce((total, sale) => total + convertAmount(
+      saleLineAmount(sale, item => item.serviceId === service.id), sale.currency, data.currency
+    ), 0);
     const saleIdsWithActualDirectCost = new Set(costs
       .filter(cost => getCostType(cost) === 'direct' && getCostSaleId(cost))
       .map(cost => getCostSaleId(cost)!));
     const configuredDirectCost = serviceSales.reduce((total, sale) => {
       if (saleIdsWithActualDirectCost.has(sale.id)) return total;
-      const plan = service.planDetails?.find(item => item.id === sale.planId);
-      const type = plan?.directCostType || service.defaultDirectCostType || 'none';
-      const amount = plan?.directCostType ? plan.directCostAmount || 0 : service.defaultDirectCostAmount || 0;
-      const cost = type === 'fixed_per_sale' || type === 'fixed_per_cycle'
-        ? amount
-        : type === 'percentage_of_sale' ? sale.amount * amount / 100 : 0;
+      const cost = getSaleLineAllocations(sale)
+        .filter(line => line.item.serviceId === service.id)
+        .reduce((lineTotal, line) => {
+          const plan = service.planDetails?.find(item => item.id === line.item.planId);
+          const type = plan?.directCostType || service.defaultDirectCostType || 'none';
+          const amount = plan?.directCostType ? plan.directCostAmount || 0 : service.defaultDirectCostAmount || 0;
+          return lineTotal + (type === 'fixed_per_sale' || type === 'fixed_per_cycle'
+            ? amount * line.item.quantity
+            : type === 'percentage_of_sale' ? line.amount * amount / 100 : 0);
+        }, 0);
       return total + convertAmount(cost, sale.currency, data.currency);
     }, 0);
     let directCost = configuredDirectCost;
@@ -213,16 +242,23 @@ export function getServiceProfitability(data: ProfitabilityData): ProfitabilityR
       const targetCustomerId = getCostCustomerId(cost);
       const targetSubscriptionId = getCostSubscriptionId(cost);
       const targetSaleId = getCostSaleId(cost);
-      const matches = targetSaleId
-        ? serviceSales.some(sale => sale.id === targetSaleId)
+      const matchingSales = serviceSales.filter(sale => targetSaleId
+        ? sale.id === targetSaleId
         : targetPlanId
-          ? serviceSales.some(sale => sale.planId === targetPlanId)
+          ? getSaleLineAllocations(sale).some(line => line.item.serviceId === service.id && line.item.planId === targetPlanId)
           : targetCustomerId
-            ? serviceSales.some(sale => sale.customerId === targetCustomerId)
+            ? sale.customerId === targetCustomerId
             : targetSubscriptionId
-              ? serviceSales.some(sale => sale.subscriptionId === targetSubscriptionId)
-              : targetServiceId === service.id;
-      if ((type === 'direct' || type === 'adjustment') && matches) directCost += amount;
+              ? sale.subscriptionId === targetSubscriptionId
+                || sale.lineItems?.some(line => line.units.some(unit => unit.subscriptionId === targetSubscriptionId))
+              : targetServiceId === service.id);
+      if ((type === 'direct' || type === 'adjustment') && matchingSales.length > 0) {
+        const matchingRevenue = matchingSales.reduce((sum, sale) => sum + saleLineAmount(sale, item => item.serviceId === service.id), 0);
+        const saleRevenue = matchingSales.reduce((sum, sale) => sum + sale.amount, 0);
+        directCost += targetSaleId || targetPlanId || targetCustomerId || targetSubscriptionId
+          ? amount * (saleRevenue > 0 ? matchingRevenue / saleRevenue : 1)
+          : amount;
+      }
       else if (type === 'shared' || type === 'operating') {
         const share = getCostShares(cost, data.services, sales, data.subscriptions)
           .find(item => item.serviceId === service.id)?.fraction || 0;
@@ -238,16 +274,26 @@ export function getServiceProfitability(data: ProfitabilityData): ProfitabilityR
       && (!data.filters?.subscriptionId || subscription.id === data.filters.subscriptionId)
     );
     const refunds = data.sales.filter(sale =>
-      sale.serviceId === service.id && sale.paymentStatus === 'refunded'
+      saleBelongsToService(sale, service.id) && sale.paymentStatus === 'refunded'
       && isWithinDateBounds(sale.date, data.bounds)
-    ).reduce((sum, sale) => sum + convertAmount(sale.amount, sale.currency, data.currency), 0);
+    ).reduce((sum, sale) => sum + convertAmount(
+      saleLineAmount(sale, item => item.serviceId === service.id), sale.currency, data.currency
+    ), 0);
     return {
       id: service.id, name: service.name, serviceId: service.id,
       salesCount: serviceSales.length, subscriptionCount: serviceSubscriptions.length,
       revenue, directCost, grossProfit, grossMargin: revenue > 0 ? grossProfit / revenue * 100 : null,
       operatingCost, netContribution, netMargin: revenue > 0 ? netContribution / revenue * 100 : null,
-      due: serviceSales.reduce((sum, sale) => sum + convertAmount(getSaleDueAmount(sale, data.payments), sale.currency, data.currency), 0),
-      discounts: serviceSales.reduce((sum, sale) => sum + convertAmount(sale.discount || 0, sale.currency, data.currency), 0),
+      due: serviceSales.reduce((sum, sale) => {
+        const share = sale.amount > 0 ? saleLineAmount(sale, item => item.serviceId === service.id) / sale.amount : 0;
+        return sum + convertAmount(getSaleDueAmount(sale, data.payments) * share, sale.currency, data.currency);
+      }, 0),
+      discounts: serviceSales.reduce((sum, sale) => {
+        const matchingLines = getSaleLineAllocations(sale).filter(line => line.item.serviceId === service.id);
+        const gross = matchingLines.reduce((total, line) => total + line.item.amount, 0);
+        const net = matchingLines.reduce((total, line) => total + line.amount, 0);
+        return sum + convertAmount(Math.max(0, gross - net), sale.currency, data.currency);
+      }, 0),
       refunds, lowMargin: revenue > 0 && grossProfit / revenue * 100 < (data.lowMarginWarningPercent ?? 20),
       isLoss: netContribution < 0,
     };
@@ -259,8 +305,14 @@ export function getPlanProfitability(data: ProfitabilityData): ProfitabilityRow[
   const sales = getFilteredSales(data);
   const costs = getFilteredCosts(data);
   return data.services.flatMap(service => (service.planDetails || []).map(plan => {
-    const planSales = sales.filter(sale => sale.serviceId === service.id && sale.planId === plan.id);
-    const revenue = planSales.reduce((sum, sale) => sum + convertAmount(sale.amount, sale.currency, data.currency), 0);
+    const planSales = sales.filter(sale => saleLineAmount(sale, item =>
+      item.serviceId === service.id && item.planId === plan.id
+    ) > 0);
+    const revenue = planSales.reduce((sum, sale) => sum + convertAmount(
+      saleLineAmount(sale, item => item.serviceId === service.id && item.planId === plan.id),
+      sale.currency,
+      data.currency
+    ), 0);
     const linkedSaleIds = new Set(costs
       .filter(cost => getCostType(cost) === 'direct' && getCostSaleId(cost))
       .map(cost => getCostSaleId(cost)!));
@@ -268,13 +320,18 @@ export function getPlanProfitability(data: ProfitabilityData): ProfitabilityRow[
       if (linkedSaleIds.has(sale.id)) return sum;
       const type = plan.directCostType || service.defaultDirectCostType || 'none';
       const amount = plan.directCostType ? plan.directCostAmount || 0 : service.defaultDirectCostAmount || 0;
-      const expected = type === 'fixed_per_sale' || type === 'fixed_per_cycle'
-        ? amount : type === 'percentage_of_sale' ? sale.amount * amount / 100 : 0;
+      const expected = getSaleLineAllocations(sale)
+        .filter(line => line.item.serviceId === service.id && line.item.planId === plan.id)
+        .reduce((total, line) => total + (type === 'fixed_per_sale' || type === 'fixed_per_cycle'
+          ? amount * line.item.quantity
+          : type === 'percentage_of_sale' ? line.amount * amount / 100 : 0), 0);
       return sum + convertAmount(expected, sale.currency, data.currency);
     }, 0);
     let operatingCost = 0;
-    const serviceSales = sales.filter(sale => sale.serviceId === service.id);
-    const serviceRevenue = serviceSales.reduce((sum, sale) => sum + convertAmount(sale.amount, sale.currency, data.currency), 0);
+    const serviceSales = sales.filter(sale => saleBelongsToService(sale, service.id));
+    const serviceRevenue = serviceSales.reduce((sum, sale) => sum + convertAmount(
+      saleLineAmount(sale, item => item.serviceId === service.id), sale.currency, data.currency
+    ), 0);
     costs.forEach(cost => {
       const type = getCostType(cost);
       const amount = convertAmount(cost.amount, cost.currency, data.currency);
@@ -291,9 +348,28 @@ export function getPlanProfitability(data: ProfitabilityData): ProfitabilityRow[
             : targetCustomerId
               ? planSales.some(sale => sale.customerId === targetCustomerId)
               : targetSubscriptionId
-                ? planSales.some(sale => sale.subscriptionId === targetSubscriptionId)
+                ? planSales.some(sale => sale.subscriptionId === targetSubscriptionId
+                  || sale.lineItems?.some(line => line.units.some(unit => unit.subscriptionId === targetSubscriptionId)))
                 : false;
-        if (matches) directCost += amount;
+        if (matches) {
+          const planSalesRevenue = planSales.reduce((sum, sale) => sum + saleLineAmount(sale, item =>
+            item.serviceId === service.id && item.planId === plan.id
+          ), 0);
+          const matchRevenue = planSales.filter(sale => targetSaleId
+            ? sale.id === targetSaleId
+            : targetPlanId
+              ? true
+              : targetCustomerId
+                ? sale.customerId === targetCustomerId
+                : targetSubscriptionId
+                  ? sale.subscriptionId === targetSubscriptionId
+                    || sale.lineItems?.some(line => line.units.some(unit => unit.subscriptionId === targetSubscriptionId))
+                  : false
+          ).reduce((sum, sale) => sum + saleLineAmount(sale, item =>
+            item.serviceId === service.id && item.planId === plan.id
+          ), 0);
+          directCost += amount * (planSalesRevenue > 0 ? matchRevenue / planSalesRevenue : 1);
+        }
         else if (!targetSaleId && !targetPlanId && !targetCustomerId && !targetSubscriptionId && targetServiceId === service.id) {
           directCost += serviceRevenue > 0 ? amount * revenue / serviceRevenue : 0;
         }
@@ -322,8 +398,18 @@ export function getPlanProfitability(data: ProfitabilityData): ProfitabilityRow[
       operatingCost,
       netContribution,
       netMargin: revenue > 0 ? netContribution / revenue * 100 : null,
-      due: planSales.reduce((sum, sale) => sum + convertAmount(getSaleDueAmount(sale, data.payments), sale.currency, data.currency), 0),
-      discounts: planSales.reduce((sum, sale) => sum + convertAmount(sale.discount || 0, sale.currency, data.currency), 0),
+      due: planSales.reduce((sum, sale) => {
+        const planRevenue = saleLineAmount(sale, item => item.serviceId === service.id && item.planId === plan.id);
+        return sum + convertAmount(getSaleDueAmount(sale, data.payments) * (sale.amount > 0 ? planRevenue / sale.amount : 0), sale.currency, data.currency);
+      }, 0),
+      discounts: planSales.reduce((sum, sale) => {
+        const planItems = getSaleLineAllocations(sale).filter(line =>
+          line.item.serviceId === service.id && line.item.planId === plan.id
+        );
+        const gross = planItems.reduce((total, line) => total + line.item.amount, 0);
+        const net = planItems.reduce((total, line) => total + line.amount, 0);
+        return sum + convertAmount(Math.max(0, gross - net), sale.currency, data.currency);
+      }, 0),
       refunds: 0,
       lowMargin: revenue > 0 && grossProfit / revenue * 100 < (data.lowMarginWarningPercent ?? 20),
       isLoss: netContribution < 0,
@@ -343,13 +429,7 @@ export function getCustomerProfitability(data: ProfitabilityData): Profitability
       .map(cost => getCostSaleId(cost)!));
     let directCost = customerSales.reduce((sum, sale) => {
       if (linkedSaleIds.has(sale.id)) return sum;
-      const service = data.services.find(item => item.id === sale.serviceId);
-      const plan = service?.planDetails?.find(item => item.id === sale.planId);
-      const type = plan?.directCostType || service?.defaultDirectCostType || 'none';
-      const amount = plan?.directCostType ? plan.directCostAmount || 0 : service?.defaultDirectCostAmount || 0;
-      const expected = type === 'fixed_per_sale' || type === 'fixed_per_cycle' ? amount
-        : type === 'percentage_of_sale' ? sale.amount * amount / 100 : 0;
-      return sum + convertAmount(expected, sale.currency, data.currency);
+      return sum + convertAmount(getConfiguredSaleCost(sale, data.services), sale.currency, data.currency);
     }, 0);
     costs.forEach(cost => {
       const type = getCostType(cost);
@@ -365,16 +445,20 @@ export function getCustomerProfitability(data: ProfitabilityData): Profitability
         : costCustomerId
           ? costCustomerId === customer.id
           : planId
-            ? customerSales.some(sale => sale.planId === planId)
+            ? customerSales.some(sale => getSaleLineAllocations(sale).some(line => line.item.planId === planId))
             : subscriptionId
-              ? customerSales.some(sale => sale.subscriptionId === subscriptionId)
+              ? customerSales.some(sale => sale.subscriptionId === subscriptionId
+                || sale.lineItems?.some(line => line.units.some(unit => unit.subscriptionId === subscriptionId)))
               : false;
       if (matches) directCost += amount;
       else if (!saleId && !planId && !costCustomerId && !subscriptionId && serviceId) {
-        const serviceRevenue = sales.filter(sale => sale.serviceId === serviceId)
-          .reduce((sum, sale) => sum + convertAmount(sale.amount, sale.currency, data.currency), 0);
-        const customerServiceRevenue = customerSales.filter(sale => sale.serviceId === serviceId)
-          .reduce((sum, sale) => sum + convertAmount(sale.amount, sale.currency, data.currency), 0);
+        const serviceRevenue = sales.filter(sale => saleBelongsToService(sale, serviceId))
+          .reduce((sum, sale) => sum + convertAmount(
+            saleLineAmount(sale, item => item.serviceId === serviceId), sale.currency, data.currency
+          ), 0);
+        const customerServiceRevenue = customerSales.reduce((sum, sale) => sum + convertAmount(
+          saleLineAmount(sale, item => item.serviceId === serviceId), sale.currency, data.currency
+        ), 0);
         directCost += serviceRevenue > 0 ? amount * customerServiceRevenue / serviceRevenue : 0;
       }
     });
@@ -382,8 +466,10 @@ export function getCustomerProfitability(data: ProfitabilityData): Profitability
     const customerSubscriptions = data.subscriptions.filter(subscription => subscription.customerId === customer.id && subscription.status !== 'cancelled');
     const operatingCost = serviceRows.reduce((sum, row) => {
       const serviceRevenue = row.revenue;
-      const customerServiceRevenue = customerSales.filter(sale => sale.serviceId === row.serviceId)
-        .reduce((total, sale) => total + convertAmount(sale.amount, sale.currency, data.currency), 0);
+      const customerServiceRevenue = customerSales.filter(sale => saleBelongsToService(sale, row.serviceId))
+        .reduce((total, sale) => total + convertAmount(
+          saleLineAmount(sale, item => item.serviceId === row.serviceId), sale.currency, data.currency
+        ), 0);
       return sum + (serviceRevenue > 0 ? row.operatingCost * customerServiceRevenue / serviceRevenue : 0);
     }, 0);
     const netContribution = grossProfit - operatingCost;
@@ -410,29 +496,74 @@ export function getAccountProfitability(
   const subscriptionsBySaleId = new Map(data.subscriptions.flatMap(subscription =>
     subscription.saleId ? [[subscription.saleId, subscription] as const] : []
   ));
-  const rowsByAccount = new Map<string, Sale[]>();
+  const rowsByAccount = new Map<string, {
+    sale: Sale;
+    serviceId: string;
+    amount: number;
+    discount: number;
+    subscriptionIds: string[];
+  }[]>();
 
   sales.forEach(sale => {
-    const accountId = sale.accountId
-      || (sale.subscriptionId ? subscriptionsById.get(sale.subscriptionId)?.accountId : undefined)
-      || subscriptionsBySaleId.get(sale.id)?.accountId
-      || 'unassigned';
-    const accountSales = rowsByAccount.get(accountId) ?? [];
-    accountSales.push(sale);
-    rowsByAccount.set(accountId, accountSales);
+    getSaleLineAllocations(sale).forEach(({ item, amount }) => {
+      const grossMinor = Math.max(0, Math.round(item.amount * 100));
+      const netMinor = Math.max(0, Math.round(amount * 100));
+      const unitAmounts = item.quantity > 0
+        ? Array.from({ length: item.quantity }, (_, index) =>
+          index === item.quantity - 1
+            ? netMinor - Math.floor(netMinor / item.quantity) * (item.quantity - 1)
+            : Math.floor(netMinor / item.quantity)
+        )
+        : [netMinor];
+      const assignedUnits = item.units.length > 0
+        ? item.units
+        : [{
+          subscriptionId: sale.subscriptionId || subscriptionsBySaleId.get(sale.id)?.id || '',
+          accountId: sale.accountId,
+          profileId: sale.profileId,
+        }];
+      const isInventoryAllocated = assignedUnits.some(unit => unit.accountId);
+      const allocations = isInventoryAllocated
+        ? assignedUnits.map((unit, index) => ({
+          accountId: unit.accountId || 'unassigned',
+          amount: (unitAmounts[index] ?? 0) / 100,
+          subscriptionId: unit.subscriptionId,
+        }))
+        : [{
+          accountId: 'unassigned',
+          amount: netMinor / 100,
+          subscriptionIds: assignedUnits.map(unit => unit.subscriptionId).filter(Boolean),
+        }];
+      allocations.forEach(allocation => {
+        const accountSales = rowsByAccount.get(allocation.accountId) ?? [];
+        const amountShare = netMinor > 0 ? allocation.amount / (netMinor / 100) : 0;
+        accountSales.push({
+          sale,
+          serviceId: item.serviceId,
+          amount: allocation.amount,
+          discount: Math.max(0, (grossMinor - netMinor) / 100 * amountShare),
+          subscriptionIds: 'subscriptionIds' in allocation
+            ? allocation.subscriptionIds
+            : allocation.subscriptionId ? [allocation.subscriptionId] : [],
+        });
+        rowsByAccount.set(allocation.accountId, accountSales);
+      });
+    });
   });
 
   const revenueByService = new Map<string, number>();
-  sales.forEach(sale => {
-    revenueByService.set(
-      sale.serviceId,
-      (revenueByService.get(sale.serviceId) ?? 0) + convertAmount(sale.amount, sale.currency, data.currency)
-    );
+  rowsByAccount.forEach(accountSales => {
+    accountSales.forEach(item => {
+      revenueByService.set(
+        item.serviceId,
+        (revenueByService.get(item.serviceId) ?? 0) + convertAmount(item.amount, item.sale.currency, data.currency)
+      );
+    });
   });
 
   return [...rowsByAccount.entries()].map(([accountId, accountSales]) => {
     const revenue = accountSales.reduce(
-      (sum, sale) => sum + convertAmount(sale.amount, sale.currency, data.currency),
+      (sum, item) => sum + convertAmount(item.amount, item.sale.currency, data.currency),
       0
     );
     let directCost = 0;
@@ -441,19 +572,15 @@ export function getAccountProfitability(
       const serviceRevenue = revenueByService.get(serviceRow.id) ?? 0;
       if (!serviceRevenue) return;
       const accountServiceRevenue = accountSales
-        .filter(sale => sale.serviceId === serviceRow.id)
-        .reduce((sum, sale) => sum + convertAmount(sale.amount, sale.currency, data.currency), 0);
+        .filter(item => item.serviceId === serviceRow.id)
+        .reduce((sum, item) => sum + convertAmount(item.amount, item.sale.currency, data.currency), 0);
       const share = accountServiceRevenue / serviceRevenue;
       directCost += serviceRow.directCost * share;
       operatingCost += serviceRow.operatingCost * share;
     });
     const grossProfit = revenue - directCost;
     const netContribution = grossProfit - operatingCost;
-    const accountSubscriptionIds = new Set(accountSales.flatMap(sale => {
-      const subscriptionId = sale.subscriptionId
-        || subscriptionsBySaleId.get(sale.id)?.id;
-      return subscriptionId ? [subscriptionId] : [];
-    }));
+    const accountSubscriptionIds = new Set(accountSales.flatMap(item => item.subscriptionIds));
     const accountSubscriptions = [...accountSubscriptionIds]
       .map(subscriptionId => subscriptionsById.get(subscriptionId))
       .filter(subscription => subscription && subscription.status !== 'cancelled');
@@ -464,7 +591,7 @@ export function getAccountProfitability(
       name: accountId === 'unassigned'
         ? 'Unassigned account'
         : account?.name || `Account ${accountId.slice(0, 8)}`,
-      salesCount: accountSales.length,
+      salesCount: new Set(accountSales.map(item => item.sale.id)).size,
       subscriptionCount: accountSubscriptions.length,
       revenue,
       directCost,
@@ -474,11 +601,15 @@ export function getAccountProfitability(
       netContribution,
       netMargin: revenue > 0 ? netContribution / revenue * 100 : null,
       due: accountSales.reduce(
-        (sum, sale) => sum + convertAmount(getSaleDueAmount(sale, data.payments), sale.currency, data.currency),
+        (sum, item) => sum + convertAmount(
+          getSaleDueAmount(item.sale, data.payments) * (item.sale.amount > 0 ? item.amount / item.sale.amount : 0),
+          item.sale.currency,
+          data.currency
+        ),
         0
       ),
       discounts: accountSales.reduce(
-        (sum, sale) => sum + convertAmount(sale.discount || 0, sale.currency, data.currency),
+        (sum, item) => sum + convertAmount(item.discount, item.sale.currency, data.currency),
         0
       ),
       refunds: 0,
@@ -568,16 +699,8 @@ export function getProfitabilityTrend(data: ProfitabilityData, grouping: 'daily'
     if (!key) return;
     const current = byDate.get(key) || { revenue: 0, directCost: 0 };
     current.revenue += convertAmount(sale.amount, sale.currency, data.currency);
-    const service = data.services.find(item => item.id === sale.serviceId);
-    const plan = service?.planDetails?.find(item => item.id === sale.planId);
-    const type = plan?.directCostType || service?.defaultDirectCostType || 'none';
-    const amount = plan?.directCostType ? plan.directCostAmount || 0 : service?.defaultDirectCostAmount || 0;
     if (!salesWithActualCost.has(sale.id)) {
-      current.directCost += convertAmount(
-        type === 'fixed_per_sale' || type === 'fixed_per_cycle' ? amount
-          : type === 'percentage_of_sale' ? sale.amount * amount / 100 : 0,
-        sale.currency, data.currency
-      );
+      current.directCost += convertAmount(getConfiguredSaleCost(sale, data.services), sale.currency, data.currency);
     }
     byDate.set(key, current);
   });

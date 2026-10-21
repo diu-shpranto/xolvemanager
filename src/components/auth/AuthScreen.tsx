@@ -111,8 +111,9 @@ const copy = {
     recoveryEyebrow: 'Account recovery',
     loading: 'Working…',
     language: 'বাংলা',
-    demoLogin: 'One-click demo login',
-    demoLoginSubtitle: 'Use the demo owner account instantly.',
+    demoLogin: 'Try Demo Account',
+    demoLoginSubtitle: 'Explore XolveManager with sample data.',
+    demoLoading: 'Preparing demo workspace…',
   },
   bn: {
     loginTitle: 'আপনার কর্মক্ষেত্রে সাইন ইন করুন',
@@ -178,8 +179,9 @@ const copy = {
     recoveryEyebrow: 'অ্যাকাউন্ট পুনরুদ্ধার',
     loading: 'অপেক্ষা করুন…',
     language: 'English',
-    demoLogin: 'ওয়ান-ক্লিক ডেমো লগইন',
-    demoLoginSubtitle: 'দ্রুত ডেমো মালিক অ্যাকাউন্টে ঢুকুন।',
+    demoLogin: 'ডেমো অ্যাকাউন্ট দেখুন',
+    demoLoginSubtitle: 'নমুনা তথ্য দিয়ে XolveManager ঘুরে দেখুন।',
+    demoLoading: 'ডেমো ওয়ার্কস্পেস প্রস্তুত হচ্ছে…',
   },
 } as const;
 
@@ -197,6 +199,7 @@ const getErrorMessage = (error: unknown, language: Language): string => {
     WEAK_PASSWORD: 'কমপক্ষে ১০ অক্ষর এবং বড়/ছোট হাতের অক্ষর, সংখ্যা ও চিহ্নের মধ্যে অন্তত তিন ধরনের অক্ষর ব্যবহার করুন।',
     PASSWORD_MISMATCH: 'পাসওয়ার্ড দুটি মিলছে না।',
     INVALID_RECOVERY_KEY: 'ইমেইল ঠিকানা বা রিকভারি কী সঠিক নয়।',
+    DEMO_SESSION_CONFLICT: 'ডেমো মোডে যাওয়ার আগে নিবন্ধিত অ্যাকাউন্ট থেকে সাইন আউট করুন।',
     STORAGE_FAILURE: 'স্থানীয় প্রমাণীকরণ ডেটা সংরক্ষণ বা পড়া যায়নি। ব্যবসার ডেটা পরিবর্তন করা হয়নি।',
   };
   return messages[error.code] || error.message;
@@ -230,6 +233,37 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   useEffect(() => {
     setError(initialError || '');
   }, [initialError]);
+
+  useEffect(() => {
+    const visualViewport = window.visualViewport;
+    if (!visualViewport) return;
+
+    let revealFrame = 0;
+    const revealFocusedControl = () => {
+      window.cancelAnimationFrame(revealFrame);
+      revealFrame = window.requestAnimationFrame(() => {
+        const focused = document.activeElement;
+        if (!(focused instanceof HTMLElement) || !focused.closest('.auth-page')) return;
+
+        const bounds = focused.getBoundingClientRect();
+        const visibleTop = visualViewport.offsetTop + 12;
+        const visibleBottom = visibleTop + visualViewport.height - 24;
+        if (bounds.top < visibleTop || bounds.bottom > visibleBottom) {
+          focused.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+      });
+    };
+
+    document.addEventListener('focusin', revealFocusedControl);
+    visualViewport.addEventListener('resize', revealFocusedControl);
+    visualViewport.addEventListener('scroll', revealFocusedControl);
+    return () => {
+      document.removeEventListener('focusin', revealFocusedControl);
+      visualViewport.removeEventListener('resize', revealFocusedControl);
+      visualViewport.removeEventListener('scroll', revealFocusedControl);
+      window.cancelAnimationFrame(revealFrame);
+    };
+  }, []);
 
   const navigate = (path: string) => {
     setError('');
@@ -467,9 +501,9 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                     <>
                       <div className="auth-divider"><span />{text.divider}<span /></div>
                       <button type="button" onClick={handleDemoLogin} disabled={busy} className="auth-account-button auth-demo-button">
-                        <ShieldCheck aria-hidden="true" />
+                        {busy ? <LoaderCircle className="auth-spinner" aria-hidden="true" /> : <ShieldCheck aria-hidden="true" />}
                         <span>
-                          <strong>{text.demoLogin}</strong>
+                          <strong>{busy ? text.demoLoading : text.demoLogin}</strong>
                           <small>{text.demoLoginSubtitle}</small>
                         </span>
                         <ChevronRight aria-hidden="true" />

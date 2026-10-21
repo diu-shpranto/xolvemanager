@@ -1,14 +1,16 @@
 import type { AppSettings, Customer, Invoice, Payment, Sale, Service, Subscription } from '../types';
-import { createRecordId } from '../services/localStorageStore';
-import { getCustomerDisplayName, getCustomerType } from './relationships';
+import { createRecordId } from '../services/localStorageStore.ts';
+import { getCustomerDisplayName, getCustomerType } from './relationships.ts';
 import {
-  getPaymentSaleAllocation,
+  getPaymentCashSaleAllocation,
   getSaleDueAmount,
+  getSaleLineItems,
   getSalePaidAmount,
   getSalePaymentStatus,
   getSalePayments,
-} from './saleUtils';
+} from './saleUtils.ts';
 import type { InvoiceSaleDetails } from './invoiceGenerator';
+import { calculateExpiryDate } from './dateUtils.ts';
 
 export function createInvoiceRecord(
   sale: Sale,
@@ -48,7 +50,9 @@ export function buildInvoiceSaleDetails(
   service: Service | undefined,
   payments: Payment[],
   settings: AppSettings,
-  subscription?: Subscription
+  subscription?: Subscription,
+  services: Service[] = [],
+  subscriptions: Subscription[] = []
 ): InvoiceSaleDetails {
   const linkedPayments = getSalePayments(sale, payments).sort((a, b) =>
     `${b.paymentDate}|${b.createdAt || ''}`.localeCompare(`${a.paymentDate}|${a.createdAt || ''}`)
@@ -66,18 +70,47 @@ export function buildInvoiceSaleDetails(
     : durationDays
       ? `${durationDays} ${displayDurationUnit || (durationDays === 1 ? 'day' : 'days')}`
       : undefined;
+  const lineItems = getSaleLineItems(sale).map(item => {
+    const itemService = services.find(candidate => candidate.id === item.serviceId)
+      || (service?.id === item.serviceId ? service : undefined);
+    const itemPlan = itemService?.planDetails?.find(candidate => candidate.id === item.planId);
+    const itemSubscription = subscriptions.find(candidate =>
+      candidate.id === item.units[0]?.subscriptionId
+    );
+    return {
+      serviceName: item.serviceNameSnapshot || itemService?.name || 'Service unavailable',
+      planName: item.plan,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      subtotal: item.subtotal,
+      discount: item.discount,
+      total: item.amount,
+      currency: item.currency,
+      startDate: itemSubscription?.startDate || item.startDate || undefined,
+      expiryDate: itemSubscription?.expiryDate
+        || (item.startDate && item.durationDays
+          ? calculateExpiryDate(item.startDate, item.durationDays)
+          : undefined),
+      durationDays: itemSubscription?.durationDays || item.durationDays || itemPlan?.durationDays,
+    };
+  });
   const receivedPayments = linkedPayments.filter(payment =>
-    (payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial') && payment.amount > 0
+    (payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial')
+    && getPaymentCashSaleAllocation(payment, sale) > 0
+  );
+  const amountReceived = receivedPayments.reduce(
+    (total, payment) => total + getPaymentCashSaleAllocation(payment, sale),
+    0
   );
   const paymentMethods = [...new Set(receivedPayments.map(payment => payment.paymentMethodName || payment.paymentMethod))];
   const paymentMethodBreakdown = [...receivedPayments.reduce((groups, payment) => {
     const methodName = payment.paymentMethodName || payment.paymentMethod;
     const current = groups.get(methodName) || { methodName, amount: 0 };
-    current.amount += getPaymentSaleAllocation(payment, sale);
+    current.amount += getPaymentCashSaleAllocation(payment, sale);
     groups.set(methodName, current);
     return groups;
   }, new Map<string, { methodName: string; amount: number }>()).values()];
-  if (paymentMethods.length === 0 && getSalePaidAmount(sale, payments) > 0 && sale.paymentMethod) {
+  if (paymentMethods.length === 0 && linkedPayments.length === 0 && getSalePaidAmount(sale, payments) > 0 && sale.paymentMethod) {
     paymentMethods.push(sale.paymentMethod);
   }
   return {
@@ -92,6 +125,7 @@ export function buildInvoiceSaleDetails(
     customerPhone: customer?.phone || customer?.whatsapp,
     customerEmail: customer?.email,
     serviceName: service?.name || 'Service unavailable',
+    lineItems,
     planName: planName || 'Plan information unavailable',
     durationLabel,
     durationDays,
@@ -99,6 +133,8 @@ export function buildInvoiceSaleDetails(
     expiryDate: subscription?.expiryDate,
     amount: sale.amount,
     amountPaid: getSalePaidAmount(sale, payments),
+    amountReceived,
+    advanceCreditApplied: Math.max(0, getSalePaidAmount(sale, payments) - amountReceived),
     amountDue: getSaleDueAmount(sale, payments),
     subtotal: sale.subtotal ?? sale.amount + (sale.discount || 0),
     discount: sale.discount || 0,
@@ -106,18 +142,18 @@ export function buildInvoiceSaleDetails(
     paymentMethod: paymentMethods.join(', ') || 'Not specified',
     paymentMethodBreakdown,
     paymentStatus: getSalePaymentStatus(sale, payments),
-    paymentDate: linkedPayments[0]?.paymentDate,
-    transactionId: linkedPayments[0]?.transactionId || sale.transactionId,
-    paymentHistory: linkedPayments.map(payment => ({
+    paymentDate: receivedPayments[0]?.paymentDate,
+    transactionId: receivedPayments[0]?.transactionId || sale.transactionId,
+    paymentHistory: receivedPayments.map(payment => ({
       id: payment.id,
       paymentDate: payment.paymentDate,
       paymentMethod: payment.paymentMethodName || payment.paymentMethod,
-      amount: payment.amount,
+      amount: getPaymentCashSaleAllocation(payment, sale),
       currency: payment.currency,
       paymentStatus: payment.paymentStatus,
       transactionId: payment.transactionId,
     })),
-    senderNumber: linkedPayments[0]?.senderNumber || sale.senderNumber,
+    senderNumber: receivedPayments[0]?.senderNumber || sale.senderNumber,
     storeName: settings.storeName || 'Your Business',
     tagline: settings.tagline,
     contactPhone: settings.contactPhone,
@@ -126,6 +162,7 @@ export function buildInvoiceSaleDetails(
       ? undefined
       : settings.businessProfile?.address,
     invoiceFooter: settings.invoicePreferences?.footer,
+    notes: sale.notes,
     whatsappNumber: settings.whatsappNumber || settings.contactPhone || undefined,
     invoiceLogoUrl: settings.invoiceLogoDataUrl || settings.invoiceLogoUrl,
     serviceDescription: service?.description,

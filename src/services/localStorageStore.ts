@@ -49,6 +49,41 @@ export const STORAGE_KEYS = {
   PROFITABILITY_COSTS: 'sqp_profitability_costs_v1',
 } as const;
 
+export const DATA_ENVIRONMENT_SESSION_KEY = 'xolvemanager.data-environment.v1';
+export type DataEnvironment = 'production' | 'demo';
+
+export const getActiveDataEnvironment = (): DataEnvironment => {
+  if (typeof window === 'undefined') return 'production';
+  try {
+    return window.sessionStorage.getItem(DATA_ENVIRONMENT_SESSION_KEY) === 'demo'
+      ? 'demo'
+      : 'production';
+  } catch (error) {
+    console.error('Could not read the active data environment.', error);
+    throw new Error('The active data environment could not be verified.');
+  }
+};
+
+export const setActiveDataEnvironment = (environment: DataEnvironment): void => {
+  if (typeof window === 'undefined') {
+    throw new Error('A browser session is required to select the data environment.');
+  }
+  try {
+    if (environment === 'demo') window.sessionStorage.setItem(DATA_ENVIRONMENT_SESSION_KEY, environment);
+    else window.sessionStorage.removeItem(DATA_ENVIRONMENT_SESSION_KEY);
+  } catch (error) {
+    console.error('Could not select the active data environment.', error);
+    throw new Error('The active data environment could not be changed.');
+  }
+};
+
+export const getStorageKey = (key: string): string => {
+  if (getActiveDataEnvironment() !== 'demo'
+    || key === STORAGE_KEYS.THEME
+    || key === STORAGE_KEYS.LANG) return key;
+  return `xolvemanager.demo.v1.${key}`;
+};
+
 const storageWarnings = new Map<string, string>();
 
 export const getStorageWarnings = (): string[] => [...storageWarnings.values()];
@@ -81,8 +116,9 @@ const preserveCorruptValue = (key: string, value: string): void => {
       hash = Math.imul(hash ^ value.charCodeAt(index), 16777619);
     }
     const backupKey = `${key}.corrupt.${(hash >>> 0).toString(16)}`;
-    if (storage.getItem(backupKey) !== value) {
-      storage.setItem(backupKey, value);
+    const scopedBackupKey = getStorageKey(backupKey);
+    if (storage.getItem(scopedBackupKey) !== value) {
+      storage.setItem(scopedBackupKey, value);
       console.error(`Invalid saved data for "${key}" was preserved as "${backupKey}".`);
     }
   } catch (error) {
@@ -92,7 +128,7 @@ const preserveCorruptValue = (key: string, value: string): void => {
 
 export const readRawValue = (key: string): string | null => {
   try {
-    return getStorage()?.getItem(key) ?? null;
+    return getStorage()?.getItem(getStorageKey(key)) ?? null;
   } catch (error) {
     setStorageWarning(`read:${key}`, 'Some saved data could not be read from this browser.');
     console.error(`Could not read saved data for "${key}".`, error);
@@ -108,7 +144,7 @@ export const writeRawValue = (key: string, value: string): void => {
   }
 
   try {
-    storage.setItem(key, value);
+    storage.setItem(getStorageKey(key), value);
   } catch (error) {
     setStorageWarning(`write:${key}`, 'Some changes could not be saved in this browser.');
     console.error(`Could not save data for "${key}".`, error);
@@ -120,10 +156,13 @@ export const writeRawValue = (key: string, value: string): void => {
 export const replaceRawValuesAtomically = (values: Record<string, string | null>): void => {
   const storage = getStorage();
   if (!storage) throw new Error('Browser storage is unavailable.');
+  const scopedValues = Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [getStorageKey(key), value])
+  );
   const previous = new Map<string, string | null>();
   try {
-    Object.keys(values).forEach(key => previous.set(key, storage.getItem(key)));
-    Object.entries(values).forEach(([key, value]) => {
+    Object.keys(scopedValues).forEach(key => previous.set(key, storage.getItem(key)));
+    Object.entries(scopedValues).forEach(([key, value]) => {
       if (value === null) storage.removeItem(key);
       else storage.setItem(key, value);
     });
@@ -148,7 +187,7 @@ export const replaceRawValuesAtomically = (values: Record<string, string | null>
 
 export const removeStoredValue = (key: string): void => {
   try {
-    getStorage()?.removeItem(key);
+    getStorage()?.removeItem(getStorageKey(key));
   } catch (error) {
     setStorageWarning(`remove:${key}`, 'Some saved data could not be cleared from this browser.');
     console.error(`Could not remove saved data for "${key}".`, error);
