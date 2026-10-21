@@ -154,7 +154,9 @@ export function generateWhatsAppMessage(
   const due = isRenewalAmount ? subscription?.price ?? 0 : saleDue;
   const sourceCurrency = sale?.currency || subscription?.currency || data.settings.currency;
   const convertAmount = (amount: number) => convertReportCurrency(amount, sourceCurrency, data.settings.currency);
-  const daysRemaining = subscription ? getDaysDifference(subscription.expiryDate) : undefined;
+  const daysRemaining = subscription
+    ? getDaysDifference(subscription.expiryDate, data.settings.businessProfile?.timeZone)
+    : undefined;
   const messageLanguage = data.settings.whatsappPreferences?.defaultLanguage || data.settings.language || 'en';
 
   if (!customer) missingFields.push('customer');

@@ -36,6 +36,7 @@ export interface Customer {
   id: string;
   businessId?: string;
   name: string;
+  customerType?: CustomerType;
   phone: string;
   whatsapp?: string;
   email: string;
@@ -53,6 +54,8 @@ export interface Customer {
   preferences?: CustomerPreferences;
   duplicateOfCustomerId?: string;
 }
+
+export type CustomerType = 'Customer' | 'Reseller';
 
 export type WhatsAppTemplateId =
   | 'welcome_customer'
@@ -233,6 +236,8 @@ export interface Account {
   status: AccountStatus;
   name?: string;
   purchaseDate?: string;
+  purchaseCost?: number;
+  purchaseCostCurrency?: AppCurrency;
   expiryDate?: string;
   notes?: string;
   maxProfiles: number;
@@ -590,6 +595,9 @@ export interface Sale {
   discount?: number;
   amountPaid?: number;
   paymentAllocationBaseline?: number;
+  actualCostSnapshot?: number;
+  actualCostCurrency?: AppCurrency;
+  actualCostAllocation?: 'full_account' | 'profile_slot';
   currency: AppCurrency;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
@@ -691,7 +699,16 @@ export type ActivityType =
   | 'service_added'
   | 'service_updated'
   | 'service_removed'
+  | 'service_archived'
+  | 'service_restored'
   | 'customer_updated'
+  | 'customer_removed'
+  | 'customer_archived'
+  | 'customer_restored'
+  | 'account_removed'
+  | 'plan_created'
+  | 'plan_updated'
+  | 'plan_deactivated'
   | 'business_settings_updated'
   | 'backup_created'
   | 'backup_restored'
@@ -779,6 +796,9 @@ export type ActivityCategory =
 export type ActivityAction =
   | 'created'
   | 'updated'
+  | 'activated'
+  | 'cancelled'
+  | 'restored'
   | 'completed'
   | 'renewed'
   | 'paid'

@@ -61,14 +61,12 @@ import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
 import { getExpiryWhatsAppTemplateId } from '../../utils/whatsappService';
 import {
   formatAppDate,
-  formatAppDateTime,
   formatCurrency,
-  getSubscriptionStatus,
+  getDaysDifferenceForTimeZone,
+  getSubscriptionStatusForTimeZone,
   getExpiryBadgeInfo,
   getSubscriptionReminderDays,
-  getTodayDateString,
   getDateInTimeZone,
-  getDaysDifference,
 } from '../../utils/dateUtils';
 import { NavSection } from '../navigation/Sidebar';
 import type {
@@ -219,7 +217,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onViewSale,
   onNavigateToCustomers,
 }) => {
-  const { formatCurrency, formatDate: formatAppDate, formatNumber, formatDurationDays } = useAppFormatting();
+  const { formatCurrency, formatDate: formatAppDate, formatDateTime: formatAppDateTime, formatNumber, formatDurationDays } = useAppFormatting();
   const prefersReducedMotion = useReducedMotionPreference();
   const {
     stats,
@@ -256,6 +254,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     installDemoData,
     updateSettings,
   } = useApp();
+  const getDaysDifference = getDaysDifferenceForTimeZone(settings.businessProfile?.timeZone);
+  const getSubscriptionStatus = getSubscriptionStatusForTimeZone(settings.businessProfile?.timeZone);
   const { showToast } = useToast();
   const { openMessage, canContact } = useWhatsAppCommunication();
   const savedDashboardLayout = useMemo(
@@ -358,10 +358,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [outstandingSort, setOutstandingSort] = useState<'due' | 'oldest'>('due');
   const [isDownloadingInvoice, setIsDownloadingInvoice] = useState(false);
   const downloadTask = useRef(false);
-  const todayString = getTodayDateString();
+  const todayString = getDateInTimeZone(settings.businessProfile?.timeZone);
   const reportBounds = useMemo(
-    () => getReportDateBounds(datePreset, new Date(), customStartDate, customEndDate),
-    [datePreset, customStartDate, customEndDate]
+    () => getReportDateBounds(datePreset, new Date(`${todayString}T12:00:00`), customStartDate, customEndDate),
+    [datePreset, customStartDate, customEndDate, todayString]
   );
   const validReportRange = datePreset !== 'custom'
     || Boolean(customStartDate && customEndDate && customStartDate <= customEndDate);
@@ -403,10 +403,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     scopedServices,
     currency,
     new Date(),
-    settings.reminderNoticeDays
+    settings.reminderNoticeDays,
+    settings.businessProfile?.timeZone
   ), [
     scopedCustomers, scopedSales, scopedSubscriptions, scopedPayments, scopedInvoices,
-    scopedActivity, scopedServices, currency, settings.reminderNoticeDays,
+    scopedActivity, scopedServices, currency, settings.reminderNoticeDays, settings.businessProfile?.timeZone,
   ]);
   const customerById = useMemo(() => new Map(scopedCustomers.map(customer => [customer.id, customer])), [scopedCustomers]);
   const serviceById = useMemo(() => new Map(scopedServices.map(service => [service.id, service])), [scopedServices]);
@@ -459,9 +460,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   ]);
   const hasCriticalWarning = financialIntegrityErrors > 0 || Boolean(storageWarning);
   const panelOrderChanged = dashboardPanelWidgetIds.some((id, index) => activeDashboardLayout.panelOrder[index] !== id);
+  const hasHiddenPanel = dashboardPanelWidgetIds.some(id => activeDashboardLayout.hidden.includes(id));
+  const hasCustomPanelLayout = panelOrderChanged || hasHiddenPanel;
   const isPanelVisible = (id: DashboardPanelWidgetId) =>
     (id === 'attention' && hasCriticalWarning) || !activeDashboardLayout.hidden.includes(id);
-  const getPanelLayoutStyle = (id: DashboardPanelWidgetId): React.CSSProperties | undefined => panelOrderChanged
+  const getPanelLayoutStyle = (id: DashboardPanelWidgetId): React.CSSProperties | undefined => hasCustomPanelLayout
     ? { gridArea: 'auto', order: activeDashboardLayout.panelOrder.indexOf(id) }
     : undefined;
   const reconciliationDifferences = useMemo(() => {
@@ -519,22 +522,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     () => sumPaymentRecords(filteredPayments, currency),
     [filteredPayments, currency]
   );
-  const receivedByCurrency = useMemo(() => ({
-    BDT: sumPaymentRecords(filteredPayments.filter(payment => payment.currency === 'BDT'), 'BDT'),
-    USD: sumPaymentRecords(filteredPayments.filter(payment => payment.currency === 'USD'), 'USD'),
-  }), [filteredPayments]);
-  const salesSummaryByCurrency = useMemo(() => ({
-    BDT: calculateSalesFinancialSummary(filteredSales.filter(sale => sale.currency === 'BDT'), scopedPayments, 'BDT'),
-    USD: calculateSalesFinancialSummary(filteredSales.filter(sale => sale.currency === 'USD'), scopedPayments, 'USD'),
-  }), [filteredSales, scopedPayments]);
   const paymentMethodSummary = useMemo(
     () => getPaymentMethodSummary(
       filteredPayments.filter(payment => payment.currency === currency),
       normalizePaymentMethods(settings.paymentPreferences?.methods),
       currency,
-      getTodayDateString()
+      todayString
     ),
-    [filteredPayments, settings.paymentPreferences?.methods, currency]
+    [filteredPayments, settings.paymentPreferences?.methods, currency, todayString]
   );
   const isSubscriptionActiveNow = (subscription: Subscription) =>
     getSubscriptionStatus(subscription, serviceById.get(subscription.serviceId), settings.reminderNoticeDays) === 'active';
@@ -542,12 +537,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     getSubscriptionStatus(subscription, serviceById.get(subscription.serviceId), settings.reminderNoticeDays) === 'expiring_soon';
   const activeBusinessSubscriptions = useMemo(
     () => scopedSubscriptions.filter(isSubscriptionActiveNow),
-    [scopedSubscriptions, serviceById, settings.reminderNoticeDays]
+    [scopedSubscriptions, serviceById, settings.reminderNoticeDays, settings.businessProfile?.timeZone]
   );
   const endingSoonSubscriptions = useMemo(() => scopedSubscriptions
     .filter(isSubscriptionEndingSoon)
     .sort((left, right) => left.expiryDate.localeCompare(right.expiryDate)),
-  [scopedSubscriptions, serviceById, settings.reminderNoticeDays]);
+  [scopedSubscriptions, serviceById, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
   const dueSoonCount = calculateRenewalsDue(scopedSubscriptions, isSubscriptionEndingSoon);
   const activeCustomerIds = useMemo(
     () => new Set(activeBusinessSubscriptions.map(subscription => subscription.customerId)),
@@ -556,12 +551,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const customerSales = useMemo(
     () => calculateCustomerPerformance(filteredSales, filteredSubscriptions, scopedPayments, scopedCustomers, currency, isSubscriptionActiveNow)
       .sort((left, right) => right.spent - left.spent),
-    [filteredSales, filteredSubscriptions, scopedPayments, scopedCustomers, currency, serviceById, settings.reminderNoticeDays]
+    [filteredSales, filteredSubscriptions, scopedPayments, scopedCustomers, currency, serviceById, settings.reminderNoticeDays, settings.businessProfile?.timeZone]
   );
   const servicePerformance = useMemo(
     () => calculateServicePerformance(filteredSales, filteredSubscriptions, scopedPayments, scopedServices, currency, isSubscriptionActiveNow)
       .sort((left, right) => right.revenue - left.revenue),
-    [filteredSales, filteredSubscriptions, scopedPayments, scopedServices, currency, serviceById, settings.reminderNoticeDays]
+    [filteredSales, filteredSubscriptions, scopedPayments, scopedServices, currency, serviceById, settings.reminderNoticeDays, settings.businessProfile?.timeZone]
   );
   const serviceCustomerCounts = useMemo(() => {
     const customerIdsByService = new Map<string, Set<string>>();
@@ -576,7 +571,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const planPerformance = useMemo(
     () => calculatePlanPerformance(filteredSales, filteredSubscriptions, scopedPayments, scopedServices, currency, isSubscriptionActiveNow)
       .sort((left, right) => right.revenue - left.revenue),
-    [filteredSales, filteredSubscriptions, scopedPayments, scopedServices, currency, serviceById, settings.reminderNoticeDays]
+    [filteredSales, filteredSubscriptions, scopedPayments, scopedServices, currency, serviceById, settings.reminderNoticeDays, settings.businessProfile?.timeZone]
   );
   const activeCustomerCount = scopedCustomers.filter(customer =>
     !customer.isArchived && customerCrmMetrics.get(customer.id)?.status === 'active'
@@ -588,10 +583,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     !customer.isArchived && customerCrmMetrics.get(customer.id)?.status === 'at_risk'
   ).length;
   const newCustomerCount = scopedCustomers.filter(customer =>
-    !customer.isArchived && isCustomerNew(customer.createdAt)
+    !customer.isArchived && isCustomerNew(customer.createdAt, new Date(), settings.businessProfile?.timeZone)
   ).length;
   const resourceMetrics = useMemo(() => {
-    const activeAccounts = scopedAccounts.filter(account => isAccountOperational(account));
+    const activeAccounts = scopedAccounts.filter(account => isAccountOperational(account, settings.businessProfile?.timeZone));
     return {
       accounts: scopedAccounts.length,
       profiles: scopedAccounts.reduce((total, account) => total + getAccountCapacity(account).capacity, 0),
@@ -604,7 +599,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           && getDaysDifference(profile.expiryDate) >= 0
           && getDaysDifference(profile.expiryDate) <= RESOURCE_CAPACITY_THRESHOLDS.expiringSoonDays).length, 0),
     };
-  }, [scopedAccounts]);
+  }, [scopedAccounts, settings.businessProfile?.timeZone]);
   const centralRecentSales = [...filteredSales].sort((left, right) => right.date.localeCompare(left.date)).slice(0, 8);
   const paymentSaleById = useMemo(() => {
     const map = new Map<string, Sale | undefined>();
@@ -676,7 +671,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         && days >= -CUSTOMER_CRM_THRESHOLDS.recentlyExpiredDays;
     }),
   ].sort((left, right) => left.expiryDate.localeCompare(right.expiryDate)),
-  [endingSoonSubscriptions, scopedSubscriptions, serviceById, settings.reminderNoticeDays]);
+  [endingSoonSubscriptions, scopedSubscriptions, serviceById, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
   const renewalsDueToday = scopedSubscriptions.filter(subscription =>
     subscription.status !== 'cancelled' && !subscription.cancelledAt && daysUntilExpiry(subscription) === 0
   );
@@ -740,7 +735,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       expired: all.filter(sub => currentStatus(sub) === 'expired').length,
       cancelled: all.filter(sub => currentStatus(sub) === 'cancelled').length,
     };
-  }, [scopedSubscriptions, activeBusinessSubscriptions, outstandingSales, serviceById, settings.reminderNoticeDays]);
+  }, [scopedSubscriptions, activeBusinessSubscriptions, outstandingSales, serviceById, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
 
   // MRR Chart controls
   const [mrrPeriod, setMrrPeriod] = useState<'6m' | '12m'>('6m');
@@ -772,7 +767,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         return status === 'expiring_soon' || status === 'expired';
       })
       .sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
-  }, [subscriptions, services, settings.reminderNoticeDays]);
+  }, [subscriptions, services, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
 
   const attentionItems = useMemo(() => {
     const groupedIssues = new Map<string, { kind: 'expired' | 'expiring'; serviceId: string; count: number }>();
@@ -826,7 +821,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return [...subscriptionItems, ...inventoryItems]
       .sort((a, b) => a.priority - b.priority)
       .slice(0, 4);
-  }, [subscriptions, settings.reminderNoticeDays, services, accounts, language]);
+  }, [subscriptions, settings.reminderNoticeDays, services, accounts, language, settings.businessProfile?.timeZone]);
 
   const recentActivity = useMemo(
     () =>
@@ -841,7 +836,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return subscriptions.filter(
       s => getSubscriptionStatus(s, serviceById.get(s.serviceId), settings.reminderNoticeDays) !== 'expired'
     );
-  }, [subscriptions, services, settings.reminderNoticeDays]);
+  }, [subscriptions, services, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
 
   // Helper to compute normalized 30-day MRR for a subscription
   const computeSubMRR = (sub: Subscription): number => {
@@ -873,18 +868,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // Generate dynamic Monthly Recurring Revenue (MRR) trend data
   const mrrTrendData = useMemo(() => {
     const monthsCount = mrrPeriod === '6m' ? 6 : 12;
-    const now = new Date();
+    const [currentYear, currentMonth, currentDay] = getDateInTimeZone(settings.businessProfile?.timeZone).split('-').map(Number);
+    const now = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay, 12));
     const result = [];
 
     for (let i = monthsCount - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const year = d.getFullYear();
-      const monthNum = d.getMonth() + 1;
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      const year = d.getUTCFullYear();
+      const monthNum = d.getUTCMonth() + 1;
       const monthStr = `${year}-${String(monthNum).padStart(2, '0')}`;
       const monthLabel = formatAppDate(`${monthStr}-01`, language, { month: 'short', year: '2-digit' });
 
       const startOfMonthStr = `${monthStr}-01`;
-      const lastDay = new Date(year, monthNum, 0).getDate();
+      const lastDay = new Date(Date.UTC(year, monthNum, 0)).getUTCDate();
       const endOfMonthStr = `${monthStr}-${String(lastDay).padStart(2, '0')}`;
 
       // Realized cash collections in this month from sales
@@ -916,7 +912,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     return result;
-  }, [mrrPeriod, sales, payments, subscriptions, currentTotalMRR, currency, language]);
+  }, [mrrPeriod, sales, payments, subscriptions, currentTotalMRR, currency, language, settings.businessProfile?.timeZone]);
 
   // Compute MRR Growth Rate
   const mrrGrowthRate = useMemo(() => {
@@ -1029,7 +1025,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Compute dynamic 3-Month Subscription Renewal Forecast based on existing subscription data
   const forecastData = useMemo(() => {
-    const now = new Date();
+    const [currentYear, currentMonth, currentDay] = getDateInTimeZone(settings.businessProfile?.timeZone).split('-').map(Number);
+    const now = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay, 12));
     const months: Array<{
       monthKey: string;
       label: string;
@@ -1059,8 +1056,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
     // Next 3 calendar months (Month +1, Month +2, Month +3)
     for (let i = 1; i <= 3; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + i, 1));
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
       const label = formatAppDate(`${key}-01`, language, { month: 'short', year: '2-digit' });
       const fullMonthName = formatAppDate(`${key}-01`, language, { month: 'long', year: 'numeric' });
 
@@ -1079,7 +1076,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     // Limit date: end of 3rd forecast month
-    const limitDate = new Date(now.getFullYear(), now.getMonth() + 4, 1);
+    const limitDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 4, 1));
 
     const serviceMap = new Map(services.map(s => [s.id, s]));
     const customerMap = new Map(customers.map(c => [c.id, c]));
@@ -1089,7 +1086,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
     subscriptions.forEach(sub => {
       if (!sub.expiryDate) return;
-      const expDate = new Date(sub.expiryDate);
+      const expDate = new Date(`${sub.expiryDate}T00:00:00Z`);
       if (isNaN(expDate.getTime())) return;
 
       // Price converted to active currency
@@ -1109,8 +1106,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       // Step forward through the 3-month forecast window
       while (cycleDate < limitDate) {
-        const year = cycleDate.getFullYear();
-        const monthNum = cycleDate.getMonth() + 1;
+        const year = cycleDate.getUTCFullYear();
+          const monthNum = cycleDate.getUTCMonth() + 1;
         const cycleKey = `${year}-${String(monthNum).padStart(2, '0')}`;
 
         const targetIdx = targetKeys.indexOf(cycleKey);
@@ -1183,12 +1180,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       totalRenewals,
       avgMonthlyProjected,
     };
-  }, [subscriptions, services, customers, currency, language, forecastRetentionRate]);
+  }, [subscriptions, services, customers, currency, language, forecastRetentionRate, settings.businessProfile?.timeZone]);
 
   // Compute dynamic Monthly Revenue Growth Trend Data with optional 3-Month Forecast
   const monthlyRevenueGrowthData = useMemo(() => {
     const monthsCount = revenuePeriod === '6m' ? 6 : 12;
-    const now = new Date();
+    const [currentYear, currentMonth, currentDay] = getDateInTimeZone(settings.businessProfile?.timeZone).split('-').map(Number);
+    const now = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay, 12));
     const result: Array<{
       month: string;
       label: string;
@@ -1211,9 +1209,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
     // 1. Build chronological historical month sequence
     for (let i = monthsCount - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const year = d.getFullYear();
-      const monthNum = d.getMonth() + 1;
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      const year = d.getUTCFullYear();
+      const monthNum = d.getUTCMonth() + 1;
       const monthStr = `${year}-${String(monthNum).padStart(2, '0')}`;
       const monthLabel = formatAppDate(`${monthStr}-01`, language, { month: 'short', year: '2-digit' });
       const fullMonthLabel = formatAppDate(`${monthStr}-01`, language, { month: 'long', year: 'numeric' });
@@ -1323,7 +1321,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     return result;
-  }, [revenuePeriod, revenueStatusFilter, sales, payments, currency, language, showForecast, forecastData]);
+  }, [revenuePeriod, revenueStatusFilter, sales, payments, currency, language, showForecast, forecastData, settings.businessProfile?.timeZone]);
 
   // Executive KPI summary for historical period
   const revenueGrowthSummary = useMemo(() => {
@@ -1593,8 +1591,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <button type="button" style={{ order }} onClick={() => onNavigate('payments')} className="dashboard-revenue-kpi">
         <span className="dashboard-kpi-eyebrow">{dashboardCopy.receivedRevenue}</span>
         <span className="dashboard-revenue-values">
-          <span><small>BDT</small><strong>{formatCurrency(receivedByCurrency.BDT, 'BDT')}</strong></span>
-          <span><small>USD</small><strong>{formatCurrency(receivedByCurrency.USD, 'USD')}</strong></span>
+          <span><small>{currency}</small><strong>{formatCurrency(receivedInRange, currency)}</strong></span>
         </span>
         <span className="dashboard-revenue-context">{dashboardCopy.receivedContext} · {reportRangeLabel}</span>
         <ArrowUpRight className="dashboard-revenue-arrow" aria-hidden="true" />
@@ -1622,11 +1619,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </button>
     ),
     outstandingPayments: order => (
-      <button type="button" style={{ order }} onClick={() => onNavigate('payments')} className={`dashboard-kpi dashboard-kpi--outstanding${salesSummaryByCurrency.BDT.due > 0 || salesSummaryByCurrency.USD.due > 0 ? ' is-attention' : ''}`}>
+      <button type="button" style={{ order }} onClick={() => onNavigate('payments')} className={`dashboard-kpi dashboard-kpi--outstanding${financialSummary.due > 0 ? ' is-attention' : ''}`}>
         <span className="dashboard-kpi-label"><Wallet aria-hidden="true" /> {dashboardCopy.outstanding}</span>
         <span className="dashboard-kpi-currencies">
-          <span><small>BDT</small><strong>{formatCurrency(salesSummaryByCurrency.BDT.due, 'BDT')}</strong></span>
-          <span><small>USD</small><strong>{formatCurrency(salesSummaryByCurrency.USD.due, 'USD')}</strong></span>
+          <span><small>{currency}</small><strong>{formatCurrency(financialSummary.due, currency)}</strong></span>
         </span>
         <span className="dashboard-kpi-note">{dashboardCopy.dueSelected}</span>
       </button>
@@ -1808,7 +1804,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </section>
 
-      <div className="dashboard-core-grid">
+      <div className={`dashboard-core-grid${hasCustomPanelLayout ? ' dashboard-core-grid--custom-layout' : ''}`}>
         {isPanelVisible('attention') && <DashboardPanel
           title={dashboardCopy.actionRequired}
           description={dashboardCopy.actionDescription}
@@ -3886,7 +3882,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   const badge = getExpiryBadgeInfo(
                     sub.expiryDate,
                     language,
-                    getSubscriptionReminderDays(srv, sub.planId, settings.reminderNoticeDays)
+                    getSubscriptionReminderDays(srv, sub.planId, settings.reminderNoticeDays),
+                    settings.businessProfile?.timeZone
                   );
 
                   return (

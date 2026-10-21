@@ -355,6 +355,7 @@ export function runDataIntegrityCheck(
         subscription,
         service,
         records.settings.reminderNoticeDays,
+        records.settings.businessProfile?.timeZone,
       ))) {
       const assignmentKey = `${subscription.accountId}:${subscription.profileId}`;
       const existingSubscriptionId = activeAssignmentByProfile.get(assignmentKey);

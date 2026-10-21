@@ -80,9 +80,9 @@ const highlightMatch = (text: string, query: string): React.ReactNode => {
 export const CommandCenter: React.FC<CommandCenterProps> = ({
   isOpen, onClose, onSelect, onViewAll, onNavigate, onQuickAction,
 }) => {
-  const { customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders, currentBusiness } = useApp();
-  const index = useMemo(() => buildSearchIndex({ customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders }), [
-    customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders,
+  const { customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders, currentBusiness, settings } = useApp();
+  const index = useMemo(() => buildSearchIndex({ customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders }, settings.businessProfile?.timeZone), [
+    customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders, settings.businessProfile?.timeZone,
   ]);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');

@@ -79,7 +79,7 @@ const matchScore = (query: string, id: string, title: string, fields: string[], 
   return 0;
 };
 
-export function buildSearchIndex(data: SearchData): GlobalSearchResult[] {
+export function buildSearchIndex(data: SearchData, timeZone?: string): GlobalSearchResult[] {
   const customers = new Map(data.customers.map(item => [item.id, item]));
   const services = new Map(data.services.map(item => [item.id, item]));
   const accounts = new Map(data.accounts.map(item => [item.id, item]));
@@ -151,7 +151,7 @@ export function buildSearchIndex(data: SearchData): GlobalSearchResult[] {
     const service = services.get(item.serviceId);
     const account = item.accountId ? accounts.get(item.accountId) : undefined;
     const profile = account?.profiles.find(candidate => candidate.id === item.profileId);
-    const status = getSubscriptionStatus(item, service);
+    const status = getSubscriptionStatus(item, service, undefined, timeZone);
     push({
       entity: 'subscriptions', id: item.id, section: 'subscriptions',
       title: customer?.name ?? 'Unknown customer',

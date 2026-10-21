@@ -20,6 +20,7 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
+import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
 import {
   InvoiceSaleDetails,
@@ -28,7 +29,7 @@ import {
   shareInvoiceJpg,
 } from '../../utils/invoiceGenerator';
 import type { Sale, PaymentMethod, PaymentStatus } from '../../types';
-import { formatAppDate, formatAppDateTime, formatCurrency, getTodayDateString, getSubscriptionStatus } from '../../utils/dateUtils';
+import { formatAppDate, formatCurrency, getTodayDateString, getSubscriptionStatusForTimeZone } from '../../utils/dateUtils';
 import { getCustomerDisplayName, getCustomerOptionLabel, resolveSaleCustomer } from '../../utils/relationships';
 import { createRecordId } from '../../services/localStorageStore';
 import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus, getSalePayments } from '../../utils/saleUtils';
@@ -51,6 +52,8 @@ interface SalesViewProps {
   onNavigateReminders?: () => void;
   focusSaleId?: string;
   onFocusedSaleHandled?: () => void;
+  saleIdFilter?: string[];
+  onClearSaleIdFilter?: () => void;
 }
 
 type SalesDateFilter = ReportDatePreset;
@@ -65,6 +68,14 @@ function isValidPaymentDate(value: string): boolean {
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 }
 
+function indexFirstById<T extends { id: string }>(records: T[]): Map<string, T> {
+  const indexed = new Map<string, T>();
+  records.forEach(record => {
+    if (!indexed.has(record.id)) indexed.set(record.id, record);
+  });
+  return indexed;
+}
+
 export const SalesView: React.FC<SalesViewProps> = ({
   onOpenNewSale,
   onViewCustomer,
@@ -75,8 +86,10 @@ export const SalesView: React.FC<SalesViewProps> = ({
   onNavigateReminders,
   focusSaleId,
   onFocusedSaleHandled,
+  saleIdFilter,
+  onClearSaleIdFilter,
 }) => {
-  const { formatCurrency, formatDate: formatAppDate } = useAppFormatting();
+  const { formatCurrency, formatDate: formatAppDate, formatDateTime: formatAppDateTime } = useAppFormatting();
   const {
     sales,
     invoices,
@@ -95,6 +108,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     t,
     language,
   } = useApp();
+  const getSubscriptionStatus = getSubscriptionStatusForTimeZone(settings.businessProfile?.timeZone);
   const { showToast } = useToast();
   const { openMessage, canContact } = useWhatsAppCommunication();
   const paymentMethodConfigs = normalizePaymentMethods(settings.paymentPreferences?.methods);
@@ -116,6 +130,11 @@ export const SalesView: React.FC<SalesViewProps> = ({
     () => new Map(invoices.map(invoice => [invoice.saleId, invoice])),
     [invoices]
   );
+  const customersById = useMemo(() => indexFirstById(customers), [customers]);
+  const servicesById = useMemo(() => indexFirstById(services), [services]);
+  const subscriptionsById = useMemo(() => indexFirstById(subscriptions), [subscriptions]);
+  const accountsById = useMemo(() => indexFirstById(accounts), [accounts]);
+  const saleIdFilterSet = useMemo(() => new Set(saleIdFilter || []), [saleIdFilter]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [selectedServiceId, setSelectedServiceId] = useState<string>('all');
@@ -148,7 +167,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [paymentTransactionId, setPaymentTransactionId] = useState('');
-  const [paymentDate, setPaymentDate] = useState(getTodayDateString());
+  const [paymentDate, setPaymentDate] = useState(getTodayDateString(settings.businessProfile?.timeZone));
   const [paymentNote, setPaymentNote] = useState('');
   const [isSavingPayment, setIsSavingPayment] = useState(false);
   const paymentOperationId = React.useRef('');
@@ -213,7 +232,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       ? sale.paymentMethod
       : (getDefaultPaymentMethod(paymentMethodConfigs, settings.paymentPreferences?.defaultMethodId) || 'Cash') as PaymentMethod);
     setPaymentTransactionId('');
-    setPaymentDate(getTodayDateString());
+    setPaymentDate(getTodayDateString(settings.businessProfile?.timeZone));
     setPaymentNote('');
     paymentOperationId.current = createRecordId('sale-payment-operation');
   };
@@ -328,7 +347,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     }
   };
 
-  const today = getTodayDateString();
+  const today = getTodayDateString(settings.businessProfile?.timeZone);
   const dateBounds = useMemo(
     () => getReportDateBounds(dateFilter, new Date(), customStartDate, customEndDate),
     [dateFilter, customStartDate, customEndDate]
@@ -375,6 +394,42 @@ export const SalesView: React.FC<SalesViewProps> = ({
     };
   }, [dateSales, businessSales, businessPayments, dateBounds]);
 
+  const salesSearchRows = useMemo(() => businessSales.map(sale => {
+    const subscription = sale.subscriptionId ? subscriptionsById.get(sale.subscriptionId) : undefined;
+    const customerId = sale.customerId || subscription?.customerId;
+    const customer = sale.customerId && subscription?.customerId && sale.customerId !== subscription.customerId
+      ? undefined
+      : customerId ? customersById.get(customerId) : undefined;
+    const service = servicesById.get(sale.serviceId);
+    const account = accountsById.get(sale.accountId || subscription?.accountId || '');
+    const invoice = invoicesBySaleId.get(sale.id);
+    const salePayments = getSalePayments(sale, businessPayments);
+    return {
+      sale,
+      customer,
+      service,
+      subscription,
+      account,
+      invoice,
+      salePayments,
+      paymentStatus: getSalePaymentStatus(sale, businessPayments),
+      subscriptionStatus: subscription
+        ? getSubscriptionStatus(subscription, service, settings.reminderNoticeDays)
+        : '',
+      searchable: normalizeSearchText([
+        sale.id, sale.invoiceNo, invoice?.invoiceNumber, sale.date,
+        customer?.name, customer?.email, customer?.phone, customer?.whatsapp,
+        service?.name, sale.plan, sale.planId, subscription?.id,
+        account?.email, account?.username,
+        ...salePayments.map(payment => payment.transactionId),
+        sale.transactionId,
+      ].filter(Boolean).join(' ')),
+    };
+  }), [
+    businessSales, businessPayments, invoicesBySaleId, customersById, servicesById,
+    subscriptionsById, accountsById, settings.reminderNoticeDays, settings.businessProfile?.timeZone,
+  ]);
+
   const filteredSales = useMemo(() => {
     const query = normalizeSearchText(searchQuery);
     const phoneQuery = normalizePhoneDigits(searchQuery);
@@ -382,25 +437,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
     const maximum = amountMax.trim() ? Number(amountMax) : undefined;
     const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
 
-    const results = businessSales.filter(sale => {
-      const customer = resolveSaleCustomer(sale, customers, subscriptions);
-      const service = services.find(item => item.id === sale.serviceId);
-      const subscription = subscriptions.find(item => item.id === sale.subscriptionId);
-      const account = accounts.find(item => item.id === (sale.accountId || subscription?.accountId));
-      const invoice = invoicesBySaleId.get(sale.id);
-      const salePayments = getSalePayments(sale, businessPayments);
-      const paymentStatus = getSalePaymentStatus(sale, businessPayments);
-      const subscriptionStatus = subscription
-        ? getSubscriptionStatus(subscription, service, settings.reminderNoticeDays)
-        : '';
-      const searchable = normalizeSearchText([
-        sale.id, sale.invoiceNo, invoice?.invoiceNumber, sale.date,
-        customer?.name, customer?.email, customer?.phone, customer?.whatsapp,
-        service?.name, sale.plan, sale.planId, subscription?.id,
-        account?.email, account?.username,
-        ...salePayments.map(payment => payment.transactionId),
-        sale.transactionId,
-      ].filter(Boolean).join(' '));
+    const results = salesSearchRows.filter(row => {
+      const { sale, customer, service, subscription, salePayments, paymentStatus, subscriptionStatus, searchable } = row;
+      if (saleIdFilterSet.size && !saleIdFilterSet.has(sale.id)) return false;
       const phoneMatches = phoneQuery.length >= 3
         && [customer?.phone, customer?.whatsapp].some(phone => phone && normalizePhoneDigits(phone).includes(phoneQuery));
 
@@ -424,36 +463,35 @@ export const SalesView: React.FC<SalesViewProps> = ({
       return true;
     });
 
-    return results.sort((left, right) => {
-      const leftCustomer = resolveSaleCustomer(left, customers, subscriptions);
-      const rightCustomer = resolveSaleCustomer(right, customers, subscriptions);
-      const leftService = services.find(item => item.id === left.serviceId);
-      const rightService = services.find(item => item.id === right.serviceId);
-      const leftDue = convertReportCurrency(getSaleDueAmount(left, businessPayments), left.currency, currency);
-      const rightDue = convertReportCurrency(getSaleDueAmount(right, businessPayments), right.currency, currency);
-      const leftStatus = getSalePaymentStatus(left, businessPayments);
-      const rightStatus = getSalePaymentStatus(right, businessPayments);
-      const leftAmount = convertReportCurrency(left.amount, left.currency, currency);
-      const rightAmount = convertReportCurrency(right.amount, right.currency, currency);
+    const resultsWithDue = results.map(row => ({
+      ...row,
+      dueAmount: getSaleDueAmount(row.sale, businessPayments),
+    }));
+    return resultsWithDue.sort((left, right) => {
+      const leftSale = left.sale;
+      const rightSale = right.sale;
+      const leftDue = convertReportCurrency(left.dueAmount, leftSale.currency, currency);
+      const rightDue = convertReportCurrency(right.dueAmount, rightSale.currency, currency);
+      const leftAmount = convertReportCurrency(leftSale.amount, leftSale.currency, currency);
+      const rightAmount = convertReportCurrency(rightSale.amount, rightSale.currency, currency);
       let order = 0;
       switch (sortOrder) {
-        case 'oldest': order = left.date.localeCompare(right.date); break;
+        case 'oldest': order = leftSale.date.localeCompare(rightSale.date); break;
         case 'highest': order = rightAmount - leftAmount; break;
         case 'lowest': order = leftAmount - rightAmount; break;
         case 'highest_due': order = rightDue - leftDue; break;
         case 'lowest_due': order = leftDue - rightDue; break;
-        case 'customer': order = collator.compare(getCustomerDisplayName(leftCustomer), getCustomerDisplayName(rightCustomer)); break;
-        case 'service': order = collator.compare(leftService?.name || '', rightService?.name || ''); break;
-        case 'status': order = collator.compare(leftStatus, rightStatus); break;
-        default: order = right.date.localeCompare(left.date); break;
+        case 'customer': order = collator.compare(getCustomerDisplayName(left.customer), getCustomerDisplayName(right.customer)); break;
+        case 'service': order = collator.compare(left.service?.name || '', right.service?.name || ''); break;
+        case 'status': order = collator.compare(left.paymentStatus, right.paymentStatus); break;
+        default: order = rightSale.date.localeCompare(leftSale.date); break;
       }
-      return order || right.date.localeCompare(left.date) || left.id.localeCompare(right.id);
-    });
+      return order || rightSale.date.localeCompare(leftSale.date) || leftSale.id.localeCompare(rightSale.id);
+    }).map(row => row.sale);
   }, [
-    businessSales, businessPayments, invoicesBySaleId, customers, services, subscriptions, accounts,
-    settings.reminderNoticeDays, searchQuery, selectedServiceId, selectedPaymentMethod,
+    salesSearchRows, businessPayments, searchQuery, selectedServiceId, selectedPaymentMethod,
     selectedCustomer, selectedPlanId, selectedPaymentStatus, selectedSubscriptionStatus,
-    dateBounds, amountMin, amountMax, currency, sortOrder, selectedPlan,
+    dateBounds, amountMin, amountMax, currency, sortOrder, selectedPlan, saleIdFilterSet,
   ]);
 
   const pageCount = Math.max(1, Math.ceil(filteredSales.length / salesPageSize));
@@ -470,6 +508,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     selectedSubscriptionStatus !== 'all',
     dateFilter !== 'all',
     Boolean(amountMin || amountMax),
+    Boolean(saleIdFilter?.length),
   ].filter(Boolean).length;
 
   const clearFilters = () => {
@@ -487,6 +526,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     setCustomStartDate('');
     setCustomEndDate('');
     setSortOrder('newest');
+    onClearSaleIdFilter?.();
   };
 
   const exportCSV = () => {
@@ -519,6 +559,13 @@ export const SalesView: React.FC<SalesViewProps> = ({
             </p>
           </div>
         </div>
+
+        {saleIdFilter?.length ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-200 bg-violet-50/70 px-3 py-2.5 text-xs dark:border-violet-900 dark:bg-violet-950/20">
+            <p className="font-medium text-violet-900 dark:text-violet-200">Showing {saleIdFilter.length} sale{saleIdFilter.length === 1 ? '' : 's'} from Profit Analytics.</p>
+            <button type="button" onClick={onClearSaleIdFilter} className="min-h-9 rounded-lg px-3 font-semibold text-violet-800 hover:bg-violet-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:text-violet-200 dark:hover:bg-violet-900/50">Clear analytics filter</button>
+          </div>
+        ) : null}
 
         <div className="customer-header-actions flex shrink-0 items-center gap-1.5">
           <button
@@ -621,7 +668,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
       {/* Filters Strip */}
       <div className="sales-filter-toolbar rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:p-3">
-        <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-3">
+        <div className="grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center xl:gap-3">
         <div className="relative min-w-0">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
@@ -634,7 +681,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
           />
         </div>
 
-        <div className="sales-primary-filters grid min-w-0 grid-cols-2 gap-2 md:flex md:w-auto md:items-center">
+        <div className="sales-primary-filters grid min-w-0 grid-cols-2 gap-2 xl:flex xl:w-auto xl:items-center">
           <select
             aria-label="Filter by payment status"
             value={selectedPaymentStatus}
@@ -669,7 +716,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
               setDateFilter(nextFilter);
               if (nextFilter === 'custom') setShowAdvancedFilters(true);
             }}
-            className="sales-filter-select col-span-2 min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 outline-none cursor-pointer font-mono md:col-span-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            className="sales-filter-select col-span-2 min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 outline-none cursor-pointer font-mono xl:col-span-1 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
           >
             <option value="all">All Time</option>
             <option value="today">Today</option>
@@ -787,7 +834,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <button type="button" aria-label={`View sale ${sale.id}`} onClick={() => setReceiptSale(sale)} className="font-mono text-sm font-bold text-violet-700 hover:underline dark:text-violet-300">{invoices.find(item => item.saleId === sale.id)?.invoiceNumber || sale.invoiceNo}</button>
-                  <button type="button" onClick={() => customer && onViewCustomer(customer.id)} disabled={!customer} className="mt-1 block truncate text-left text-xs font-semibold text-slate-900 disabled:cursor-default dark:text-white">{getCustomerDisplayName(customer)}</button>
+                  <button type="button" onClick={() => customer && onViewCustomer(customer.id)} disabled={!customer} className="mt-1 block max-w-full text-left text-xs font-semibold text-slate-900 disabled:cursor-default dark:text-white"><CustomerNameWithType customer={customer} nameClassName="min-w-0 break-words" /></button>
                   <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{service?.name || 'Service unavailable'} · {sale.plan}</p>
                   <p className="mt-0.5 truncate font-mono text-[10px] text-slate-400">{sale.id}{sale.renewalOfSubscriptionId ? ' · Renewal Sale' : ''}</p>
                 </div>
@@ -869,7 +916,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
                       <td className="py-3 px-4">
                         <div className="font-bold text-slate-900 dark:text-white">
-                          {getCustomerDisplayName(cust)}
+                          <CustomerNameWithType customer={cust} />
                         </div>
                         {(cust?.whatsapp || cust?.email) && (
                           <div className="text-[11px] text-slate-400 font-mono">
@@ -1000,7 +1047,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
               </section>
               <section className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
                 <h3 className="mb-2.5 font-bold text-slate-900 dark:text-white">Customer</h3>
-                <div className="break-words font-semibold text-slate-900 dark:text-white">{getCustomerDisplayName(receiptCustomer)}</div>
+                <div className="font-semibold text-slate-900 dark:text-white"><CustomerNameWithType customer={receiptCustomer} /></div>
                 <div className="mt-1 text-slate-500 dark:text-slate-400">{receiptCustomer?.phone || 'No phone number'}</div>
                 <div className="mt-1 break-all text-slate-500 dark:text-slate-400">{receiptCustomer?.email || 'No email address'}</div>
                 <div className="mt-3 flex flex-wrap gap-2">

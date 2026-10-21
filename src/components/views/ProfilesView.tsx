@@ -272,6 +272,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
     assignCustomerToProfile,
     deleteProfile,
     addProfileToAccount,
+    settings,
     t,
     language,
   } = useApp();
@@ -343,11 +344,11 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
 
       const matchesService = selectedServiceId === 'all' || item.account.serviceId === selectedServiceId;
       const matchesStatus = selectedStatus === 'all'
-        || getProfileStatus(item.profile, item.account) === selectedStatus;
+        || getProfileStatus(item.profile, item.account, settings.businessProfile?.timeZone) === selectedStatus;
 
       return matchesSearch && matchesService && matchesStatus;
     });
-  }, [allProfiles, searchQuery, selectedServiceId, selectedStatus]);
+  }, [allProfiles, searchQuery, selectedServiceId, selectedStatus, settings.businessProfile?.timeZone]);
 
   const copyToClipboard = (text: string, id: string, msg: string) => {
     navigator.clipboard.writeText(text);
@@ -419,7 +420,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
   const availableSlotsCount = allProfiles.filter(p => p.profile.status === 'Available').length;
   const pinProtectedCount = allProfiles.filter(p => Boolean(p.profile.pin)).length;
   const accountsWithCapacity = accounts.filter(account =>
-    isAccountOperational(account)
+    isAccountOperational(account, settings.businessProfile?.timeZone)
     && getAccountCapacity(account).available > 0
   );
   const assignableSubscriptions = subscriptions.filter(subscription => {
@@ -679,7 +680,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
         <div className="profile-card-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {filteredProfiles.map(({ profile, account, service, customer, subscription }) => {
             const hasPin = Boolean(profile.pin);
-            const profileStatus = getProfileStatus(profile, account);
+            const profileStatus = getProfileStatus(profile, account, settings.businessProfile?.timeZone);
             const isAssigned = profileStatus === 'Assigned';
             const accent = getServiceAccent(service?.name, service?.category, service?.color);
             const CategoryIcon = getCategoryIcon(service?.category);
@@ -886,7 +887,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
                       </button>
                     ) : isAssigned ? (
                       <span className="text-xs text-slate-500">Customer unavailable</span>
-                    ) : isAccountOperational(account) && profileStatus === 'Available' ? (
+                    ) : isAccountOperational(account, settings.businessProfile?.timeZone) && profileStatus === 'Available' ? (
                       <button
                         type="button"
                         onClick={() => {

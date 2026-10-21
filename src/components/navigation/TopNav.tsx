@@ -21,7 +21,6 @@ import {
   UserCheck,
   Wifi,
   WifiOff,
-  Building2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { NavSection } from './Sidebar';
@@ -86,6 +85,8 @@ export const TopNav: React.FC<TopNavProps> = ({
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showCommandCenter, setShowCommandCenter] = useState(false);
   const [isConnectionNoticeDismissed, setIsConnectionNoticeDismissed] = useState(false);
+  const businessLogoUrl = settings.invoiceLogoDataUrl?.trim() || settings.invoiceLogoUrl?.trim();
+  const [businessLogoFailed, setBusinessLogoFailed] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const notifPanelRef = useRef<HTMLDivElement>(null);
   const notificationCloseButtonRef = useRef<HTMLButtonElement>(null);
@@ -95,6 +96,10 @@ export const TopNav: React.FC<TopNavProps> = ({
   useEffect(() => {
     setIsConnectionNoticeDismissed(false);
   }, [pwa.isOnline, pwa.updateAvailable, pwa.updatePending]);
+
+  useEffect(() => {
+    setBusinessLogoFailed(false);
+  }, [businessLogoUrl]);
 
   // Close dropdowns on click outside
   useEffect(() => {
@@ -255,9 +260,22 @@ export const TopNav: React.FC<TopNavProps> = ({
         </button>
         <div className="app-topbar-business hidden md:flex">
           <span className="app-topbar-business-divider" aria-hidden="true" />
-          <span className="app-topbar-business-icon" aria-hidden="true">
-            <Building2 className="h-4 w-4" />
-          </span>
+          <button
+            type="button"
+            onClick={() => onNavigate('dashboard')}
+            className="app-topbar-business-icon"
+            aria-label={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to dashboard'}
+            title={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to dashboard'}
+          >
+            {businessLogoUrl && !businessLogoFailed
+              ? <img
+                src={businessLogoUrl}
+                alt=""
+                className="app-topbar-business-logo-image"
+                onError={() => setBusinessLogoFailed(true)}
+              />
+              : <ProductLogo size="compact" markOnly className="app-topbar-business-logo" />}
+          </button>
           <span className="app-topbar-business-copy">
             <span className="app-topbar-business-label">{language === 'bn' ? 'বর্তমান ব্যবসা' : 'Current business'}</span>
             <strong title={activeBusinessName}>{activeBusinessName}</strong>
@@ -489,7 +507,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                               {notification.message}
                             </span>
                             <span className="mt-1.5 block text-[11px] text-slate-400">
-                              {formatAppDateTime(notification.createdAt, language)}
+                              {formatAppDateTime(notification.createdAt, language, { timeZone: settings.businessProfile?.timeZone })}
                             </span>
                           </span>
                         </button>

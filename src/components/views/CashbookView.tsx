@@ -24,7 +24,6 @@ interface CashbookViewProps {
 const inputClass = 'control-field w-full px-3 py-2.5 text-sm';
 const labelClass = 'mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300';
 const cardClass = 'surface-card cashbook-card p-3 sm:p-4';
-const today = getTodayDateString();
 const csvCell = (value: string | number) => {
   const text = String(value);
   const safe = /^[\s]*[=+\-@]/.test(text) ? `'${text}` : text;
@@ -38,6 +37,7 @@ export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, init
     sales, invoices, customers, settings, currency, addFinancialAccount, updateFinancialAccount,
     addExpense, addOtherIncome, addFinancialTransfer, addFinancialAdjustment,
   } = useApp();
+  const today = getTodayDateString(settings.businessProfile?.timeZone);
   const { showToast } = useToast();
   const [modalKind, setModalKind] = useState<ModalKind>(null);
   const [selectedAccountId, setSelectedAccountId] = useState('all');

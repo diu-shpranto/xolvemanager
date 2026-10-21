@@ -8,7 +8,7 @@ import type {
   Service,
   Subscription,
 } from '../types';
-import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus } from './saleUtils';
+import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus } from './saleUtils.ts';
 
 export type ReportDatePreset =
   | 'today'

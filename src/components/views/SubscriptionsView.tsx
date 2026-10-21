@@ -46,6 +46,7 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
+import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
 import {
   Subscription,
@@ -60,12 +61,11 @@ import {
 } from '../../types';
 import {
   formatAppDate,
-  formatAppDateTime,
   formatCurrency,
   getExpiryBadgeInfo,
-  getSubscriptionStatus,
+  getSubscriptionStatusForTimeZone,
   calculateExpiryDate,
-  getDaysDifference,
+  getDaysDifferenceForTimeZone,
   getTodayDateString,
   getSubscriptionReminderDays,
 } from '../../utils/dateUtils';
@@ -111,7 +111,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   onFocusedSubscriptionHandled,
   onAddPaymentForCustomer,
 }) => {
-  const { formatCurrency, formatDate: formatAppDate, formatNumber, formatDurationDays } = useAppFormatting();
+  const { formatCurrency, formatDate: formatAppDate, formatDateTime: formatAppDateTime, formatNumber, formatDurationDays } = useAppFormatting();
   const {
     subscriptions,
     customers,
@@ -135,6 +135,8 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     language,
     currentUser,
   } = useApp();
+  const getSubscriptionStatus = getSubscriptionStatusForTimeZone(settings.businessProfile?.timeZone);
+  const getDaysDifference = getDaysDifferenceForTimeZone(settings.businessProfile?.timeZone);
   const { showToast } = useToast();
   const { openMessage, canContact } = useWhatsAppCommunication();
 
@@ -185,7 +187,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   const [renewPlanId, setRenewPlanId] = useState('');
   const [renewAccountId, setRenewAccountId] = useState('');
   const [renewProfileId, setRenewProfileId] = useState('');
-  const [renewStartDate, setRenewStartDate] = useState(getTodayDateString());
+  const [renewStartDate, setRenewStartDate] = useState(getTodayDateString(settings.businessProfile?.timeZone));
   const [renewDiscount, setRenewDiscount] = useState(0);
   const [renewPaymentStatus, setRenewPaymentStatus] = useState<PaymentStatus>('paid');
   const [renewAmountPaid, setRenewAmountPaid] = useState('');
@@ -196,7 +198,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState<boolean>(false);
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState<boolean>(false);
   const [cancellationReason, setCancellationReason] = useState<string>('');
-  const [cancellationDate, setCancellationDate] = useState(getTodayDateString());
+  const [cancellationDate, setCancellationDate] = useState(getTodayDateString(settings.businessProfile?.timeZone));
   const [isChangeProfileDrawerOpen, setIsChangeProfileDrawerOpen] = useState<boolean>(false);
 
   // Safe Edit Form State
@@ -215,7 +217,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   const [newSubAccountId, setNewSubAccountId] = useState<string>('');
   const [newSubProfileId, setNewSubProfileId] = useState<string>('');
   const [newSubDuration, setNewSubDuration] = useState<number>(30);
-  const [newSubStartDate, setNewSubStartDate] = useState<string>(getTodayDateString());
+  const [newSubStartDate, setNewSubStartDate] = useState<string>(getTodayDateString(settings.businessProfile?.timeZone));
   const [newSubPrice, setNewSubPrice] = useState<number>(350);
   const [newSubCurrency, setNewSubCurrency] = useState<AppCurrency>(currency);
   const [newSubPaymentMethod, setNewSubPaymentMethod] = useState<PaymentMethod>('bKash');
@@ -331,7 +333,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         phoneDigits,
       };
     });
-  }, [subscriptions, customers, services, accounts, sales, payments, settings.reminderNoticeDays]);
+  }, [subscriptions, customers, services, accounts, sales, payments, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
 
   const subscriptionRows = useMemo(() => {
     const query = normalizeSearchText(debouncedSearchQuery);
@@ -535,7 +537,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   const selectedSubStatus = useMemo(() => {
     if (!selectedSub) return 'active';
     return getSubscriptionStatus(selectedSub, selectedService || undefined, settings.reminderNoticeDays);
-  }, [selectedSub, selectedService, settings.reminderNoticeDays]);
+  }, [selectedSub, selectedService, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
 
   const selectedSubBadge = useMemo(() => {
     if (!selectedSub) return null;
@@ -551,9 +553,10 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     return getExpiryBadgeInfo(
       selectedSub.expiryDate,
       language,
-      getSubscriptionReminderDays(selectedService || undefined, selectedSub.planId, settings.reminderNoticeDays)
+      getSubscriptionReminderDays(selectedService || undefined, selectedSub.planId, settings.reminderNoticeDays),
+      settings.businessProfile?.timeZone
     );
-  }, [selectedSub, selectedService, language, settings.reminderNoticeDays]);
+  }, [selectedSub, selectedService, language, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
 
   // Live Auto-calculated New Expiry Date for Renewal Drawer
   const previewNewExpiryDate = useMemo(() => {
@@ -561,7 +564,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     const baseDate =
       getDaysDifference(selectedSub.expiryDate) >= 0
         ? calculateExpiryDate(selectedSub.expiryDate, 1)
-        : getTodayDateString();
+        : getTodayDateString(settings.businessProfile?.timeZone);
     return calculateExpiryDate(renewStartDate || baseDate, Number(renewDuration) || 30);
   }, [selectedSub, renewDuration, renewStartDate]);
 
@@ -571,10 +574,10 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   const renewalAccountOptions = accounts.filter(account =>
     account.serviceId === selectedSub?.serviceId
     && (!account.planId || account.planId === renewPlanId)
-    && isAccountOperational(account)
+    && isAccountOperational(account, settings.businessProfile?.timeZone)
     && (account.id === selectedSub?.accountId
       || (!renewalRequiresProfile || (getAccountCapacity(account).available > 0
-        && getAvailableProfiles([account], selectedSub?.serviceId, renewPlanId).length > 0)))
+        && getAvailableProfiles([account], selectedSub?.serviceId, renewPlanId, undefined, settings.businessProfile?.timeZone).length > 0)))
   );
   const renewalSelectedAccount = renewalAccountOptions.find(account => account.id === renewAccountId);
   const renewalProfileOptions = renewalSelectedAccount?.profiles.filter(profile =>
@@ -588,7 +591,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   const renewalCurrentProfile = accounts.find(account => account.id === selectedSub?.accountId)
     ?.profiles.find(profile => profile.id === selectedSub?.profileId);
   const renewalCurrentFulfillmentUnavailable = Boolean(selectedSub?.accountId && (
-    !accounts.some(account => account.id === selectedSub.accountId && isAccountOperational(account))
+    !accounts.some(account => account.id === selectedSub.accountId && isAccountOperational(account, settings.businessProfile?.timeZone))
     || (selectedSub.profileId && !renewalCurrentProfile)
     || (renewalCurrentProfile && renewalCurrentProfile.status !== 'Available' && renewalCurrentProfile.assignedCustomerId !== selectedSub.customerId)
     || (renewalCurrentProfile?.expiryDate && getDaysDifference(renewalCurrentProfile.expiryDate) < 0)
@@ -614,11 +617,11 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       || service?.planDetails?.find(item => item.name === sub.plan && item.status === 'active');
     const nextStartDate = getDaysDifference(sub.expiryDate) >= 0
       ? calculateExpiryDate(sub.expiryDate, 1)
-      : getTodayDateString();
+      : getTodayDateString(settings.businessProfile?.timeZone);
     const account = accounts.find(item => item.id === sub.accountId);
     const profile = account?.profiles.find(item => item.id === sub.profileId);
     const currentInventoryAvailable = Boolean(account
-      && isAccountOperational(account)
+      && isAccountOperational(account, settings.businessProfile?.timeZone)
       && profile
       && (profile.status === 'Available' || profile.assignedCustomerId === sub.customerId)
       && (!profile.expiryDate || getDaysDifference(profile.expiryDate) >= 0));
@@ -648,7 +651,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     const selectedPlan = service?.planDetails?.find(item => item.id === renewPlanId && item.status === 'active');
     const chosenAccount = accounts.find(item => item.id === renewAccountId
       && item.serviceId === selectedSub.serviceId
-      && isAccountOperational(item)
+      && isAccountOperational(item, settings.businessProfile?.timeZone)
       && (item.id === selectedSub.accountId || getAccountCapacity(item).available > 0));
     const chosenProfile = chosenAccount?.profiles.find(item => item.id === renewProfileId
       && (item.status === 'Available' && !item.assignedCustomerId
@@ -723,7 +726,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       }
       const renewalRecord = {
         id: renewalOperationId.current,
-        renewalDate: getTodayDateString(),
+        renewalDate: getTodayDateString(settings.businessProfile?.timeZone),
         previousEndDate: selectedSub.expiryDate,
         newStartDate: renewal.subscription.startDate,
         newEndDate: renewal.subscription.expiryDate,
@@ -871,7 +874,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     setNewSubAccountId('');
     setNewSubProfileId('');
     setNewSubDuration(30);
-    setNewSubStartDate(getTodayDateString());
+    setNewSubStartDate(getTodayDateString(settings.businessProfile?.timeZone));
     setNewSubPrice(services[0]?.defaultPriceBDT || 350);
     setNewSubCurrency(currency);
     setNewSubPaymentMethod('bKash');
@@ -987,7 +990,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         )) counts.renewalsDue += 1;
     });
     return counts;
-  }, [subscriptions, services, settings.reminderNoticeDays]);
+  }, [subscriptions, services, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
 
   const handleExportSubscriptions = () => {
     const rows = [
@@ -1010,7 +1013,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       ]),
     ];
     const content = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
-    downloadCSV(`subscriptions-${getTodayDateString()}.csv`, content);
+    downloadCSV(`subscriptions-${getTodayDateString(settings.businessProfile?.timeZone)}.csv`, content);
     logActivity({
       type: 'data_exported',
       title: 'Subscriptions Exported',
@@ -1374,7 +1377,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                       dotClass: 'bg-slate-400',
                       colorClass: 'text-slate-400 bg-slate-100 dark:bg-slate-800',
                     }
-                  : getExpiryBadgeInfo(sub.expiryDate, language, reminderDays);
+                  : getExpiryBadgeInfo(sub.expiryDate, language, reminderDays, settings.businessProfile?.timeZone);
 
                 const isNearExpiry = !isCancelled && (status === 'expiring_soon' || status === 'expired');
 
@@ -1400,8 +1403,8 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                       {/* Customer & Service Header */}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
-                            {getCustomerDisplayName(cust)}
+                          <span className="font-bold text-xs text-slate-900 dark:text-white">
+                            <CustomerNameWithType customer={cust} nameClassName="min-w-0 break-words" />
                           </span>
                           <span className="text-[10px] text-slate-400 font-mono truncate">
                             WA: {cust?.whatsapp || cust?.phone || 'Not set'}
@@ -1558,7 +1561,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                           className="font-bold text-slate-900 dark:text-white hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline cursor-pointer flex items-center gap-1 disabled:cursor-default disabled:no-underline"
                         >
                           <User className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{getCustomerDisplayName(selectedCustomer || undefined)}</span>
+                          <CustomerNameWithType customer={selectedCustomer} />
                           {selectedCustomer && <ExternalLink className="w-3 h-3 text-slate-400" />}
                         </button>
                       </div>
@@ -1644,7 +1647,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                               type="button"
                               onClick={() => {
                                 setCancellationReason('');
-                                setCancellationDate(getTodayDateString());
+                                setCancellationDate(getTodayDateString(settings.businessProfile?.timeZone));
                                 setIsCancelDialogOpen(true);
                                 setIsMoreMenuOpen(false);
                               }}
@@ -1789,8 +1792,8 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                       {selectedCustomer?.name.slice(0, 2).toUpperCase() || '—'}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h4 className="font-bold text-sm text-slate-900 dark:text-white truncate">
-                        {getCustomerDisplayName(selectedCustomer || undefined)}
+                      <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                        <CustomerNameWithType customer={selectedCustomer} nameClassName="min-w-0 break-words" />
                       </h4>
                       <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
                         {selectedCustomer?.phone || ''}

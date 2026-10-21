@@ -4,9 +4,9 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
-import { PaymentMethod, PaymentStatus, AppCurrency, Subscription } from '../../types';
+import { PaymentMethod, PaymentStatus, AppCurrency, CustomerType, Subscription } from '../../types';
 import { getDefaultPaymentMethod, normalizePaymentMethods, paymentMethodRequiresTransactionId } from '../../utils/paymentMethods';
-import { calculateExpiryDate, formatAppDate, formatCurrency, getDaysDifference, getTodayDateString } from '../../utils/dateUtils';
+import { calculateExpiryDate, formatAppDate, formatCurrency, getDaysDifferenceForTimeZone, getSubscriptionStatusForTimeZone, getTodayDateString } from '../../utils/dateUtils';
 import {
   Plus,
   Check,
@@ -28,6 +28,7 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { InvoicePreviewModal } from './InvoicePreviewModal';
+import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import {
   InvoiceSaleDetails,
   generateInvoiceJpg,
@@ -71,12 +72,15 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 }) => {
   const { formatCurrency, formatDate: formatAppDate, formatDurationDays } = useAppFormatting();
   const { customers, services, accounts, subscriptions, sales, payments, createSale, addCustomer, addAccount, logActivity, settings, currency: globalCurrency, t, language } = useApp();
+  const getDaysDifference = getDaysDifferenceForTimeZone(settings.businessProfile?.timeZone);
+  const getSubscriptionStatus = getSubscriptionStatusForTimeZone(settings.businessProfile?.timeZone);
   const { showToast } = useToast();
   const { openMessage, canContact } = useWhatsAppCommunication();
 
   // Quick Customer Creation Toggle
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
   const [newCustName, setNewCustName] = useState('');
+  const [newCustType, setNewCustType] = useState<CustomerType>('Customer');
   const [newCustPhone, setNewCustPhone] = useState('');
   const [newCustWhatsapp, setNewCustWhatsapp] = useState('');
   const [newCustEmail, setNewCustEmail] = useState('');
@@ -89,7 +93,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const [planId, setPlanId] = useState(preselectedPlanId || '');
   const [accountId, setAccountId] = useState('');
   const [profileId, setProfileId] = useState('');
-  const [startDate, setStartDate] = useState(getTodayDateString());
+  const [startDate, setStartDate] = useState(getTodayDateString(settings.businessProfile?.timeZone));
   const [durationDays, setDurationDays] = useState(settings.subscriptionDefaults?.durationDays ?? 30);
   const [currency, setCurrency] = useState<AppCurrency>(globalCurrency);
   const [price, setPrice] = useState(350);
@@ -220,8 +224,8 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const handleAccountChange = (accId: string) => {
     setAccountId(accId);
     const acc = accounts.find(a => a.id === accId);
-    if (acc && acc.profiles && acc.profiles.length > 0) {
-      const availableProfile = getAvailableProfiles([acc], serviceId, planId)[0]?.profile;
+    if (profileRequired && acc && acc.profiles && acc.profiles.length > 0) {
+      const availableProfile = getAvailableProfiles([acc], serviceId, planId, undefined, settings.businessProfile?.timeZone)[0]?.profile;
       setProfileId(availableProfile?.id || '');
     } else {
       setProfileId('');
@@ -244,6 +248,12 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     ),
     [services]
   );
+  const isPreselectedServiceReady = Boolean(
+    preselectedServiceId
+    && selectedService?.id === preselectedServiceId
+    && eligibleServices.some(service => service.id === preselectedServiceId)
+    && selectedPlan
+  );
   const filteredServices = useMemo(() => {
     const query = debouncedServiceSearch;
     return eligibleServices.filter(service =>
@@ -255,18 +265,36 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     || selectedService?.settings?.profileAssignmentRequired === true;
   const serviceUsesAccounts = selectedService?.settings?.usesAccounts === true || profileRequired;
   const availableProfilePairs = useMemo(
-    () => getAvailableProfiles(accounts, serviceId, planId),
-    [accounts, serviceId, planId]
+    () => getAvailableProfiles(accounts, serviceId, planId, undefined, settings.businessProfile?.timeZone).filter(({ account }) =>
+      !subscriptions.some(subscription =>
+        subscription.accountId === account.id
+        && !subscription.profileId
+        && ['active', 'expiring_soon'].includes(
+          getSubscriptionStatus(subscription, selectedService, settings.reminderNoticeDays)
+        )
+      )
+    ),
+    [accounts, serviceId, planId, subscriptions, selectedService, settings.reminderNoticeDays, settings.businessProfile?.timeZone]
   );
   const availableAccounts = useMemo(
     () => accounts.filter(a =>
       a.serviceId === serviceId
       && (!a.planId || a.planId === planId)
-      && isAccountOperational(a)
+      && isAccountOperational(a, settings.businessProfile?.timeZone)
       && a.allowNewAssignment !== false
       && (!profileRequired || availableProfilePairs.some(pair => pair.account.id === a.id))
+      && (profileRequired || (
+        !['Assigned', 'Full'].includes(a.status)
+        && !a.profiles.some(profile => profile.status === 'Assigned' || Boolean(profile.assignedCustomerId))
+        && !subscriptions.some(subscription =>
+          subscription.accountId === a.id
+          && ['active', 'expiring_soon'].includes(
+            getSubscriptionStatus(subscription, selectedService, settings.reminderNoticeDays)
+          )
+        )
+      ))
     ),
-    [accounts, serviceId, planId, profileRequired, availableProfilePairs]
+    [accounts, serviceId, planId, profileRequired, availableProfilePairs, subscriptions, selectedService, settings.reminderNoticeDays, settings.businessProfile?.timeZone]
   );
   const availableProfiles = availableAccounts.some(account => account.id === selectedAccount?.id)
     ? availableProfilePairs.filter(pair => pair.account.id === selectedAccount?.id).map(pair => pair.profile)
@@ -296,7 +324,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const filteredCustomers = useMemo(() => {
     const query = debouncedCustomerSearch;
     const matches = !query ? activeCustomers : activeCustomers.filter(c =>
-      [c.name, c.phone, c.whatsapp, c.email].some(value => value?.toLowerCase().includes(query))
+      [c.name, c.customerType, c.phone, c.whatsapp, c.email].some(value => value?.toLowerCase().includes(query))
     );
     return matches.slice(0, 50);
   }, [activeCustomers, debouncedCustomerSearch]);
@@ -363,7 +391,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         })),
       });
       setAccountId(added.id);
-      setProfileId(added.profiles.find(profile => profile.status === 'Available')?.id || '');
+      setProfileId(profileRequired
+        ? added.profiles.find(profile => profile.status === 'Available')?.id || ''
+        : '');
       setNewAccountEmail('');
       setNewAccountPassword('');
       setIsAddingAccount(false);
@@ -415,6 +445,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     try {
       const created = await addCustomer({
         name: newCustName.trim(),
+        customerType: newCustType,
         phone: newCustPhone.trim(),
         whatsapp: newCustWhatsapp.trim() || newCustPhone.trim(),
         email: newCustEmail.trim(),
@@ -499,23 +530,23 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     }
 
     if (paymentStatus === 'partial' && !(amountPaid > 0 && amountPaid < totalAmount)) {
-      reportValidationError('Partial payment must be greater than zero and less than the total.', 4);
+      reportValidationError('Partial payment must be greater than zero and less than the total.', 3);
       return;
     }
     if (amountPaid > totalAmount || amountPaid < 0) {
-      reportValidationError('Amount paid cannot exceed the total.', 4);
+      reportValidationError('Amount paid cannot exceed the total.', 3);
       return;
     }
     if ((settings.paymentPreferences?.methods ?? ['bKash', 'Nagad', 'Rocket', 'Bank', 'Card', 'Cash', 'Other']).length === 0) {
-      reportValidationError('Enable at least one payment method in Settings before creating a sale.', 4);
+      reportValidationError('Enable at least one payment method in Settings before creating a sale.', 3);
       return;
     }
     if (!paymentMethods.includes(paymentMethod)) {
-      reportValidationError('Choose an enabled payment method.', 4);
+      reportValidationError('Choose an enabled payment method.', 3);
       return;
     }
     if (paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) && !transactionId.trim()) {
-      reportValidationError('Enter the required transaction ID.', 4);
+      reportValidationError('Enter the required transaction ID.', 3);
       return;
     }
 
@@ -653,7 +684,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       || senderNumber.trim()
       || notes.trim()
       || paymentNote.trim()
-      || startDate !== getTodayDateString()
+      || startDate !== getTodayDateString(settings.businessProfile?.timeZone)
       || paymentStatus !== 'paid'
       || (preselectedCustomerId && customerId === preselectedCustomerId)
     );
@@ -706,7 +737,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       reportValidationError('Price and duration must match the selected plan.');
       return;
     }
-    if (step === 3 && accountId && !availableProfiles.some(profile => profile.id === profileId)) {
+    if (step === 3 && profileRequired && accountId && !availableProfiles.some(profile => profile.id === profileId)) {
       reportValidationError('Choose an available profile, or switch to manual fulfillment.');
       return;
     }
@@ -726,23 +757,23 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       reportValidationError('Enter a valid price and discount.');
       return;
     }
-    if (step === 4 && paymentStatus === 'partial' && !(amountPaid > 0 && amountPaid < totalAmount)) {
+    if (step === 3 && paymentStatus === 'partial' && !(amountPaid > 0 && amountPaid < totalAmount)) {
       reportValidationError('Partial payment must be greater than zero and less than the total.');
       return;
     }
-    if (step === 4 && (totalAmount <= 0 || amountPaid > totalAmount || !paymentMethods.includes(paymentMethod))) {
+    if (step === 3 && (totalAmount <= 0 || amountPaid > totalAmount || !paymentMethods.includes(paymentMethod))) {
       reportValidationError('Check the sale total and amount paid before continuing.');
       return;
     }
-    if (step === 4 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) && !transactionId.trim()) {
+    if (step === 3 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) && !transactionId.trim()) {
       reportValidationError('Enter the required transaction ID.');
       return;
     }
-    if (step === 4 && paymentStatus === 'paid' && amountPaid !== totalAmount) {
+    if (step === 3 && paymentStatus === 'paid' && amountPaid !== totalAmount) {
       reportValidationError('Paid amount must equal the total.');
       return;
     }
-    setStep(current => Math.min(current + 1, 5));
+    setStep(current => current === 0 && isPreselectedServiceReady ? 2 : Math.min(current + 1, 4));
   };
 
   const handleChooseCustomer = (id: string) => {
@@ -817,10 +848,13 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     { label: 'Customer', icon: UserRound },
     { label: 'Service', icon: Layers },
     { label: 'Plan', icon: Layers },
-    { label: 'Account & Profile', icon: CalendarDays },
-    { label: 'Payment Details', icon: CreditCard },
+    { label: 'Fulfillment & Payment', icon: CreditCard },
     { label: 'Review', icon: Receipt },
   ];
+  const visibleSteps = isPreselectedServiceReady && step !== 1
+    ? steps.filter((_, index) => index !== 1)
+    : steps;
+  const visibleStepIndexes = visibleSteps.map(item => steps.indexOf(item));
   const orderSummary = (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -869,8 +903,8 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         title={
           completedSaleData
             ? language === 'bn'
-              ? 'বিক্রয় সফল ও ডিজিটাল ইনভয়েস'
-              : 'Sale Completed Successfully'
+              ? completedSaleData.paymentStatus === 'failed' ? 'বিক্রয় রেকর্ড করা হয়েছে' : 'বিক্রয় সফল ও ডিজিটাল ইনভয়েস'
+              : completedSaleData.paymentStatus === 'failed' ? 'Sale Recorded' : 'Sale Completed Successfully'
             : language === 'bn'
             ? 'নতুন সাবস্ক্রিপশন বিক্রয় ও অ্যাক্টিভেশন'
             : 'New Sale'
@@ -878,28 +912,41 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         subtitle={
           completedSaleData
             ? language === 'bn'
-              ? 'সাবস্ক্রিপশন সক্রিয় হয়েছে। নিচে JPG রসিদ ডাউনলোড বা শেয়ার করুন।'
-              : 'Subscription activated. Your customer-ready JPG receipt is available below.'
+              ? completedSaleData.paymentStatus === 'failed'
+                ? 'পেমেন্ট ব্যর্থ হয়েছে; ইনভেন্টরি বরাদ্দ করা হয়নি।'
+                : 'সাবস্ক্রিপশন সক্রিয় হয়েছে। নিচে JPG রসিদ ডাউনলোড বা শেয়ার করুন।'
+              : completedSaleData.paymentStatus === 'failed'
+                ? 'Payment failed. Inventory was not allocated.'
+                : 'Subscription activated. Your customer-ready JPG receipt is available below.'
             : language === 'bn'
             ? 'কাস্টমার, সার্ভিস, অ্যাকাউন্ট ও প্রোফাইল নির্বাচন করে সরাসরি বিক্রয় রেকর্ড করুন।'
             : 'A guided transaction workspace for customer, service, fulfillment, payment, and invoice.'
         }
         maxWidth="4xl"
+        protectUnsavedChanges={!completedSaleData}
       >
         {/* AFTER SALE FLOW: SUCCESS & INVOICE SCREEN */}
         {completedSaleData ? (
           <div className="space-y-5 py-2">
             {/* Success Banner */}
-            <div className="text-center p-6 bg-emerald-50/80 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200/80 dark:border-emerald-800/60 shadow-2xs">
-              <div className="w-14 h-14 rounded-full bg-emerald-600 text-white flex items-center justify-center mx-auto mb-3 shadow-md shadow-emerald-600/25">
-                <Check className="w-8 h-8 stroke-[2.8]" />
+            <div className={`text-center p-6 rounded-2xl border shadow-2xs ${completedSaleData.paymentStatus === 'failed' ? 'bg-amber-50/80 dark:bg-amber-950/30 border-amber-200/80 dark:border-amber-800/60' : 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200/80 dark:border-emerald-800/60'}`}>
+            <div className={`w-14 h-14 rounded-full text-white flex items-center justify-center mx-auto mb-3 shadow-md ${completedSaleData.paymentStatus === 'failed' ? 'bg-amber-600 shadow-amber-600/25' : 'bg-emerald-600 shadow-emerald-600/25'}`}>
+                {completedSaleData.paymentStatus === 'failed'
+                  ? <AlertTriangle className="w-7 h-7" />
+                  : <Check className="w-8 h-8 stroke-[2.8]" />}
               </div>
               <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
-                {language === 'bn' ? 'বিক্রয় সফলভাবে সম্পন্ন হয়েছে!' : 'Sale Completed Successfully!'}
-              </h2>
-              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-md mx-auto">
-                {language === 'bn'
-                  ? `ইনভয়েস নং ${completedSaleData.invoiceNo} এর বিপরীতে সাবস্ক্রিপশন সক্রিয় করা হয়েছে।`
+              {language === 'bn'
+                ? completedSaleData.paymentStatus === 'failed' ? 'বিক্রয় রেকর্ড করা হয়েছে' : 'বিক্রয় সফলভাবে সম্পন্ন হয়েছে!'
+                : completedSaleData.paymentStatus === 'failed' ? 'Sale Recorded · Payment Failed' : 'Sale Completed Successfully!'}
+            </h2>
+            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-md mx-auto">
+              {language === 'bn'
+                ? completedSaleData.paymentStatus === 'failed'
+                  ? `ইনভয়েস ${completedSaleData.invoiceNo} তৈরি হয়েছে; কোনো ইনভেন্টরি বরাদ্দ করা হয়নি।`
+                  : `ইনভয়েস নং ${completedSaleData.invoiceNo} এর বিপরীতে সাবস্ক্রিপশন সক্রিয় করা হয়েছে।`
+                : completedSaleData.paymentStatus === 'failed'
+                  ? `Invoice ${completedSaleData.invoiceNo} recorded · no inventory was allocated.`
                   : `Subscription activated · Invoice ${completedSaleData.invoiceNo}`}
               </p>
             </div>
@@ -1091,7 +1138,8 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
             className="space-y-4"
           >
             <ol aria-label="Sale progress" className="flex items-center gap-1 sm:gap-2">
-              {steps.map((item, index) => {
+              {visibleSteps.map((item, visibleIndex) => {
+                const index = visibleStepIndexes[visibleIndex];
                 const Icon = item.icon;
                 const isCurrent = step === index;
                 const isComplete = step > index;
@@ -1101,7 +1149,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                       <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${isCurrent || isComplete ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>{isComplete ? <Check className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}</span>
                       <span className="hidden truncate sm:inline">{item.label}</span>
                     </button>
-                    {index < steps.length - 1 && <span className="mx-0.5 h-px min-w-1 flex-1 bg-slate-200 dark:bg-slate-700" />}
+                    {visibleIndex < visibleSteps.length - 1 && <span className="mx-0.5 h-px min-w-1 flex-1 bg-slate-200 dark:bg-slate-700" />}
                   </li>
                 );
               })}
@@ -1125,6 +1173,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                     ) : isCreatingCustomer ? (
                       <div className="space-y-3"><div className="grid gap-3 sm:grid-cols-2">
                         <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Customer name *</span><input aria-label="Customer full name" type="text" value={newCustName} onChange={e => setNewCustName(e.target.value)} required className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
+                       <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Customer type</span><select aria-label="Customer type" value={newCustType} onChange={e => setNewCustType(e.target.value as CustomerType)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="Customer">Customer</option><option value="Reseller">Reseller</option></select></label>
                         <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Phone</span><input aria-label="Customer phone number" type="tel" value={newCustPhone} onChange={e => setNewCustPhone(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
                         <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300"><span>WhatsApp</span><input aria-label="Customer WhatsApp number" type="tel" value={newCustWhatsapp} onChange={e => setNewCustWhatsapp(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
                         <label className="space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Email</span><input aria-label="Customer email address" type="email" value={newCustEmail} onChange={e => setNewCustEmail(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
@@ -1134,7 +1183,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                       <div className="space-y-3">
                         <label className="relative block"><span className="sr-only">Search customers by name, phone, or email</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="search" value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (filteredCustomers.length === 1) handleChooseCustomer(filteredCustomers[0].id); else if (filteredCustomers.length > 1) showToast('Choose the intended customer from the results.', 'info'); } }} placeholder="Search name, phone, or email" className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
                         <div className="max-h-56 space-y-2 overflow-y-auto pr-1" role="listbox" aria-label="Customer search results">
-                          {filteredCustomers.length ? filteredCustomers.map(customer => <button key={customer.id} type="button" role="option" aria-selected={customer.id === customerId} onClick={() => handleChooseCustomer(customer.id)} className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-emerald-600 ${customer.id === customerId ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600'}`}><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-900 dark:text-white">{customer.name}</span><span className="mt-0.5 block truncate text-xs text-slate-500 dark:text-slate-400">WhatsApp: {customer.whatsapp || customer.phone || 'Not set'}{customer.email ? ` · ${customer.email}` : ''}</span></span><span className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">{subscriptions.filter(sub => sub.customerId === customer.id && sub.status !== 'cancelled' && getDaysDifference(sub.expiryDate) >= 0).length} active</span></button>) : <p className="rounded-lg bg-slate-50 p-4 text-center text-sm text-slate-500 dark:bg-slate-800">No matching customers. Use Add customer to create a record.</p>}
+                          {filteredCustomers.length ? filteredCustomers.map(customer => <button key={customer.id} type="button" role="option" aria-selected={customer.id === customerId} onClick={() => handleChooseCustomer(customer.id)} className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-emerald-600 ${customer.id === customerId ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600'}`}><span className="min-w-0"><CustomerNameWithType customer={customer} nameClassName="min-w-0 break-words text-sm font-semibold text-slate-900 dark:text-white" className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1" /><span className="mt-0.5 block truncate text-xs text-slate-500 dark:text-slate-400">WhatsApp: {customer.whatsapp || customer.phone || 'Not set'}{customer.email ? ` · ${customer.email}` : ''}</span></span><span className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">{subscriptions.filter(sub => sub.customerId === customer.id && sub.status !== 'cancelled' && getDaysDifference(sub.expiryDate) >= 0).length} active</span></button>) : <p className="rounded-lg bg-slate-50 p-4 text-center text-sm text-slate-500 dark:bg-slate-800">No matching customers. Use Add customer to create a record.</p>}
                         </div>
                         {filteredCustomers.length === 50 && <p className="text-xs text-slate-500">Showing the first 50 matches. Refine your search to find another customer.</p>}
                       </div>
@@ -1236,7 +1285,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                       <div><dt className="text-slate-500">Plan</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{plan || 'Not selected'}</dd></div>
                       {serviceUsesAccounts && <div><dt className="text-slate-500">Account</dt><dd className="mt-1 break-all font-semibold text-slate-900 dark:text-white">{selectedAccount?.email || 'Not selected'}</dd></div>}
                       {profileRequired && <div><dt className="text-slate-500">Profile</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{selectedProfile?.profileName || 'Not selected'}</dd></div>}
-                      <div><dt className="flex items-center justify-between text-slate-500">Start Date <button type="button" onClick={() => setStep(2)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{formatAppDate(startDate, language)}</dd></div>
+                      <div><dt className="flex items-center justify-between text-slate-500">Start Date <button type="button" onClick={() => setStep(3)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{formatAppDate(startDate, language)}</dd></div>
                       <div><dt className="text-slate-500">End Date</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{formatAppDate(calculatedExpiryDate, language)} · {formatDurationDays(durationDays)}</dd></div>
                       <div><dt className="flex items-center justify-between text-slate-500">Payment <button type="button" onClick={() => setStep(3)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold capitalize text-slate-900 dark:text-white">{paymentStatus} · {paymentMethod}</dd></div>
                     </dl>
@@ -1254,7 +1303,10 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
             </div>
             <details className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-900 lg:hidden"><summary className="cursor-pointer text-sm font-semibold text-slate-900 dark:text-white">Order summary · {formatCurrency(Number(price) || 0, currency)}</summary><div className="pt-3">{orderSummary}</div></details>
             <div className="sticky bottom-[-20px] z-10 -mx-6 flex items-center justify-between gap-3 border-t border-slate-200/90 bg-white/95 px-6 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
-              {step > 0 ? <button type="button" onClick={() => setStep(current => Math.max(current - 1, 0))} className="inline-flex min-h-10 items-center gap-1 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-300 dark:hover:bg-slate-800"><ChevronLeft className="h-4 w-4" />Back</button> : <button type="button" onClick={handleModalClose} className="inline-flex min-h-10 items-center rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-300 dark:hover:bg-slate-800">{t('cancel')}</button>}
+              {step > 0 ? <button type="button" onClick={() => {
+                const currentIndex = visibleStepIndexes.indexOf(step);
+                setStep(visibleStepIndexes[Math.max(currentIndex - 1, 0)]);
+              }} className="inline-flex min-h-10 items-center gap-1 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-300 dark:hover:bg-slate-800"><ChevronLeft className="h-4 w-4" />Back</button> : <button type="button" onClick={handleModalClose} className="inline-flex min-h-10 items-center rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:text-slate-300 dark:hover:bg-slate-800">{t('cancel')}</button>}
               {step < steps.length - 1 ? <button type="button" onClick={handleContinue} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">Continue<ChevronRight className="h-4 w-4" /></button> : <button type="submit" disabled={isSubmitting || !selectedCustomer || !selectedService || !selectedPlan || !Number.isFinite(totalAmount) || totalAmount <= 0 || !Number.isFinite(amountPaid) || amountPaid < 0 || amountPaid > totalAmount || Number(durationDays) < 1} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">{isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{isSubmitting ? 'Completing Sale…' : 'Confirm & Create Sale'}</button>}
             </div>
           </form>

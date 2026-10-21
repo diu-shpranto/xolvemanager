@@ -8,7 +8,7 @@ import type {
   Service,
   Subscription,
 } from '../types';
-import { getSubscriptionStatus } from './dateUtils';
+import { getCalendarDateInTimeZone, getDateInTimeZone, getSubscriptionStatus } from './dateUtils';
 import { calculateSalesFinancialSummary, convertReportCurrency } from './reportMetrics';
 import { getPaymentRecognizedAmount } from './saleUtils';
 
@@ -22,10 +22,11 @@ export type CustomerCrmStatus = 'active' | 'at_risk' | 'inactive';
 export type CustomerRiskLevel = 'low' | 'medium' | 'high';
 export type CustomerCrmQuickFilter = CustomerCrmStatus | 'new' | 'due' | 'renewals';
 
-export function isCustomerNew(createdAt: string, now = new Date()): boolean {
-  const dateValue = createdAt.slice(0, 10);
-  const created = new Date(`${dateValue}T00:00:00`);
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+export function isCustomerNew(createdAt: string, now = new Date(), timeZone?: string): boolean {
+  const dateValue = getCalendarDateInTimeZone(createdAt, timeZone);
+  if (!dateValue) return false;
+  const created = new Date(`${dateValue}T00:00:00Z`);
+  const today = new Date(`${getDateInTimeZone(timeZone, now)}T00:00:00Z`);
   if (!Number.isFinite(created.getTime())) return false;
   const ageDays = Math.floor((today.getTime() - created.getTime()) / 86400000);
   return ageDays >= 0 && ageDays <= CUSTOMER_CRM_THRESHOLDS.recentActivityDays;
@@ -76,7 +77,8 @@ export function buildCustomerCrmMetrics(
   services: Service[],
   currency: AppCurrency,
   now = new Date(),
-  reminderNoticeDays = 7
+  reminderNoticeDays = 7,
+  timeZone?: string
 ): Map<string, CustomerCrmMetrics> {
   const subscriptionById = new Map(subscriptions.map(item => [item.id, item]));
   const saleById = new Map(sales.map(item => [item.id, item]));
@@ -86,7 +88,7 @@ export function buildCustomerCrmMetrics(
   const subscriptionsByCustomer = new Map<string, Subscription[]>();
   const activitiesByCustomer = new Map<string, ActivityLog[]>();
   const serviceById = new Map(services.map(item => [item.id, item]));
-  const today = now.toISOString().slice(0, 10);
+  const today = getDateInTimeZone(timeZone, now);
 
   const append = <T,>(map: Map<string, T[]>, key: string | undefined, value: T) => {
     if (!key) return;
@@ -144,7 +146,8 @@ export function buildCustomerCrmMetrics(
         const status = getSubscriptionStatus(
           subscription,
           serviceById.get(subscription.serviceId),
-          reminderNoticeDays
+          reminderNoticeDays,
+          timeZone
         );
         return { subscription, status };
       });
@@ -153,8 +156,8 @@ export function buildCustomerCrmMetrics(
       item.status === 'expiring_soon' || item.status === 'expired'
     ).length;
     const recentlyExpired = subscriptionStates.some(item => {
-      const expiry = new Date(`${item.subscription.expiryDate}T00:00:00`);
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const expiry = new Date(`${item.subscription.expiryDate}T00:00:00Z`);
+      const todayStart = new Date(`${today}T00:00:00Z`);
       const days = Math.ceil((expiry.getTime() - todayStart.getTime()) / 86400000);
       return item.status === 'expired' && days >= -CUSTOMER_CRM_THRESHOLDS.recentlyExpiredDays;
     });

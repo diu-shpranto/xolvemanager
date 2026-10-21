@@ -12,13 +12,13 @@ interface SearchResultsViewProps {
 }
 
 export const SearchResultsView: React.FC<SearchResultsViewProps> = ({ query, onSelectResult }) => {
-  const { customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders } = useApp();
+  const { customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders, settings } = useApp();
   const [entityFilter, setEntityFilter] = useState<SearchEntity | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('');
-  const index = useMemo(() => buildSearchIndex({ customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders }), [
-    customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders,
+  const index = useMemo(() => buildSearchIndex({ customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders }, settings.businessProfile?.timeZone), [
+    customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders, settings.businessProfile?.timeZone,
   ]);
   const results = useMemo(() => {
     const source = searchRecords(index, query);

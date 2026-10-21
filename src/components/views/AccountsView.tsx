@@ -40,8 +40,8 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
-import { Account, AccountProfile, AccountStatus, ServiceCategory } from '../../types';
-import { formatAppDate, formatCurrency, getDaysDifference } from '../../utils/dateUtils';
+import { Account, AccountProfile, AccountStatus, AppCurrency, ServiceCategory } from '../../types';
+import { formatAppDate, formatCurrency, getDaysDifferenceForTimeZone, getSubscriptionStatusForTimeZone } from '../../utils/dateUtils';
 import { createRecordId } from '../../services/localStorageStore';
 import { normalizeSearchText } from '../../services/globalSearch';
 import { getAccountCapacity, getAccountInventoryMetrics, getAvailableProfiles, isAccountOperational, RESOURCE_CAPACITY_THRESHOLDS } from '../../utils/resourceManagement';
@@ -71,8 +71,8 @@ function getCategoryIcon(category?: ServiceCategory) {
 
 }
 
-function isAccountActive(account: Account): boolean {
-  return isAccountOperational(account);
+function isAccountActive(account: Account, timeZone?: string): boolean {
+  return isAccountOperational(account, timeZone);
 }
 
 interface AccountsViewProps {
@@ -80,6 +80,7 @@ interface AccountsViewProps {
   serviceFilterId?: string;
   createRequest?: number;
   onCreateRequestHandled?: () => void;
+  onCreateSaleForAccount?: (details: { accountId: string; serviceId: string; planId?: string }) => void;
   onCreateSaleForProfile?: (details: { customerId: string; accountId: string; profileId: string; serviceId: string; planId?: string }) => void;
   onViewSale?: (saleId: string) => void;
   onViewSubscription?: (subscriptionId: string) => void;
@@ -332,7 +333,7 @@ function getCategoryBadgeStyle(category?: ServiceCategory) {
   }
 }
 
-export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, serviceFilterId, createRequest, onCreateRequestHandled, onCreateSaleForProfile, onViewSale, onViewSubscription }) => {
+export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, serviceFilterId, createRequest, onCreateRequestHandled, onCreateSaleForAccount, onCreateSaleForProfile, onViewSale, onViewSubscription }) => {
   const { formatCurrency, formatDate: formatAppDate } = useAppFormatting();
   const {
     accounts,
@@ -341,6 +342,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
     subscriptions,
     sales,
     activityLogs,
+    settings,
     addAccount,
     updateAccount,
     deleteAccount,
@@ -348,7 +350,10 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
     assignCustomerToProfile,
     t,
     language,
+    currency,
   } = useApp();
+  const getDaysDifference = getDaysDifferenceForTimeZone(settings.businessProfile?.timeZone);
+  const getSubscriptionStatus = getSubscriptionStatusForTimeZone(settings.businessProfile?.timeZone);
   const { showToast } = useToast();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -415,11 +420,18 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
   const [accStatus, setAccStatus] = useState<AccountStatus>('Available');
   const [accMaxProfiles, setAccMaxProfiles] = useState(1);
   const [accPurchaseDate, setAccPurchaseDate] = useState('');
+  const [accPurchaseCost, setAccPurchaseCost] = useState('');
+  const [accPurchaseCostCurrency, setAccPurchaseCostCurrency] = useState<AppCurrency>(currency);
   const [accExpiryDate, setAccExpiryDate] = useState('');
   const [accNotes, setAccNotes] = useState('');
   const [allowProfileSharing, setAllowProfileSharing] = useState(false);
   const [requireCustomerAssignment, setRequireCustomerAssignment] = useState(true);
   const [allowNewAssignment, setAllowNewAssignment] = useState(true);
+  const selectedAccountService = services.find(service => service.id === accServiceId);
+  const accountRequiresProfiles = Boolean(
+    selectedAccountService?.settings?.usesProfiles
+    || selectedAccountService?.settings?.profileAssignmentRequired
+  );
 
   const toggleExpand = (accId: string) => {
     setExpandedAccountIds(prev => ({ ...prev, [accId]: !prev[accId] }));
@@ -427,7 +439,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
 
   const openAddModal = () => {
     const preselectedService = services.find(service => service.id === serviceFilterId && service.status === 'active' && !service.isArchived);
-    setAccServiceId(preselectedService?.id || services.find(service => service.status === 'active' && !service.isArchived)?.id || '');
+    const defaultService = preselectedService || services.find(service => service.status === 'active' && !service.isArchived);
+    setAccServiceId(defaultService?.id || '');
     setAccName('');
     setAccEmail('');
     setAccUsername('');
@@ -435,8 +448,12 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
     setAccPlan('');
     setAccPlanId('');
     setAccStatus('Available');
-    setAccMaxProfiles(1);
+    setAccMaxProfiles(defaultService?.settings?.usesProfiles || defaultService?.settings?.profileAssignmentRequired
+      ? Math.max(1, defaultService.settings.profileCapacity || 1)
+      : 0);
     setAccPurchaseDate('');
+    setAccPurchaseCost('');
+    setAccPurchaseCostCurrency(currency);
     setAccExpiryDate('');
     setAccNotes('');
     setAllowProfileSharing(false);
@@ -455,9 +472,11 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
     setAccPassword('');
     setAccPlan(acc.plan || '');
     setAccPlanId(acc.planId || '');
-    setAccStatus(isAccountActive(acc) ? 'Available' : acc.status);
+    setAccStatus(isAccountActive(acc, settings.businessProfile?.timeZone) ? 'Available' : acc.status);
     setAccMaxProfiles(acc.maxProfiles);
     setAccPurchaseDate(acc.purchaseDate || '');
+    setAccPurchaseCost(acc.purchaseCost === undefined ? '' : String(acc.purchaseCost));
+    setAccPurchaseCostCurrency(acc.purchaseCostCurrency || currency);
     setAccExpiryDate(acc.expiryDate || '');
     setAccNotes(acc.notes || '');
     setAllowProfileSharing(acc.allowProfileSharing ?? false);
@@ -477,21 +496,27 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
       );
       return;
     }
-    if (!Number.isInteger(accMaxProfiles) || accMaxProfiles < 1 || accMaxProfiles > 100) {
-      showToast('Enter a profile count between 1 and 100.', 'error');
+    const selectedService = services.find(service => service.id === accServiceId);
+    if (!selectedService || (!editingAccount && (selectedService.status !== 'active' || selectedService.isArchived))) {
+      showToast('Choose an active service.', 'error');
+      return;
+    }
+    const profileSlotsRequired = Boolean(selectedService.settings?.usesProfiles || selectedService.settings?.profileAssignmentRequired);
+    const minimumProfiles = profileSlotsRequired ? 1 : editingAccount?.profiles.length || 0;
+    if (!Number.isInteger(accMaxProfiles) || accMaxProfiles < minimumProfiles || accMaxProfiles > 100) {
+      showToast(profileSlotsRequired
+        ? 'Enter a profile count between 1 and 100.'
+        : 'Profile capacity cannot be lower than the profiles already saved.',
+        'error');
       return;
     }
     if ([accPurchaseDate, accExpiryDate].some(date => date && !Number.isFinite(Date.parse(`${date}T00:00:00`)))) {
       showToast('Enter valid account dates.', 'error');
       return;
     }
-    if (editingAccount && accMaxProfiles < editingAccount.profiles.length) {
-      showToast('Profile count cannot be lower than the profiles already on this account.', 'error');
-      return;
-    }
-    const selectedService = services.find(service => service.id === accServiceId);
-    if (!selectedService || (!editingAccount && (selectedService.status !== 'active' || selectedService.isArchived))) {
-      showToast('Choose an active service.', 'error');
+    const parsedPurchaseCost = accPurchaseCost.trim() ? Number(accPurchaseCost) : undefined;
+    if (parsedPurchaseCost !== undefined && (!Number.isFinite(parsedPurchaseCost) || parsedPurchaseCost < 0)) {
+      showToast('Enter a valid non-negative account purchase cost.', 'error');
       return;
     }
 
@@ -521,6 +546,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
           maxProfiles: Number(accMaxProfiles),
           profiles,
           purchaseDate: accPurchaseDate || undefined,
+          purchaseCost: parsedPurchaseCost,
+          purchaseCostCurrency: parsedPurchaseCost === undefined ? undefined : accPurchaseCostCurrency,
           expiryDate: accExpiryDate || undefined,
           notes: accNotes.trim(),
         });
@@ -548,6 +575,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
         allowNewAssignment,
         maxProfiles: Number(accMaxProfiles),
         purchaseDate: accPurchaseDate || undefined,
+        purchaseCost: parsedPurchaseCost,
+        purchaseCostCurrency: parsedPurchaseCost === undefined ? undefined : accPurchaseCostCurrency,
         expiryDate: accExpiryDate || undefined,
         notes: accNotes.trim(),
       });
@@ -674,18 +703,18 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
       || acc.planId === selectedPlanId
       || (!acc.planId && plan?.id === selectedPlanId);
     const matchesStatus = selectedStatus === 'all'
-      || (selectedStatus === 'active' && isAccountActive(acc))
+      || (selectedStatus === 'active' && isAccountActive(acc, settings.businessProfile?.timeZone))
       || (selectedStatus === 'inactive' && acc.status === 'Inactive')
       || (selectedStatus === 'suspended' && acc.status === 'Suspended')
       || (selectedStatus === 'expired' && (acc.status === 'Expired' || Boolean(acc.expiryDate && getDaysDifference(acc.expiryDate) < 0)));
     const capacity = getAccountCapacity(acc);
     const matchesCapacity = selectedCapacity === 'all'
-      || (selectedCapacity === 'available' && isAccountOperational(acc) && acc.allowNewAssignment !== false && capacity.available > 0 && capacity.utilization < RESOURCE_CAPACITY_THRESHOLDS.almostFull)
+      || (selectedCapacity === 'available' && isAccountOperational(acc, settings.businessProfile?.timeZone) && acc.allowNewAssignment !== false && capacity.available > 0 && capacity.utilization < RESOURCE_CAPACITY_THRESHOLDS.almostFull)
       || (selectedCapacity === 'almost-full' && capacity.status === 'Almost Full')
       || (selectedCapacity === 'full' && capacity.status === 'Full');
     const matchesAssignment = selectedAssignment === 'all'
       || (selectedAssignment === 'assigned' && acc.profiles.some(profile => profile.status === 'Assigned' || Boolean(profile.assignedCustomerId)))
-      || (selectedAssignment === 'available' && getAvailableProfiles([acc]).length > 0);
+      || (selectedAssignment === 'available' && getAvailableProfiles([acc], undefined, undefined, undefined, settings.businessProfile?.timeZone).length > 0);
     const expiryDays = acc.expiryDate ? getDaysDifference(acc.expiryDate) : null;
     const matchesExpiry = selectedExpiry === 'all'
       || (selectedExpiry === 'active' && (expiryDays === null || expiryDays >= RESOURCE_CAPACITY_THRESHOLDS.expiringSoonDays))
@@ -700,7 +729,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
       return leftService.localeCompare(rightService) || left.email.localeCompare(right.email);
     }
     if (sortBy === 'available') {
-      return getAvailableProfiles([right]).length - getAvailableProfiles([left]).length;
+      return getAvailableProfiles([right], undefined, undefined, undefined, settings.businessProfile?.timeZone).length
+        - getAvailableProfiles([left], undefined, undefined, undefined, settings.businessProfile?.timeZone).length;
     }
     if (sortBy === 'expiry') {
       const leftExpiry = left.expiryDate ? Date.parse(`${left.expiryDate}T00:00:00`) : Number.POSITIVE_INFINITY;
@@ -712,9 +742,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
 
   // Calculate subtle inventory overview metrics
   const totalAccountsCount = accounts.length;
-  const activeAccountCount = accounts.filter(isAccountActive).length;
+  const activeAccountCount = accounts.filter(account => isAccountActive(account, settings.businessProfile?.timeZone)).length;
   const totalAssignedSlots = accounts.reduce((sum, account) => sum + getAccountCapacity(account).used, 0);
-  const allocatableProfiles = getAvailableProfiles(accounts);
+  const allocatableProfiles = getAvailableProfiles(accounts, undefined, undefined, undefined, settings.businessProfile?.timeZone);
   const availableAccountIds = new Set(allocatableProfiles.map(({ account }) => account.id));
   const totalAvailableSlots = allocatableProfiles.length;
   const fullAccountsCount = accounts.filter(account => getAccountCapacity(account).status === 'Full').length;
@@ -1047,7 +1077,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
             const isExpanded = expandedAccountIds[acc.id];
             const capacity = getAccountCapacity(acc);
             const totalProfiles = capacity.capacity;
-            const inventory = getAccountInventoryMetrics(acc);
+            const inventory = getAccountInventoryMetrics(acc, settings.businessProfile?.timeZone);
             const assignedCount = inventory.assignedProfiles;
             const relatedSubscriptions = subscriptions.filter(subscription =>
               subscription.accountId === acc.id
@@ -1055,6 +1085,38 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                 profile.subscriptionId === subscription.id
                 || (subscription.accountId === acc.id && subscription.profileId === profile.id)
               )
+            );
+            const activeRelatedSubscriptions = relatedSubscriptions.filter(subscription =>
+              ['active', 'expiring_soon'].includes(
+                getSubscriptionStatus(subscription, srv, settings.reminderNoticeDays)
+              )
+            );
+            const profileRequired = Boolean(srv?.settings?.usesProfiles || srv?.settings?.profileAssignmentRequired);
+            const hasFullAccountAllocation = activeRelatedSubscriptions.some(subscription => !subscription.profileId);
+            const hasProfileAllocation = acc.profiles.some(profile =>
+              profile.status === 'Assigned' || Boolean(profile.assignedCustomerId)
+            );
+            const hasAvailableProfile = getAvailableProfiles([acc], acc.serviceId, acc.planId, undefined, settings.businessProfile?.timeZone).length > 0;
+            const hasSellablePlan = Boolean(srv?.planDetails?.some(plan =>
+              plan.status === 'active' && (!acc.planId || plan.id === acc.planId)
+            ));
+            const accountCanBeSold = Boolean(
+              srv
+              && !srv.isArchived
+              && srv.status === 'active'
+              && srv.settings?.subscriptionEnabled !== false
+              && srv.advanced?.allowNewSubscriptions !== false
+              && srv.advanced?.showInNewSale !== false
+              && (srv.settings?.usesAccounts || profileRequired)
+              && hasSellablePlan
+              && isAccountOperational(acc, settings.businessProfile?.timeZone)
+              && acc.allowNewAssignment !== false
+              && !hasFullAccountAllocation
+              && (profileRequired
+                ? hasAvailableProfile
+                : !activeRelatedSubscriptions.length
+                  && !hasProfileAllocation
+                  && !['Assigned', 'Full'].includes(acc.status))
             );
             const relatedSubscriptionIds = new Set(relatedSubscriptions.map(subscription => subscription.id));
             const relatedSales = sales.filter(sale =>
@@ -1071,7 +1133,13 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
             const isExpired = daysRemaining !== null && daysRemaining < 0;
             const isExpiringSoon = daysRemaining !== null && daysRemaining >= 0 && daysRemaining <= 7;
 
-            const accountStatus = isExpired ? 'Expired' : acc.status;
+            const accountStatus = isExpired
+              ? 'Expired'
+              : hasFullAccountAllocation || (!profileRequired && hasProfileAllocation)
+                ? 'Assigned'
+                : profileRequired && !hasAvailableProfile && hasProfileAllocation
+                  ? 'Full'
+                  : acc.status;
             const statusStyles: Record<AccountStatus, { text: string; cls: string; dot: string }> = {
               Available: {
                 text: language === 'bn' ? 'সক্রিয়' : 'Active',
@@ -1147,6 +1215,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                       {acc.name && (
                         <p className="account-email text-xs text-slate-500 dark:text-slate-400">{acc.email}</p>
                       )}
+                      <p className="font-mono text-[10px] text-slate-400 dark:text-slate-500">Account ID · {acc.id}</p>
 
                       {/* Secondary Meta Row: Tier + Expiration */}
                       <div className="account-meta flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
@@ -1194,29 +1263,36 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
 
                   {/* Profile counts */}
                   <div className="account-capacity-summary flex flex-col justify-center">
-                    <div className="account-capacity-label">
-                      <span>Profiles</span>
-                      <span className="font-mono tabular-nums">{assignedCount}<span className="account-capacity-divider">/</span>{totalProfiles}</span>
-                    </div>
-                    <div className="account-capacity-track" role="progressbar" aria-label={`${assignedCount} of ${totalProfiles} profiles assigned`} aria-valuemin={0} aria-valuemax={totalProfiles} aria-valuenow={Math.min(assignedCount, totalProfiles)}>
-                      <div
-                        className={`account-capacity-fill ${
-                          capacity.status === 'Full'
-                            ? 'is-full'
-                            : capacity.status === 'Almost Full'
-                            ? 'is-almost-full'
-                            : ''
-                        }`}
-                        style={{ width: `${totalProfiles > 0 ? Math.min(100, capacity.utilization * 100) : 0}%` }}
-                      />
-                    </div>
-                    <div className="account-capacity-detail">
-                    <span>{inventory.configuredProfiles}/{inventory.capacity} configured · {inventory.assignedProfiles} assigned · {inventory.availableProfiles} available</span>
-                      <span className={capacity.status === 'Full' ? 'is-full' : capacity.status === 'Almost Full' ? 'is-almost-full' : 'is-available'}>
-                        {capacity.status}
-                      </span>
-                    </div>
-                    <p className={`mt-1 text-[10px] font-semibold ${
+                    {profileRequired ? <>
+                      <div className="account-capacity-label">
+                        <span>Profile slots</span>
+                        <span className="font-mono tabular-nums">{assignedCount}<span className="account-capacity-divider">/</span>{totalProfiles}</span>
+                      </div>
+                      <div className="account-capacity-track" role="progressbar" aria-label={`${assignedCount} of ${totalProfiles} profiles assigned`} aria-valuemin={0} aria-valuemax={totalProfiles} aria-valuenow={Math.min(assignedCount, totalProfiles)}>
+                        <div
+                          className={`account-capacity-fill ${
+                            capacity.status === 'Full'
+                              ? 'is-full'
+                              : capacity.status === 'Almost Full'
+                              ? 'is-almost-full'
+                              : ''
+                          }`}
+                          style={{ width: `${totalProfiles > 0 ? Math.min(100, capacity.utilization * 100) : 0}%` }}
+                        />
+                      </div>
+                      <div className="account-capacity-detail">
+                        <span>{inventory.configuredProfiles}/{inventory.capacity} configured · {inventory.assignedProfiles} allocated · {inventory.availableProfiles} available</span>
+                        <span className={capacity.status === 'Full' ? 'is-full' : capacity.status === 'Almost Full' ? 'is-almost-full' : 'is-available'}>
+                          {capacity.status}
+                        </span>
+                      </div>
+                    </> : <div className="space-y-1 text-xs">
+                      <p className="font-semibold text-slate-700 dark:text-slate-200">Selling model · Full account</p>
+                      <p className={hasFullAccountAllocation || hasProfileAllocation ? 'font-semibold text-amber-700 dark:text-amber-300' : 'font-semibold text-emerald-700 dark:text-emerald-300'}>
+                        {hasFullAccountAllocation || hasProfileAllocation ? 'Allocated' : 'Available'}
+                      </p>
+                    </div>}
+                    {profileRequired && <p className={`mt-1 text-[10px] font-semibold ${
                     inventory.health === 'Review required' || inventory.health === 'Expired'
                       ? 'text-rose-600 dark:text-rose-400'
                       : inventory.health === 'Full' || inventory.health === 'Unavailable'
@@ -1224,11 +1300,20 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                         : 'text-emerald-700 dark:text-emerald-300'
                     }`}>
                     Inventory health: {inventory.health}
-                    </p>
+                    </p>}
                   </div>
 
                   {/* Account actions */}
                   <div className="account-inventory-actions flex items-center gap-1.5 flex-wrap sm:flex-nowrap justify-between sm:justify-end shrink-0">
+                    {onCreateSaleForAccount && (srv?.settings?.usesAccounts || srv?.settings?.profileAssignmentRequired || srv?.settings?.usesProfiles) && <button
+                      type="button"
+                      onClick={() => onCreateSaleForAccount({ accountId: acc.id, serviceId: acc.serviceId, planId: acc.planId })}
+                      disabled={!accountCanBeSold}
+                      title={accountCanBeSold ? 'Start a sale using this saved account' : 'No compatible available inventory or active plan'}
+                      className="min-h-10 rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Sell
+                    </button>}
                     <button
                       onClick={() => openEditModal(acc)}
                       className="min-h-10 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-violet-50 hover:text-violet-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-violet-300"
@@ -1293,7 +1378,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                         <button
                           type="button"
                           onClick={() => setProfileModalAccount(acc)}
-                          disabled={!isAccountActive(acc)}
+                          disabled={!isAccountActive(acc, settings.businessProfile?.timeZone)}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer self-start sm:self-auto disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -1421,7 +1506,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                               ) : (
                                 <button
                                   type="button"
-                                  disabled={!isAccountActive(acc)}
+                                  disabled={!isAccountActive(acc, settings.businessProfile?.timeZone)}
                                   onClick={() => {
                                     setSelectedSubscriptionIdForSlot('');
                                     setAssigningSlot({
@@ -1540,6 +1625,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                     setAccServiceId(serviceId);
                     setAccPlanId(firstPlan?.id || '');
                     setAccPlan(firstPlan?.name || '');
+                    setAccMaxProfiles(service?.settings?.usesProfiles || service?.settings?.profileAssignmentRequired
+                      ? Math.max(editingAccount?.profiles.length || 0, 1, service.settings.profileCapacity || 1)
+                      : editingAccount?.profiles.length || 0);
                   }}
                   className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500 cursor-pointer appearance-none"
                   required
@@ -1556,9 +1644,31 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
               </div>
             </div>
 
-            <div>
-              <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">Account Name</label>
-              <input type="text" value={accName} onChange={event => setAccName(event.target.value)} placeholder="e.g. Netflix Account 01" className="w-full h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+            <div className="account-name-field">
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <label htmlFor="account-name" className="font-semibold text-slate-800 dark:text-slate-200">
+                  Account name <span className="font-normal text-slate-500 dark:text-slate-400">(optional)</span>
+                </label>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-700 dark:text-violet-300">
+                  Inventory label
+                </span>
+              </div>
+              <div className="relative">
+                <Layers2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-500 dark:text-violet-300" aria-hidden="true" />
+                <input
+                  id="account-name"
+                  name="accountName"
+                  type="text"
+                  value={accName}
+                  onChange={event => setAccName(event.target.value)}
+                  placeholder="e.g. Netflix Account 01"
+                  aria-describedby="account-name-hint"
+                  className="account-name-input w-full rounded-xl border border-violet-200 bg-white py-3 pl-10 pr-3 text-sm font-semibold text-slate-900 shadow-xs placeholder:font-normal placeholder:text-slate-400 dark:border-violet-900/70 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500"
+                />
+              </div>
+              <p id="account-name-hint" className="mt-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
+                Used to identify this saved account in inventory. If blank, the account email is shown instead.
+              </p>
             </div>
 
             {/* Section 2: Account Email & Username */}
@@ -1643,7 +1753,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                 </select>
               </div>
 
-              <div>
+              {accountRequiresProfiles || Boolean(editingAccount?.profiles.length) ? <div>
                 <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
                   Number of Profiles
                 </label>
@@ -1652,10 +1762,10 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                   value={accMaxProfiles}
                   onChange={e => setAccMaxProfiles(e.target.value === '' ? 0 : Number(e.target.value))}
                   className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
-                  min={1}
+                  min={accountRequiresProfiles ? 1 : editingAccount?.profiles.length || 0}
                   max={100}
                 />
-              </div>
+              </div> : <p className="text-xs text-slate-500">This service sells the saved account as one allocation; no profile slots are configured.</p>}
 
               <div>
                 <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
@@ -1708,6 +1818,36 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                   className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500 font-mono"
                 />
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]">
+              <label className="block text-slate-700 dark:text-slate-300 font-semibold">
+                Actual Account Purchase Cost
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={accPurchaseCost}
+                  onChange={event => setAccPurchaseCost(event.target.value)}
+                  placeholder="Leave blank if unknown"
+                  className="mt-1 block h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-xs text-slate-900 focus:border-violet-500 focus:outline-hidden dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+                <span className="mt-1 block text-[10px] font-normal text-slate-500">
+                  New sales snapshot full cost, or allocate it across configured profile slots.
+                </span>
+              </label>
+              <label className="block text-slate-700 dark:text-slate-300 font-semibold">
+                Cost Currency
+                <select
+                  value={accPurchaseCostCurrency}
+                  onChange={event => setAccPurchaseCostCurrency(event.target.value as AppCurrency)}
+                  className="mt-1 block h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs text-slate-900 focus:border-violet-500 focus:outline-hidden dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  <option value="BDT">BDT</option>
+                  <option value="USD">USD</option>
+                </select>
+              </label>
             </div>
 
             {/* Section 6: Notes */}

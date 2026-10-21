@@ -42,6 +42,7 @@ export type NavSection =
   | 'daily-closing'
   | 'invoices'
   | 'history'
+  | 'profitability'
   | 'reports'
   | 'settings'
   | 'notifications'
@@ -170,6 +171,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'history' as NavSection,
       label: language === 'bn' ? t('nav_history') : 'Activity History',
       icon: History,
+      badge: null,
+    },
+    {
+      id: 'profitability' as NavSection,
+      label: language === 'bn' ? 'লাভ বিশ্লেষণ' : 'Profit Analytics',
+      icon: BarChart3,
       badge: null,
     },
     {
@@ -344,7 +351,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             },
             {
               label: language === 'bn' ? 'বিশ্লেষণ' : 'Insights',
-              items: navItems.filter(item => ['history', 'reports', 'notifications', 'reminders', 'data-integrity'].includes(item.id)),
+              items: navItems.filter(item => ['history', 'profitability', 'reports', 'notifications', 'reminders', 'data-integrity'].includes(item.id)),
             },
             {
               label: language === 'bn' ? 'পছন্দসমূহ' : 'Preferences',

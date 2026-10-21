@@ -22,6 +22,8 @@ import { registerPwa } from './services/pwaService';
 import type { CurrentAdminUser } from './context/AppContext';
 import { RecoveryScreen } from './components/common/RecoveryScreen';
 import { getAppLocation, sectionPaths, type SettingsStartSection } from './utils/appRoutes';
+import { getActivityEntityType } from './services/activityService';
+import { confirmUnsavedChangesBeforeNavigation, hasRegisteredUnsavedChanges } from './services/unsavedChanges';
 
 const DashboardView = lazy(() => import('./components/views/DashboardView').then(module => ({ default: module.DashboardView })));
 const CustomersView = lazy(() => import('./components/views/CustomersView').then(module => ({ default: module.CustomersView })));
@@ -38,6 +40,7 @@ const DailyClosingView = lazy(() => import('./components/views/DailyClosingView'
 const ExpensesView = lazy(() => import('./components/views/ExpensesView').then(module => ({ default: module.ExpensesView })));
 const InvoicesView = lazy(() => import('./components/views/InvoicesView').then(module => ({ default: module.InvoicesView })));
 const HistoryView = lazy(() => import('./components/views/HistoryView').then(module => ({ default: module.HistoryView })));
+const ProfitAnalyticsView = lazy(() => import('./components/views/ProfitAnalyticsView').then(module => ({ default: module.ProfitAnalyticsView })));
 const ReportsView = lazy(() => import('./components/views/ReportsView').then(module => ({ default: module.ReportsView })));
 const SettingsView = lazy(() => import('./components/views/SettingsView').then(module => ({ default: module.SettingsView })));
 const NotificationsView = lazy(() => import('./components/views/NotificationsView').then(module => ({ default: module.NotificationsView })));
@@ -81,9 +84,14 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     : getAppLocation(window.location.pathname);
   // Navigation State
   const [currentSection, setCurrentSectionState] = useState<NavSection>(initialLocation.section);
+  const currentSectionRef = useRef(currentSection);
+  currentSectionRef.current = currentSection;
+  const ignoreNextPopStateRef = useRef(false);
   const [isNotFound, setIsNotFound] = useState(Boolean(initialLocation.isNotFound));
   const setCurrentSection = (section: NavSection) => {
+    if (section !== currentSectionRef.current && !confirmUnsavedChangesBeforeNavigation()) return;
     setCurrentSectionState(section);
+    currentSectionRef.current = section;
     setIsNotFound(false);
     const nextPath = sectionPaths[section];
     if (typeof window !== 'undefined' && window.location.pathname !== nextPath) {
@@ -107,7 +115,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const [isNewSaleOpen, setIsNewSaleOpen] = useState(false);
   const [newSalePreselectedCustomer, setNewSalePreselectedCustomer] = useState<string | undefined>(undefined);
   const [newSalePreselectedService, setNewSalePreselectedService] = useState<string | undefined>(undefined);
-  const [newSaleResourcePreset, setNewSaleResourcePreset] = useState<{ accountId: string; profileId: string; planId?: string }>();
+  const [newSaleResourcePreset, setNewSaleResourcePreset] = useState<{ accountId: string; profileId?: string; planId?: string }>();
   const [paymentPreselectedCustomerId, setPaymentPreselectedCustomerId] = useState<string | undefined>();
   const [paymentPreselectedSaleId, setPaymentPreselectedSaleId] = useState<string | undefined>();
 
@@ -132,6 +140,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const [focusedSaleId, setFocusedSaleId] = useState<string | undefined>(() =>
     initialLocation.recordSection === 'sales' ? initialLocation.recordId : undefined
   );
+  const [profitSalesFilterIds, setProfitSalesFilterIds] = useState<string[]>();
   const [focusedInvoiceId, setFocusedInvoiceId] = useState<string | undefined>(() =>
     initialLocation.recordSection === 'invoices' ? initialLocation.recordId : undefined
   );
@@ -145,9 +154,25 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const lastRecentView = useRef('');
 
   useEffect(() => {
+    if (currentSection !== 'sales' && currentSection !== 'profitability') {
+      setProfitSalesFilterIds(undefined);
+    }
+  }, [currentSection]);
+
+  useEffect(() => {
     const handlePopState = () => {
+      if (ignoreNextPopStateRef.current) {
+        ignoreNextPopStateRef.current = false;
+        return;
+      }
+      if (hasRegisteredUnsavedChanges() && !confirmUnsavedChangesBeforeNavigation()) {
+        ignoreNextPopStateRef.current = true;
+        window.history.go(1);
+        return;
+      }
       const location = getAppLocation(window.location.pathname);
       setCurrentSectionState(location.section);
+      currentSectionRef.current = location.section;
       setIsNotFound(Boolean(location.isNotFound));
       setSettingsStartSection(location.settingsStartSection);
       setSelectedCustomerId(location.recordSection === 'customers' ? location.recordId ?? null : null);
@@ -168,7 +193,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const handleOpenNewSale = (
     customerId?: string,
     serviceId?: string,
-    resourcePreset?: { accountId: string; profileId: string; planId?: string }
+    resourcePreset?: { accountId: string; profileId?: string; planId?: string }
   ) => {
     setNewSalePreselectedCustomer(customerId);
     setNewSalePreselectedService(serviceId);
@@ -412,6 +437,10 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 setFocusedPaymentId(paymentId);
                 setCurrentSection('payments');
               }}
+              onViewInvoice={invoiceId => {
+                setFocusedInvoiceId(invoiceId);
+                setCurrentSection('invoices');
+              }}
               initialCustomerFilter={customerQuickFilter}
               initialServiceFilterId={customerServiceFilterId}
               onInitialCustomerFilterHandled={() => setCustomerQuickFilter(undefined)}
@@ -468,7 +497,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             />
           )}
 
-          {currentSection === 'accounts' && <AccountsView selectedAccountId={focusedAccountId} serviceFilterId={accountServiceFilterId} createRequest={createRequests.account} onCreateRequestHandled={() => markCreateRequestHandled('account')} onCreateSaleForProfile={details => handleOpenNewSale(details.customerId, details.serviceId, details)} onViewSale={saleId => { setFocusedSaleId(saleId); setCurrentSection('sales'); }} onViewSubscription={subscriptionId => { setFocusedSubscriptionId(subscriptionId); setCurrentSection('subscriptions'); }} />}
+          {currentSection === 'accounts' && <AccountsView selectedAccountId={focusedAccountId} serviceFilterId={accountServiceFilterId} createRequest={createRequests.account} onCreateRequestHandled={() => markCreateRequestHandled('account')} onCreateSaleForAccount={details => handleOpenNewSale(undefined, details.serviceId, details)} onCreateSaleForProfile={details => handleOpenNewSale(details.customerId, details.serviceId, details)} onViewSale={saleId => { setFocusedSaleId(saleId); setCurrentSection('sales'); }} onViewSubscription={subscriptionId => { setFocusedSubscriptionId(subscriptionId); setCurrentSection('subscriptions'); }} />}
 
           {currentSection === 'profiles' && <ProfilesView serviceFilterId={profileServiceFilterId} onCreateSaleForProfile={details => handleOpenNewSale(details.customerId, details.serviceId, details)} />}
 
@@ -516,6 +545,8 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
               onNavigateReminders={() => setCurrentSection('reminders')}
               focusSaleId={focusedSaleId}
               onFocusedSaleHandled={() => setFocusedSaleId(undefined)}
+              saleIdFilter={profitSalesFilterIds}
+              onClearSaleIdFilter={() => setProfitSalesFilterIds(undefined)}
             />
           )}
 
@@ -593,33 +624,52 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
           {currentSection === 'history' && (
             <HistoryView onViewRelated={activity => {
-              if (activity.customerId) {
-                setSelectedCustomerId(activity.customerId);
-                setCurrentSection('customers');
-              } else if (activity.invoiceId) {
-                setFocusedInvoiceId(activity.invoiceId);
+              const entityType = activity.entityType || getActivityEntityType(activity);
+              if (entityType === 'invoice' && (activity.invoiceId || activity.entityId)) {
+                setFocusedInvoiceId(activity.invoiceId || activity.entityId);
                 setCurrentSection('invoices');
-              } else if (activity.paymentId) {
-                setFocusedPaymentId(activity.paymentId);
+              } else if (entityType === 'payment' && (activity.paymentId || activity.entityId)) {
+                setFocusedPaymentId(activity.paymentId || activity.entityId);
                 setCurrentSection('payments');
-              } else if (activity.saleId) {
-                setFocusedSaleId(activity.saleId);
+              } else if (entityType === 'sale' && (activity.saleId || activity.entityId)) {
+                setFocusedSaleId(activity.saleId || activity.entityId);
                 setCurrentSection('sales');
-              } else if (activity.subscriptionId) {
-                setFocusedSubscriptionId(activity.subscriptionId);
+              } else if (entityType === 'subscription' && (activity.subscriptionId || activity.entityId)) {
+                setFocusedSubscriptionId(activity.subscriptionId || activity.entityId);
                 setCurrentSection('subscriptions');
-              } else if (activity.serviceId) {
-                setFocusedServiceId(activity.serviceId);
+              } else if ((entityType === 'service' || entityType === 'plan') && (activity.serviceId || (entityType === 'service' ? activity.entityId : undefined))) {
+                setFocusedServiceId(activity.serviceId || activity.entityId);
                 setCurrentSection('services');
-              } else if (activity.financialAccountId || activity.entityType === 'expense' || activity.entityType === 'income' || activity.entityType === 'transfer' || activity.entityType === 'adjustment') {
+              } else if (entityType === 'customer' && (activity.customerId || activity.entityId)) {
+                setSelectedCustomerId(activity.customerId || activity.entityId || null);
+                setCurrentSection('customers');
+              } else if (entityType === 'financial_account') {
+                setCashbookTarget({ accountId: activity.financialAccountId || activity.entityId });
                 setCurrentSection('cashbook');
-              } else if (activity.accountId || activity.profileId) {
+              } else if (entityType === 'expense' || entityType === 'income' || entityType === 'transfer' || entityType === 'adjustment' || entityType === 'daily_closing') {
+                setCurrentSection(entityType === 'daily_closing' ? 'daily-closing' : 'cashbook');
+              } else if (entityType === 'account' || entityType === 'profile') {
                 setFocusedAccountId(activity.accountId);
                 setCurrentSection('accounts');
-              } else if (activity.entityType === 'reminder') {
+              } else if (entityType === 'reminder') {
                 setCurrentSection('reminders');
               }
             }} />
+          )}
+
+          {currentSection === 'profitability' && (
+            <ProfitAnalyticsView
+              onViewSale={saleId => {
+                setProfitSalesFilterIds(undefined);
+                setFocusedSaleId(saleId);
+                setCurrentSection('sales');
+              }}
+              onViewSales={saleIds => {
+                setFocusedSaleId(undefined);
+                setProfitSalesFilterIds(saleIds);
+                setCurrentSection('sales');
+              }}
+            />
           )}
 
           {currentSection === 'reports' && (

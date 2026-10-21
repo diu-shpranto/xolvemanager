@@ -6,7 +6,7 @@ import {
 import type { NotificationCategory, NotificationPriority } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { NavSection } from '../navigation/Sidebar';
-import { formatAppDateTime } from '../../utils/dateUtils';
+import { useAppFormatting } from '../../hooks/useAppFormatting';
 
 interface NotificationsViewProps {
   onNavigateToNotification: (section: NavSection, entityId?: string) => void;
@@ -36,6 +36,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onNavigate
     notifications, markNotificationAsRead, markAllNotificationsAsRead,
     deleteNotification, clearNotifications, customers, services, invoices, language,
   } = useApp();
+  const { formatDateTime: formatAppDateTime } = useAppFormatting();
   const [filter, setFilter] = useState<Filter>('all');
   const [category, setCategory] = useState<NotificationCategory | 'all'>('all');
   const [search, setSearch] = useState('');

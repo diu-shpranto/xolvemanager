@@ -24,9 +24,9 @@ import { useToast } from '../common/Toast';
 import {
   formatAppDate,
   formatCurrency,
-  getSubscriptionStatus,
+  getDaysDifferenceForTimeZone,
+  getSubscriptionStatusForTimeZone,
   getDateInTimeZone,
-  getDaysDifference,
 } from '../../utils/dateUtils';
 import {
   calculateCustomerPerformance,
@@ -51,16 +51,7 @@ import { getCustomerDisplayName, getCustomerOptionLabel } from '../../utils/rela
 import { getOpenReminders, getOverdueReminders } from '../../services/reminderEngine';
 import { buildCustomerCrmMetrics } from '../../utils/customerCrm';
 import { getServiceResourceSummary, getAccountCapacity, RESOURCE_CAPACITY_THRESHOLDS } from '../../utils/resourceManagement';
-import {
-  getCustomerProfitability,
-  getAccountProfitability,
-  getPlanProfitability,
-  getProfitabilitySummary,
-  getProfitabilityTrend,
-  getServiceProfitability,
-  type ProfitabilityData,
-  type ProfitabilityRow,
-} from '../../utils/profitability';
+import { buildActualProfitAnalytics, type ActualProfitDimensionRow } from '../../utils/actualProfitAnalytics';
 import { getReceivableAging } from '../../utils/accountingControls';
 import {
   getAccountBalance,
@@ -165,7 +156,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className={`${cardClass} space-y-4`}>
+    <section className={`${cardClass} min-w-0 space-y-4`}>
       <div>
         <h2 className="text-base font-bold text-slate-900 dark:text-white">{title}</h2>
         {description && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{description}</p>}
@@ -204,6 +195,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     settings,
     currentBusiness,
   } = useApp();
+  const getDaysDifference = getDaysDifferenceForTimeZone(settings.businessProfile?.timeZone);
+  const getSubscriptionStatus = getSubscriptionStatusForTimeZone(settings.businessProfile?.timeZone);
   const { showToast } = useToast();
   const [datePreset, setDatePreset] = useState<ReportDatePreset>('month');
   const [customStart, setCustomStart] = useState('');
@@ -226,7 +219,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [customerSort, setCustomerSort] = useState<CustomerSort>('spent');
   const [dueSort, setDueSort] = useState<DueSort>('due');
   const [tableSearch, setTableSearch] = useState('');
-  const [profitabilityBreakdown, setProfitabilityBreakdown] = useState<'services' | 'plans' | 'customers' | 'accounts'>('services');
+  const [profitabilityBreakdown, setProfitabilityBreakdown] = useState<'service' | 'plan' | 'unit' | 'customer_type'>('service');
   const [showProfitabilityForm, setShowProfitabilityForm] = useState(false);
   const [selectedProfitabilityExpenseId, setSelectedProfitabilityExpenseId] = useState('');
   const [profitabilityDraft, setProfitabilityDraft] = useState({
@@ -289,37 +282,42 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       expense.status === 'posted' && !expense.profitabilityCostType && !linkedExpenseIds.has(expense.id)
     );
   }, [businessExpenses, businessProfitabilityCosts]);
-  const profitabilityData = useMemo<ProfitabilityData>(() => ({
-    sales: businessSales,
-    services: businessServices,
+  const profitDateRangeValid = datePreset !== 'custom' || Boolean(customStart && customEnd && customStart <= customEnd);
+  const profitSales = useMemo(() => businessSales.filter(sale =>
+    (serviceFilter === 'all' || sale.serviceId === serviceFilter)
+    && (planFilter === 'all' || sale.planId === planFilter)
+    && (customerFilter === 'all' || sale.customerId === customerFilter)
+    && (statusFilter === 'all' || getSalePaymentStatus(sale, businessPayments) === statusFilter)
+  ), [businessSales, serviceFilter, planFilter, customerFilter, statusFilter, businessPayments]);
+  const actualProfitability = useMemo(() => profitDateRangeValid ? buildActualProfitAnalytics({
+    sales: profitSales,
     customers: businessCustomers,
-    subscriptions: businessSubscriptions,
+    services: businessServices,
     payments: businessPayments,
-    costs: businessProfitabilityCosts,
-    expenses: businessExpenses,
+    profitabilityCosts: businessProfitabilityCosts,
     currency,
     bounds,
-    filters: {
-      serviceId: serviceFilter === 'all' ? undefined : serviceFilter,
-      planId: planFilter === 'all' ? undefined : planFilter,
-      customerId: customerFilter === 'all' ? undefined : customerFilter,
-      paymentStatus: statusFilter,
-    },
-    lowMarginWarningPercent: settings.profitabilityPreferences?.lowMarginWarningPercent,
-  }), [
-    businessSales, businessServices, businessCustomers, businessSubscriptions, businessPayments,
-    businessProfitabilityCosts, businessExpenses, currency, bounds, serviceFilter, planFilter,
-    customerFilter, statusFilter, settings.profitabilityPreferences?.lowMarginWarningPercent,
+  }) : null, [
+    profitDateRangeValid, profitSales, businessCustomers, businessServices, businessPayments,
+    businessProfitabilityCosts, currency, bounds.start, bounds.end,
   ]);
-  const profitabilitySummary = useMemo(() => getProfitabilitySummary(profitabilityData), [profitabilityData]);
-  const profitabilityServiceRows = useMemo(() => getServiceProfitability(profitabilityData), [profitabilityData]);
-  const profitabilityPlanRows = useMemo(() => getPlanProfitability(profitabilityData), [profitabilityData]);
-  const profitabilityCustomerRows = useMemo(() => getCustomerProfitability(profitabilityData), [profitabilityData]);
-  const profitabilityAccountRows = useMemo(
-    () => getAccountProfitability(profitabilityData, businessAccounts),
-    [profitabilityData, businessAccounts]
-  );
-  const profitabilityTrend = useMemo(() => getProfitabilityTrend(profitabilityData, grouping), [profitabilityData, grouping]);
+  const profitabilityTrend = useMemo(() => {
+    if (!actualProfitability) return [];
+    const grouped = new Map<string, { revenue: number; directCost: number; grossProfit: number | null }>();
+    actualProfitability.trend.forEach(point => {
+      const key = trendKey(point.date, grouping);
+      if (!key) return;
+      const current = grouped.get(key) || { revenue: 0, directCost: 0, grossProfit: 0 };
+      current.revenue += point.grossSales;
+      current.directCost += point.allocatedCost;
+      current.grossProfit = current.grossProfit === null || point.grossProfit === null
+        ? null
+        : current.grossProfit + point.grossProfit;
+      grouped.set(key, current);
+    });
+    return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right))
+      .map(([date, point]) => ({ date: readableDate(date, grouping, language), ...point }));
+  }, [actualProfitability, grouping, language]);
   const accountingReceivableAging = useMemo(
     () => getReceivableAging({
       sales: businessSales,
@@ -329,10 +327,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     }, bounds.end, currency),
     [businessSales, businessPayments, businessInvoices, businessCustomers, bounds.end, currency]
   );
-  const profitabilityRows: ProfitabilityRow[] = profitabilityBreakdown === 'services'
-    ? profitabilityServiceRows
-    : profitabilityBreakdown === 'plans' ? profitabilityPlanRows
-      : profitabilityBreakdown === 'customers' ? profitabilityCustomerRows : profitabilityAccountRows;
+  const profitabilityRows: ActualProfitDimensionRow[] = actualProfitability
+    ? profitabilityBreakdown === 'service' ? actualProfitability.byService
+      : profitabilityBreakdown === 'plan' ? actualProfitability.byPlan
+        : profitabilityBreakdown === 'unit' ? actualProfitability.byUnit : actualProfitability.byCustomerType
+    : [];
   const expenseById = useMemo(() => new Map(businessExpenses.map(expense => [expense.id, expense])), [businessExpenses]);
   const paymentMethodConfigs = useMemo(
     () => normalizePaymentMethods(settings.paymentPreferences?.methods),
@@ -343,8 +342,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     [businessFinancialAccounts]
   );
   const resourceSummary = useMemo(
-    () => getServiceResourceSummary(businessServices, businessAccounts),
-    [businessServices, businessAccounts]
+    () => getServiceResourceSummary(businessServices, businessAccounts, settings.businessProfile?.timeZone),
+    [businessServices, businessAccounts, settings.businessProfile?.timeZone]
   );
   const fullResourceAccounts = useMemo(
     () => businessAccounts.filter(account => getAccountCapacity(account).status === 'Full').length,
@@ -563,7 +562,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       })())
     )
     : [], [businessSubscriptions, bounds, boundsAreValid, serviceFilter, planFilter, customerFilter, statusFilter,
-      subscriptionStatusFilter, businessServices, settings.reminderNoticeDays]);
+      subscriptionStatusFilter, businessServices, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
 
   const reportInvoices = useMemo(() => boundsAreValid
     ? businessInvoices.filter(invoice => {
@@ -642,14 +641,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const isActiveSubscription = useCallback((subscription: Subscription): boolean => {
     const service = businessServices.find(item => item.id === subscription.serviceId);
     return getSubscriptionStatus(subscription, service, settings.reminderNoticeDays) === 'active';
-  }, [businessServices, settings.reminderNoticeDays]);
+  }, [businessServices, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
 
   const subscriptionState = useCallback((subscription: Subscription): 'active' | 'ending' | 'expired' | 'cancelled' => {
     const service = businessServices.find(item => item.id === subscription.serviceId);
     const status = getSubscriptionStatus(subscription, service, settings.reminderNoticeDays);
     if (status === 'cancelled') return 'cancelled';
     return status === 'expired' ? 'expired' : status === 'expiring_soon' ? 'ending' : 'active';
-  }, [businessServices, settings.reminderNoticeDays]);
+  }, [businessServices, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
 
   const activeReportSubscriptions = businessSubscriptions.filter(isActiveSubscription);
   const renewalSales = reportSales.filter(sale => Boolean(sale.renewalOfSubscriptionId));
@@ -699,10 +698,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     businessServices,
     currency,
     new Date(),
-    settings.reminderNoticeDays
+    settings.reminderNoticeDays,
+    settings.businessProfile?.timeZone
   ), [
     businessCustomers, businessSales, businessSubscriptions, businessPayments,
     businessInvoices, businessActivity, businessServices, currency, settings.reminderNoticeDays,
+    settings.businessProfile?.timeZone,
   ]);
   const customersInSelectedRange = businessCustomers.filter(customer =>
     isWithinDateBounds(normalizeDate(customer.createdAt), bounds)
@@ -1500,28 +1501,33 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       </Section>
 
       <Section
-        title="Service & Plan Profitability"
-        description={`Revenue and estimated/recorded costs for ${bounds.start} – ${bounds.end}. Sales revenue uses sale totals; payment receipts are not counted again.${profitabilityBreakdown === 'accounts' ? ' Account costs are allocated from each service by account revenue share.' : ''}`}
+        title="Profit Analytics"
+        description={`Actual account-cost snapshots and explicitly sale-linked direct costs for ${bounds.start} – ${bounds.end}. Gross sales use sale totals; payment receipts are not counted again. Unknown costs are not replaced with plan estimates.`}
       >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <MetricCard label="Sales Revenue" value={boundsAreValid ? formatCurrency(profitabilitySummary.revenue, currency) : '—'} tone="green" />
-          <MetricCard label="Direct Costs" value={boundsAreValid ? formatCurrency(profitabilitySummary.directCost, currency) : '—'} tone="amber" detail="Includes configured estimates where no sale-linked actual cost exists" />
-          <MetricCard label="Gross Profit" value={boundsAreValid ? formatCurrency(profitabilitySummary.grossProfit, currency) : '—'} tone="blue" />
-          <MetricCard label="Gross Margin" value={profitabilitySummary.grossMargin === null ? '—' : `${profitabilitySummary.grossMargin.toFixed(1)}%`} />
-          <MetricCard label="Operating Costs" value={boundsAreValid ? formatCurrency(profitabilitySummary.operatingCost, currency) : '—'} tone="amber" />
-          <MetricCard label="Net Contribution" value={boundsAreValid ? formatCurrency(profitabilitySummary.netContribution, currency) : '—'} tone={profitabilitySummary.netContribution < 0 ? 'amber' : 'blue'} />
+          <MetricCard label="Gross Sales" value={boundsAreValid && actualProfitability ? formatCurrency(actualProfitability.grossSales, currency) : '—'} tone="green" detail="Eligible sale totals; separate from payment receipts." />
+          <MetricCard label="Actual Allocated Cost" value={boundsAreValid && actualProfitability ? formatCurrency(actualProfitability.actualAllocatedCost, currency) : '—'} tone="amber" detail={`Known account and sale-linked costs; ${actualProfitability?.unknownCostSales || 0} unknown-cost sale(s) excluded.`} />
+          <MetricCard label="Gross Profit" value={!boundsAreValid || !actualProfitability ? '—' : actualProfitability.grossProfit === null ? 'Unavailable' : formatCurrency(actualProfitability.grossProfit, currency)} tone="blue" detail={actualProfitability?.unknownCostSales ? `${actualProfitability.unknownCostSales} sale(s) have unknown cost.` : 'Gross sales less actual costs, before refunds and adjustments.'} />
+          <MetricCard label="Refunds & Adjustments" value={boundsAreValid && actualProfitability ? formatCurrency(actualProfitability.refunds + actualProfitability.adjustments, currency) : '—'} tone="amber" detail={actualProfitability ? `Refunds ${formatCurrency(actualProfitability.refunds, currency)} · adjustments ${formatCurrency(actualProfitability.adjustments, currency)}` : 'Recorded values only.'} />
+          <MetricCard label="Net Profit" value="Unavailable" tone="blue" detail="Operating expenses are not fully reconciled to sales." />
+          <MetricCard label="Sales with Unknown Cost" value={boundsAreValid && actualProfitability ? actualProfitability.unknownCostSales : '—'} tone="amber" detail="No account snapshot or sale-linked actual cost is available." />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2" role="group" aria-label="Profitability breakdown">
-            {(['services', 'plans', 'customers', 'accounts'] as const).map(mode => (
+            {([
+              ['service', 'Service'],
+              ['plan', 'Plan'],
+              ['unit', 'Selling unit'],
+              ['customer_type', 'Customer / reseller'],
+            ] as const).map(([mode, label]) => (
               <button
                 key={mode}
                 type="button"
                 aria-pressed={profitabilityBreakdown === mode}
                 onClick={() => setProfitabilityBreakdown(mode)}
-                className={`rounded-lg px-3 py-2 text-xs font-semibold capitalize ${profitabilityBreakdown === mode ? 'bg-emerald-600 text-white' : 'border border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold ${profitabilityBreakdown === mode ? 'bg-emerald-600 text-white' : 'border border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}
               >
-                By {mode}
+                By {label}
               </button>
             ))}
           </div>
@@ -1532,6 +1538,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
               </select>
             </label>
+            <button type="button" onClick={() => onNavigate('profitability')} className="rounded-lg border border-violet-200 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-900 dark:text-violet-300 dark:hover:bg-violet-950/30">Open Profit Analytics</button>
             <button type="button" onClick={() => {
               setProfitabilityDraft(previous => ({ ...previous, date: previous.date || businessToday }));
               setShowProfitabilityForm(open => !open);
@@ -1610,41 +1617,43 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </div>
         )}
         <div className="h-64 w-full">
-          {profitabilityTrend.length ? (
+          {boundsAreValid && profitabilityTrend.length ? (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={profitabilityTrend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" opacity={0.2} />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip formatter={value => formatCurrency(Number(value) || 0, currency)} />
-                <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#10b981" fill="#10b981" fillOpacity={0.12} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
-                <Area type="monotone" dataKey="grossProfit" name="Gross profit" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.08} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                <Area type="monotone" dataKey="revenue" name="Gross sales" stroke="#7c3aed" fill="#7c3aed" fillOpacity={0.12} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                <Area type="monotone" dataKey="directCost" name="Actual allocated cost" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.1} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                <Area type="monotone" dataKey="grossProfit" name="Gross profit" stroke="#059669" fill="#059669" fillOpacity={0.08} isAnimationActive={!prefersReducedMotion} animationDuration={350} connectNulls={false} />
               </AreaChart>
             </ResponsiveContainer>
           ) : <p className="flex h-full items-center justify-center text-sm text-slate-500">No recognized sales in this period.</p>}
         </div>
         <div className="data-table-scroll overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700" role="region" aria-label="Profitability report table; scroll horizontally to view all columns" tabIndex={0}>
-          <table className="w-full min-w-[720px] text-left text-xs">
+          <table className="w-full min-w-[820px] text-left text-xs">
             <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
-              <tr><th className="px-3 py-2.5">Name</th><th className="px-3 py-2.5 text-right">Sales</th><th className="px-3 py-2.5 text-right">Revenue</th><th className="px-3 py-2.5 text-right">Direct Cost</th><th className="px-3 py-2.5 text-right">Gross Profit</th><th className="px-3 py-2.5 text-right">Margin</th><th className="px-3 py-2.5 text-right">Due</th></tr>
+              <tr><th className="px-3 py-2.5">Name</th><th className="px-3 py-2.5 text-right">Sales</th><th className="px-3 py-2.5 text-right">Gross sales</th><th className="px-3 py-2.5 text-right">Actual cost</th><th className="px-3 py-2.5 text-right">Gross profit</th><th className="px-3 py-2.5 text-right">Margin</th><th className="px-3 py-2.5 text-right">Unknown cost</th><th className="px-3 py-2.5">Sales</th></tr>
             </thead>
             <tbody>
               {profitabilityRows.map(row => (
                 <tr key={row.id} className="border-t border-slate-100 dark:border-slate-800">
-                  <td className="px-3 py-3 font-semibold text-slate-800 dark:text-slate-200">{row.name}{row.lowMargin && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800 dark:bg-amber-950 dark:text-amber-200">Low margin</span>}</td>
+                  <td className="px-3 py-3 font-semibold text-slate-800 dark:text-slate-200">{row.name}</td>
                   <td className="px-3 py-3 text-right tabular-nums">{row.salesCount}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{formatCurrency(row.revenue, currency)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{formatCurrency(row.directCost, currency)}</td>
-                  <td className={`px-3 py-3 text-right font-semibold tabular-nums ${row.grossProfit < 0 ? 'text-rose-600' : 'text-slate-800 dark:text-slate-200'}`}>{formatCurrency(row.grossProfit, currency)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{row.grossMargin === null ? '—' : `${row.grossMargin.toFixed(1)}%`}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{formatCurrency(row.due, currency)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{formatCurrency(row.grossSales, currency)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{formatCurrency(row.allocatedCost, currency)}</td>
+                  <td className={`px-3 py-3 text-right font-semibold tabular-nums ${row.grossProfit !== null && row.grossProfit < 0 ? 'text-rose-600' : 'text-slate-800 dark:text-slate-200'}`}>{row.grossProfit === null ? 'Unknown' : formatCurrency(row.grossProfit, currency)}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{row.margin === null ? '—' : `${row.margin.toFixed(1)}%`}</td>
+                  <td className="px-3 py-3 text-right tabular-nums">{row.unknownCostSales}</td>
+                  <td className="px-3 py-3"><button type="button" onClick={() => onNavigate('sales', row.firstSaleId)} className="min-h-8 rounded-lg border border-violet-200 px-2.5 font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-900 dark:text-violet-300">Open sale</button></td>
                 </tr>
               ))}
-              {!profitabilityRows.length && <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-500">No profitability records match the current filters.</td></tr>}
+              {!profitabilityRows.length && <tr><td colSpan={8} className="px-3 py-8 text-center text-slate-500">No profitability records match the current filters.</td></tr>}
             </tbody>
           </table>
         </div>
-        <p className="text-[11px] text-slate-500 dark:text-slate-400">Active subscriptions are not shown as recurring revenue because the current data model does not record billing cycles. Actual cost entries supplement, and do not create, cashbook transactions.</p>
+        <p className="text-[11px] text-slate-500 dark:text-slate-400">Profile/family-slot sales snapshot the account purchase cost divided by configured profile capacity; full-account sales snapshot the full cost. An explicit sale-linked direct cost record is used only when no snapshot exists; sales without either source remain unknown. Net profit is unavailable because operating expenses are not fully attributable to sales.</p>
       </Section>
 
       <section aria-label="Resource utilization" className={`${cardClass} space-y-4`}>
@@ -2011,7 +2020,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             )}
           </Section>
 
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid min-w-0 gap-4 xl:grid-cols-2">
             <Section title="Daily Closing Analytics" description="Reconciliation snapshots are read-only here; reports never create or change closing records.">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <MetricCard label="Days Closed" value={closedDates.size} tone="green" />
@@ -2022,7 +2031,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 <MetricCard label="Total Difference" value={formatCurrency(dailyClosingTotals.difference, currency)} tone={dailyClosingTotals.difference ? 'amber' : 'green'} />
               </div>
               {closingRows.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No daily closing records for this period.</p> : (
-                <div className="data-table-scroll max-h-[420px] overflow-auto" role="region" aria-label="Daily closing records table; scroll to view all records and columns" tabIndex={0}>
+                <div className="data-table-scroll max-h-[420px] w-full min-w-0 max-w-full overflow-auto" role="region" aria-label="Daily closing records table; scroll to view all records and columns" tabIndex={0}>
                   <table className="w-full min-w-[780px] text-left text-xs">
                     <thead><tr className="border-b border-slate-200 text-slate-500 dark:border-slate-800">{['Date', 'Opening', 'Money In', 'Money Out', 'Expected', 'Actual', 'Difference', 'Status'].map(label => <th key={label} scope="col" className="p-2">{label}</th>)}</tr></thead>
                     <tbody>{closingRows.map(closing => <tr key={closing.id} className="border-b border-slate-100 dark:border-slate-800">

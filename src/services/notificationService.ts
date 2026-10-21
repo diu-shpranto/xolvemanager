@@ -27,6 +27,7 @@ export interface NotificationData {
   payments: Payment[];
   invoices: Invoice[];
   settings: AppSettings;
+  timeZone?: string;
   storageWarning?: string | null;
 }
 
@@ -96,7 +97,7 @@ export const generateSystemNotifications = (data: NotificationData): BusinessNot
       subscription.planId,
       data.settings.reminderNoticeDays
     );
-    const days = getDaysDifference(subscription.expiryDate);
+    const days = getDaysDifference(subscription.expiryDate, data.timeZone);
     if (days < 0) {
       if (days < -90) return;
       const notification = buildSystemNotification(data, {
@@ -267,7 +268,7 @@ export const generateSystemNotifications = (data: NotificationData): BusinessNot
   });
 
   data.accounts.forEach(account => {
-    const accountDays = account.expiryDate ? getDaysDifference(account.expiryDate) : null;
+    const accountDays = account.expiryDate ? getDaysDifference(account.expiryDate, data.timeZone) : null;
     if (accountDays !== null && accountDays <= RESOURCE_CAPACITY_THRESHOLDS.expiringSoonDays) {
       const expired = accountDays < 0;
       append(buildSystemNotification(data, {
@@ -286,7 +287,7 @@ export const generateSystemNotifications = (data: NotificationData): BusinessNot
     }
     account.profiles.forEach(profile => {
       if (!profile.assignedCustomerId || !profile.expiryDate) return;
-      const days = getDaysDifference(profile.expiryDate);
+      const days = getDaysDifference(profile.expiryDate, data.timeZone);
       if (days > RESOURCE_CAPACITY_THRESHOLDS.expiringSoonDays) return;
       const expired = days < 0;
       append(buildSystemNotification(data, {
@@ -349,7 +350,7 @@ export const generateSystemNotifications = (data: NotificationData): BusinessNot
   data.services.forEach(service => {
     if (service.isArchived) return;
     const expiringThisWeek = (subscriptionsByServiceId.get(service.id) || []).filter(subscription => {
-      const daysUntilExpiry = getDaysDifference(subscription.expiryDate);
+      const daysUntilExpiry = getDaysDifference(subscription.expiryDate, data.timeZone);
       return subscription.status !== 'cancelled'
         && subscription.status !== 'expired'
         && daysUntilExpiry >= 0

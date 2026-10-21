@@ -3,6 +3,17 @@ import type { AppCurrency, Language, Service, Subscription, SubscriptionStatus }
 const getFormattingLocale = (language: Language): string => language === 'bn' ? 'bn-BD' : 'en-GB';
 const dateOnlyPattern = /^(\d{4})-(\d{2})-(\d{2})$/;
 
+function formatDateValue(date: Date, language: Language, options: Intl.DateTimeFormatOptions): string {
+  try {
+    return new Intl.DateTimeFormat(getFormattingLocale(language), options).format(date);
+  } catch (error) {
+    if (!options.timeZone) throw error;
+    console.error(`The configured business time zone "${options.timeZone}" is invalid. Using the device time zone.`, error);
+    const { timeZone: _invalidTimeZone, ...fallbackOptions } = options;
+    return new Intl.DateTimeFormat(getFormattingLocale(language), fallbackOptions).format(date);
+  }
+}
+
 export function formatAppDate(
   dateStr: string | null | undefined,
   language: Language = 'en',
@@ -23,13 +34,13 @@ export function formatAppDate(
   }
 
   if (!Number.isFinite(date.getTime())) return dateStr;
-  return new Intl.DateTimeFormat(getFormattingLocale(language), {
+  return formatDateValue(date, language, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
     ...options,
     ...(dateOnly ? { timeZone: 'UTC' } : {}),
-  }).format(date);
+  });
 }
 
 export function formatAppDateTime(
@@ -40,14 +51,14 @@ export function formatAppDateTime(
   if (!dateTime) return 'N/A';
   const date = new Date(dateTime);
   if (!Number.isFinite(date.getTime())) return dateTime;
-  return new Intl.DateTimeFormat(getFormattingLocale(language), {
+  return formatDateValue(date, language, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
     ...options,
-  }).format(date);
+  });
 }
 
 export function formatAppNumber(
@@ -65,32 +76,54 @@ export function formatAppDurationDays(days: number, language: Language = 'en'): 
   return language === 'bn' ? `${formattedDays} দিন` : `${formattedDays} ${days === 1 ? 'day' : 'days'}`;
 }
 
-export function getTodayDateString(): string {
-  const now = new Date();
+export function getTodayDateString(timeZone?: string, now = new Date()): string {
+  if (timeZone) return getDateInTimeZone(timeZone, now);
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
-export function getDateInTimeZone(timeZone?: string): string {
-  if (!timeZone) return getTodayDateString();
+export function getDateStringInTimeZone(value: string | Date, timeZone?: string): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  if (!timeZone) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
   try {
     const values = new Intl.DateTimeFormat('en-CA', {
       timeZone,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
-    }).formatToParts(new Date());
+    }).formatToParts(date);
     const part = (type: Intl.DateTimeFormatPartTypes) => values.find(value => value.type === type)?.value;
     const year = part('year');
     const month = part('month');
     const day = part('day');
-    if (year && month && day) return `${year}-${month}-${day}`;
+    return year && month && day ? `${year}-${month}-${day}` : '';
   } catch (error) {
-    console.error(`The configured business time zone "${timeZone}" is invalid. Using the local date.`, error);
+    console.error(`The configured business time zone "${timeZone}" is invalid. Using the device time zone.`, error);
+    return getDateStringInTimeZone(date);
   }
-  return getTodayDateString();
+}
+
+export function getCalendarDateInTimeZone(value: string, timeZone?: string): string {
+  const match = dateOnlyPattern.exec(value);
+  if (match) {
+    const [, year, month, day] = match.map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCFullYear() === year
+      && date.getUTCMonth() === month - 1
+      && date.getUTCDate() === day) return value;
+    return '';
+  }
+  return getDateStringInTimeZone(value, timeZone);
+}
+
+export function getDateInTimeZone(timeZone?: string, now = new Date()): string {
+  if (!timeZone) return getTodayDateString(undefined, now);
+  return getDateStringInTimeZone(now, timeZone) || getTodayDateString(undefined, now);
 }
 
 export function calculateExpiryDate(startDateStr: string, durationDays: number): string {
@@ -103,21 +136,26 @@ export function calculateExpiryDate(startDateStr: string, durationDays: number):
   return `${year}-${month}-${day}`;
 }
 
-export function getDaysDifference(targetDateStr: string): number {
-  if (!targetDateStr) return 0;
-  const target = new Date(targetDateStr + 'T00:00:00');
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diffTime = target.getTime() - today.getTime();
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+export function getDaysDifference(targetDateStr: string, timeZone?: string, now = new Date()): number {
+  return getDaysDifferenceInTimeZone(targetDateStr, timeZone, now);
+}
+
+export function getDaysDifferenceForTimeZone(timeZone?: string): (targetDateStr: string, now?: Date) => number {
+  return (targetDateStr, now) => getDaysDifference(targetDateStr, timeZone, now);
 }
 
 export function getDaysDifferenceInTimeZone(targetDateStr: string, timeZone?: string, now = new Date()): number {
   if (!targetDateStr) return 0;
-  const today = getDateInTimeZone(timeZone);
-  const targetParts = targetDateStr.split('-').map(Number);
+  const match = dateOnlyPattern.exec(targetDateStr);
+  if (!match) return 0;
+  const targetParts = match.slice(1).map(Number);
+  const validTarget = new Date(Date.UTC(targetParts[0], targetParts[1] - 1, targetParts[2]));
+  if (validTarget.getUTCFullYear() !== targetParts[0]
+    || validTarget.getUTCMonth() !== targetParts[1] - 1
+    || validTarget.getUTCDate() !== targetParts[2]) return 0;
+  const today = getDateInTimeZone(timeZone, now);
   const todayParts = today.split('-').map(Number);
-  if (targetParts.length !== 3 || todayParts.length !== 3
+  if (todayParts.length !== 3
     || [...targetParts, ...todayParts].some(value => !Number.isInteger(value))) return 0;
   const target = Date.UTC(targetParts[0], targetParts[1] - 1, targetParts[2]);
   const todayValue = Date.UTC(todayParts[0], todayParts[1] - 1, todayParts[2]);
@@ -144,13 +182,19 @@ export function getSubscriptionReminderDays(
 export function getSubscriptionStatus(
   subscription: Pick<Subscription, 'expiryDate' | 'status' | 'planId' | 'cancelledAt'>,
   service?: Service,
-  defaultDays?: number
+  defaultDays?: number,
+  timeZone?: string
 ): SubscriptionStatus;
-export function getSubscriptionStatus(expiryDateStr: string, warningDays?: number): Exclude<SubscriptionStatus, 'cancelled'>;
+export function getSubscriptionStatus(
+  expiryDateStr: string,
+  warningDays?: number,
+  timeZone?: string
+): Exclude<SubscriptionStatus, 'cancelled'>;
 export function getSubscriptionStatus(
   subscriptionOrExpiry: string | Pick<Subscription, 'expiryDate' | 'status' | 'planId' | 'cancelledAt'>,
   serviceOrWarningDays?: Service | number,
-  defaultDays: number = 7
+  defaultDaysOrTimeZone: number | string = 7,
+  timeZone?: string
 ): SubscriptionStatus {
   if (typeof subscriptionOrExpiry !== 'string'
     && (subscriptionOrExpiry.status === 'cancelled' || subscriptionOrExpiry.cancelledAt)) return 'cancelled';
@@ -158,8 +202,17 @@ export function getSubscriptionStatus(
   const service = typeof serviceOrWarningDays === 'object' ? serviceOrWarningDays : undefined;
   const warningDays = typeof subscriptionOrExpiry === 'string'
     ? typeof serviceOrWarningDays === 'number' ? serviceOrWarningDays : 7
-    : getSubscriptionReminderDays(service, subscriptionOrExpiry.planId, defaultDays);
-  const daysDiff = getDaysDifference(expiryDateStr);
+    : getSubscriptionReminderDays(
+      service,
+      subscriptionOrExpiry.planId,
+      typeof defaultDaysOrTimeZone === 'number' ? defaultDaysOrTimeZone : 7
+    );
+  const effectiveTimeZone = typeof subscriptionOrExpiry === 'string'
+    ? typeof serviceOrWarningDays === 'number'
+      ? timeZone
+      : typeof defaultDaysOrTimeZone === 'string' ? defaultDaysOrTimeZone : undefined
+    : timeZone || (typeof defaultDaysOrTimeZone === 'string' ? defaultDaysOrTimeZone : undefined);
+  const daysDiff = getDaysDifference(expiryDateStr, effectiveTimeZone);
   if (daysDiff < 0) {
     return 'expired';
   }
@@ -169,8 +222,51 @@ export function getSubscriptionStatus(
   return 'active';
 }
 
-export function getExpiryBadgeInfo(expiryDateStr: string, language: Language = 'en', warningDays: number = 7) {
-  const days = getDaysDifference(expiryDateStr);
+export function getSubscriptionStatusForTimeZone(timeZone?: string): {
+  (
+    subscription: Pick<Subscription, 'expiryDate' | 'status' | 'planId' | 'cancelledAt'>,
+    service?: Service,
+    defaultDays?: number
+  ): SubscriptionStatus;
+  (expiryDateStr: string, warningDays?: number): Exclude<SubscriptionStatus, 'cancelled'>;
+} {
+  function getStatus(
+    subscription: Pick<Subscription, 'expiryDate' | 'status' | 'planId' | 'cancelledAt'>,
+    service?: Service,
+    defaultDays?: number
+  ): SubscriptionStatus;
+  function getStatus(
+    expiryDateStr: string,
+    warningDays?: number
+  ): Exclude<SubscriptionStatus, 'cancelled'>;
+  function getStatus(
+    subscriptionOrExpiry: string | Pick<Subscription, 'expiryDate' | 'status' | 'planId' | 'cancelledAt'>,
+    serviceOrWarningDays?: Service | number,
+    defaultDays = 7
+  ): SubscriptionStatus {
+    return typeof subscriptionOrExpiry === 'string'
+      ? getSubscriptionStatus(
+        subscriptionOrExpiry,
+        typeof serviceOrWarningDays === 'number' ? serviceOrWarningDays : undefined,
+        timeZone
+      )
+      : getSubscriptionStatus(
+        subscriptionOrExpiry,
+        typeof serviceOrWarningDays === 'object' ? serviceOrWarningDays : undefined,
+        defaultDays,
+        timeZone
+      );
+  }
+  return getStatus;
+}
+
+export function getExpiryBadgeInfo(
+  expiryDateStr: string,
+  language: Language = 'en',
+  warningDays: number = 7,
+  timeZone?: string
+) {
+  const days = getDaysDifference(expiryDateStr, timeZone);
   const isBn = language === 'bn';
   const formattedDays = formatAppNumber(Math.abs(days), language);
 
@@ -231,8 +327,12 @@ export function formatCurrency(
   }).format(amount);
 }
 
-export function generateInvoiceNo(existingInvoiceNumbers: string[] = [], invoicePrefix = 'INV-'): string {
-  const date = getTodayDateString().replaceAll('-', '');
+export function generateInvoiceNo(
+  existingInvoiceNumbers: string[] = [],
+  invoicePrefix = 'INV-',
+  timeZone?: string
+): string {
+  const date = getTodayDateString(timeZone).replaceAll('-', '');
   const normalizedPrefix = invoicePrefix.trim() || 'INV-';
   const prefix = `${normalizedPrefix}${date}-`;
   const usedNumbers = new Set(existingInvoiceNumbers);

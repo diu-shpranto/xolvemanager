@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import NextImage from 'next/image';
 import {
   Bell, BellRing, Building2, Check, CreditCard, Database, FileText, Image, Palette,
@@ -9,6 +9,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
+import { registerUnsavedChanges, stableSerialize } from '../../services/unsavedChanges';
 import { AppSettings, Customer, FinancialCategory, WhatsAppTemplateId } from '../../types';
 import type { NotificationCategory } from '../../types';
 import { CsvImportUtility } from '../settings/CsvImportUtility';
@@ -24,9 +25,10 @@ import {
   BackupDocument, createVersionedBackup, exportCustomersCSV, exportInvoicesCSV,
   exportPaymentsCSV, exportSalesCSV, exportServicesCSV, exportSubscriptionsCSV,
   exportAccountsCSV, exportProfilesCSV,
-  getBackupCounts, previewCustomerCSV, toImportJSON,
-  validateBackup, CustomerImportRow,
+  getBackupCounts, getBackupEnvironment, planBackupMerge, previewCustomerCSV, toImportJSON,
+  validateBackup, verifyBackupIntegrity, CustomerImportRow,
 } from '../../services/dataBackupService';
+import type { BackupMergePlan } from '../../services/dataBackupService';
 import { downloadCSV } from '../../utils/csvParser';
 import { getWhatsAppTemplates, supportedWhatsAppVariables, validateWhatsAppTemplate } from '../../utils/whatsappService';
 import { DEFAULT_REMINDER_PREFERENCES } from '../../services/reminderEngine';
@@ -82,6 +84,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
     addNotification, clearNotifications, addCustomer,
     accounts, subscriptions, sales, invoices, payments, activityLogs, notifications, reminders,
     financialAccounts, expenses, otherIncome, financialTransfers, financialAdjustments,
+    dailyClosings, financialReconciliations, financialPeriods, profitabilityCosts,
     logActivity,
     currentBusiness,
     demoDataStatus, demoDataCounts, installDemoData, removeDemoData,
@@ -92,12 +95,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   const { showToast } = useToast();
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection ?? 'business');
   const [draft, setDraft] = useState<AppSettings>(settings);
+  const savedSettingsSnapshot = useRef(stableSerialize(settings));
   const [customMethod, setCustomMethod] = useState('');
   const [newExpenseCategory, setNewExpenseCategory] = useState('');
   const [newIncomeCategory, setNewIncomeCategory] = useState('');
   const [backupPreview, setBackupPreview] = useState<BackupDocument | null>(null);
   const [backupErrors, setBackupErrors] = useState<string[]>([]);
   const [restoreConfirmed, setRestoreConfirmed] = useState(false);
+  const [backupMode, setBackupMode] = useState<'merge' | 'replace'>('merge');
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupFileName, setBackupFileName] = useState('');
+  const [backupIntegrityWarning, setBackupIntegrityWarning] = useState('');
+  const [backupSummary, setBackupSummary] = useState<{ filename: string; exportedAt: string; counts: Record<string, number> } | null>(null);
+  const [backupResult, setBackupResult] = useState<{ added: Record<string, number>; duplicates: Record<string, number>; conflicts: BackupMergePlan['conflicts']; mode: 'merge' | 'replace' } | null>(null);
+  const restoreOperationRef = useRef(false);
   const [lastIntegrityResult] = useState(() => getLastDataIntegrityResult());
   const [customerCsvRows, setCustomerCsvRows] = useState<CustomerImportRow[] | null>(null);
   const [backupMetadata, setBackupMetadata] = useState<Record<string, string>>({});
@@ -111,7 +122,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   const [demoActionError, setDemoActionError] = useState<string | null>(null);
   const [isDemoDataBusy, setIsDemoDataBusy] = useState(false);
 
-  useEffect(() => setDraft(settings), [settings]);
+  useEffect(() => {
+    setDraft(settings);
+    savedSettingsSnapshot.current = stableSerialize(settings);
+  }, [settings]);
+  useEffect(
+    () => registerUnsavedChanges(() => stableSerialize(draft) !== savedSettingsSnapshot.current),
+    [draft]
+  );
   useEffect(() => {
     if (initialSection) setActiveSection(initialSection);
   }, [initialSection]);
@@ -297,7 +315,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
       return;
     }
     try {
-      await updateSettings({ ...draft, storeName: name });
+      const savedSettings = { ...draft, storeName: name };
+      await updateSettings(savedSettings);
+      savedSettingsSnapshot.current = stableSerialize(savedSettings);
+      setDraft(savedSettings);
       if (draft.currency !== currency) setCurrency(draft.currency);
       if (draft.language !== language) setLanguage(draft.language);
       if (draft.appearance?.theme && (draft.appearance.theme === 'dark') !== isDark) toggleDarkMode();
@@ -350,25 +371,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
     reader.readAsDataURL(file);
   };
 
-  const downloadBackup = (): boolean => {
+  const downloadBackup = async (safetyCopy = false): Promise<boolean> => {
+    if (backupBusy && !safetyCopy) return false;
+    if (!safetyCopy) setBackupBusy(true);
     try {
-      const backup = createVersionedBackup(exportDataJSON(), '0.0.0');
+      const backup = await createVersionedBackup(exportDataJSON(), '0.0.0');
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      const stamp = new Date().toISOString().replace(/T/, '-').replace(/:/g, '-').slice(0, 16);
-      const businessName = (currentBusinessName || 'business').toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'business';
-      link.download = `${businessName}-backup-${stamp}.json`;
+      const now = new Date();
+      const twoDigits = (value: number) => String(value).padStart(2, '0');
+      const stamp = `${now.getFullYear()}-${twoDigits(now.getMonth() + 1)}-${twoDigits(now.getDate())}_${twoDigits(now.getHours())}${twoDigits(now.getMinutes())}`;
+      const filename = `XolveManager_Full_Backup_${stamp}.json`;
+      link.download = filename;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setBackupSummary({ filename, exportedAt: backup.exportedAt, counts: backup.categoryManifest || {} });
       logActivity({
         type: 'backup_created',
         title: 'Backup Created',
-        description: 'A validated business data backup was downloaded.',
+        description: 'A validated full business data backup was downloaded.',
         entityType: 'data',
-        metadata: { recordCount: totalRecords },
+        metadata: { recordCount: totalRecords, filename },
       });
       const metadataSaved = saveMetadata('lastBackupAt');
       addNotification({
@@ -381,8 +406,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
         section: 'settings',
       });
       showToast(metadataSaved
-        ? 'Backup downloaded.'
-        : 'Backup downloaded, but the local backup date could not be saved.', metadataSaved ? 'success' : 'error');
+        ? `Full backup downloaded: ${filename}`
+        : `Full backup downloaded as ${filename}, but the local backup date could not be saved.`, metadataSaved ? 'success' : 'error');
       return true;
     } catch (error) {
       console.error('Business backup export failed.', error);
@@ -396,76 +421,150 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
       });
       showToast(error instanceof Error ? error.message : 'Could not create a business backup.', 'error');
       return false;
+    } finally {
+      if (!safetyCopy) setBackupBusy(false);
     }
   };
 
-  const readBackup = (text: string) => {
+  const readBackup = async (text: string, filename: string) => {
+    setBackupBusy(true);
+    setBackupFileName(filename);
+    setBackupResult(null);
+    setBackupIntegrityWarning('');
     try {
       const parsed: unknown = JSON.parse(text);
       const validation = validateBackup(parsed);
-      setBackupErrors(validation.errors);
-      setBackupPreview(validation.document ?? null);
+      if (!validation.valid || !validation.document) {
+        setBackupErrors(validation.errors);
+        setBackupPreview(null);
+        return;
+      }
+      const integrityErrors = await verifyBackupIntegrity(parsed);
+      if (integrityErrors.length) {
+        setBackupErrors(integrityErrors);
+        setBackupPreview(null);
+        return;
+      }
+      setBackupErrors([]);
+      setBackupPreview(validation.document);
+      setBackupIntegrityWarning(
+        !validation.document.sha256Checksum
+          ? 'This compatible older backup does not contain a SHA-256 checksum; its structure was validated, but integrity cannot be fully verified.'
+          : !validation.document.applicationId
+            ? 'This older backup does not identify its source application. Review the contents carefully before restoring.'
+            : ''
+      );
       setRestoreConfirmed(false);
+      setBackupMode('merge');
     } catch (error) {
       console.error('Selected backup file contains invalid JSON.', error);
-      setBackupErrors(['The selected file is not valid JSON.']);
+      setBackupErrors([error instanceof Error ? error.message : 'The selected file is not valid JSON.']);
       setBackupPreview(null);
       setRestoreConfirmed(false);
+    } finally {
+      setBackupBusy(false);
     }
   };
 
-  const restoreBackup = () => {
+  const restoreBackup = async () => {
+    if (restoreOperationRef.current || backupBusy) return;
     if (!backupPreview) {
       showToast('Select a valid backup file before restoring.', 'error');
       return;
     }
-    const backupBusinessName = typeof backupPreview.business === 'object' &&
-      backupPreview.business !== null && 'name' in backupPreview.business &&
-      typeof backupPreview.business.name === 'string' ? backupPreview.business.name : '';
-    if (backupBusinessName && currentBusinessName &&
-      backupBusinessName.trim().toLowerCase() !== currentBusinessName.trim().toLowerCase() &&
-      !window.confirm(`This backup is for "${backupBusinessName}", while the current business is "${currentBusinessName}". Restoring replaces the current business context. Continue?`)) return;
-    const backupBusinessId = getBusinessIdFromBackup(backupPreview);
-    if (backupBusinessId && currentBusiness?.businessId && backupBusinessId !== currentBusiness.businessId &&
-      !window.confirm('The backup has a different business ID. Restoring will switch this browser to that business identity. Continue?')) return;
-    if (!downloadBackup()) {
-      showToast('Restore was cancelled because a safety backup could not be created.', 'error');
-      return;
-    }
-    if (!importDataJSON(toImportJSON(backupPreview))) {
+    restoreOperationRef.current = true;
+    setBackupBusy(true);
+    setBackupResult(null);
+    try {
+      const currentData = JSON.parse(exportDataJSON()) as {
+        business?: unknown;
+        settings?: unknown;
+        preferences?: unknown;
+        demoDataManifest?: unknown;
+        records: Record<string, unknown[]>;
+      };
+      const backupBusinessId = getBusinessIdFromBackup(backupPreview);
+      if (backupMode === 'merge') {
+        if (!currentBusiness?.businessId || !backupBusinessId || currentBusiness.businessId !== backupBusinessId) {
+          throw new Error('Merge requires the backup and active business to have the same stable business ID. Use Replace only if you intentionally want to switch business data.');
+        }
+        const currentEnvironment = getBackupEnvironment(currentData.records, currentData.demoDataManifest);
+        const importedEnvironment = backupPreview.environment
+          || getBackupEnvironment(backupPreview.records, backupPreview.demoDataManifest);
+        const currentRecordCounts = getBackupCounts(currentData.records as BackupDocument['records']);
+        const destinationHasRecords = Object.entries(currentRecordCounts)
+          .some(([name, count]) => name !== 'profiles' && name !== 'plans' && count > 0);
+        if (destinationHasRecords && currentEnvironment !== importedEnvironment) {
+          throw new Error(`Merge blocked: the active data profile is ${currentEnvironment}, but this backup is ${importedEnvironment}. Use Replace only if this is the intended restore target.`);
+        }
+        const mergePlan = planBackupMerge(currentData.records, backupPreview.records);
+        const mergedPayload = {
+          schemaVersion: 1,
+          restoreMode: 'merge',
+          business: currentData.business,
+          settings: currentData.settings,
+          preferences: currentData.preferences,
+          demoDataManifest: null,
+          records: mergePlan.records,
+        };
+        if (!importDataJSON(JSON.stringify(mergedPayload))) {
+          throw new Error('Merge was not applied. Validation or transactional storage update failed; existing data was preserved.');
+        }
+        setBackupResult({
+          added: mergePlan.added,
+          duplicates: mergePlan.duplicatesSkipped,
+          conflicts: mergePlan.conflicts,
+          mode: 'merge',
+        });
+        const addedTotal = Object.values(mergePlan.added).reduce((sum, count) => sum + count, 0);
+        const duplicateTotal = Object.values(mergePlan.duplicatesSkipped).reduce((sum, count) => sum + count, 0);
+        showToast(`Merge complete: ${addedTotal} records added, ${duplicateTotal} duplicates skipped, ${mergePlan.conflicts.length} conflicts preserved.`, mergePlan.conflicts.length ? 'info' : 'success');
+      } else {
+        if (!restoreConfirmed) throw new Error('Confirm the replace warning before restoring.');
+        const backupBusinessName = getBusinessNameFromBackup(backupPreview);
+        if (backupBusinessName && currentBusinessName
+          && backupBusinessName.trim().toLowerCase() !== currentBusinessName.trim().toLowerCase()
+          && !window.confirm(`This backup is for "${backupBusinessName}", while the current business is "${currentBusinessName}". Replace the active business context?`)) return;
+        if (backupBusinessId && currentBusiness?.businessId && backupBusinessId !== currentBusiness.businessId
+          && !window.confirm('The backup belongs to a different business ID and data profile. Replace the active business identity with that backup?')) return;
+        if (!await downloadBackup(true)) {
+          throw new Error('Restore cancelled because a downloadable pre-restore safety backup could not be created.');
+        }
+        if (!importDataJSON(toImportJSON(backupPreview))) {
+          throw new Error('Replace was not applied. Validation or transactional storage update failed; rollback was attempted.');
+        }
+        setBackupResult({
+          added: getBackupCounts(backupPreview.records),
+          duplicates: {},
+          conflicts: [],
+          mode: 'replace',
+        });
+        showToast('Full backup restored successfully.', 'success');
+      }
+      saveMetadata('lastRestoreAt', backupBusinessId ?? currentBusiness?.businessId);
       addNotification({
-        type: 'import_failed',
+        dedupeKey: `import-completed-${backupPreview.sha256Checksum || backupPreview.exportedAt}`,
+        type: 'import_completed',
         category: 'system',
-        priority: 'warning',
-        title: 'Import failed',
-        message: 'The selected business backup could not be restored.',
+        priority: 'success',
+        title: backupMode === 'merge' ? 'Backup merged' : 'Backup replaced',
+        message: backupMode === 'merge' ? 'Missing business records were merged from a validated backup.' : 'Business records were restored from a validated backup.',
         section: 'settings',
       });
-      showToast('Restore was not applied. The backup may contain critical integrity errors or the browser may have rejected the storage update; your existing data was preserved where possible.', 'error');
-      return;
+      setBackupErrors([]);
+    } catch (error) {
+      console.error('Business backup restore failed.', error);
+      showToast(error instanceof Error ? error.message : 'The backup could not be restored.', 'error');
+    } finally {
+      restoreOperationRef.current = false;
+      setBackupBusy(false);
     }
-    const metadataSaved = saveMetadata('lastRestoreAt', getBusinessIdFromBackup(backupPreview) ?? currentBusiness?.businessId);
-    addNotification({
-      dedupeKey: `import-completed-${new Date().toISOString()}`,
-      type: 'import_completed',
-      category: 'system',
-      priority: 'success',
-      title: 'Import completed',
-      message: 'The business backup was restored successfully.',
-      section: 'settings',
-    });
-    setBackupPreview(null);
-    setBackupErrors([]);
-    setRestoreConfirmed(false);
-    showToast(metadataSaved
-      ? 'Backup restored successfully.'
-      : 'Backup restored, but the local restore date could not be saved.', metadataSaved ? 'success' : 'error');
   };
 
-  const clearData = () => {
+  const clearData = async () => {
     if (deleteConfirmation !== 'DELETE') return;
     if (!window.confirm('This permanently deletes business and historical financial records. A downloadable safety backup will be created first. Continue?')) return;
-    if (!downloadBackup()) {
+    if (!await downloadBackup()) {
       showToast('Business data was not deleted because a safety backup could not be created.', 'error');
       return;
     }
@@ -872,8 +971,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
           invoices: invoices.length, activityLogs: activityLogs.length, notifications: notifications.length,
           financialAccounts: financialAccounts.length, expenses: expenses.length, otherIncome: otherIncome.length,
           financialTransfers: financialTransfers.length, financialAdjustments: financialAdjustments.length,
+          dailyClosings: dailyClosings.length, financialReconciliations: financialReconciliations.length,
+          financialPeriods: financialPeriods.length, reminders: reminders.length,
+          profitabilityCosts: profitabilityCosts.length, plans: planCount, profiles: profileCount,
         };
         const counts = backupPreview ? getBackupCounts(backupPreview.records) : null;
+        let currentBackupPayload: { business?: unknown; settings?: unknown; preferences?: unknown; demoDataManifest?: unknown; records: Record<string, unknown[]> } | null = null;
+        let currentBackupIssue = '';
+        if (backupPreview) {
+          try {
+            currentBackupPayload = JSON.parse(exportDataJSON());
+          } catch (error) {
+            currentBackupIssue = error instanceof Error ? error.message : 'Current data could not be fully inspected.';
+          }
+        }
+        const mergePlan = backupPreview && currentBackupPayload
+          ? planBackupMerge(currentBackupPayload.records, backupPreview.records)
+          : null;
+        const backupEnvironment = backupPreview
+          ? backupPreview.environment || getBackupEnvironment(backupPreview.records, backupPreview.demoDataManifest)
+          : 'unknown';
+        const currentEnvironment = currentBackupPayload
+          ? getBackupEnvironment(currentBackupPayload.records, currentBackupPayload.demoDataManifest)
+          : 'unknown';
+        const destinationHasRecords = Object.values(currentCounts).some(count => count > 0);
+        const mergeBlocked = !backupPreview || !currentBusiness?.businessId
+          || getBusinessIdFromBackup(backupPreview as BackupDocument) !== currentBusiness?.businessId
+          || Boolean(destinationHasRecords && currentEnvironment !== backupEnvironment)
+          || Boolean(currentBackupIssue);
         const reminderIntervals = { daily: 1, weekly: 7, monthly: 30 } as const;
         const reminder = settings.automaticBackupReminder ?? 'off';
         const lastBackupAt = backupMetadata.lastBackupAt;
@@ -897,10 +1022,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
               <AboutItem label="Storage mode" value="Local browser storage" />
               <AboutItem label="Approximate storage usage" value={prettyBytes} />
               <AboutItem label="Browser storage quota" value={prettyQuota} />
-              <AboutItem label="Last backup" value={formatMetadataDate(backupMetadata.lastBackupAt, language)} />
-              <AboutItem label="Last restore" value={formatMetadataDate(backupMetadata.lastRestoreAt, language)} />
-              <AboutItem label="Last import" value={formatMetadataDate(backupMetadata.lastImportAt, language)} />
-              <AboutItem label="Last export" value={formatMetadataDate(backupMetadata.lastExportAt, language)} />
+              <AboutItem label="Last backup" value={formatMetadataDate(backupMetadata.lastBackupAt, language, settings.businessProfile?.timeZone)} />
+              <AboutItem label="Last restore" value={formatMetadataDate(backupMetadata.lastRestoreAt, language, settings.businessProfile?.timeZone)} />
+              <AboutItem label="Last import" value={formatMetadataDate(backupMetadata.lastImportAt, language, settings.businessProfile?.timeZone)} />
+              <AboutItem label="Last export" value={formatMetadataDate(backupMetadata.lastExportAt, language, settings.businessProfile?.timeZone)} />
             </div>
             <div className="mb-4 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -938,7 +1063,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
             <p className="mb-4 text-xs text-slate-500">{totalRecords} total records in this business.</p>
             {reminderDue && <div className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
               <span>Your last backup {lastBackupAt ? `was ${Math.floor((Date.now() - Date.parse(lastBackupAt)) / 86400000)} days ago` : 'has not been recorded'}. Create a new backup? Reminders do not create backups automatically.</span>
-              <button type="button" onClick={downloadBackup} className="shrink-0 rounded-lg bg-amber-700 px-3 py-2 font-semibold text-white">Create backup</button>
+              <button type="button" disabled={backupBusy} onClick={() => void downloadBackup()} className="shrink-0 rounded-lg bg-amber-700 px-3 py-2 font-semibold text-white disabled:opacity-60">Create backup</button>
             </div>}
             <Field label="Automatic backup reminder">
               <select className={`${inputClass} max-w-sm`} value={reminder} onChange={event => {
@@ -1037,35 +1162,72 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
           </Modal>}
 
           <section className={cardClass}>
-            <SectionHeading title="Backup and restore" description="Backups include this business, settings, records, relationships, and notifications." />
-            <button type="button" onClick={downloadBackup} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"><Download className="h-4 w-4" /> Create Backup</button>
+            <SectionHeading title="Backup and restore" description="Export all supported business records into one portable, versioned file, then restore it here or on another device." />
+            <button type="button" disabled={backupBusy} onClick={() => void downloadBackup()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-600 disabled:cursor-wait disabled:opacity-60"><Download className="h-4 w-4" />{backupBusy ? 'Preparing backup…' : 'Export Full Backup'}</button>
+            {backupSummary && <div role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm dark:border-emerald-900 dark:bg-emerald-950/20">
+              <p className="font-semibold text-emerald-900 dark:text-emerald-200">Full backup generated: {backupSummary.filename}</p>
+              <p className="mt-1 text-xs text-emerald-800 dark:text-emerald-300">{formatMetadataDate(backupSummary.exportedAt, language, settings.businessProfile?.timeZone)} · {Object.entries(backupSummary.counts).reduce((sum, [, count]) => sum + count, 0)} records counted across supported categories · SHA-256 integrity verified.</p>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                {Object.entries(backupSummary.counts).map(([name, count]) => <div key={name} className="rounded-lg bg-white/70 px-2.5 py-2 text-xs dark:bg-slate-900/50"><span className="block capitalize text-slate-500">{name.replace(/([A-Z])/g, ' $1')}</span><strong className="mt-0.5 block tabular-nums text-slate-900 dark:text-white">{count}</strong></div>)}
+              </div>
+            </div>}
+            <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs leading-5 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+              <strong>Sensitive file:</strong> Full backups include saved account credentials and profile PINs because they are part of account records. Files are not encrypted; anyone with the file may be able to read them. Store it securely and transfer it only through a trusted method. XolveManager does not upload backups.
+            </div>
+            <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">This browser uses localStorage; no IndexedDB business store is present. Authentication/session credentials, browser-specific backup dates, PWA install dismissal, and temporary search/view state are intentionally excluded. Notification data, settings, saved records, and demo-data management metadata are included.</p>
             <div className="mt-5 border-t border-slate-100 pt-5 dark:border-slate-800">
-              <h3 className="font-semibold">Restore Backup</h3>
-              <p className="mt-1 text-xs text-slate-500">Choose a versioned JSON file. Current records are not changed until the preview is explicitly confirmed.</p>
-              <label className="mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium dark:border-slate-700"><Upload className="h-4 w-4" /> Choose backup file
+              <h3 className="font-semibold">Import Full Backup</h3>
+              <p className="mt-1 text-xs text-slate-500">Select a backup file to validate its application, version, checksum, record manifest, and business relationships. No data changes before you choose a restore action.</p>
+              <label className="mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium dark:border-slate-700"><Upload className="h-4 w-4" />{backupBusy ? 'Reading backup…' : 'Select backup file'}
                 <input type="file" accept="application/json,.json" aria-label="Choose JSON backup file" className="sr-only" onChange={event => {
                   const file = event.target.files?.[0]; event.target.value = ''; if (!file) return;
+                  if (file.size > 100 * 1024 * 1024) {
+                    setBackupErrors(['Backup file exceeds the 100 MB import limit.']);
+                    setBackupPreview(null);
+                    return;
+                  }
                   const reader = new FileReader();
-                  reader.onerror = () => { setBackupErrors(['Could not read the selected backup file.']); showToast('Could not read the selected backup file.', 'error'); };
-                  reader.onload = () => typeof reader.result === 'string' ? readBackup(reader.result) : setBackupErrors(['Could not read the selected backup file.']);
+                  reader.onerror = () => { setBackupBusy(false); setBackupErrors(['Could not read the selected backup file.']); showToast('Could not read the selected backup file.', 'error'); };
+                  reader.onload = () => typeof reader.result === 'string' ? void readBackup(reader.result, file.name) : setBackupErrors(['Could not read the selected backup file.']);
                   reader.readAsText(file);
-                }} />
+                }} disabled={backupBusy} />
               </label>
+              {backupFileName && <p className="mt-2 text-xs text-slate-500">Selected: {backupFileName}</p>}
               {backupErrors.length > 0 && <div role="alert" className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200"><strong>Backup validation failed</strong><ul className="mt-1 list-inside list-disc">{backupErrors.slice(0, 8).map((error, index) => <li key={`${index}-${error}`}>{error}</li>)}</ul>{backupErrors.length > 8 && <p>And {backupErrors.length - 8} more issues.</p>}</div>}
               {backupPreview && counts && <div role="dialog" aria-modal="true" aria-labelledby="restore-preview-title" className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/20">
-                <h4 id="restore-preview-title" className="text-base font-bold">Restore Backup preview</h4>
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Backup date: {formatMetadataDate(backupPreview.exportedAt, language)} · Business: {getBusinessNameFromBackup(backupPreview) || 'Unknown'} · Version: {backupPreview.backupVersion}</p>
-                {backupPreview.integrityChecksum
-                  ? <p className="mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">Backup integrity checksum verified.</p>
-                  : <p className="mt-1 rounded-lg border border-amber-300 bg-amber-100/70 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">This older backup has no integrity checksum. Its structure was validated, but file corruption cannot be checked.</p>}
+                <h4 id="restore-preview-title" className="text-base font-bold">Backup preview</h4>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Created: {formatMetadataDate(backupPreview.exportedAt, language, settings.businessProfile?.timeZone)} · Business: {getBusinessNameFromBackup(backupPreview) || 'Unknown'} · Format v{backupPreview.backupVersion} · Profile: {backupEnvironment}</p>
+                {backupPreview.sha256Checksum
+                  ? <p className="mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">SHA-256 and record manifest verified.</p>
+                  : <p className="mt-1 rounded-lg border border-amber-300 bg-amber-100/70 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">Legacy backup: no SHA-256 integrity checksum.</p>}
+                {backupIntegrityWarning && <p className="mt-2 rounded-lg border border-amber-300 bg-amber-100/70 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">{backupIntegrityWarning}</p>}
+                {backupPreview.applicationId && backupPreview.applicationId !== 'xolvemanager' && <p role="alert" className="mt-2 text-sm font-semibold text-rose-800">This file belongs to another application and cannot be restored.</p>}
                 <div className="mt-3 grid gap-4 sm:grid-cols-2"><CountPreview title="Current data" counts={currentCounts} /><CountPreview title="Backup data" counts={counts} /></div>
-                <p className="mt-3 text-sm font-semibold text-rose-800 dark:text-rose-300">Restoring this backup will replace the current business data.</p>
-                {getBusinessNameFromBackup(backupPreview) && currentBusinessName && getBusinessNameFromBackup(backupPreview).toLowerCase() !== currentBusinessName.toLowerCase() && <p className="mt-1 text-sm text-rose-800 dark:text-rose-300">Business name differs. Restore will replace the current business context.</p>}
-                {getBusinessIdFromBackup(backupPreview) && currentBusiness?.businessId && getBusinessIdFromBackup(backupPreview) !== currentBusiness.businessId && <p className="mt-1 text-sm text-rose-800 dark:text-rose-300">Business ID differs. Restoring changes the active business identity to the ID recorded in this backup.</p>}
-                <label className="mt-3 flex items-start gap-2 text-sm"><input type="checkbox" checked={restoreConfirmed} onChange={event => setRestoreConfirmed(event.target.checked)} className="mt-1 accent-emerald-600" />I understand this replaces the current business data. A downloadable safety backup will be created first.</label>
+                {currentBackupIssue && <p role="alert" className="mt-3 text-sm text-rose-800 dark:text-rose-300">Current data could not be inspected: {currentBackupIssue}</p>}
+                {getBusinessIdFromBackup(backupPreview) && currentBusiness?.businessId && getBusinessIdFromBackup(backupPreview) !== currentBusiness.businessId && <p className="mt-2 text-sm font-semibold text-rose-800 dark:text-rose-300">Business ID differs. Merge is disabled to prevent cross-business data mixing. Replace requires explicit confirmation.</p>}
+                {destinationHasRecords && currentEnvironment !== backupEnvironment && <p className="mt-2 text-sm font-semibold text-amber-800 dark:text-amber-300">Demo-data profile differs from the active browser. Merge is disabled; use Replace only if this is the intended restore target.</p>}
+                {backupIntegrityWarning && <p className="mt-2 text-xs text-amber-900 dark:text-amber-200">Compatibility warning: review older schema data before restoring.</p>}
+                <fieldset className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <legend className="mb-2 text-sm font-semibold">Choose restore mode</legend>
+                  <label className={`rounded-xl border p-3 text-sm ${backupMode === 'merge' ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/20' : 'border-slate-300 dark:border-slate-700'}`}><input type="radio" name="backup-restore-mode" value="merge" checked={backupMode === 'merge'} onChange={() => { setBackupMode('merge'); setRestoreConfirmed(false); }} className="mr-2 accent-violet-700" /><strong>Merge / Add Missing Data</strong><span className="mt-1 block text-xs text-slate-600 dark:text-slate-400">Recommended. Never overwrites current records; conflicting IDs remain unchanged.</span></label>
+                  <label className={`rounded-xl border p-3 text-sm ${backupMode === 'replace' ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/20' : 'border-slate-300 dark:border-slate-700'}`}><input type="radio" name="backup-restore-mode" value="replace" checked={backupMode === 'replace'} onChange={() => setBackupMode('replace')} className="mr-2 accent-rose-700" /><strong>Replace Current Data</strong><span className="mt-1 block text-xs text-slate-600 dark:text-slate-400">Destructive. Replaces this business dataset and may change its identity.</span></label>
+                </fieldset>
+                {backupMode === 'merge' && mergePlan && <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                  <p className="text-sm font-semibold">Merge preview</p>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{Object.values(mergePlan.added).reduce((sum, count) => sum + count, 0)} new records · {Object.values(mergePlan.duplicatesSkipped).reduce((sum, count) => sum + count, 0)} duplicates skipped · {mergePlan.conflicts.length} conflicts will be preserved unchanged.</p>
+                  {mergePlan.conflicts.length > 0 && <ul className="mt-2 max-h-28 list-inside list-disc overflow-y-auto text-xs text-amber-800 dark:text-amber-300">{mergePlan.conflicts.slice(0, 8).map((conflict, index) => <li key={`${conflict.collection}-${conflict.id}-${index}`}>{conflict.collection} · {conflict.id}: {conflict.reason}</li>)}</ul>}
+                </div>}
+                {backupMode === 'replace' && <div className="mt-3 space-y-3 rounded-xl border border-rose-400 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200">
+                  <p className="font-bold">Warning: current business records will be replaced. A downloadable full safety backup must succeed before the restore starts. Local storage writes are staged with rollback on failure.</p>
+                  <label className="flex items-start gap-2"><input type="checkbox" checked={restoreConfirmed} onChange={event => setRestoreConfirmed(event.target.checked)} className="mt-1 accent-rose-600" />I understand the replace operation and confirm this restore.</label>
+                </div>}
+                {backupResult && <div role="status" className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm dark:border-emerald-900 dark:bg-emerald-950/20">
+                  <strong>{backupResult.mode === 'merge' ? 'Merge completed' : 'Replace completed'}.</strong>
+                  <p className="mt-1 text-xs">Added/restored records: {Object.entries(backupResult.added).filter(([, count]) => count > 0).map(([name, count]) => `${name} ${count}`).join(', ') || 'none'}{backupResult.mode === 'merge' ? ` · duplicates skipped: ${Object.values(backupResult.duplicates).reduce((sum, count) => sum + count, 0)} · conflicts preserved: ${backupResult.conflicts.length}` : ''}</p>
+                </div>}
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <button type="button" disabled={!restoreConfirmed} onClick={restoreBackup} className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Restore Backup</button>
-                  <button type="button" onClick={() => { setBackupPreview(null); setBackupErrors([]); setRestoreConfirmed(false); }} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold dark:border-slate-600">Cancel</button>
+                  <button type="button" disabled={backupBusy || (backupMode === 'merge' ? mergeBlocked || !mergePlan : !restoreConfirmed)} onClick={() => void restoreBackup()} className={`min-h-11 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 ${backupMode === 'merge' ? 'bg-violet-700 hover:bg-violet-600' : 'bg-rose-600 hover:bg-rose-700'}`}>{backupBusy ? 'Restoring…' : backupMode === 'merge' ? 'Merge Backup' : 'Replace Current Data'}</button>
+                  <button type="button" disabled={backupBusy} onClick={() => { setBackupPreview(null); setBackupErrors([]); setRestoreConfirmed(false); setBackupResult(null); setBackupFileName(''); setBackupIntegrityWarning(''); }} className="min-h-11 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold disabled:opacity-50 dark:border-slate-600">Cancel</button>
                 </div>
               </div>}
             </div>
@@ -1185,9 +1347,9 @@ const CheckSetting: React.FC<{ label: string; checked: boolean; onChange: (check
 const Metric: React.FC<{ label: string; count: number }> = ({ label, count }) => <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70"><div className="text-lg font-bold text-slate-900 dark:text-white">{count}</div><div className="text-xs text-slate-500">{label}</div></div>;
 const AboutItem: React.FC<{ label: string; value: string }> = ({ label, value }) => <div><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 text-sm font-medium text-slate-900 dark:text-white">{value}</dd></div>;
 
-const formatMetadataDate = (value?: string, language: 'en' | 'bn' = 'en'): string => {
+const formatMetadataDate = (value?: string, language: 'en' | 'bn' = 'en', timeZone?: string): string => {
   if (!value || !Number.isFinite(Date.parse(value))) return 'Never';
-  return formatAppDateTime(value, language);
+  return formatAppDateTime(value, language, { timeZone });
 };
 
 const getBusinessNameFromBackup = (backup: BackupDocument): string => {

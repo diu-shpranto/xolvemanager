@@ -1,6 +1,14 @@
-import type { ActivityLog, Customer, Payment, Sale, Subscription } from '../types';
+import type { ActivityLog, Customer, CustomerType, Payment, Sale, Subscription } from '../types';
 
 export const CUSTOMER_UNAVAILABLE = 'Customer unavailable';
+
+export function getCustomerType(customer?: Pick<Customer, 'customerType'> | null): CustomerType | undefined {
+  if (!customer) return undefined;
+  if (customer?.customerType === 'Customer' || customer?.customerType === 'Reseller') {
+    return customer.customerType;
+  }
+  return customer.customerType == null ? 'Customer' : undefined;
+}
 
 export function getCustomerDisplayName(customer?: Customer): string {
   return typeof customer?.name === 'string' && customer.name.trim()
@@ -13,7 +21,8 @@ export function getCustomerWhatsAppNumber(customer?: Customer): string {
 }
 
 export function getCustomerOptionLabel(customer: Customer): string {
-  return `${getCustomerDisplayName(customer)} · WA: ${getCustomerWhatsAppNumber(customer) || 'Not set'}`;
+  const customerType = getCustomerType(customer);
+  return `${getCustomerDisplayName(customer)} · ${customerType || 'Unknown type'} · WA: ${getCustomerWhatsAppNumber(customer) || 'Not set'}`;
 }
 
 export function resolveSubscriptionCustomer(

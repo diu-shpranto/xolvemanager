@@ -8,11 +8,12 @@ export function openSubscriptionWhatsAppReminder(
   service: Service | undefined,
   template: string,
   language: Language,
-  saleDetails?: { invoiceNumber?: string; amount?: number; currency?: string }
+  saleDetails?: { invoiceNumber?: string; amount?: number; currency?: string },
+  timeZone?: string
 ): boolean {
   if (!customer || !service || !(customer.whatsapp?.trim() || customer.phone.trim())) return false;
 
-  const message = buildSubscriptionRenewalMessage(subscription, customer, service, template, language, saleDetails);
+  const message = buildSubscriptionRenewalMessage(subscription, customer, service, template, language, saleDetails, timeZone);
   if (!message) return false;
   return openWhatsApp(customer.whatsapp?.trim() || customer.phone, message);
 }
@@ -23,10 +24,11 @@ export function buildSubscriptionRenewalMessage(
   service: Service | undefined,
   template: string,
   language: Language,
-  saleDetails?: { invoiceNumber?: string; amount?: number; currency?: string }
+  saleDetails?: { invoiceNumber?: string; amount?: number; currency?: string },
+  timeZone?: string
 ): string | undefined {
   if (!customer || !service) return undefined;
-  const badge = getExpiryBadgeInfo(subscription.expiryDate, language, getSubscriptionReminderDays(service, subscription.planId));
+  const badge = getExpiryBadgeInfo(subscription.expiryDate, language, getSubscriptionReminderDays(service, subscription.planId), timeZone);
   const variables: Record<string, string> = {
     customer_name: customer.name,
     customerName: customer.name,

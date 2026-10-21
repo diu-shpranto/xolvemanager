@@ -59,7 +59,7 @@ import {
   ServiceAdvancedSettings,
   Subscription,
 } from '../../types';
-import { formatAppDate, formatAppDateTime, formatCurrency, getDaysDifference, getSubscriptionStatus, getSubscriptionReminderDays } from '../../utils/dateUtils';
+import { formatAppDate, formatCurrency, getDaysDifference, getSubscriptionStatus, getSubscriptionReminderDays } from '../../utils/dateUtils';
 import { createRecordId } from '../../services/localStorageStore';
 import { getAccountCapacity, getServiceResourceSummary, isAccountOperational } from '../../utils/resourceManagement';
 import { calculatePlanPerformance, calculateSalesFinancialSummary, calculateServicePerformance, getLocalDateString } from '../../utils/reportMetrics';
@@ -340,8 +340,8 @@ function getServicePrice(service: Service, selectedCurrency: AppCurrency): numbe
   return null;
 }
 
-function isCurrentSubscription(subscription: Subscription, service?: Service, defaultReminderDays = 7): boolean {
-  const status = getSubscriptionStatus(subscription, service, defaultReminderDays);
+function isCurrentSubscription(subscription: Subscription, service?: Service, defaultReminderDays = 7, timeZone?: string): boolean {
+  const status = getSubscriptionStatus(subscription, service, defaultReminderDays, timeZone);
   return status === 'active' || status === 'expiring_soon';
 }
 
@@ -370,7 +370,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   createRequest,
   onCreateRequestHandled,
 }) => {
-  const { formatCurrency, formatDate: formatAppDate, formatDurationDays } = useAppFormatting();
+  const { formatCurrency, formatDate: formatAppDate, formatDateTime: formatAppDateTime, formatDurationDays } = useAppFormatting();
   const {
     services,
     servicesLoading,
@@ -1003,9 +1003,9 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 
   const servicePerformance = useMemo(
     () => calculateServicePerformance(sales, subscriptions, payments, services, currency, subscription =>
-      isCurrentSubscription(subscription, services.find(service => service.id === subscription.serviceId), settings.reminderNoticeDays)
+      isCurrentSubscription(subscription, services.find(service => service.id === subscription.serviceId), settings.reminderNoticeDays, settings.businessProfile?.timeZone)
     ),
-    [sales, subscriptions, payments, services, currency, settings.reminderNoticeDays]
+    [sales, subscriptions, payments, services, currency, settings.reminderNoticeDays, settings.businessProfile?.timeZone]
   );
   const servicePerformanceById = useMemo(
     () => new Map(servicePerformance.map(metric => [metric.serviceId, metric])),
@@ -1013,7 +1013,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   );
   const planPerformance = useMemo(
     () => calculatePlanPerformance(sales, subscriptions, payments, services, currency, subscription =>
-      isCurrentSubscription(subscription, services.find(service => service.id === subscription.serviceId), settings.reminderNoticeDays)
+      isCurrentSubscription(subscription, services.find(service => service.id === subscription.serviceId), settings.reminderNoticeDays, settings.businessProfile?.timeZone)
     ),
     [sales, subscriptions, payments, services, currency, settings.reminderNoticeDays]
   );
@@ -1022,8 +1022,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
     [planPerformance]
   );
   const serviceResourcesById = useMemo(
-    () => new Map(getServiceResourceSummary(services, accounts).map(summary => [summary.serviceId, summary])),
-    [services, accounts]
+    () => new Map(getServiceResourceSummary(services, accounts, settings.businessProfile?.timeZone).map(summary => [summary.serviceId, summary])),
+    [services, accounts, settings.businessProfile?.timeZone]
   );
 
   // Filter & Sort Pipeline
@@ -1099,7 +1099,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
     ? sales.filter(s => s.serviceId === detailedService.id)
     : [];
 
-  const activeDetailedSubs = detailedSubs.filter(s => isCurrentSubscription(s, detailedService || undefined, settings.reminderNoticeDays));
+  const activeDetailedSubs = detailedSubs.filter(s => isCurrentSubscription(s, detailedService || undefined, settings.reminderNoticeDays, settings.businessProfile?.timeZone));
   const detailedPlans = (detailedService?.planDetails || []).filter(plan => {
     const query = planSearchQuery.trim().toLowerCase();
     return (!query || plan.name.toLowerCase().includes(query) || plan.description?.toLowerCase().includes(query) || plan.internalCode?.toLowerCase().includes(query))
@@ -1119,18 +1119,18 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
     );
     return [plan.id, {
       accounts: planAccounts.length,
-      activeAccounts: planAccounts.filter(account => isAccountOperational(account)).length,
+      activeAccounts: planAccounts.filter(account => isAccountOperational(account, settings.businessProfile?.timeZone)).length,
       capacity: getServiceCapacity(planAccounts),
     }] as const;
   }));
   const filteredDetailedSubs = detailedSubs.filter(subscription => {
-    const category = subscription.status === 'cancelled' || subscription.status === 'expired' || getDaysDifference(subscription.expiryDate) < 0
+    const category = subscription.status === 'cancelled' || subscription.status === 'expired' || getDaysDifference(subscription.expiryDate, settings.businessProfile?.timeZone) < 0
       ? 'expired'
-      : getDaysDifference(subscription.expiryDate) <= 7 ? 'ending' : 'active';
+      : getDaysDifference(subscription.expiryDate, settings.businessProfile?.timeZone) <= 7 ? 'ending' : 'active';
     return subscriptionStatusFilter === 'all' || category === subscriptionStatusFilter;
   });
   const filteredDetailedAccounts = detailedAccounts.filter(account => {
-    const active = isAccountOperational(account);
+    const active = isAccountOperational(account, settings.businessProfile?.timeZone);
     return accountStatusFilter === 'all' || (accountStatusFilter === 'active' ? active : !active);
   });
 
@@ -1154,10 +1154,10 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
     ].filter(Boolean)).size
     : 0;
   const detailedEndingSoon = detailedSubs.filter(subscription =>
-    getSubscriptionStatus(subscription, detailedService, settings.reminderNoticeDays) === 'expiring_soon'
+    getSubscriptionStatus(subscription, detailedService, settings.reminderNoticeDays, settings.businessProfile?.timeZone) === 'expiring_soon'
   ).length;
   const detailedExpiredCount = detailedSubs.filter(subscription =>
-    getSubscriptionStatus(subscription, detailedService, settings.reminderNoticeDays) === 'expired'
+    getSubscriptionStatus(subscription, detailedService, settings.reminderNoticeDays, settings.businessProfile?.timeZone) === 'expired'
   ).length;
   const detailedActivity = detailedService
     ? activityLogs.filter(item => item.serviceId === detailedService.id || item.entityId === detailedService.id)
@@ -2321,7 +2321,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                     const customer = customers.find(item => item.id === subscription.customerId);
                     const account = detailedAccounts.find(item => item.id === subscription.accountId);
                     const profile = account?.profiles?.find(item => item.id === subscription.profileId);
-                    const daysLeft = getDaysDifference(subscription.expiryDate);
+                    const daysLeft = getDaysDifference(subscription.expiryDate, settings.businessProfile?.timeZone);
                     const statusLabel = subscription.status === 'cancelled'
                       ? 'Cancelled'
                       : subscription.status === 'expired' || daysLeft < 0 ? 'Expired' : daysLeft <= 7 ? 'Ending Soon' : 'Active';

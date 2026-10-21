@@ -10,7 +10,8 @@ import {
 import type { Language } from '../types';
 
 export function useAppFormatting() {
-  const { language } = useApp();
+  const { language, settings } = useApp();
+  const timeZone = settings.businessProfile?.timeZone;
 
   return useMemo(() => ({
     language,
@@ -21,12 +22,17 @@ export function useAppFormatting() {
       languageOrOptions: Language | Intl.DateTimeFormatOptions = language,
       options: Intl.DateTimeFormatOptions = {}
     ) => typeof languageOrOptions === 'string'
-      ? formatAppDate(value, languageOrOptions, options)
-      : formatAppDate(value, language, languageOrOptions),
-    formatDateTime: (value: string | null | undefined, options: Intl.DateTimeFormatOptions = {}) =>
-      formatAppDateTime(value, language, options),
+      ? formatAppDate(value, languageOrOptions, { timeZone, ...options })
+      : formatAppDate(value, language, { timeZone, ...languageOrOptions }),
+    formatDateTime: (
+      value: string | null | undefined,
+      languageOrOptions: Language | Intl.DateTimeFormatOptions = {},
+      options: Intl.DateTimeFormatOptions = {}
+    ) => typeof languageOrOptions === 'string'
+      ? formatAppDateTime(value, languageOrOptions, { timeZone, ...options })
+      : formatAppDateTime(value, language, { timeZone, ...languageOrOptions }),
     formatNumber: (value: number, options: Intl.NumberFormatOptions = {}) =>
       formatAppNumber(value, language, options),
     formatDurationDays: (days: number) => formatAppDurationDays(days, language),
-  }), [language]);
+  }), [language, timeZone]);
 }

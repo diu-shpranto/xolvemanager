@@ -5,7 +5,7 @@ import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
 import type { Expense } from '../../types';
-import { formatAppDate, formatAppDateTime, formatCurrency, getTodayDateString } from '../../utils/dateUtils';
+import { formatAppDate, formatCurrency, getTodayDateString } from '../../utils/dateUtils';
 import { convertReportCurrency } from '../../utils/reportMetrics';
 import { getAccountBalance, getFinancialLedger } from '../../utils/financialLedger';
 import { normalizePaymentMethods } from '../../utils/paymentMethods';
@@ -25,8 +25,6 @@ type ExpenseDraft = Pick<Expense,
 const cardClass = 'rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4';
 const inputClass = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white';
 const labelClass = 'mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300';
-const today = getTodayDateString();
-
 const csvCell = (value: string | number): string => {
   const text = String(value);
   const safe = /^[\s]*[=+\-@]/.test(text) ? `'${text}` : text;
@@ -36,7 +34,7 @@ const csvCell = (value: string | number): string => {
 const expenseReference = (id: string): string => `EXP-${id.replace(/^expense[-_]?/i, '').slice(-8).toUpperCase()}`;
 
 export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRequest = 0, onCreateRequestHandled }) => {
-  const { formatCurrency, formatDate: formatAppDate } = useAppFormatting();
+  const { formatCurrency, formatDate: formatAppDate, formatDateTime: formatAppDateTime } = useAppFormatting();
   const {
     currentBusiness,
     financialAccounts,
@@ -53,6 +51,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
     addExpense,
     updateExpense,
   } = useApp();
+  const today = getTodayDateString(settings.businessProfile?.timeZone);
   const { showToast } = useToast();
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');

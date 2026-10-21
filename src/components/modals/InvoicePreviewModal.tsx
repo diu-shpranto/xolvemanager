@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Modal } from '../common/Modal';
+import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import { useToast } from '../common/Toast';
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
 import { Download, Share2, CheckCircle2, RefreshCw, MessageCircle, Printer, Image } from 'lucide-react';
-import { formatAppDate, formatAppDateTime, formatCurrency } from '../../utils/dateUtils';
+import { formatAppDate, formatCurrency } from '../../utils/dateUtils';
 import type { Language } from '../../types';
 import {
   InvoiceSaleDetails,
@@ -70,6 +71,9 @@ const buildPrintableInvoice = (data: InvoiceSaleDetails, language: Language): st
     ? `<p style="margin:6px 0 0;color:#64748b">${escapeHtml(data.serviceDescription)}</p>`
     : '';
   const plan = showPlan ? `<div style="margin-top:4px;color:#64748b">${escapeHtml(data.planName)}</div>` : '';
+  const customerTypeBadge = data.customerType
+    ? `<span style="display:inline-block;margin-left:8px;padding:3px 8px;border-radius:999px;background:${data.customerType === 'Reseller' ? '#ede9fe' : '#f0f9ff'};color:${data.customerType === 'Reseller' ? '#6d28d9' : '#0369a1'};font-size:10px;font-weight:700">${escapeHtml(data.customerType)}</span>`
+    : '';
   const periodBlock = showPeriod
     ? `<div style="margin-top:12px;border-top:1px solid #e2e8f0;padding-top:10px"><small style="color:#94a3b8;text-transform:uppercase">Subscription Period</small><div style="margin-top:4px;font-weight:600">${escapeHtml(period || data.durationLabel || '')}</div>${period && data.durationLabel ? `<div style="margin-top:3px;color:#64748b;font-size:12px">${escapeHtml(data.durationLabel)}</div>` : ''}</div>`
     : '';
@@ -96,7 +100,7 @@ const buildPrintableInvoice = (data: InvoiceSaleDetails, language: Language): st
     @media print{@page{size:A4 portrait;margin:12mm}body{padding:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.card{border:0;border-radius:0;box-shadow:none}.content{padding:12px}.box,.summary,.item{break-inside:avoid}.section,.grid,.header,.footer{break-inside:avoid}}
   </style></head><body><main class="page"><article class="card"><div class="accent"></div><div class="content">
     <header class="header"><div class="brand">${logo}<div><div class="brand-name">${escapeHtml(data.storeName || 'Your Business')}</div>${data.tagline ? `<div class="muted" style="margin-top:5px">${escapeHtml(data.tagline)}</div>` : ''}<div class="contact">${contactLines}</div></div></div><div class="invoice-meta"><span class="label">Invoice</span><div style="margin-top:10px"><span class="status">${escapeHtml(getStatusLabel(data.paymentStatus))}</span></div><div class="invoice-number">${escapeHtml(data.invoiceNo)}</div><div class="meta-row">Issued ${escapeHtml(formatAppDate(data.date, language))}</div></div></header>
-    <section class="grid"><div class="box"><div class="box-title">Billed To</div><div class="name">${escapeHtml(data.customerName || 'Customer')}</div>${showPhone && data.customerPhone ? `<p>${escapeHtml(data.customerPhone)}</p>` : ''}${showEmail && data.customerEmail ? `<p>${escapeHtml(data.customerEmail)}</p>` : ''}</div><div class="box"><div class="box-title">Payment</div><div class="payment-grid">${paymentDetails || '<div class="muted">Payment details unavailable</div>'}</div></div></section>
+    <section class="grid"><div class="box"><div class="box-title">Billed To</div><div class="name">${escapeHtml(data.customerName || 'Customer')}${customerTypeBadge}</div>${showPhone && data.customerPhone ? `<p>${escapeHtml(data.customerPhone)}</p>` : ''}${showEmail && data.customerEmail ? `<p>${escapeHtml(data.customerEmail)}</p>` : ''}</div><div class="box"><div class="box-title">Payment</div><div class="payment-grid">${paymentDetails || '<div class="muted">Payment details unavailable</div>'}</div></div></section>
     <section class="section"><div class="section-title">Service</div><div class="item"><div class="item-head"><div><div class="item-title">${escapeHtml(data.serviceName || 'Service unavailable')}</div>${plan}${serviceDescription}</div><div class="price">${escapeHtml(formatCurrency(data.amount, currency, language))}</div></div>${periodBlock}</div></section>
     ${paymentHistory}
     <div class="summary-wrap"><section class="summary"><div class="box-title">Payment Summary</div>${summaryRows}</section></div>
@@ -346,7 +350,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                 <section className="mt-6 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
                     <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Billed To</p>
-                    <h3 className="mt-2 font-bold">{saleData.customerName || 'Customer'}</h3>
+                    <h3 className="mt-2 font-bold"><CustomerNameWithType name={saleData.customerName || 'Customer'} customer={saleData.customerType ? { name: saleData.customerName, customerType: saleData.customerType } : undefined} /></h3>
                     {saleData.invoiceSettings?.showCustomerPhone !== false && saleData.customerPhone && <p className="mt-1 break-all text-sm text-slate-500">{saleData.customerPhone}</p>}
                     {saleData.invoiceSettings?.showCustomerEmail !== false && saleData.customerEmail && <p className="mt-1 break-all text-sm text-slate-500">{saleData.customerEmail}</p>}
                   </div>

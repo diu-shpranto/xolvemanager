@@ -1,4 +1,4 @@
-import type { AppCurrency, Language } from '../types';
+import type { AppCurrency, CustomerType, Language } from '../types';
 import { formatAppDate, formatCurrency } from './dateUtils';
 
 export interface InvoiceSaleDetails {
@@ -7,6 +7,7 @@ export interface InvoiceSaleDetails {
   subscriptionId?: string;
   invoiceNo: string;
   customerId?: string;
+  customerType?: CustomerType;
   date: string;
   customerName: string;
   customerPhone?: string;
@@ -268,7 +269,7 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
   };
 
   sectionLabel('CUSTOMER', 414);
-  primaryText(data.customerName || 'Customer', 454);
+  primaryText(`${data.customerName || 'Customer'}${data.customerType ? ` · ${data.customerType}` : ''}`, 454);
   if (data.invoiceSettings?.showCustomerPhone !== false && data.customerPhone) secondaryText(data.customerPhone, 488);
   drawDivider(context, 520);
 

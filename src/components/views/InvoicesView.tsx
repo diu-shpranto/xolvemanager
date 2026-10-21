@@ -5,6 +5,7 @@ import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { getCustomerOptionLabel } from '../../utils/relationships';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
+import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
 import {
   canShareInvoiceJpg,
@@ -20,7 +21,7 @@ import {
   getOutstandingAgingDays,
   InvoiceDisplayStatus,
 } from '../../utils/invoiceUtils';
-import { formatAppDate, formatCurrency, getTodayDateString } from '../../utils/dateUtils';
+import { formatAppDate, formatCurrency, getDateInTimeZone, getTodayDateString } from '../../utils/dateUtils';
 import { getSaleDueAmount, getSalePaidAmount, getSalePayments } from '../../utils/saleUtils';
 import { normalizePhoneDigits, normalizeSearchText } from '../../services/globalSearch';
 import { exportInvoicesCSV } from '../../services/dataBackupService';
@@ -54,9 +55,8 @@ const statusClass: Record<InvoiceDisplayStatus, string> = {
   refunded: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300',
 };
 
-function invoiceDateRange(filter: DateFilter, start: string, end: string): [string, string] | null {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+function invoiceDateRange(filter: DateFilter, start: string, end: string, timeZone?: string): [string, string] | null {
+  const today = new Date(`${getDateInTimeZone(timeZone)}T12:00:00`);
   const format = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   if (filter === 'custom') return start && end ? [start, end] : null;
   if (filter === 'all') return null;
@@ -157,7 +157,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
   const rows = useMemo<InvoiceRow[]>(() => {
     const query = normalizeSearchText(searchQuery);
     const phoneQuery = normalizePhoneDigits(searchQuery);
-    const range = invoiceDateRange(dateFilter, customStart, customEnd);
+    const range = invoiceDateRange(dateFilter, customStart, customEnd, settings.businessProfile?.timeZone);
     return validInvoices.flatMap(invoice => {
       const sale = salesById.get(invoice.saleId);
       if (!sale) return [];
@@ -312,7 +312,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
 
   const exportRows = () => {
     const visibleInvoiceIds = new Set(rows.map(row => row.invoice.invoiceId));
-    downloadCSV(`invoices-${getTodayDateString()}.csv`, exportInvoicesCSV(
+    downloadCSV(`invoices-${getTodayDateString(settings.businessProfile?.timeZone)}.csv`, exportInvoicesCSV(
       validInvoices.filter(invoice => visibleInvoiceIds.has(invoice.invoiceId)),
       customers, services, sales, payments, subscriptions
     ));
@@ -438,7 +438,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                     <tr key={invoice.invoiceId} className="text-slate-700 dark:text-slate-200">
                       <td className="px-3 py-3 font-mono font-semibold text-violet-800 dark:text-violet-300">{invoice.invoiceNumber}<div className="mt-1 font-sans text-[10px] font-normal text-slate-400">{invoice.invoiceId}</div></td>
                       <td className="px-3 py-3">{formatAppDate(invoice.invoiceDate, language)}</td>
-                      <td className="px-3 py-3"><button type="button" onClick={() => customer && onViewCustomer(customer.id)} disabled={!customer} className="text-left font-semibold hover:text-violet-700 disabled:cursor-default dark:hover:text-violet-300">{customer?.name || 'Customer unavailable'}</button><div className="mt-0.5 text-[10px] text-slate-400">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
+                      <td className="px-3 py-3"><button type="button" onClick={() => customer && onViewCustomer(customer.id)} disabled={!customer} className="text-left font-semibold hover:text-violet-700 disabled:cursor-default dark:hover:text-violet-300"><CustomerNameWithType customer={customer} /></button><div className="mt-0.5 text-[10px] text-slate-400">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
                       <td className="px-3 py-3">{service?.name || 'Service unavailable'}<div className="mt-1 text-[10px] text-slate-400">{sale.plan}</div></td>
                       <td className="px-3 py-3 font-semibold">{formatCurrency(sale.amount, sale.currency)}</td>
                       <td className="px-3 py-3">{formatCurrency(paid, sale.currency)}</td>
@@ -467,7 +467,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                   <div className="min-w-0"><div className="truncate font-mono text-sm font-bold text-violet-800 dark:text-violet-300">{invoice.invoiceNumber}</div><div className="mt-1 text-xs text-slate-500">{formatAppDate(invoice.invoiceDate, language)}</div></div>
                   <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${statusClass[status]}`}>{statusLabel[status]}</span>
                 </div>
-                <button type="button" onClick={() => customer && onViewCustomer(customer.id)} className="mt-3 text-left text-sm font-semibold text-slate-800 dark:text-slate-200">{customer?.name || 'Customer unavailable'}</button>
+                <button type="button" onClick={() => customer && onViewCustomer(customer.id)} disabled={!customer} className="mt-3 text-left text-sm font-semibold text-slate-800 disabled:cursor-default dark:text-slate-200"><CustomerNameWithType customer={customer} /></button>
                 <div className="mt-1 text-xs text-slate-500">{service?.name || 'Service unavailable'} · {sale.plan}</div>
                 <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
                   <div><div className="text-slate-400">Total</div><div className="mt-0.5 font-semibold">{formatCurrency(sale.amount, sale.currency)}</div></div>

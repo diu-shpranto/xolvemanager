@@ -41,7 +41,10 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
-import { Customer, Subscription } from '../../types';
+import type { Customer, CustomerType, Subscription } from '../../types';
+import { CustomerNameWithType } from '../common/CustomerNameWithType';
+import { getCustomerType } from '../../utils/relationships';
+import { buildCustomerTimeline } from '../../utils/customerTimeline';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
 import { InvoiceSaleDetails, downloadInvoiceJpg, generateInvoiceJpg } from '../../utils/invoiceGenerator';
 import { resolvePaymentCustomer, resolveSaleCustomer } from '../../utils/relationships';
@@ -71,11 +74,10 @@ import { getExpiryWhatsAppTemplateId } from '../../utils/whatsappService';
 import { convertReportCurrency } from '../../utils/reportMetrics';
 import {
   formatAppDate,
-  formatAppDateTime,
   formatCurrency,
   getExpiryBadgeInfo,
-  getDaysDifference,
-  getSubscriptionStatus,
+  getDaysDifferenceForTimeZone,
+  getSubscriptionStatusForTimeZone,
   getSubscriptionReminderDays,
 } from '../../utils/dateUtils';
 
@@ -91,6 +93,7 @@ interface CustomersViewProps {
   onViewCustomerDetails?: (customerId: string) => void;
   onAddPaymentForCustomer?: (customerId: string) => void;
   onViewPayment?: (paymentId: string) => void;
+  onViewInvoice?: (invoiceId: string) => void;
   initialCustomerFilter?: CustomerCrmQuickFilter;
   initialServiceFilterId?: string;
   onInitialCustomerFilterHandled?: () => void;
@@ -134,11 +137,12 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   onViewCustomerDetails,
   onAddPaymentForCustomer,
   onViewPayment,
+  onViewInvoice,
   initialCustomerFilter,
   initialServiceFilterId,
   onInitialCustomerFilterHandled,
 }) => {
-  const { formatCurrency, formatDate: formatAppDate } = useAppFormatting();
+  const { formatCurrency, formatDate: formatAppDate, formatDateTime: formatAppDateTime, formatNumber } = useAppFormatting();
   const {
     customers,
     customersLoading,
@@ -169,6 +173,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     t,
     language,
   } = useApp();
+  const getDaysDifference = getDaysDifferenceForTimeZone(settings.businessProfile?.timeZone);
+  const getSubscriptionStatus = getSubscriptionStatusForTimeZone(settings.businessProfile?.timeZone);
   const { openMessage, canContact } = useWhatsAppCommunication();
   const serviceById = useMemo(() => new Map(services.map(service => [service.id, service])), [services]);
   const { showToast } = useToast();
@@ -178,6 +184,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [sortBy, setSortBy] = useState<'name_asc' | 'name_desc' | 'newest' | 'oldest' | 'spending'>('newest');
   const [filterStatus, setFilterStatus] = useState<'all' | 'archived'>('all');
   const [filterCrmStatus, setFilterCrmStatus] = useState<'all' | 'active' | 'at_risk' | 'inactive'>('all');
+  const [filterCustomerType, setFilterCustomerType] = useState<'all' | CustomerType>('all');
   const [filterServiceId, setFilterServiceId] = useState('all');
   const [filterRenewal, setFilterRenewal] = useState<'all' | 'due' | 'expired' | 'none'>('all');
   const [filterSubscription, setFilterSubscription] = useState<'all' | 'active' | 'none' | 'expiring' | 'expired'>('all');
@@ -239,9 +246,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [allowDuplicate, setAllowDuplicate] = useState(false);
   const [duplicateOfCustomerId, setDuplicateOfCustomerId] = useState<string | undefined>();
   const [selectedInvoiceData, setSelectedInvoiceData] = useState<InvoiceSaleDetails | null>(null);
+  const [timelineFilter, setTimelineFilter] = useState<'all' | 'sales' | 'payments' | 'subscriptions' | 'refunds'>('all');
 
   // Form State
   const [name, setName] = useState('');
+  const [customerType, setCustomerType] = useState<CustomerType>('Customer');
   const [phone, setPhone] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [email, setEmail] = useState('');
@@ -284,6 +293,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   // Open Add Modal
   const openAddModal = () => {
     setName('');
+    setCustomerType('Customer');
     setPhone('');
     setWhatsapp('');
     setEmail('');
@@ -305,6 +315,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const openEditModal = (cust: Customer) => {
     setEditingCustomer(cust);
     setName(cust.name);
+    setCustomerType(getCustomerType(cust) || 'Customer');
     setPhone(cust.phone);
     setWhatsapp(cust.whatsapp || cust.phone);
     setEmail(cust.email || '');
@@ -382,6 +393,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       if (editingCustomer) {
         await updateCustomer(editingCustomer.id, {
           name: name.trim(),
+          customerType,
           phone: phone.trim(),
           whatsapp: whatsapp.trim() || phone.trim(),
           email: email.trim() || '',
@@ -406,6 +418,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       } else {
         await addCustomer({
           name: name.trim(),
+          customerType,
           phone: phone.trim(),
           whatsapp: whatsapp.trim() || phone.trim(),
           email: email.trim(),
@@ -569,7 +582,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const customerMetrics = useMemo(() => {
     const crmMetrics = buildCustomerCrmMetrics(
       customers, sales, subscriptions, payments, invoices, activityLogs, services, currency,
-      new Date(), settings.reminderNoticeDays
+      new Date(), settings.reminderNoticeDays, settings.businessProfile?.timeZone
     );
     const subscriptionsByCustomer = new Map<string, Subscription[]>();
     subscriptions.forEach(subscription => {
@@ -607,14 +620,16 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       });
     });
     return metrics;
-  }, [customers, subscriptions, sales, payments, invoices, activityLogs, services, settings.reminderNoticeDays, currency]);
+  }, [customers, subscriptions, sales, payments, invoices, activityLogs, services, settings.reminderNoticeDays, settings.businessProfile?.timeZone, currency]);
 
   const customerSummary = useMemo(() => {
     const visibleCustomers = customers.filter(customer => !customer.isArchived && customer.status !== 'archived');
     const activeCount = visibleCustomers.filter(customer => customerMetrics.get(customer.id)?.status === 'active').length;
     const atRiskCount = visibleCustomers.filter(customer => customerMetrics.get(customer.id)?.status === 'at_risk').length;
     const inactiveCount = visibleCustomers.filter(customer => customerMetrics.get(customer.id)?.status === 'inactive').length;
-    const newCustomers = visibleCustomers.filter(customer => isCustomerNew(customer.createdAt)).length;
+    const newCustomers = visibleCustomers.filter(customer => isCustomerNew(
+      customer.createdAt, new Date(), settings.businessProfile?.timeZone
+    )).length;
     const renewalsDue = customers.filter(
       customer => !customer.isArchived && (customerMetrics.get(customer.id)?.renewalDueCount || 0) > 0
     ).length;
@@ -661,7 +676,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         if (invalidCustomerDateRange) return false;
 
         // Search is filtered locally across the customer's existing identity fields.
-        if (!matchesCustomerSearch(cust, searchQuery)) return false;
+        if (!matchesCustomerSearch(cust, searchQuery)
+          && !getCustomerType(cust)?.toLocaleLowerCase().includes(searchQuery.trim().toLocaleLowerCase())) return false;
+        if (filterCustomerType !== 'all' && getCustomerType(cust) !== filterCustomerType) return false;
 
         // Subscriptions status filter
         const metrics = customerMetrics.get(cust.id);
@@ -688,7 +705,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         if (lastActivityFrom && (!activityDate || activityDate < lastActivityFrom)) return false;
         if (lastActivityTo && (!activityDate || activityDate > lastActivityTo)) return false;
         if (filterActivity === 'new') {
-          if (!isCustomerNew(cust.createdAt)) return false;
+          if (!isCustomerNew(cust.createdAt, new Date(), settings.businessProfile?.timeZone)) return false;
         }
         if (filterActivity === 'recent' && !metrics?.hasRecentActivity) return false;
         if (filterActivity === 'inactive' && metrics?.status !== 'inactive') return false;
@@ -714,6 +731,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     searchQuery,
     filterStatus,
     filterCrmStatus,
+    filterCustomerType,
     filterServiceId,
     filterRenewal,
     filterSubscription,
@@ -739,7 +757,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const hasNoCustomers = customers.every(customer => customer.isArchived);
   const hasCustomerFilters = Boolean(
     searchQuery || filterServiceId !== 'all' || filterRenewal !== 'all'
-    || filterCrmStatus !== 'all' || filterSubscription !== 'all' || filterPayment !== 'all'
+    || filterCrmStatus !== 'all' || filterCustomerType !== 'all' || filterSubscription !== 'all' || filterPayment !== 'all'
     || filterActivity !== 'all' || filterStatus === 'archived'
     || createdFrom || createdTo || lastActivityFrom || lastActivityTo
   );
@@ -747,6 +765,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     searchQuery,
     filterStatus === 'archived',
     filterCrmStatus !== 'all',
+    filterCustomerType !== 'all',
     filterServiceId !== 'all',
     filterRenewal !== 'all',
     filterSubscription !== 'all',
@@ -767,6 +786,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           inactive: language === 'bn' ? 'নিষ্ক্রিয়' : 'Inactive',
         } as const)[filterCrmStatus]
       : null,
+    filterCustomerType !== 'all' ? filterCustomerType : null,
     filterServiceId !== 'all' ? services.find(service => service.id === filterServiceId)?.name || null : null,
     filterRenewal !== 'all'
       ? ({
@@ -804,6 +824,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     setSearchQuery('');
     setFilterStatus('all');
     setFilterCrmStatus('all');
+    setFilterCustomerType('all');
     setFilterServiceId('all');
     setFilterRenewal('all');
     setFilterSubscription('all');
@@ -828,12 +849,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const detailedPayments = detailedCustomer
     ? payments.filter(payment => resolvePaymentCustomer(payment, customers, sales, subscriptions)?.id === detailedCustomer.id)
     : [];
-  const detailedBalances = detailedSales.reduce((balances, sale) => {
-    balances.outstanding[sale.currency] += getSaleDueAmount(sale, payments);
-    return balances;
-  }, {
-    outstanding: { BDT: 0, USD: 0 },
-  });
   const detailedAdvanceBalances = detailedCustomer
     ? {
       BDT: getCustomerAdvanceCredit(payments, detailedCustomer.id, 'BDT'),
@@ -864,6 +879,23 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       )
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     : [];
+  const detailedTimeline = buildCustomerTimeline({
+    sales: detailedSales,
+    payments: detailedPayments,
+    subscriptions: detailedSubs,
+    invoices: detailedInvoices,
+    activities: detailedActivities,
+    services,
+    reminderNoticeDays: settings.reminderNoticeDays,
+    timeZone: settings.businessProfile?.timeZone,
+  });
+  const visibleTimeline = detailedTimeline.filter(event => {
+    if (timelineFilter === 'all') return true;
+    if (timelineFilter === 'sales') return event.type === 'sale' || event.type === 'invoice';
+    if (timelineFilter === 'payments') return event.type === 'payment';
+    if (timelineFilter === 'subscriptions') return event.type === 'subscription';
+    return event.type === 'refund';
+  });
   const detailedReminders = detailedCustomer
     ? reminders.filter(reminder => reminder.customerId === detailedCustomer.id
       && (reminder.status === 'open' || reminder.status === 'snoozed'))
@@ -872,8 +904,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
   const sortedDetailedSubs = [...detailedSubs].sort((a, b) => {
     const getPriority = (subscription: Subscription) => {
-      const days = new Date(`${subscription.expiryDate}T00:00:00`).getTime() - new Date(new Date().setHours(0, 0, 0, 0)).getTime();
-      const daysUntil = Math.ceil(days / (24 * 60 * 60 * 1000));
+      const daysUntil = getDaysDifference(subscription.expiryDate);
       if (subscription.status === 'cancelled') return 6;
       if (daysUntil < 0) return 0;
       if (daysUntil === 0) return 1;
@@ -921,7 +952,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       detailedCustomer,
       nearestRenewalService,
       renewalTemplate,
-      language
+      language,
+      undefined,
+      settings.businessProfile?.timeZone
     );
     if (!message) return;
     await copyCustomerField(message, 'Renewal message');
@@ -1055,7 +1088,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       </div>
 
       {/* 2. SEARCH + FILTER TOOLBAR */}
-      <div className="customer-toolbar grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-3 dark:border-slate-800 dark:bg-[#151C28]">
+      <div className="customer-toolbar grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center xl:gap-3 xl:p-3 dark:border-slate-800 dark:bg-[#151C28]">
         {/* Search input (Name, Phone, Email, Facebook ID) */}
         <div className="relative min-w-0">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -1089,7 +1122,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         </div>
 
         {/* Customer filters and sorting */}
-        <div className="customer-filter-toolbar grid min-w-0 grid-cols-2 gap-2 sm:flex sm:items-center">
+        <div className="customer-filter-toolbar grid min-w-0 grid-cols-2 gap-2 xl:flex xl:items-center">
             <select
               value={filterStatus === 'archived' ? 'archived' : filterCrmStatus}
               onChange={event => {
@@ -1099,7 +1132,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 setCurrentPage(1);
               }}
               aria-label={language === 'bn' ? 'কাস্টমার স্ট্যাটাস ফিল্টার' : 'Filter customers by status'}
-              className="h-11 min-w-0 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-800 focus:border-violet-500 focus:bg-white focus:outline-hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:bg-slate-950 sm:w-auto"
+              className="h-11 min-w-0 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-800 focus:border-violet-500 focus:bg-white focus:outline-hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:bg-slate-950 xl:w-auto"
             >
               <option value="all">{language === 'bn' ? 'সব গ্রাহক' : 'All customers'}</option>
               <option value="active">{language === 'bn' ? 'সক্রিয়' : 'Active'}</option>
@@ -1109,10 +1142,24 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </select>
 
             <select
+              value={filterCustomerType}
+              onChange={event => {
+                setFilterCustomerType(event.target.value as typeof filterCustomerType);
+                setCurrentPage(1);
+              }}
+              aria-label={language === 'bn' ? 'কাস্টমারের ধরন ফিল্টার' : 'Filter customers by type'}
+              className="h-11 min-w-0 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-800 focus:border-violet-500 focus:bg-white focus:outline-hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:bg-slate-950 xl:w-auto"
+            >
+              <option value="all">{language === 'bn' ? 'সব ধরনের' : 'All types'}</option>
+              <option value="Customer">Customer</option>
+              <option value="Reseller">Reseller</option>
+            </select>
+
+            <select
               value={sortBy}
               onChange={e => setSortBy(e.target.value as typeof sortBy)}
               aria-label={language === 'bn' ? 'কাস্টমার সাজান' : 'Sort customers'}
-              className="h-11 min-w-0 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-800 focus:border-violet-500 focus:bg-white focus:outline-hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:bg-slate-950 sm:w-auto"
+              className="h-11 min-w-0 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-800 focus:border-violet-500 focus:bg-white focus:outline-hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:bg-slate-950 xl:w-auto"
             >
               <option value="newest">{language === 'bn' ? 'নতুন' : 'Newest'}</option>
               <option value="oldest">{language === 'bn' ? 'পুরনো' : 'Oldest'}</option>
@@ -1121,8 +1168,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               <option value="spending">{language === 'bn' ? 'সর্বোচ্চ খরচ' : 'Most spent'}</option>
             </select>
 
-          <details className="customer-advanced-filters col-span-2 min-w-0 sm:col-span-1">
-            <summary className="flex h-11 min-w-0 cursor-pointer list-none items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 transition-colors hover:border-violet-300 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 sm:min-w-32">
+          <details className="customer-advanced-filters col-span-2 min-w-0 xl:col-span-1">
+            <summary className="flex h-11 min-w-0 cursor-pointer list-none items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 transition-colors hover:border-violet-300 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 xl:min-w-32">
               <Filter className="h-3.5 w-3.5 shrink-0" />
               <span>{language === 'bn' ? 'আরও ফিল্টার' : 'More filters'}</span>
               {activeFilterCount > 0 && <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-800 dark:bg-violet-950 dark:text-violet-200">{activeFilterCount}</span>}
@@ -1411,8 +1458,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                             {initials}
                           </div>
                           <div className="min-w-0">
-                            <div className="font-semibold text-slate-900 dark:text-white text-sm truncate flex items-center gap-1.5">
-                              <span>{cust.name}</span>
+                            <div className="font-semibold text-slate-900 dark:text-white text-sm flex flex-wrap items-center gap-1.5">
+                              <CustomerNameWithType customer={cust} nameClassName="min-w-0 break-words" />
                               {cust.isArchived && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-normal">
                                   Archived
@@ -1644,8 +1691,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       </div>
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-1.5">
-                          <button type="button" onClick={() => openCustomerDetails(cust.id)} aria-label={`View customer details for ${cust.name}`} className="customer-card-name min-h-10 min-w-0 truncate text-left text-[15px] font-bold text-slate-900 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-white dark:hover:text-violet-300">
-                            {cust.name}
+                          <button type="button" onClick={() => openCustomerDetails(cust.id)} aria-label={`View customer details for ${cust.name}`} className="customer-card-name inline-flex min-h-10 min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-left text-[15px] font-bold text-slate-900 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-white dark:hover:text-violet-300">
+                            <CustomerNameWithType customer={cust} nameClassName="min-w-0 break-words" />
                           </button>
                           {valueTag && <span className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-violet-50 px-1.5 py-0.5 text-[9px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"><Sparkles className="h-2.5 w-2.5" />{valueTag}</span>}
                         </div>
@@ -1862,46 +1909,61 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           </button>
           <div className="customer-detail-content space-y-5">
             {/* Header info card */}
-            <section className="customer-profile-header flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-violet-100 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-[#171622] sm:p-5">
-              <div className="flex min-w-0 items-center gap-3">
+            <section className="customer-profile-header flex min-w-0 flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6 xl:flex-row xl:items-center xl:justify-between dark:border-slate-800 dark:bg-[#171622]">
+              <div className="customer-profile-identity flex min-w-0 items-start gap-4 sm:items-center">
                 <div
-                  className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border text-base font-bold ${getAvatarColorClass(
+                  className={`customer-profile-avatar mt-0.5 flex h-[4.25rem] w-[4.25rem] shrink-0 items-center justify-center rounded-[1.125rem] border text-lg font-bold sm:mt-0 ${getAvatarColorClass(
                     detailedCustomer.name
                   )}`}
                 >
                   {getInitials(detailedCustomer.name)}
                 </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="min-w-0 break-words text-xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-2xl">
-                      {detailedCustomer.name?.trim() || '—'}
-                    </h1>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                <div className="min-w-0 flex-1">
+                  <h1 className="customer-profile-name min-w-0 break-words text-[1.625rem] font-semibold leading-tight tracking-[-0.04em] text-slate-950 dark:text-white sm:text-[1.875rem]">
+                    {detailedCustomer.name?.trim() || '—'}
+                  </h1>
+                  <div className="customer-profile-meta mt-2 flex min-w-0 flex-wrap items-center gap-2">
+                    {getCustomerType(detailedCustomer) && (
+                      <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold leading-none ${
+                        getCustomerType(detailedCustomer) === 'Reseller'
+                          ? 'border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-900 dark:bg-violet-950/50 dark:text-violet-200'
+                          : 'border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900 dark:bg-sky-950/50 dark:text-sky-200'
+                      }`}>
+                        {getCustomerType(detailedCustomer)}
+                      </span>
+                    )}
+                    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold leading-none ${
                       detailedCrmMetrics?.status === 'at_risk'
-                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
+                        ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-300'
                         : detailedCrmMetrics?.status === 'inactive'
-                          ? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
-                          : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
+                          ? 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200'
+                          : 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300'
                     }`}>
+                      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${
+                        detailedCrmMetrics?.status === 'at_risk'
+                          ? 'bg-amber-500'
+                          : detailedCrmMetrics?.status === 'inactive'
+                            ? 'bg-slate-500'
+                            : 'bg-emerald-500'
+                      }`} />
                       {detailedCrmMetrics?.status === 'at_risk' ? 'At Risk' : detailedCrmMetrics?.status === 'inactive' ? 'Inactive' : 'Active'}
                     </span>
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                    {detailedCustomer.phone?.trim()
-                      ? <a href={`tel:${detailedCustomer.phone}`} className="break-all hover:text-violet-700 dark:hover:text-violet-300">{detailedCustomer.phone}</a>
-                      : <span>—</span>}
+                  {(detailedCustomer.phone?.trim() || detailedCustomer.email?.trim()) && <div className="mt-2 flex min-w-0 flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-600 dark:text-slate-300">
+                    {detailedCustomer.phone?.trim() && <a href={`tel:${detailedCustomer.phone}`} className="break-all hover:text-violet-700 dark:hover:text-violet-300">{detailedCustomer.phone}</a>}
                     {detailedCustomer.email?.trim() && <a href={`mailto:${detailedCustomer.email}`} className="break-all hover:text-violet-700 dark:hover:text-violet-300">{detailedCustomer.email}</a>}
-                  </div>
+                  </div>}
                   {detailedCustomer.createdAt && (
-                    <p className="customer-profile-since mt-1.5 text-[11px] font-medium">
-                      {language === 'bn' ? 'গ্রাহক হিসেবে যোগদান:' : 'Customer since'} {formatAppDate(detailedCustomer.createdAt, language)}
+                    <p className="customer-profile-since mt-2 inline-flex items-center gap-1.5 text-xs font-medium">
+                      <CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <span>{language === 'bn' ? 'গ্রাহক হিসেবে যোগদান:' : 'Customer since'} {formatAppDate(detailedCustomer.createdAt, language)}</span>
                     </p>
                   )}
                 </div>
               </div>
 
               {/* Action buttons */}
-              <div className="customer-profile-actions flex flex-wrap items-center gap-2">
+              <div className="customer-profile-actions flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                 <button
                   type="button"
                   onClick={() => {
@@ -1963,34 +2025,38 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               <a href="#customer-overview" className="customer-detail-nav-link">{language === 'bn' ? 'সারসংক্ষেপ' : 'Overview'}</a>
               <a href="#customer-subscriptions" className="customer-detail-nav-link">{language === 'bn' ? 'সাবস্ক্রিপশন' : 'Subscriptions'} <span>{detailedSubs.length}</span></a>
               <a href="#customer-purchases" className="customer-detail-nav-link">{language === 'bn' ? 'পেমেন্ট ও কেনাকাটা' : 'Payments & Purchases'}</a>
-              <a href="#customer-activity" className="customer-detail-nav-link">{language === 'bn' ? 'কার্যকলাপ' : 'Activity'} <span>{detailedActivities.length}</span></a>
+              <a href="#customer-activity" className="customer-detail-nav-link">{language === 'bn' ? 'লেনদেন' : 'Transactions'} <span>{detailedTimeline.length}</span></a>
             </nav>
 
             <section id="customer-overview" aria-label="Customer overview" className="customer-overview-grid grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
               <div className="customer-overview-metric">
                 <span>{language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Active subscriptions'}</span>
                 <strong>{currentActiveSubsForDetailed.length}</strong>
-                <small>{detailedSubs.length} total subscriptions</small>
+                <small>{language === 'bn'
+                  ? `${formatNumber(detailedSubs.length)}টি মোট সাবস্ক্রিপশন`
+                  : `${detailedSubs.length} total subscriptions`}</small>
               </div>
               <div className={`customer-overview-metric ${detailedTotalDue > 0 ? 'customer-overview-metric--due' : ''}`}>
-                <span>{language === 'bn' ? 'মোট বকেয়া' : 'Total outstanding'}</span>
-                <strong>{formatCurrency(detailedBalances.outstanding.BDT, 'BDT')} · {formatCurrency(detailedBalances.outstanding.USD, 'USD')}</strong>
-                <small>By currency</small>
+                <span>{language === 'bn' ? `মোট বকেয়া · ${currency}` : `Total outstanding · ${currency}`}</span>
+                <strong>{formatCurrency(detailedTotalDue, currency)}</strong>
+                <small>{language === 'bn' ? 'নির্বাচিত মুদ্রা' : 'Selected currency'}</small>
               </div>
               <div className="customer-overview-metric customer-overview-metric--paid">
                 <span>{language === 'bn' ? `মোট পরিশোধ · ${currency}` : `Total paid · ${currency}`}</span>
                 <strong>{formatCurrency(detailedCrmMetrics?.totalPaid || 0, currency)}</strong>
-                <small>Recognized payments</small>
+                <small>{language === 'bn' ? 'স্বীকৃত পেমেন্ট' : 'Recognized payments'}</small>
               </div>
               <div className="customer-overview-metric">
-                <span>{language === 'bn' ? 'উপলভ্য অগ্রিম ক্রেডিট' : 'Available advance credit'}</span>
-                <strong>{formatCurrency(detailedAdvanceBalances.BDT, 'BDT')} · {formatCurrency(detailedAdvanceBalances.USD, 'USD')}</strong>
-                <small>By currency</small>
+                <span>{language === 'bn' ? `উপলভ্য অগ্রিম ক্রেডিট · ${currency}` : `Available advance credit · ${currency}`}</span>
+                <strong>{formatCurrency(detailedAdvanceBalances[currency], currency)}</strong>
+                <small>{language === 'bn' ? 'নির্বাচিত মুদ্রা' : 'Selected currency'}</small>
               </div>
               <div className="customer-overview-metric">
                 <span>{language === 'bn' ? `মোট ব্যয় · ${currency}` : `Total spent · ${currency}`}</span>
                 <strong>{formatCurrency(detailedTotalSales, currency)}</strong>
-                <small>{detailedCrmMetrics?.salesCount || 0} sales</small>
+                <small>{language === 'bn'
+                  ? `${formatNumber(detailedCrmMetrics?.salesCount || 0)}টি বিক্রয়`
+                  : `${detailedCrmMetrics?.salesCount || 0} sales`}</small>
               </div>
               <div className="customer-overview-metric">
                 <span>{language === 'bn' ? 'পরবর্তী সাবস্ক্রিপশনের মেয়াদ' : 'Next subscription expiry'}</span>
@@ -2155,7 +2221,12 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     const srv = services.find(s => s.id === sub.serviceId);
                     const account = accounts.find(item => item.id === sub.accountId);
                     const profile = account?.profiles.find(item => item.id === sub.profileId);
-                    const badge = getExpiryBadgeInfo(sub.expiryDate, language, getSubscriptionReminderDays(srv, sub.planId, settings.reminderNoticeDays));
+                    const badge = getExpiryBadgeInfo(
+                      sub.expiryDate,
+                      language,
+                      getSubscriptionReminderDays(srv, sub.planId, settings.reminderNoticeDays),
+                      settings.businessProfile?.timeZone
+                    );
                     const daysLeft = getDaysDifference(sub.expiryDate);
                     const statusLabel = badge.status === 'expired' ? 'Expired' : badge.status === 'expiring_soon' ? 'Ending Soon' : 'Active';
                     return (
@@ -2482,44 +2553,135 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               )}
             </div>
 
-            {/* Activity & History Trail */}
-            <div id="customer-activity" className="customer-detail-section">
-              <div className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-2.5 flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <History className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Recent Activity</span>
+            {/* Customer transaction timeline */}
+            <section id="customer-activity" aria-label="Customer transaction timeline" className="customer-detail-section overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40">
+              <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                <div className="min-w-0">
+                  <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
+                    <History className="h-4 w-4 text-violet-600 dark:text-violet-300" aria-hidden="true" />
+                    Transactions & activity
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {detailedTimeline.length} {detailedTimeline.length === 1 ? 'record' : 'records'} · newest first
+                  </p>
                 </div>
-                <span className="text-[11px] font-mono text-slate-400">
-                  ({detailedActivities.length} {detailedActivities.length === 1 ? 'record' : 'records'})
-                </span>
-              </div>
-              {detailedActivities.length === 0 ? (
-                <div className="p-3.5 text-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
-                  No activity yet.
-                </div>
-              ) : (
-                <ol aria-label="Customer activity timeline" className="customer-activity-list space-y-2 max-h-64 overflow-y-auto pr-1">
-                  {detailedActivities.map(act => (
-                    <li
-                      key={act.id}
-                      className="customer-activity-item p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex items-start justify-between gap-3 text-xs"
+                <div role="group" aria-label="Filter customer activity" className="flex max-w-full gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+                  {([
+                    ['all', 'All'],
+                    ['sales', 'Sales'],
+                    ['payments', 'Payments'],
+                    ['subscriptions', 'Subscriptions'],
+                    ['refunds', 'Refunds'],
+                  ] as const).map(([filter, label]) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      aria-pressed={timelineFilter === filter}
+                      onClick={() => setTimelineFilter(filter)}
+                      className={`min-h-8 shrink-0 rounded-lg px-2.5 text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-violet-600 ${
+                        timelineFilter === filter
+                          ? 'bg-white text-violet-800 shadow-xs dark:bg-slate-700 dark:text-violet-200'
+                          : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+                      }`}
                     >
-                      <div className="space-y-0.5">
-                        <div className="font-semibold text-slate-800 dark:text-slate-200">
-                          {act.title}
-                        </div>
-                        <div className="text-slate-500 dark:text-slate-400 text-[11px]">
-                          {act.description}
-                        </div>
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-mono shrink-0 whitespace-nowrap">
-                        {formatAppDateTime(act.timestamp, language)}
-                      </div>
-                    </li>
+                      {label}
+                    </button>
                   ))}
+                </div>
+              </div>
+              {visibleTimeline.length === 0 ? (
+                <p className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                  {detailedTimeline.length === 0
+                    ? 'No transaction activity recorded for this customer yet.'
+                    : timelineFilter === 'refunds'
+                      ? 'No refunds recorded for this customer.'
+                      : `No ${timelineFilter} recorded for this customer.`}
+                </p>
+              ) : (
+                <ol aria-label="Customer transaction events" className="max-h-[28rem] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
+                  {visibleTimeline.map(event => {
+                    const iconClass = event.type === 'refund'
+                      ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300'
+                      : event.type === 'payment'
+                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                        : event.type === 'subscription'
+                          ? 'bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300'
+                          : event.type === 'invoice'
+                            ? 'bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300'
+                            : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200';
+                    const eventIcon = event.type === 'refund'
+                      ? <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                      : event.type === 'payment'
+                        ? <CreditCard className="h-4 w-4" aria-hidden="true" />
+                        : event.type === 'subscription'
+                          ? <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                          : event.type === 'invoice'
+                            ? <FileText className="h-4 w-4" aria-hidden="true" />
+                            : <Receipt className="h-4 w-4" aria-hidden="true" />;
+                    const handleOpenEvent = () => {
+                      if (event.type === 'sale') onViewSale(event.recordId);
+                      else if (event.type === 'payment' || event.type === 'refund') onViewPayment?.(event.recordId);
+                      else if (event.type === 'subscription') onViewSubscription(event.recordId);
+                      else onViewInvoice?.(event.recordId);
+                    };
+                    const canOpenEvent = event.type === 'sale'
+                      || event.type === 'subscription'
+                      || (event.type === 'payment' || event.type === 'refund' ? Boolean(onViewPayment) : Boolean(onViewInvoice));
+                    const content = (
+                      <span className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                        <span className="min-w-0">
+                          <span className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold text-slate-900 dark:text-white">{event.title}</span>
+                            {event.status && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium capitalize text-slate-600 dark:bg-slate-800 dark:text-slate-300">{event.status.replaceAll('_', ' ')}</span>}
+                          </span>
+                          <span className="mt-1 block break-words text-xs text-slate-500 dark:text-slate-400">{event.description}</span>
+                          <time className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">{formatAppDateTime(event.timestamp, language)}</time>
+                        </span>
+                        {event.amount !== undefined && (
+                          <strong className={`shrink-0 text-left text-sm font-bold tabular-nums sm:text-right ${event.amount < 0 ? 'text-rose-700 dark:text-rose-300' : 'text-slate-900 dark:text-white'}`}>
+                            {formatCurrency(event.amount, event.currency)}
+                          </strong>
+                        )}
+                      </span>
+                    );
+                    return (
+                      <li key={event.id} className="flex min-w-0 items-start gap-3 px-4 py-3.5 sm:px-5">
+                        <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${iconClass}`}>{eventIcon}</span>
+                        {canOpenEvent ? (
+                          <button
+                            type="button"
+                            onClick={handleOpenEvent}
+                            aria-label={`Open ${event.title.toLowerCase()}: ${event.description}`}
+                            className="flex min-w-0 flex-1 items-start gap-2 rounded-lg text-left hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:hover:text-violet-200"
+                          >
+                            {content}
+                            <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+                          </button>
+                        ) : content}
+                      </li>
+                    );
+                  })}
                 </ol>
               )}
-            </div>
+              {detailedActivities.length > 0 && (
+                <details className="border-t border-slate-100 px-4 py-3 dark:border-slate-800 sm:px-5">
+                  <summary className="cursor-pointer text-xs font-semibold text-slate-600 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:text-violet-300">
+                    Audit history ({detailedActivities.length})
+                  </summary>
+                  <ol aria-label="Customer audit history" className="customer-activity-list mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
+                    {detailedActivities.map(activity => (
+                      <li key={activity.id} className="flex min-w-0 items-start justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-800">
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="font-semibold text-slate-800 dark:text-slate-200">{activity.title}</div>
+                          <div className="break-words text-[11px] text-slate-500 dark:text-slate-400">{activity.description}</div>
+                        </div>
+                        <time className="shrink-0 whitespace-nowrap font-mono text-[10px] text-slate-400">{formatAppDateTime(activity.timestamp, language)}</time>
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              )}
+            </section>
           </div>
         </div>
         )
@@ -2644,6 +2806,21 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               {formErrors.name && (
                 <p className="text-[11px] text-rose-500 mt-1">{formErrors.name}</p>
               )}
+            </div>
+
+            <div>
+              <label htmlFor="customer-type" className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Customer Type
+              </label>
+              <select
+                id="customer-type"
+                value={customerType}
+                onChange={event => setCustomerType(event.target.value as CustomerType)}
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-violet-500 focus:outline-hidden focus:ring-2 focus:ring-violet-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              >
+                <option value="Customer">Customer</option>
+                <option value="Reseller">Reseller</option>
+              </select>
             </div>
 
             {/* Phone * & WhatsApp */}

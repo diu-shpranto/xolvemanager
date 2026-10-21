@@ -3,6 +3,7 @@ import { BellRing, CalendarClock, Check, Clock3, Plus, Search, X } from 'lucide-
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { getCustomerOptionLabel } from '../../utils/relationships';
+import { Modal } from '../common/Modal';
 import { useToast } from '../common/Toast';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
 import type { Reminder, ReminderPriority, ReminderStatus, ReminderType } from '../../types';
@@ -268,21 +269,23 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
         </div>}
       </section>
 
-      {showCreate && <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/50 p-0 sm:items-center sm:p-4" onMouseDown={event => { if (event.target === event.currentTarget) setShowCreate(false); }}>
-        <section role="dialog" aria-modal="true" aria-labelledby="new-reminder-title" className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl dark:bg-slate-900 sm:rounded-2xl">
-          <header className="mb-4 flex items-center justify-between"><h2 id="new-reminder-title" className="text-lg font-bold">New follow-up reminder</h2><button type="button" onClick={() => setShowCreate(false)} aria-label="Close new reminder dialog" className="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-4 w-4" /></button></header>
-          <form onSubmit={submitReminder} className="space-y-4">
-            <label className="block text-xs font-semibold">Title *<input required maxLength={120} value={title} onChange={event => setTitle(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
-            <label className="block text-xs font-semibold">Note<textarea maxLength={1000} value={description} onChange={event => setDescription(event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
-            <label className="block text-xs font-semibold">Customer (optional)<select value={customerId} onChange={event => setCustomerId(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="">No customer</option>{customers.filter(customer => !customer.isArchived && customer.status !== 'archived').map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}</select></label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-xs font-semibold">Due date *<input type="date" required value={dueDate} onChange={event => setDueDate(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
-              <label className="block text-xs font-semibold">Priority<select value={priority} onChange={event => setPriority(event.target.value as ReminderPriority)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800">{(['low', 'medium', 'high', 'critical'] as const).map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>
-            </div>
-            <footer className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setShowCreate(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold dark:border-slate-700">Cancel</button><button type="submit" disabled={!title.trim() || !dueDate} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Save Reminder</button></footer>
-          </form>
-        </section>
-      </div>}
+      <Modal
+        isOpen={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="New follow-up reminder"
+        maxWidth="lg"
+      >
+        <form onSubmit={submitReminder} className="space-y-4">
+          <label className="block text-xs font-semibold">Title *<input required maxLength={120} value={title} onChange={event => setTitle(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
+          <label className="block text-xs font-semibold">Note<textarea maxLength={1000} value={description} onChange={event => setDescription(event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
+          <label className="block text-xs font-semibold">Customer (optional)<select value={customerId} onChange={event => setCustomerId(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="">No customer</option>{customers.filter(customer => !customer.isArchived && customer.status !== 'archived').map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}</select></label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs font-semibold">Due date *<input type="date" required value={dueDate} onChange={event => setDueDate(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
+            <label className="block text-xs font-semibold">Priority<select value={priority} onChange={event => setPriority(event.target.value as ReminderPriority)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800">{(['low', 'medium', 'high', 'critical'] as const).map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>
+          </div>
+          <footer className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setShowCreate(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold dark:border-slate-700">Cancel</button><button type="submit" disabled={!title.trim() || !dueDate} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Save Reminder</button></footer>
+        </form>
+      </Modal>
     </div>
   );
 };

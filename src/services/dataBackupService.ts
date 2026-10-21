@@ -28,9 +28,15 @@ import {
   getSalePaymentStatus,
   getSalePayments,
 } from '../utils/saleUtils';
-import { createBackupChecksum, verifyBackupChecksum } from '../utils/backupIntegrity';
+import {
+  createBackupChecksum,
+  createBackupSha256,
+  verifyBackupChecksum,
+  verifyBackupSha256,
+} from '../utils/backupIntegrity';
 
 export const DATA_VERSION = 1;
+export const BACKUP_APPLICATION_ID = 'xolvemanager';
 const REQUIRED_COLLECTIONS = [
   'customers', 'services', 'accounts', 'subscriptions', 'sales',
   'invoices', 'payments', 'activityLogs', 'notifications',
@@ -42,15 +48,26 @@ const FINANCIAL_COLLECTIONS = [
 type FinancialCollectionName = typeof FINANCIAL_COLLECTIONS[number];
 const OPTIONAL_COLLECTIONS = ['reminders', 'profitabilityCosts', 'financialReconciliations', 'financialPeriods'] as const;
 type OptionalCollectionName = typeof OPTIONAL_COLLECTIONS[number];
-type BackupRecords = Record<CollectionName, unknown[]> & Partial<Record<FinancialCollectionName | OptionalCollectionName, unknown[]>>;
+export type BackupRecords = Record<CollectionName, unknown[]> & Partial<Record<FinancialCollectionName | OptionalCollectionName, unknown[]>>;
+export type BackupEnvironment = 'demo' | 'production' | 'mixed' | 'unknown';
 
 export interface BackupDocument {
+  applicationId?: string;
   backupVersion: number;
   dataVersion: number;
   appVersion: string;
   exportedAt: string;
   integrityChecksum?: string;
+  sha256Checksum?: string;
+  environment?: BackupEnvironment;
+  categoryManifest?: Record<string, number>;
   business: unknown;
+  demoDataManifest?: unknown;
+  preferences?: {
+    theme?: 'light' | 'dark';
+    language?: 'en' | 'bn';
+    currency?: 'BDT' | 'USD';
+  };
   settings: AppSettings;
   records: BackupRecords;
 }
@@ -83,17 +100,76 @@ const dateOnlyIsValid = (value: unknown): boolean => {
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 };
 
-export function createVersionedBackup(json: string, appVersion: string): BackupDocument {
+export const getBackupEnvironment = (records: Record<string, unknown>, demoManifest: unknown): BackupEnvironment => {
+  let demoRecords = 0;
+  let otherRecords = 0;
+  const recordArrays = [...REQUIRED_COLLECTIONS, ...FINANCIAL_COLLECTIONS, ...OPTIONAL_COLLECTIONS]
+    .flatMap(name => Array.isArray(records[name]) ? records[name] as unknown[] : []);
+  recordArrays.forEach(item => {
+    if (!isRecord(item)) return;
+    const id = typeof item.id === 'string' ? item.id
+      : typeof item.invoiceId === 'string' ? item.invoiceId : '';
+    if (!id) return;
+    if (id.startsWith('xvm_demo_')) demoRecords += 1;
+    else otherRecords += 1;
+  });
+  if (Array.isArray(records.accounts)) records.accounts.forEach(item => {
+    if (!isRecord(item)) return;
+    (Array.isArray(item.profiles) ? item.profiles : []).forEach(profile => {
+      if (!isRecord(profile) || typeof profile.id !== 'string') return;
+      if (profile.id.startsWith('xvm_demo_')) demoRecords += 1;
+      else otherRecords += 1;
+    });
+  });
+  if (Array.isArray(records.services)) records.services.forEach(item => {
+    if (!isRecord(item)) return;
+    const plans = Array.isArray(item.planDetails) ? item.planDetails : [];
+    plans.forEach(plan => {
+      if (!isRecord(plan) || typeof plan.id !== 'string') return;
+      if (plan.id.startsWith('xvm_demo_')) demoRecords += 1;
+      else otherRecords += 1;
+    });
+  });
+  if (isRecord(demoManifest) && isRecord(demoManifest.records)) {
+    const manifestCount = Object.values(demoManifest.records).reduce<number>((count, ids) =>
+      count + (Array.isArray(ids) ? ids.length : 0), 0);
+    if (manifestCount > demoRecords) demoRecords = manifestCount;
+  }
+  if (demoRecords > 0 && otherRecords > 0) return 'mixed';
+  if (demoRecords > 0) return 'demo';
+  if (otherRecords > 0) return 'production';
+  return 'unknown';
+};
+
+export async function createVersionedBackup(json: string, appVersion: string): Promise<BackupDocument> {
   const parsed: unknown = JSON.parse(json);
   if (!isRecord(parsed)) throw new Error('The application data could not be read for backup.');
   const records = isRecord(parsed.records) ? parsed.records : null;
   if (!records) throw new Error('The application data collections are missing.');
+  const categoryManifest: Record<string, number> = getBackupCounts(records as BackupRecords);
+  categoryManifest.profiles = Array.isArray(records.accounts)
+    ? records.accounts.reduce((count, account) => count + (
+      isRecord(account) && Array.isArray(account.profiles) ? account.profiles.length : 0
+    ), 0)
+    : 0;
+  categoryManifest.plans = Array.isArray(records.services)
+    ? records.services.reduce((count, service) => count + (
+      isRecord(service) && Array.isArray(service.planDetails)
+        ? service.planDetails.length
+        : isRecord(service) && Array.isArray(service.plans) ? service.plans.length : 0
+    ), 0)
+    : 0;
   const document = {
+    applicationId: BACKUP_APPLICATION_ID,
     backupVersion: 1,
     dataVersion: DATA_VERSION,
     appVersion,
     exportedAt: new Date().toISOString(),
     business: parsed.business ?? null,
+    demoDataManifest: parsed.demoDataManifest ?? null,
+    preferences: isRecord(parsed.preferences) ? parsed.preferences : {},
+    environment: getBackupEnvironment(records, parsed.demoDataManifest),
+    categoryManifest,
     settings: parsed.settings,
     records: {
       ...records,
@@ -108,6 +184,7 @@ export function createVersionedBackup(json: string, appVersion: string): BackupD
     },
   } as BackupDocument;
   document.integrityChecksum = createBackupChecksum(document);
+  document.sha256Checksum = await createBackupSha256(document);
   const validation = validateBackup(document);
   if (!validation.valid) throw new Error(validation.errors.slice(0, 3).join(' '));
   return document;
@@ -119,13 +196,33 @@ export function validateBackup(input: unknown): BackupValidation {
   if (verifyBackupChecksum(input) === 'invalid') {
     errors.push('Backup integrity checksum is invalid. The file may be incomplete or modified.');
   }
+  if (input.applicationId !== undefined && input.applicationId !== BACKUP_APPLICATION_ID) {
+    errors.push('This backup was created by a different application.');
+  }
+  if (input.environment !== undefined
+    && !['demo', 'production', 'mixed', 'unknown'].includes(String(input.environment))) {
+    errors.push('Backup environment metadata is invalid.');
+  }
+  if (input.sha256Checksum !== undefined
+    && (typeof input.sha256Checksum !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(input.sha256Checksum))) {
+    errors.push('Backup SHA-256 integrity metadata is invalid.');
+  }
+  const isLegacyFlatBackup = input.backupVersion === undefined
+    && input.schemaVersion === undefined
+    && !isRecord(input.records)
+    && REQUIRED_COLLECTIONS.some(name => Array.isArray(input[name]));
   const version = input.backupVersion ?? input.schemaVersion;
-  if (version !== 1) errors.push('Unsupported or missing backup version.');
+  if (version !== 1 && !isLegacyFlatBackup) errors.push('Unsupported or missing backup version.');
   if (input.backupVersion !== undefined && input.dataVersion !== DATA_VERSION) {
     errors.push(`Unsupported data version: ${String(input.dataVersion)}.`);
   }
-  const records = isRecord(input.records) ? input.records : null;
-  if (!records) return { valid: false, errors: [...errors, 'Backup collections are missing.'] };
+  const records = isRecord(input.records) ? input.records : isLegacyFlatBackup ? input : null;
+  if (!records) {
+    return {
+      valid: false,
+      errors: [...errors, 'This file is not a recognized XolveManager backup. Choose a JSON file created with Create Backup.'],
+    };
+  }
   for (const name of REQUIRED_COLLECTIONS) {
     if (!Array.isArray(records[name])) errors.push(`The ${name} collection is missing or invalid.`);
   }
@@ -135,6 +232,48 @@ export function validateBackup(input: unknown): BackupValidation {
   OPTIONAL_COLLECTIONS.forEach(name => {
     if (name in records && !Array.isArray(records[name])) errors.push(`The ${name} collection is invalid.`);
   });
+  if (input.categoryManifest !== undefined && !isRecord(input.categoryManifest)) {
+    errors.push('Backup category manifest is invalid.');
+  }
+  if (isRecord(input.categoryManifest) && records) {
+    const declared = input.categoryManifest;
+    const actual = getBackupCounts(records as BackupRecords);
+    actual.profiles = Array.isArray(records.accounts)
+      ? records.accounts.reduce((count, account) => count + (
+        isRecord(account) && Array.isArray(account.profiles) ? account.profiles.length : 0
+      ), 0)
+      : 0;
+    actual.plans = Array.isArray(records.services)
+      ? records.services.reduce((count, service) => count + (
+        isRecord(service) && Array.isArray(service.planDetails)
+          ? service.planDetails.length
+          : isRecord(service) && Array.isArray(service.plans) ? service.plans.length : 0
+      ), 0)
+      : 0;
+    Object.entries(actual).forEach(([name, count]) => {
+      if (declared[name] !== count) errors.push(`Backup manifest count for ${name} does not match the included records.`);
+    });
+    for (const name of ['profiles', 'plans']) {
+      if (typeof declared[name] !== 'number' || !Number.isSafeInteger(declared[name]) || declared[name] !== actual[name]) {
+        errors.push(`Backup manifest count for ${name} does not match the included records.`);
+      }
+    }
+  }
+  if (input.preferences !== undefined && (!isRecord(input.preferences)
+    || (input.preferences.theme !== undefined && !['light', 'dark'].includes(String(input.preferences.theme)))
+    || (input.preferences.language !== undefined && !['en', 'bn'].includes(String(input.preferences.language)))
+    || (input.preferences.currency !== undefined && !['BDT', 'USD'].includes(String(input.preferences.currency))))) {
+    errors.push('Backup display preferences are invalid.');
+  }
+  if (input.demoDataManifest !== undefined && input.demoDataManifest !== null) {
+    const manifest = input.demoDataManifest;
+    if (!isRecord(manifest) || manifest.version !== 1 || !isRecord(manifest.records)
+      || !Array.isArray(manifest.planIds)
+      || !Object.values(manifest.records).every(ids => Array.isArray(ids) && ids.every(id => typeof id === 'string'))
+      || !manifest.planIds.every(id => typeof id === 'string')) {
+      errors.push('Backup demo-data manifest is invalid.');
+    }
+  }
   if (!isRecord(input.settings)) errors.push('Business settings are missing or invalid.');
   const arrays = Object.fromEntries(REQUIRED_COLLECTIONS.map(name =>
     [name, Array.isArray(records[name]) ? records[name] as unknown[] : []]
@@ -463,6 +602,13 @@ export function validateBackup(input: unknown): BackupValidation {
     if (typeof account.id === 'string') accountsById.set(account.id, account);
     if (typeof account.serviceId !== 'string' || !services.has(account.serviceId)) errors.push(`Account ${String(account.id)} references a missing service.`);
     if (typeof account.maxProfiles !== 'number' || !Number.isSafeInteger(account.maxProfiles) || account.maxProfiles < 1) errors.push(`Account ${String(account.id)} has an invalid profile capacity.`);
+    if (account.purchaseCost !== undefined
+      && (typeof account.purchaseCost !== 'number' || !Number.isFinite(account.purchaseCost) || account.purchaseCost < 0)) {
+      errors.push(`Account ${String(account.id)} has an invalid purchase cost.`);
+    }
+    if (account.purchaseCostCurrency !== undefined && !['BDT', 'USD'].includes(String(account.purchaseCostCurrency))) {
+      errors.push(`Account ${String(account.id)} has an invalid purchase cost currency.`);
+    }
     if (Array.isArray(account.profiles)) account.profiles.forEach(profile => {
       const id = recordId(profile);
       if (id) {
@@ -552,6 +698,16 @@ export function validateBackup(input: unknown): BackupValidation {
     if (!serviceHasPlan(item.serviceId, item.planId, item.plan)) errors.push(`Sale ${String(item.id)} references a missing plan.`);
     if (typeof item.amount !== 'number' || !Number.isFinite(item.amount) || item.amount < 0) errors.push(`Sale ${String(item.id)} has an invalid amount.`);
     if (item.amountPaid !== undefined && (typeof item.amountPaid !== 'number' || !Number.isFinite(item.amountPaid) || item.amountPaid < 0)) errors.push(`Sale ${String(item.id)} has an invalid paid amount.`);
+    if (item.actualCostSnapshot !== undefined
+      && (typeof item.actualCostSnapshot !== 'number' || !Number.isFinite(item.actualCostSnapshot) || item.actualCostSnapshot < 0)) {
+      errors.push(`Sale ${String(item.id)} has an invalid actual cost snapshot.`);
+    }
+    if (item.actualCostCurrency !== undefined && !['BDT', 'USD'].includes(String(item.actualCostCurrency))) {
+      errors.push(`Sale ${String(item.id)} has an invalid actual cost currency.`);
+    }
+    if (item.actualCostAllocation !== undefined && !['full_account', 'profile_slot'].includes(String(item.actualCostAllocation))) {
+      errors.push(`Sale ${String(item.id)} has an invalid actual cost allocation.`);
+    }
     if (!dateIsValid(item.date)) errors.push(`Sale ${String(item.id)} has an invalid date.`);
     if (!['paid', 'pending', 'partial', 'failed', 'refunded'].includes(String(item.paymentStatus))) errors.push(`Sale ${String(item.id)} has an invalid payment status.`);
   });
@@ -628,8 +784,19 @@ export function validateBackup(input: unknown): BackupValidation {
     dataVersion: input.dataVersion ?? DATA_VERSION,
     appVersion: typeof input.appVersion === 'string' ? input.appVersion : 'Legacy backup',
     exportedAt: typeof input.exportedAt === 'string' ? input.exportedAt : '',
+    records,
   } as unknown as BackupDocument;
   return { valid: errors.length === 0, errors: [...new Set(errors)], ...(errors.length === 0 ? { document } : {}) };
+}
+
+export async function verifyBackupIntegrity(input: unknown): Promise<string[]> {
+  const checksum = await verifyBackupSha256(input);
+  if (checksum === 'invalid') return ['Backup SHA-256 checksum is invalid. The file may be incomplete or modified.'];
+  if (checksum === 'missing') {
+    const legacyChecksum = verifyBackupChecksum(input);
+    if (legacyChecksum === 'invalid') return ['Backup integrity checksum is invalid. The file may be incomplete or modified.'];
+  }
+  return [];
 }
 
 export function toImportJSON(document: BackupDocument): string {
@@ -650,12 +817,13 @@ export function exportCustomersCSV(
     customers, sales, subscriptions, payments, invoices, activities, services, currency
   );
   return csv(
-    ['Customer ID', 'Name', 'Phone', 'Email', 'Status', 'Tags', 'Active Subscriptions', 'Total Spent', 'Total Paid', 'Total Due', 'First Purchase', 'Last Purchase', 'Created Date'],
+    ['Customer ID', 'Name', 'Customer Type', 'Phone', 'Email', 'Status', 'Tags', 'Active Subscriptions', 'Total Spent', 'Total Paid', 'Total Due', 'First Purchase', 'Last Purchase', 'Created Date'],
     customers.map(customer => {
       const metric = metrics.get(customer.id);
       return [
         customer.id,
         customer.name,
+        customer.customerType ?? 'Customer',
         customer.phone,
         customer.email,
         customer.isArchived ? 'archived' : metric?.status.replace('_', ' ') ?? 'inactive',
@@ -896,7 +1064,7 @@ export function exportInvoicesCSV(
 
 export interface CustomerImportRow {
   row: number;
-  customer: Pick<Customer, 'name' | 'phone' | 'email' | 'notes'>;
+  customer: Pick<Customer, 'name' | 'customerType' | 'phone' | 'email' | 'notes'>;
   reason?: string;
   duplicate?: { name: string };
 }
@@ -917,6 +1085,12 @@ export function previewCustomerCSV(text: string, customers: Customer[]): Custome
     const name = value(row, 'name');
     const phone = value(row, 'phone');
     const email = value(row, 'email');
+    const customerTypeValue = value(row, 'customer type').toLowerCase();
+    const customerType = customerTypeValue
+      ? customerTypeValue === 'customer' ? 'Customer'
+        : customerTypeValue === 'reseller' ? 'Reseller'
+          : undefined
+      : 'Customer';
     const normalizedEmail = email.toLowerCase();
     const existing = customers.find(customer =>
       (phone && customer.phone.replace(/\s/g, '') === phone.replace(/\s/g, '')) ||
@@ -929,9 +1103,10 @@ export function previewCustomerCSV(text: string, customers: Customer[]): Custome
     let reason: string | undefined;
     if (!name) reason = 'Missing customer name.';
     else if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) reason = 'Invalid email format.';
+    else if (!customerType) reason = 'Invalid customer type. Use Customer or Reseller.';
     if (name) seen.push({ name, phone, email });
     const duplicate = existing ? { name: existing.name } : importedDuplicate ? { name: importedDuplicate.name } : undefined;
-    return { row: index + 2, customer: { name, phone, email, notes: value(row, 'notes') }, ...(reason ? { reason } : {}), ...(duplicate ? { duplicate } : {}) };
+    return { row: index + 2, customer: { name, customerType: customerType || 'Customer', phone, email, notes: value(row, 'notes') }, ...(reason ? { reason } : {}), ...(duplicate ? { duplicate } : {}) };
   });
 }
 
@@ -946,10 +1121,126 @@ export function inspectBackupIntegrity(input: unknown): { checked: number; issue
   };
 }
 
-export type BackupCollectionCounts = Record<CollectionName | FinancialCollectionName | OptionalCollectionName, number>;
+export type BackupCollectionCounts = Record<CollectionName | FinancialCollectionName | OptionalCollectionName | 'profiles' | 'plans', number>;
 export function getBackupCounts(records: BackupRecords): BackupCollectionCounts {
-  return Object.fromEntries([...REQUIRED_COLLECTIONS, ...FINANCIAL_COLLECTIONS, ...OPTIONAL_COLLECTIONS].map(name => [
+  const collectionCounts = Object.fromEntries([...REQUIRED_COLLECTIONS, ...FINANCIAL_COLLECTIONS, ...OPTIONAL_COLLECTIONS].map(name => [
     name,
     Array.isArray(records[name]) ? records[name].length : 0,
-  ])) as BackupCollectionCounts;
+  ])) as Record<CollectionName | FinancialCollectionName | OptionalCollectionName, number>;
+  return {
+    ...collectionCounts,
+    profiles: (records.accounts || []).reduce<number>((count, item) => count + (
+      isRecord(item) && Array.isArray(item.profiles) ? item.profiles.length : 0
+    ), 0),
+    plans: (records.services || []).reduce<number>((count, item) => count + (
+      isRecord(item) && Array.isArray(item.planDetails)
+        ? item.planDetails.length
+        : isRecord(item) && Array.isArray(item.plans) ? item.plans.length : 0
+    ), 0),
+  };
+}
+
+export interface BackupMergePlan {
+  records: BackupRecords;
+  added: Record<string, number>;
+  duplicatesSkipped: Record<string, number>;
+  conflicts: Array<{ collection: string; id: string; reason: string }>;
+}
+
+const stableRecordJson = (value: unknown, excludedKeys: Set<string> = new Set()): string => {
+  const sortValue = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(sortValue);
+    if (!isRecord(item)) return item;
+    return Object.keys(item).sort().reduce<Record<string, unknown>>((sorted, key) => {
+      if (!excludedKeys.has(key)) sorted[key] = sortValue(item[key]);
+      return sorted;
+    }, {});
+  };
+  return JSON.stringify(sortValue(value));
+};
+
+const mergeIdentityKey = (collection: string, item: unknown): string | undefined => {
+  if (!isRecord(item)) return undefined;
+  if (collection === 'sales' && typeof item.invoiceNo === 'string' && item.invoiceNo.trim()) {
+    return `invoice:${item.invoiceNo.trim().toLocaleLowerCase()}`;
+  }
+  if (collection === 'invoices' && typeof item.invoiceNumber === 'string' && item.invoiceNumber.trim()) {
+    return `invoice:${item.invoiceNumber.trim().toLocaleLowerCase()}`;
+  }
+  if (collection === 'payments') {
+    if (typeof item.operationId === 'string' && item.operationId.trim()) return `operation:${item.operationId.trim()}`;
+    if (item.paymentStatus === 'refunded' && typeof item.refundOfPaymentId === 'string') {
+      return `refund:${stableRecordJson({
+        refundOfPaymentId: item.refundOfPaymentId,
+        paymentDate: item.paymentDate,
+        amount: item.amount,
+        currency: item.currency,
+        allocations: item.refundedSaleAllocations,
+      })}`;
+    }
+  }
+  return undefined;
+};
+
+export function planBackupMerge(current: Record<string, unknown[]>, incoming: Record<string, unknown[]>): BackupMergePlan {
+  const collectionNames = [...REQUIRED_COLLECTIONS, ...FINANCIAL_COLLECTIONS, ...OPTIONAL_COLLECTIONS];
+  const added: Record<string, number> = {};
+  const duplicatesSkipped: Record<string, number> = {};
+  const conflicts: BackupMergePlan['conflicts'] = [];
+  const mergedRecords = {} as BackupRecords;
+  const ignoredMetadata = new Set(['createdAt', 'updatedAt', 'businessId']);
+  const incomingIdKey = (collection: string) => collection === 'invoices' ? 'invoiceId' : 'id';
+
+  collectionNames.forEach(collection => {
+    const existing = Array.isArray(current[collection]) ? [...current[collection]] : [];
+    const incomingRecords = Array.isArray(incoming[collection]) ? incoming[collection] : [];
+    const byId = new Map(existing.map(item => [recordId(item, incomingIdKey(collection)), item]).filter(
+      (entry): entry is [string, unknown] => Boolean(entry[0])
+    ));
+    const bySemantic = new Map<string, unknown[]>();
+    existing.forEach(item => {
+      const semanticKey = mergeIdentityKey(collection, item);
+      if (semanticKey) bySemantic.set(semanticKey, [...(bySemantic.get(semanticKey) || []), item]);
+    });
+    let addedCount = 0;
+    let duplicateCount = 0;
+
+    incomingRecords.forEach(item => {
+      const id = recordId(item, incomingIdKey(collection));
+      if (!id) {
+        conflicts.push({ collection, id: 'unknown', reason: 'Missing stable record ID.' });
+        return;
+      }
+      const sameId = byId.get(id);
+      if (sameId !== undefined) {
+        if (stableRecordJson(sameId, ignoredMetadata) === stableRecordJson(item, ignoredMetadata)) {
+          duplicateCount += 1;
+        } else {
+          conflicts.push({ collection, id, reason: 'The same ID has different stored data; the existing record was kept.' });
+        }
+        return;
+      }
+      const semanticKey = mergeIdentityKey(collection, item);
+      const semanticMatch = semanticKey ? bySemantic.get(semanticKey)?.[0] : undefined;
+      if (semanticMatch !== undefined) {
+        if (stableRecordJson(semanticMatch, new Set([...ignoredMetadata, 'id', 'invoiceId']))
+          === stableRecordJson(item, new Set([...ignoredMetadata, 'id', 'invoiceId']))) {
+          duplicateCount += 1;
+        } else {
+          conflicts.push({ collection, id, reason: 'A transaction with the same invoice or operation reference differs; it was not imported.' });
+        }
+        return;
+      }
+      existing.push(item);
+      byId.set(id, item);
+      if (semanticKey) bySemantic.set(semanticKey, [...(bySemantic.get(semanticKey) || []), item]);
+      addedCount += 1;
+    });
+
+    mergedRecords[collection as CollectionName] = existing;
+    added[collection] = addedCount;
+    duplicatesSkipped[collection] = duplicateCount;
+  });
+
+  return { records: mergedRecords, added, duplicatesSkipped, conflicts };
 }

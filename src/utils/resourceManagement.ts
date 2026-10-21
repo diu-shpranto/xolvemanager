@@ -1,5 +1,5 @@
 import type { Account, AccountProfile, Service, Subscription } from '../types';
-import { getDaysDifference } from './dateUtils';
+import { getCalendarDateInTimeZone, getDaysDifference } from './dateUtils';
 
 export const RESOURCE_CAPACITY_THRESHOLDS = {
   almostFull: 0.8,
@@ -48,25 +48,24 @@ export interface ServiceResourceSummary {
   utilization: number;
 }
 
-export const isAccountOperational = (account: Account, today = new Date()): boolean => {
+export const isAccountOperational = (account: Account, timeZone?: string): boolean => {
   if (['Inactive', 'Suspended', 'Expired'].includes(account.status)) return false;
   if (!account.expiryDate) return true;
-  const expiry = new Date(`${account.expiryDate}T00:00:00`);
-  const current = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  return Number.isFinite(expiry.getTime()) && expiry >= current;
+  const expiryDate = getCalendarDateInTimeZone(account.expiryDate, timeZone);
+  return Boolean(expiryDate) && getDaysDifference(expiryDate, timeZone) >= 0;
 };
 
-export const getAccountInventoryMetrics = (account: Account): AccountInventoryMetrics => {
+export const getAccountInventoryMetrics = (account: Account, timeZone?: string): AccountInventoryMetrics => {
   const profiles = Array.isArray(account.profiles) ? account.profiles : [];
   const capacity = Math.max(0, Number.isFinite(account.maxProfiles) ? Math.floor(account.maxProfiles) : 0);
   const assignedProfiles = profiles.filter(profile =>
     profile.status === 'Assigned' || Boolean(profile.assignedCustomerId)
   ).length;
-  const availableProfiles = isAccountOperational(account)
+  const availableProfiles = isAccountOperational(account, timeZone)
     ? profiles.filter(profile =>
       profile.status === 'Available'
       && !profile.assignedCustomerId
-      && (!profile.expiryDate || getDaysDifference(profile.expiryDate) >= 0)
+      && (!profile.expiryDate || getDaysDifference(profile.expiryDate, timeZone) >= 0)
     ).length
     : 0;
   const profileIds = new Set<string>();
@@ -88,7 +87,7 @@ export const getAccountInventoryMetrics = (account: Account): AccountInventoryMe
     || invalidAccountExpiry
     || inconsistentProfiles;
   const expired = account.status === 'Expired'
-    || Boolean(account.expiryDate && getDaysDifference(account.expiryDate) < 0);
+    || Boolean(account.expiryDate && getDaysDifference(account.expiryDate, timeZone) < 0);
   const unavailable = ['Inactive', 'Suspended'].includes(account.status);
   const full = capacity > 0 && assignedProfiles >= capacity;
   const health: AccountHealthStatus = dataReviewRequired
@@ -139,11 +138,11 @@ export const getAccountCapacity = (account: Account): AccountCapacity => {
   };
 };
 
-export const getProfileStatus = (profile: AccountProfile, account: Account): DerivedProfileStatus => {
+export const getProfileStatus = (profile: AccountProfile, account: Account, timeZone?: string): DerivedProfileStatus => {
   if (profile.status === 'Suspended' || account.status === 'Suspended') return 'Suspended';
   if (account.status === 'Expired'
-    || (account.expiryDate !== undefined && getDaysDifference(account.expiryDate) < 0)
-    || (profile.expiryDate !== undefined && getDaysDifference(profile.expiryDate) < 0)) return 'Expired';
+    || (account.expiryDate !== undefined && getDaysDifference(account.expiryDate, timeZone) < 0)
+    || (profile.expiryDate !== undefined && getDaysDifference(profile.expiryDate, timeZone) < 0)) return 'Expired';
   if (profile.status === 'Inactive' || profile.status === 'Disabled'
     || account.status === 'Inactive') return 'Inactive';
   return profile.assignedCustomerId || profile.status === 'Assigned' ? 'Assigned' : 'Available';
@@ -153,9 +152,10 @@ export const getAvailableProfiles = (
   accounts: Account[],
   serviceId?: string,
   planId?: string,
-  excludedProfileId?: string
+  excludedProfileId?: string,
+  timeZone?: string
 ): Array<{ account: Account; profile: AccountProfile }> => accounts.flatMap(account => {
-  if (!isAccountOperational(account) || account.allowNewAssignment === false
+  if (!isAccountOperational(account, timeZone) || account.allowNewAssignment === false
     || (serviceId && account.serviceId !== serviceId)) return [];
   if (planId && account.planId && account.planId !== planId) return [];
   if (getAccountCapacity(account).available <= 0) return [];
@@ -163,13 +163,14 @@ export const getAvailableProfiles = (
     .filter(profile => profile.id !== excludedProfileId
       && profile.status === 'Available'
       && !profile.assignedCustomerId
-      && (!profile.expiryDate || getDaysDifference(profile.expiryDate) >= 0))
+      && (!profile.expiryDate || getDaysDifference(profile.expiryDate, timeZone) >= 0))
     .map(profile => ({ account, profile }));
 });
 
 export const getServiceResourceSummary = (
   services: Service[],
-  accounts: Account[]
+  accounts: Account[],
+  timeZone?: string
 ): ServiceResourceSummary[] => {
   const accountsByServiceId = new Map<string, Account[]>();
   accounts.forEach(account => {
@@ -185,7 +186,7 @@ export const getServiceResourceSummary = (
     return {
       serviceId: service.id,
       accountCount: serviceAccounts.length,
-      activeAccounts: serviceAccounts.filter(account => isAccountOperational(account)).length,
+      activeAccounts: serviceAccounts.filter(account => isAccountOperational(account, timeZone)).length,
       profileCapacity,
       usedProfiles,
       availableProfiles: Math.max(0, profileCapacity - usedProfiles),

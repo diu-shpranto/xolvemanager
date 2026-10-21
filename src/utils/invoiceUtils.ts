@@ -1,6 +1,6 @@
 import type { AppSettings, Customer, Invoice, Payment, Sale, Service, Subscription } from '../types';
 import { createRecordId } from '../services/localStorageStore';
-import { getCustomerDisplayName } from './relationships';
+import { getCustomerDisplayName, getCustomerType } from './relationships';
 import {
   getPaymentSaleAllocation,
   getSaleDueAmount,
@@ -88,6 +88,7 @@ export function buildInvoiceSaleDetails(
     customerId: invoice.customerId,
     date: invoice.invoiceDate || sale.date,
     customerName: getCustomerDisplayName(customer),
+    customerType: getCustomerType(customer),
     customerPhone: customer?.phone || customer?.whatsapp,
     customerEmail: customer?.email,
     serviceName: service?.name || 'Service unavailable',

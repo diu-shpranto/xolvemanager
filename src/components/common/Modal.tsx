@@ -1,6 +1,7 @@
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { registerUnsavedChanges } from '../../services/unsavedChanges';
 
 interface ModalProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface ModalProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
+  protectUnsavedChanges?: boolean;
 }
 
 let activeModalScrollLocks = 0;
@@ -45,20 +47,79 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   footer,
   maxWidth = 'lg',
+  protectUnsavedChanges = true,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const discardDialogRef = useRef<HTMLElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const continueEditingRef = useRef<HTMLButtonElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
+  const [showDiscardConfirmation, setShowDiscardConfirmation] = useState(false);
+  const interactionRef = useRef(false);
+  const initialFormValuesRef = useRef(new Map<string, string>());
+  const latestFormValuesRef = useRef(new Map<string, string>());
   const titleId = useId();
   onCloseRef.current = onClose;
-  const hasEditableContent = () => Boolean(
-    dialogRef.current?.querySelector('form, input:not([type="hidden"]), select, textarea')
-  );
+  const readFormValues = () => Array.from(
+    dialogRef.current?.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      'input:not([type="hidden"]):not([type="submit"]):not([type="button"]), select, textarea'
+    ) ?? []
+  ).reduce((values, control, index) => {
+    const identity = control.id
+      || control.getAttribute('name')
+      || control.getAttribute('aria-label')
+      || control.getAttribute('placeholder')
+      || control.labels?.[0]?.textContent?.trim()
+      || `${control.tagName}-${index}`;
+    const occurrence = values.occurrences.get(identity) ?? 0;
+    values.occurrences.set(identity, occurrence + 1);
+    let value: unknown;
+    if (control instanceof HTMLInputElement) {
+      if (control.type === 'checkbox' || control.type === 'radio') {
+        value = [control.type, control.value, control.checked];
+      } else if (control.type === 'file') {
+        value = [control.type, Array.from(control.files || []).map(file => `${file.name}:${file.size}`)];
+      }
+    }
+    if (control instanceof HTMLSelectElement && control.multiple) {
+      value = [control.tagName, Array.from(control.selectedOptions).map(option => option.value)];
+    }
+    if (value === undefined) value = [control.tagName, control.value];
+    values.current.set(`${control.tagName}:${identity}:${occurrence}`, JSON.stringify(value));
+    return values;
+  }, { current: new Map<string, string>(), occurrences: new Map<string, number>() }).current;
+  const syncFormValues = (markInteraction = false) => {
+    if (markInteraction) interactionRef.current = true;
+    const currentValues = readFormValues();
+    if (!interactionRef.current) {
+      initialFormValuesRef.current = currentValues;
+      latestFormValuesRef.current = new Map(currentValues);
+      return;
+    }
+    for (const [key, value] of currentValues) {
+      if (!initialFormValuesRef.current.has(key)) initialFormValuesRef.current.set(key, value);
+      latestFormValuesRef.current.set(key, value);
+    }
+  };
+  const isDirty = () => {
+    if (!protectUnsavedChanges) return false;
+    syncFormValues();
+    return interactionRef.current && Array.from(latestFormValuesRef.current).some(
+      ([key, value]) => initialFormValuesRef.current.get(key) !== value
+    );
+  };
+  const requestClose = () => {
+    if (isDirty()) {
+      setShowDiscardConfirmation(true);
+      return;
+    }
+    onCloseRef.current();
+  };
   const getFocusableElements = () => Array.from(
-    dialogRef.current?.querySelectorAll<HTMLElement>(
+    (showDiscardConfirmation ? discardDialogRef.current : dialogRef.current)?.querySelectorAll<HTMLElement>(
       'button:not([disabled]), a[href], input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
     ) ?? []
   ).filter(element => element.getClientRects().length > 0 && element.getAttribute('aria-hidden') !== 'true');
@@ -66,6 +127,26 @@ export const Modal: React.FC<ModalProps> = ({
   useEffect(() => {
     setPortalContainer(document.body);
   }, []);
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      interactionRef.current = false;
+      initialFormValuesRef.current = new Map();
+      latestFormValuesRef.current = new Map();
+      setShowDiscardConfirmation(false);
+      return;
+    }
+    syncFormValues();
+  });
+
+  useEffect(() => {
+    if (!isOpen) return;
+    return registerUnsavedChanges(() => protectUnsavedChanges && isDirty());
+  }, [isOpen, protectUnsavedChanges]);
+
+  useEffect(() => {
+    if (showDiscardConfirmation) continueEditingRef.current?.focus();
+  }, [showDiscardConfirmation]);
 
   useEffect(() => {
     if (!isOpen || !portalContainer) return;
@@ -86,26 +167,25 @@ export const Modal: React.FC<ModalProps> = ({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        if (hasEditableContent()) {
-          event.preventDefault();
-          return;
-        }
-        onCloseRef.current();
+        event.preventDefault();
+        if (showDiscardConfirmation) setShowDiscardConfirmation(false);
+        else requestClose();
         return;
       }
       if (event.key !== 'Tab' || !dialogRef.current) return;
       const focusable = getFocusableElements();
       if (focusable.length === 0) {
         event.preventDefault();
-        dialogRef.current.focus();
+        (showDiscardConfirmation ? discardDialogRef.current : dialogRef.current)?.focus();
         return;
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (event.shiftKey && (document.activeElement === first || !dialogRef.current.contains(document.activeElement))) {
+      const focusScope = showDiscardConfirmation ? discardDialogRef.current : dialogRef.current;
+      if (event.shiftKey && (document.activeElement === first || !focusScope?.contains(document.activeElement))) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && (document.activeElement === last || !dialogRef.current.contains(document.activeElement))) {
+      } else if (!event.shiftKey && (document.activeElement === last || !focusScope?.contains(document.activeElement))) {
         event.preventDefault();
         first.focus();
       }
@@ -119,7 +199,7 @@ export const Modal: React.FC<ModalProps> = ({
       returnFocusRef.current?.focus({ preventScroll: true });
       returnFocusRef.current = null;
     };
-  }, [isOpen, portalContainer]);
+  }, [isOpen, portalContainer, showDiscardConfirmation]);
 
   if (!isOpen || !portalContainer) return null;
 
@@ -137,16 +217,17 @@ export const Modal: React.FC<ModalProps> = ({
     <div
       ref={overlayRef}
       className="app-modal-overlay fixed inset-x-0 top-0 z-50 flex h-[100dvh] items-end justify-center overflow-y-auto bg-slate-900/60 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-xs sm:items-center sm:bg-transparent sm:p-4"
+      onInputCapture={() => syncFormValues(true)}
+      onChangeCapture={() => syncFormValues(true)}
+      onClickCapture={() => syncFormValues()}
       onMouseDown={event => {
-        if (event.target === event.currentTarget && !hasEditableContent()) onClose();
+        if (event.target === event.currentTarget) requestClose();
       }}
     >
       {/* Backdrop */}
       <div
         className="fixed inset-0 hidden bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200 sm:block"
-        onClick={() => {
-          if (!hasEditableContent()) onClose();
-        }}
+        onClick={requestClose}
         aria-hidden="true"
       />
 
@@ -172,7 +253,7 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             ref={closeButtonRef}
             aria-label="Close dialog"
             className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-2 focus-visible:outline-violet-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
@@ -187,6 +268,46 @@ export const Modal: React.FC<ModalProps> = ({
         {footer && (
           <div className="app-modal-footer shrink-0 border-t border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
             {footer}
+          </div>
+        )}
+        {showDiscardConfirmation && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs" onMouseDown={event => event.stopPropagation()}>
+            <section
+              ref={discardDialogRef}
+              tabIndex={-1}
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby={`${titleId}-discard-title`}
+              aria-describedby={`${titleId}-discard-description`}
+              className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            >
+              <h4 id={`${titleId}-discard-title`} className="text-base font-semibold text-slate-900 dark:text-white">Discard unsaved changes?</h4>
+              <p id={`${titleId}-discard-description`} className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">Your edits have not been saved. Continue editing or discard them?</p>
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    interactionRef.current = false;
+                    const currentValues = readFormValues();
+                    initialFormValuesRef.current = currentValues;
+                    latestFormValuesRef.current = new Map(currentValues);
+                    setShowDiscardConfirmation(false);
+                    onCloseRef.current();
+                  }}
+                  className="min-h-11 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600"
+                >
+                  Discard Changes
+                </button>
+                <button
+                  ref={continueEditingRef}
+                  type="button"
+                  onClick={() => setShowDiscardConfirmation(false)}
+                  className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Continue Editing
+                </button>
+              </div>
+            </section>
           </div>
         )}
       </div>

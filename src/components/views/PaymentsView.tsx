@@ -2,14 +2,18 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   ArrowDownToLine,
+  CalendarDays,
   CheckCircle2,
   Clock3,
   CreditCard,
   Eye,
   FileText,
   Filter,
+  HandCoins,
   MessageCircle,
+  Phone,
   Search,
+  Users,
   Wallet,
   X,
 } from 'lucide-react';
@@ -17,8 +21,9 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
+import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
-import { formatAppDate, formatAppDateTime, formatCurrency, getDaysDifference, getTodayDateString } from '../../utils/dateUtils';
+import { formatAppDate, formatCurrency, getDaysDifference, getDateInTimeZone, getTodayDateString } from '../../utils/dateUtils';
 import { getCustomerDisplayName, getCustomerOptionLabel, resolvePaymentCustomer } from '../../utils/relationships';
 import {
   getCustomerAdvanceCredit,
@@ -35,11 +40,18 @@ import { buildInvoiceSaleDetails } from '../../utils/invoiceUtils';
 import { convertReportCurrency } from '../../utils/reportMetrics';
 import { getDefaultPaymentMethod, getPaymentMethodSummary, normalizePaymentMethods, paymentMethodRequiresTransactionId } from '../../utils/paymentMethods';
 import { normalizePhoneDigits, normalizeSearchText } from '../../services/globalSearch';
-import { createRecordId } from '../../services/localStorageStore';
+import { createRecordId, readJsonValue, writeJsonValue } from '../../services/localStorageStore';
 import { downloadCSV } from '../../utils/csvParser';
 import { exportPaymentsCSV } from '../../services/dataBackupService';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
 import type { AppCurrency, Payment, PaymentMethod, PaymentStatus, Sale } from '../../types';
+import {
+  buildDueCollectionSummary,
+  getCustomerDueFollowUpStorageKey,
+  isCustomerDueFollowUps,
+  type CustomerDueFollowUps,
+  type CustomerDueFollowUpStatus,
+} from '../../utils/dueCollection';
 
 interface PaymentsViewProps {
   focusPaymentId?: string;
@@ -52,8 +64,17 @@ interface PaymentsViewProps {
 }
 
 type DateFilter = 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'last_month' | 'custom';
-type PaymentViewTab = 'payments' | 'outstanding';
+type PaymentViewTab = 'payments' | 'outstanding' | 'due-collection';
+type CollectionPeriod = 'month' | 'last_month' | 'all';
 type SortOrder = 'highest' | 'oldest' | 'newest';
+
+const followUpLabels: Record<CustomerDueFollowUpStatus, string> = {
+  follow_up_required: 'Follow-up required',
+  contacted: 'Contacted',
+  promise_to_pay: 'Promise to pay',
+  partially_settled: 'Partially settled',
+  resolved: 'Resolved',
+};
 
 const pageSize = 20;
 
@@ -64,9 +85,8 @@ function isValidDate(value: string): boolean {
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 }
 
-function getDateRange(filter: DateFilter, start: string, end: string): [string, string] | null {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+function getDateRange(filter: DateFilter, start: string, end: string, timeZone?: string): [string, string] | null {
+  const today = new Date(`${getDateInTimeZone(timeZone)}T12:00:00`);
   const toDateString = (date: Date) =>
     `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   if (filter === 'custom') return [start, end];
@@ -87,8 +107,8 @@ function getDateRange(filter: DateFilter, start: string, end: string): [string, 
   return [toDateString(first), toDateString(last)];
 }
 
-function getAgingDays(referenceDate: string): number {
-  return Math.max(0, -getDaysDifference(referenceDate));
+function getAgingDays(referenceDate: string, timeZone?: string): number {
+  return Math.max(0, -getDaysDifference(referenceDate, timeZone));
 }
 
 function getAgingBucket(days: number, formatNumber: (value: number) => string, dayLabel: string): string {
@@ -107,7 +127,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   preselectedSaleId,
   onNavigateSection,
 }) => {
-  const { formatCurrency, formatDate: formatAppDate, formatDurationDays, formatNumber } = useAppFormatting();
+  const { formatCurrency, formatDate: formatAppDate, formatDateTime: formatAppDateTime, formatDurationDays, formatNumber } = useAppFormatting();
   const {
     payments,
     reminders,
@@ -117,6 +137,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     subscriptions,
     services,
     settings,
+    currentBusiness,
     activityLogs,
     ensureInvoiceForSale,
     recordSalePayment,
@@ -131,6 +152,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const { openMessage, canContact } = useWhatsAppCommunication();
 
   const [activeTab, setActiveTab] = useState<PaymentViewTab>('payments');
+  const [dueSearch, setDueSearch] = useState('');
+  const [dueCustomerType, setDueCustomerType] = useState<'all' | 'Customer' | 'Reseller'>('all');
+  const [dueSortOrder, setDueSortOrder] = useState<'highest' | 'overdue' | 'oldest'>('highest');
+  const [collectionPeriod, setCollectionPeriod] = useState<CollectionPeriod>('month');
+  const [customerDueFollowUps, setCustomerDueFollowUps] = useState<CustomerDueFollowUps>({});
+  const [followUpNotesDraft, setFollowUpNotesDraft] = useState<Record<string, string>>({});
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMethod, setSelectedMethod] = useState('all');
@@ -148,7 +175,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [refundFormOpen, setRefundFormOpen] = useState(false);
   const [refundAmountInput, setRefundAmountInput] = useState('');
-  const [refundDateInput, setRefundDateInput] = useState(getTodayDateString());
+  const [refundDateInput, setRefundDateInput] = useState(getTodayDateString(settings.businessProfile?.timeZone));
   const [refundNote, setRefundNote] = useState('');
   const [isRefundSaving, setIsRefundSaving] = useState(false);
   const refundOperationId = useRef('');
@@ -164,7 +191,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const [newMethod, setNewMethod] = useState<PaymentMethod>('Cash');
   const [newStatus, setNewStatus] = useState<Extract<PaymentStatus, 'paid' | 'pending' | 'failed'>>('paid');
   const [newTransactionId, setNewTransactionId] = useState('');
-  const [newPaymentDate, setNewPaymentDate] = useState(getTodayDateString());
+  const [newPaymentDate, setNewPaymentDate] = useState(getTodayDateString(settings.businessProfile?.timeZone));
   const [newNotes, setNewNotes] = useState('');
   const [newCustomerFilter, setNewCustomerFilter] = useState('all');
   const [isSaving, setIsSaving] = useState(false);
@@ -192,7 +219,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, selectedMethod, selectedStatus, selectedDate, customStart, customEnd, selectedService, selectedCustomer, selectedAmount, activeTab, sortOrder]);
+  }, [searchQuery, selectedMethod, selectedStatus, selectedDate, customStart, customEnd, selectedService, selectedCustomer, selectedAmount, activeTab, sortOrder, dueSearch, dueCustomerType, dueSortOrder]);
 
   useEffect(() => {
     if (!focusPaymentId) return;
@@ -217,13 +244,26 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     setNewStatus('paid');
     setNewMethod((getDefaultPaymentMethod(normalizePaymentMethods(settings.paymentPreferences?.methods), settings.paymentPreferences?.defaultMethodId) || 'Cash') as PaymentMethod);
     setNewTransactionId('');
-    setNewPaymentDate(getTodayDateString());
+    setNewPaymentDate(getTodayDateString(settings.businessProfile?.timeZone));
     setNewNotes('');
     setNewCustomerFilter(preselectedCustomerId || 'all');
     operationId.current = createRecordId('sale-payment-operation');
     setIsAddPaymentOpen(true);
     onCreateRequestHandled?.();
   }, [createRequest, onCreateRequestHandled, preselectedCustomerId, preselectedSaleId, settings.paymentPreferences?.methods, currency]);
+
+  const currentBusinessId = currentBusiness?.businessId || 'local';
+  useEffect(() => {
+    const savedFollowUps = readJsonValue<CustomerDueFollowUps>(
+      getCustomerDueFollowUpStorageKey(currentBusinessId),
+      {},
+      isCustomerDueFollowUps
+    );
+    setCustomerDueFollowUps(savedFollowUps);
+    setFollowUpNotesDraft(Object.fromEntries(
+      Object.entries(savedFollowUps).map(([customerId, followUp]) => [customerId, followUp.note || ''])
+    ));
+  }, [currentBusinessId]);
 
   const customersById = useMemo(() => new Map(customers.map(customer => [customer.id, customer])), [customers]);
   const servicesById = useMemo(() => new Map(services.map(service => [service.id, service])), [services]);
@@ -283,8 +323,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     .filter(item => item.due > 0 && item.status !== 'refunded'), [sales, paymentsBySaleId, invoicesBySaleId]);
 
   const dateRange = useMemo(
-    () => getDateRange(selectedDate, customStart, customEnd),
-    [selectedDate, customStart, customEnd]
+    () => getDateRange(selectedDate, customStart, customEnd, settings.businessProfile?.timeZone),
+    [selectedDate, customStart, customEnd, settings.businessProfile?.timeZone]
   );
   const visiblePayments = useMemo(() => {
     const query = normalizeSearchText(searchQuery);
@@ -380,7 +420,41 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const partialCount = useMemo(() => visiblePayments.filter(payment => payment.paymentStatus === 'partial').length, [visiblePayments]);
   const pendingCount = useMemo(() => visiblePayments.filter(payment => payment.paymentStatus === 'pending').length, [visiblePayments]);
   const failedCount = useMemo(() => visiblePayments.filter(payment => payment.paymentStatus === 'failed').length, [visiblePayments]);
-  const today = getTodayDateString();
+  const today = getTodayDateString(settings.businessProfile?.timeZone);
+  const collectionDateRangeValues = collectionPeriod === 'all' ? null : getDateRange(collectionPeriod, '', '', settings.businessProfile?.timeZone);
+  const collectionDateRange = {
+    start: collectionDateRangeValues?.[0] || '0000-01-01',
+    end: collectionDateRangeValues?.[1] || '9999-12-31',
+  };
+  const dueCollectionSummary = useMemo(() => buildDueCollectionSummary({
+    sales,
+    payments,
+    invoices,
+    customers,
+    subscriptions,
+    currency,
+    today,
+    dateRange: collectionDateRange,
+  }), [sales, payments, invoices, customers, subscriptions, currency, today, collectionDateRange.start, collectionDateRange.end]);
+  const visibleDueCustomers = useMemo(() => {
+    const query = normalizeSearchText(dueSearch);
+    const queryDigits = normalizePhoneDigits(dueSearch);
+    const filtered = dueCollectionSummary.customers.filter(summary => {
+      const customer = summary.customer;
+      const fields = [customer.name, customer.phone, customer.email, customer.customerType || 'Customer'];
+      const matchesQuery = !query
+        || fields.some(field => normalizeSearchText(field || '').includes(query))
+        || (queryDigits.length >= 3 && normalizePhoneDigits(customer.phone || '').includes(queryDigits));
+      const matchesType = dueCustomerType === 'all'
+        || (customer.customerType || 'Customer') === dueCustomerType;
+      return matchesQuery && matchesType;
+    });
+    return filtered.sort((left, right) => dueSortOrder === 'oldest'
+      ? (left.earliestOverdueDate || '9999-12-31').localeCompare(right.earliestOverdueDate || '9999-12-31')
+      : dueSortOrder === 'overdue'
+        ? right.overdue - left.overdue
+        : right.due - left.due);
+  }, [dueCollectionSummary.customers, dueSearch, dueCustomerType, dueSortOrder]);
   const paymentMethodSummaries = useMemo(
     () => (['BDT', 'USD'] as const).map(currency => ({
       currency,
@@ -393,10 +467,14 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     })).filter(group => group.methods.length > 0),
     [visiblePayments, paymentMethods, today]
   );
-  const totalPages = Math.max(1, Math.ceil((activeTab === 'payments' ? visiblePayments.length : visibleOutstanding.length) / pageSize));
+  const totalPages = Math.max(1, Math.ceil((
+    activeTab === 'payments' ? visiblePayments.length
+      : activeTab === 'outstanding' ? visibleOutstanding.length : visibleDueCustomers.length
+  ) / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pagePayments = visiblePayments.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const pageOutstanding = visibleOutstanding.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const pageDueCustomers = visibleDueCustomers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const eligibleSales = useMemo(() => sales.filter(sale => {
     const linkedPayments = paymentsBySaleId.get(sale.id) || [];
@@ -441,6 +519,30 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     ) || null;
   }, [newSale, newAmount, newPaymentDate, newMethod, payments, paymentSales]);
 
+  const saveCustomerFollowUp = (
+    customerId: string,
+    status: CustomerDueFollowUpStatus,
+    note: string
+  ) => {
+    const storageKey = getCustomerDueFollowUpStorageKey(currentBusinessId);
+    const latestFollowUps = readJsonValue<CustomerDueFollowUps>(storageKey, {}, isCustomerDueFollowUps);
+    const nextFollowUps: CustomerDueFollowUps = {
+      ...latestFollowUps,
+      [customerId]: {
+        status,
+        note: note.trim() || undefined,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+    try {
+      writeJsonValue(storageKey, nextFollowUps);
+      setCustomerDueFollowUps(nextFollowUps);
+      setFollowUpNotesDraft(previous => ({ ...previous, [customerId]: note }));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not save the follow-up status.', 'error');
+    }
+  };
+
   const openAddPayment = (customerId?: string, saleId?: string) => {
     setNewPaymentMode('sale');
     setNewSaleId(saleId || '');
@@ -449,7 +551,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     setNewStatus('paid');
     setNewMethod((getDefaultPaymentMethod(paymentMethods, settings.paymentPreferences?.defaultMethodId) || 'Cash') as PaymentMethod);
     setNewTransactionId('');
-    setNewPaymentDate(getTodayDateString());
+    setNewPaymentDate(getTodayDateString(settings.businessProfile?.timeZone));
     setNewNotes('');
     setNewCustomerFilter(customerId || preselectedCustomerId || 'all');
     setNewAdvanceCurrency(currency);
@@ -476,7 +578,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       showToast('Pending or failed payment attempts cannot exceed the outstanding balance.', 'error');
       return;
     }
-    if (!isValidDate(newPaymentDate) || newPaymentDate > getTodayDateString()) {
+    if (!isValidDate(newPaymentDate) || newPaymentDate > getTodayDateString(settings.businessProfile?.timeZone)) {
       showToast('Choose a valid payment date that is not in the future.', 'error');
       return;
     }
@@ -565,7 +667,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   };
 
   const exportPayments = () => {
-    downloadCSV(`payments-${getTodayDateString()}.csv`, exportPaymentsCSV(
+    downloadCSV(`payments-${getTodayDateString(settings.businessProfile?.timeZone)}.csv`, exportPaymentsCSV(
       visiblePayments,
       customers,
       invoices,
@@ -603,7 +705,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     setFocusedPaymentIdState(null);
     setRefundFormOpen(false);
     setRefundAmountInput('');
-    setRefundDateInput(getTodayDateString());
+    setRefundDateInput(getTodayDateString(settings.businessProfile?.timeZone));
     setRefundNote('');
   };
 
@@ -629,7 +731,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       showToast('Refund recorded. Sale balances and customer advance were updated.', 'success');
       setRefundFormOpen(false);
       setRefundAmountInput('');
-      setRefundDateInput(getTodayDateString());
+      setRefundDateInput(getTodayDateString(settings.businessProfile?.timeZone));
       setRefundNote('');
     } catch (error) {
       console.error('Payment refund could not be recorded:', error);
@@ -724,6 +826,210 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </div>
       </header>
 
+      <div className="payment-tabs flex w-full items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-[#151C28]">
+        <TabButton active={activeTab === 'payments'} onClick={() => setActiveTab('payments')}>Payment history <span>{payments.length}</span></TabButton>
+        <TabButton active={activeTab === 'outstanding'} onClick={() => setActiveTab('outstanding')}>Outstanding <span>{outstandingSales.length}</span></TabButton>
+        <TabButton active={activeTab === 'due-collection'} onClick={() => setActiveTab('due-collection')}>Due Collection <span>{dueCollectionSummary.customers.length}</span></TabButton>
+      </div>
+
+      {activeTab === 'due-collection' ? (
+        <>
+          <section aria-label="Due collection summary" className="payment-summary-grid grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-5">
+            <Metric label={`Total Outstanding · ${currency}`} value={formatCurrency(dueCollectionSummary.totalOutstanding, currency)} tone="amber" icon={AlertCircle} />
+            <Metric label={`Overdue Amount · ${currency}`} value={formatCurrency(dueCollectionSummary.overdueAmount, currency)} tone="rose" icon={CalendarDays} />
+            <Metric label="Partially Paid Transactions" value={String(dueCollectionSummary.partiallyPaidTransactions)} tone="amber" icon={CreditCard} />
+            <Metric label="Fully Paid Transactions" value={String(dueCollectionSummary.fullyPaidTransactions)} tone="emerald" icon={CheckCircle2} />
+            <Metric label={`Payments Collected · ${currency}`} value={formatCurrency(dueCollectionSummary.paymentsCollected, currency)} tone="emerald" icon={HandCoins} />
+          </section>
+          <section className="dashboard-panel flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:flex-row sm:items-center sm:justify-between sm:p-4">
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Customer and reseller balances</h2>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Balances use recorded sale allocations; overdue amounts require an invoice due date. Collected is net of refunds recorded in the selected period. Follow-up status and notes do not change balances.
+              </p>
+            </div>
+            <label className="shrink-0 text-xs font-semibold text-slate-600 dark:text-slate-300">
+              Collection period
+              <select
+                aria-label="Payments collected period"
+                value={collectionPeriod}
+                onChange={event => setCollectionPeriod(event.target.value as CollectionPeriod)}
+                className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white sm:w-40"
+              >
+                <option value="month">This month</option>
+                <option value="last_month">Last month</option>
+                <option value="all">All time</option>
+              </select>
+            </label>
+          </section>
+          <section aria-label="Due collection filters" className="dashboard-panel grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:grid-cols-2 lg:grid-cols-4">
+            <label className="relative min-w-0">
+              <span className="sr-only">Search due customers</span>
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+              <input
+                aria-label="Search due customers"
+                value={dueSearch}
+                onChange={event => setDueSearch(event.target.value)}
+                placeholder="Search name, phone, email..."
+                className="min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              />
+            </label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+              Customer type
+              <select
+                aria-label="Filter due customers by type"
+                value={dueCustomerType}
+                onChange={event => setDueCustomerType(event.target.value as typeof dueCustomerType)}
+                className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              >
+                <option value="all">All types</option>
+                <option value="Customer">Customer</option>
+                <option value="Reseller">Reseller</option>
+              </select>
+            </label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+              Sort balances
+              <select
+                aria-label="Sort due customers"
+                value={dueSortOrder}
+                onChange={event => setDueSortOrder(event.target.value as typeof dueSortOrder)}
+                className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              >
+                <option value="highest">Highest balance</option>
+                <option value="overdue">Highest overdue</option>
+                <option value="oldest">Earliest overdue</option>
+              </select>
+            </label>
+            <div className="flex items-end text-xs text-slate-500 dark:text-slate-400">
+              {visibleDueCustomers.length} {visibleDueCustomers.length === 1 ? 'customer' : 'customers'} with an outstanding balance
+            </div>
+          </section>
+          <section aria-label="Due collection customers" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
+            <div className="data-table-scroll hidden overflow-x-auto lg:block" role="region" aria-label="Due collection table" tabIndex={0}>
+              <table className="w-full min-w-[1120px] text-left text-xs">
+                <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+                  <tr>
+                    <th className="px-3 py-3">Customer / Reseller</th>
+                    <th className="px-3 py-3">Charged</th>
+                    <th className="px-3 py-3">Recorded payments</th>
+                    <th className="px-3 py-3">Outstanding</th>
+                    <th className="px-3 py-3">Earliest overdue</th>
+                    <th className="px-3 py-3">Last payment</th>
+                    <th className="px-3 py-3">Follow-up status</th>
+                    <th className="px-3 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {pageDueCustomers.map(summary => {
+                    const status = customerDueFollowUps[summary.customer.id]?.status || 'follow_up_required';
+                    return (
+                      <tr key={summary.customer.id}>
+                        <td className="max-w-64 px-3 py-3">
+                          <div className="font-semibold text-slate-900 dark:text-white"><CustomerNameWithType customer={summary.customer} /></div>
+                          <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
+                            {summary.customer.phone ? <><Phone className="h-3 w-3" />{summary.customer.phone}</> : 'No contact number'}
+                          </div>
+                          <details className="mt-2">
+                            <summary className="cursor-pointer text-[10px] font-semibold text-violet-700 dark:text-violet-300">
+                              {summary.transactions.length} outstanding {summary.transactions.length === 1 ? 'transaction' : 'transactions'}
+                            </summary>
+                            <ul className="mt-2 space-y-2">
+                              {summary.transactions.map(transaction => (
+                                <li key={transaction.sale.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70">
+                                  <span className="min-w-0 flex-1">{servicesById.get(transaction.sale.serviceId)?.name || 'Service'} · {transaction.sale.plan} · {transaction.invoice?.invoiceNumber || transaction.sale.invoiceNo}</span>
+                                  <strong>{formatCurrency(transaction.due, transaction.sale.currency)}</strong>
+                                  <button type="button" onClick={() => openAddPayment(summary.customer.id, transaction.sale.id)} className="rounded-md bg-violet-700 px-2 py-1 text-[10px] font-semibold text-white hover:bg-violet-600">Record Payment</button>
+                                  <button type="button" onClick={() => onNavigateSection?.('sales', transaction.sale.id)} className="rounded-md border border-slate-200 px-2 py-1 text-[10px] font-semibold dark:border-slate-700">Sale</button>
+                                  {transaction.invoice && <button type="button" onClick={() => openInvoice(transaction.sale)} className="rounded-md border border-slate-200 px-2 py-1 text-[10px] font-semibold dark:border-slate-700">Invoice</button>}
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 font-mono">{formatCurrency(summary.charged, currency)}</td>
+                        <td className="whitespace-nowrap px-3 py-3 font-mono">{formatCurrency(summary.paid, currency)}</td>
+                        <td className="whitespace-nowrap px-3 py-3 font-mono font-bold text-amber-700 dark:text-amber-300">{formatCurrency(summary.due, currency)}</td>
+                        <td className="whitespace-nowrap px-3 py-3">{summary.earliestOverdueDate ? formatAppDate(summary.earliestOverdueDate, language) : '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-3">{summary.lastPaymentDate ? formatAppDate(summary.lastPaymentDate, language) : '—'}</td>
+                        <td className="min-w-48 px-3 py-3">
+                          <select
+                            aria-label={`Follow-up status for ${summary.customer.name}`}
+                            value={status}
+                            onChange={event => saveCustomerFollowUp(summary.customer.id, event.target.value as CustomerDueFollowUpStatus, followUpNotesDraft[summary.customer.id] || '')}
+                            className="min-h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                          >
+                            {Object.entries(followUpLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                          </select>
+                          <div className="mt-1 flex gap-1">
+                            <input aria-label={`Follow-up note for ${summary.customer.name}`} value={followUpNotesDraft[summary.customer.id] ?? customerDueFollowUps[summary.customer.id]?.note ?? ''} onChange={event => setFollowUpNotesDraft(previous => ({ ...previous, [summary.customer.id]: event.target.value }))} placeholder="Optional note" className="min-w-0 flex-1 rounded-md border border-slate-200 bg-transparent px-2 py-1 text-[10px] dark:border-slate-700" />
+                            <button type="button" onClick={() => saveCustomerFollowUp(summary.customer.id, status, followUpNotesDraft[summary.customer.id] ?? customerDueFollowUps[summary.customer.id]?.note ?? '')} className="rounded-md border border-slate-200 px-2 text-[10px] font-semibold dark:border-slate-700">Save</button>
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3">
+                          <div className="flex gap-1">
+                            <button type="button" onClick={() => onNavigateSection?.('customers', summary.customer.id)} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-slate-200 px-2 font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"><Users className="h-3.5 w-3.5" />Profile</button>
+                            {summary.customer.phone && canContact(summary.customer.id) && <button type="button" onClick={() => openMessage({ customerId: summary.customer.id, saleId: summary.transactions[0]?.sale.id, templateId: 'payment_reminder' })} aria-label={`Send payment reminder to ${summary.customer.name}`} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-emerald-200 px-2 font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />Contact</button>}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="divide-y divide-slate-100 dark:divide-slate-800 lg:hidden">
+              {pageDueCustomers.map(summary => {
+                const status = customerDueFollowUps[summary.customer.id]?.status || 'follow_up_required';
+                return (
+                  <article key={summary.customer.id} className="space-y-3 p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0"><h3 className="break-words font-semibold text-slate-900 dark:text-white"><CustomerNameWithType customer={summary.customer} /></h3><p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-slate-500">{summary.customer.phone ? <><Phone className="h-3 w-3" />{summary.customer.phone}</> : 'No contact number'}</p></div>
+                      <strong className="shrink-0 font-mono text-amber-700 dark:text-amber-300">{formatCurrency(summary.due, currency)}</strong>
+                    </div>
+                    <dl className="grid grid-cols-2 gap-2 text-xs">
+                      <div><dt className="text-slate-500">Charged</dt><dd>{formatCurrency(summary.charged, currency)}</dd></div>
+                      <div><dt className="text-slate-500">Payments</dt><dd>{formatCurrency(summary.paid, currency)}</dd></div>
+                      <div><dt className="text-slate-500">Earliest overdue</dt><dd>{summary.earliestOverdueDate ? formatAppDate(summary.earliestOverdueDate, language) : 'Not overdue / no due date'}</dd></div>
+                      <div><dt className="text-slate-500">Last payment</dt><dd>{summary.lastPaymentDate ? formatAppDate(summary.lastPaymentDate, language) : 'None'}</dd></div>
+                    </dl>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">Follow-up status
+                      <select aria-label={`Follow-up status for ${summary.customer.name}`} value={status} onChange={event => saveCustomerFollowUp(summary.customer.id, event.target.value as CustomerDueFollowUpStatus, followUpNotesDraft[summary.customer.id] || '')} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+                        {Object.entries(followUpLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </select>
+                    </label>
+                    <div className="flex gap-2">
+                      <input aria-label={`Follow-up note for ${summary.customer.name}`} value={followUpNotesDraft[summary.customer.id] ?? customerDueFollowUps[summary.customer.id]?.note ?? ''} onChange={event => setFollowUpNotesDraft(previous => ({ ...previous, [summary.customer.id]: event.target.value }))} placeholder="Optional follow-up note" className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-transparent px-3 text-xs dark:border-slate-700" />
+                      <button type="button" onClick={() => saveCustomerFollowUp(summary.customer.id, status, followUpNotesDraft[summary.customer.id] ?? customerDueFollowUps[summary.customer.id]?.note ?? '')} className="min-h-10 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">Save note</button>
+                    </div>
+                    <details>
+                      <summary className="cursor-pointer text-xs font-semibold text-violet-700 dark:text-violet-300">{summary.transactions.length} outstanding transactions</summary>
+                      <ul className="mt-2 space-y-2">
+                        {summary.transactions.map(transaction => (
+                          <li key={transaction.sale.id} className="space-y-2 rounded-lg bg-slate-50 p-3 text-xs dark:bg-slate-800/70">
+                            <p className="font-semibold">{servicesById.get(transaction.sale.serviceId)?.name || 'Service'} · {transaction.sale.plan}</p>
+                            <p className="break-all text-slate-500">{transaction.invoice?.invoiceNumber || transaction.sale.invoiceNo} · Due {formatCurrency(transaction.due, transaction.sale.currency)}</p>
+                            <div className="flex flex-wrap gap-2">
+                              <button type="button" onClick={() => openAddPayment(summary.customer.id, transaction.sale.id)} className="min-h-9 rounded-lg bg-violet-700 px-3 text-xs font-semibold text-white">Record Payment</button>
+                              <button type="button" onClick={() => onNavigateSection?.('sales', transaction.sale.id)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Sale</button>
+                              {transaction.invoice && <button type="button" onClick={() => openInvoice(transaction.sale)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Invoice</button>}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => onNavigateSection?.('customers', summary.customer.id)} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700"><Users className="h-3.5 w-3.5" />View Profile</button>
+                      {summary.customer.phone && canContact(summary.customer.id) && <button type="button" onClick={() => openMessage({ customerId: summary.customer.id, saleId: summary.transactions[0]?.sale.id, templateId: 'payment_reminder' })} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-emerald-200 px-3 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />Contact</button>}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            {pageDueCustomers.length === 0 && <EmptyState title={dueCollectionSummary.customers.length ? 'No matching customers' : 'No outstanding balances'} description={dueCollectionSummary.customers.length ? 'Try a different search or customer type.' : 'There are no eligible sale balances to collect.'} />}
+          </section>
+        </>
+      ) : (
+        <>
       <section aria-label="Payment summary" className="payment-summary-grid grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Metric label="Received" value={<CurrencyAmounts amounts={currencyTotals} field="received" />} tone="emerald" icon={Wallet} />
         <Metric label="Outstanding Due" value={<CurrencyAmounts amounts={currencyTotals} field="due" />} tone="amber" icon={AlertCircle} />
@@ -786,11 +1092,6 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           </div>)}
         </div> : <p className="payment-method-empty rounded-lg border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-slate-700">No received payments match the current filters.</p>}
       </section>
-
-      <div className="payment-tabs flex w-full items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-[#151C28]">
-        <TabButton active={activeTab === 'payments'} onClick={() => setActiveTab('payments')}>Payment history <span>{payments.length}</span></TabButton>
-        <TabButton active={activeTab === 'outstanding'} onClick={() => setActiveTab('outstanding')}>Outstanding <span>{outstandingSales.length}</span></TabButton>
-      </div>
 
       <section className="payment-filter-panel dashboard-panel space-y-3 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:p-3">
         <div className="flex flex-col gap-2 lg:flex-row">
@@ -874,7 +1175,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   return <tr id={`payment-${payment.id}`} key={payment.id} className={focusedPaymentIdState === payment.id ? 'bg-violet-50 dark:bg-violet-950/30' : ''}>
                     <td className="px-3 py-3 font-mono font-semibold text-slate-700 dark:text-slate-200">{payment.id}</td>
                     <td className="whitespace-nowrap px-3 py-3">{formatAppDate(payment.paymentDate, language)}</td>
-                    <td className="px-3 py-3"><div className="font-semibold text-slate-900 dark:text-white">{getCustomerDisplayName(customer)}</div><div className="text-[10px] text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
+                    <td className="px-3 py-3"><div className="font-semibold text-slate-900 dark:text-white"><CustomerNameWithType customer={customer} /></div><div className="text-[10px] text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
                     <td className="px-3 py-3"><div>{invoice?.invoiceNumber || sale?.invoiceNo || '—'}</div><div className="font-mono text-[10px] text-slate-500">{sale?.id || payment.saleId || 'Unlinked legacy payment'}</div></td>
                     <td className="px-3 py-3">{service?.name || '—'}{sale?.plan && <div className="text-[10px] text-slate-500">{sale.plan}</div>}</td>
                     <td className="px-3 py-3">{methodLabel(payment.paymentMethodName || payment.paymentMethod)}</td>
@@ -893,7 +1194,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               const customer = resolvePaymentCustomer(payment, customers, sales, subscriptions);
               const service = sale ? servicesById.get(sale.serviceId) : undefined;
               return <article id={`payment-${payment.id}`} key={payment.id} className={`space-y-2 p-4 ${focusedPaymentIdState === payment.id ? 'bg-violet-50 dark:bg-violet-950/30' : ''}`}>
-                <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-mono text-xs text-slate-500">{payment.id}</p><h3 className="mt-1 truncate text-sm font-bold text-slate-900 dark:text-white">{getCustomerDisplayName(customer)}</h3><p className="text-xs text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</p><p className="text-xs text-slate-500">{service?.name || 'Payment'}{sale?.plan ? ` · ${sale.plan}` : ''}</p></div><span className="shrink-0 font-mono font-bold">{formatCurrency(payment.amount, payment.currency)}</span></div>
+                <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-mono text-xs text-slate-500">{payment.id}</p><h3 className="mt-1 text-sm font-bold text-slate-900 dark:text-white"><CustomerNameWithType customer={customer} nameClassName="min-w-0 break-words" /></h3><p className="text-xs text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</p><p className="text-xs text-slate-500">{service?.name || 'Payment'}{sale?.plan ? ` · ${sale.plan}` : ''}</p></div><span className="shrink-0 font-mono font-bold">{formatCurrency(payment.amount, payment.currency)}</span></div>
                 <div className="flex flex-wrap items-center justify-between gap-2"><PaymentStatusBadge status={payment.paymentStatus} className={statusStyle(payment.paymentStatus)} icon={statusIcon(payment.paymentStatus)} /><span className="text-xs text-slate-500">{methodLabel(payment.paymentMethodName || payment.paymentMethod)} · {formatAppDate(payment.paymentDate, language)}</span></div>
                 <div className="flex items-center justify-between gap-2"><span className="truncate font-mono text-[11px] text-slate-500">{payment.transactionId || 'No transaction ID'}</span><button type="button" onClick={() => openPaymentDetails(payment)} className="min-h-9 shrink-0 rounded-lg px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/40">View details</button></div>
               </article>;
@@ -910,9 +1211,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 {pageOutstanding.map(({ sale, invoice, due, paid, lastPayment, dueReferenceDate }) => {
                   const customer = customersById.get(sale.customerId);
                   const service = servicesById.get(sale.serviceId);
-                  const days = getAgingDays(dueReferenceDate);
+                  const days = getAgingDays(dueReferenceDate, settings.businessProfile?.timeZone);
                   return <tr key={sale.id}>
-                    <td className="px-4 py-3"><div className="font-semibold">{getCustomerDisplayName(customer)}</div><div className="text-[10px] text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
+                    <td className="px-4 py-3"><div className="font-semibold"><CustomerNameWithType customer={customer} /></div><div className="text-[10px] text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
                     <td className="px-4 py-3">{invoice?.invoiceNumber || sale.invoiceNo}<div className="font-mono text-[10px] text-slate-500">{sale.id}</div></td>
                     <td className="px-4 py-3">{service?.name || '—'}<div className="text-[10px] text-slate-500">{sale.plan}</div></td>
                     <td className="px-4 py-3">{formatCurrency(sale.amount, sale.currency)}</td><td className="px-4 py-3">{formatCurrency(paid, sale.currency)}</td>
@@ -928,9 +1229,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           <div className="divide-y divide-slate-100 dark:divide-slate-800 lg:hidden">
             {pageOutstanding.map(({ sale, invoice, due, paid, lastPayment, dueReferenceDate }) => {
               const customer = customersById.get(sale.customerId);
-              const days = getAgingDays(dueReferenceDate);
+              const days = getAgingDays(dueReferenceDate, settings.businessProfile?.timeZone);
               return <article key={sale.id} className="space-y-3 p-4">
-                <div className="flex items-start justify-between gap-2"><div><h3 className="font-bold">{getCustomerDisplayName(customer)}</h3><p className="text-xs text-slate-500">{servicesById.get(sale.serviceId)?.name || 'Service'} · {sale.plan}</p><p className="mt-1 text-[11px] text-slate-500">{invoice?.invoiceNumber || sale.invoiceNo}</p></div><p className="font-mono font-bold text-amber-700 dark:text-amber-300">{formatCurrency(due, sale.currency)} due</p></div>
+                <div className="flex items-start justify-between gap-2"><div><h3 className="font-bold"><CustomerNameWithType customer={customer} /></h3><p className="text-xs text-slate-500">{servicesById.get(sale.serviceId)?.name || 'Service'} · {sale.plan}</p><p className="mt-1 text-[11px] text-slate-500">{invoice?.invoiceNumber || sale.invoiceNo}</p></div><p className="font-mono font-bold text-amber-700 dark:text-amber-300">{formatCurrency(due, sale.currency)} due</p></div>
                 <dl className="grid grid-cols-2 gap-2 text-xs"><div><dt className="text-slate-500">Total / Paid</dt><dd>{formatCurrency(sale.amount, sale.currency)} / {formatCurrency(paid, sale.currency)}</dd></div><div><dt className="text-slate-500">Outstanding</dt><dd>{formatDurationDays(days)} · {getAgingBucket(days, formatNumber, language === 'bn' ? 'দিন' : 'days')}</dd></div><div><dt className="text-slate-500">Last payment</dt><dd>{lastPayment ? formatAppDate(lastPayment.paymentDate, language) : 'None'}</dd></div></dl>
                 <div className="flex flex-wrap gap-2"><button type="button" onClick={() => openAddPayment(sale.customerId, sale.id)} className="min-h-9 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white hover:bg-violet-700">Add Payment</button>{customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-emerald-200 px-3 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp Reminder</button>}<button type="button" onClick={() => onNavigateSection?.('sales', sale.id)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Sale</button><button type="button" onClick={() => openInvoice(sale)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Invoice</button><button type="button" onClick={() => onNavigateSection?.('customers', sale.customerId)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">Customer</button></div>
               </article>;
@@ -939,8 +1240,10 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           {pageOutstanding.length === 0 && <EmptyState title={outstandingSales.length ? 'No matching receivables' : 'All balances are paid'} description={outstandingSales.length ? 'Try changing your search or filters.' : 'There are no outstanding sale balances to collect.'} />}
         </section>
       )}
+        </>
+      )}
 
-      {(activeTab === 'payments' ? visiblePayments.length : visibleOutstanding.length) > 0 && <nav aria-label="Pagination" className="flex items-center justify-between gap-3 text-xs text-slate-500">
+      {(activeTab === 'payments' ? visiblePayments.length : activeTab === 'outstanding' ? visibleOutstanding.length : visibleDueCustomers.length) > 0 && <nav aria-label="Pagination" className="flex items-center justify-between gap-3 text-xs text-slate-500">
         <span>Page {currentPage} of {totalPages}</span>
         <div className="flex gap-2"><button type="button" disabled={currentPage <= 1} onClick={() => setPage(value => Math.max(1, value - 1))} className="min-h-9 rounded-lg border border-slate-200 px-3 font-semibold disabled:opacity-40 dark:border-slate-700">Previous</button><button type="button" disabled={currentPage >= totalPages} onClick={() => setPage(value => Math.min(totalPages, value + 1))} className="min-h-9 rounded-lg border border-slate-200 px-3 font-semibold disabled:opacity-40 dark:border-slate-700">Next</button></div>
       </nav>}
@@ -978,7 +1281,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             {newCustomerFilter !== 'all' && <p className="text-xs text-slate-500 sm:col-span-2">Available advance: {formatCurrency(getCustomerAdvanceCredit(payments, newCustomerFilter, newAdvanceCurrency), newAdvanceCurrency)} · This receipt will add new customer credit, not revenue.</p>}
           </div>}
           {newSale && <section aria-label="Selected sale balance" className="grid gap-3 rounded-xl border border-violet-200 bg-violet-50/60 p-3 text-sm dark:border-violet-900 dark:bg-violet-950/20 sm:grid-cols-2">
-            <div><p className="text-xs text-slate-500">Customer</p><p className="font-semibold">{getCustomerDisplayName(newSaleCustomer)}</p><p className="text-xs text-slate-500">{newSaleCustomer?.phone || newSaleCustomer?.email || ''}</p></div>
+            <div><p className="text-xs text-slate-500">Customer</p><p className="font-semibold"><CustomerNameWithType customer={newSaleCustomer} /></p><p className="text-xs text-slate-500">{newSaleCustomer?.phone || newSaleCustomer?.email || ''}</p></div>
             <div><p className="text-xs text-slate-500">Sale</p><p className="font-semibold">{newSaleService?.name || 'Service'} · {newSale.plan}</p><p className="text-xs text-slate-500">{newSaleInvoice?.invoiceNumber || newSale.invoiceNo}</p></div>
             <div><p className="text-xs text-slate-500">Total · Previously paid</p><p className="font-semibold">{formatCurrency(newSale.amount, newSale.currency)} · {formatCurrency(getSalePaidAmount(newSale, newSalePayments), newSale.currency)}</p></div>
             <div><p className="text-xs text-slate-500">Remaining balance</p><p className="font-mono font-bold text-amber-800 dark:text-amber-300">{formatCurrency(newSaleDue, newSale.currency)}</p></div>
@@ -988,7 +1291,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               <input required type="number" min="0.01" step="0.01" inputMode="decimal" value={newAmount} onChange={event => { setNewAmount(event.target.value); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
             </label>
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Payment date *
-              <input required type="date" max={getTodayDateString()} value={newPaymentDate} onChange={event => { setNewPaymentDate(event.target.value); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+              <input required type="date" max={getTodayDateString(settings.businessProfile?.timeZone)} value={newPaymentDate} onChange={event => { setNewPaymentDate(event.target.value); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
             </label>
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Payment method *
               <select required value={newMethod} onChange={event => { setNewMethod(event.target.value as PaymentMethod); setDuplicatePayment(null); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
@@ -1047,7 +1350,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 <button type="button" onClick={() => {
                   refundOperationId.current = createRecordId('payment-refund-operation');
                   setRefundAmountInput('');
-                  setRefundDateInput(getTodayDateString());
+                  setRefundDateInput(getTodayDateString(settings.businessProfile?.timeZone));
                   setRefundFormOpen(true);
                 }} className="min-h-10 rounded-lg border border-rose-200 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/30">
                   Record Refund
@@ -1065,7 +1368,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 <input required type="number" min="0.01" max={selectedRefundableAmount} step="0.01" inputMode="decimal" value={refundAmountInput} onChange={event => setRefundAmountInput(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
               </label>
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-200">Refund date *
-                <input required type="date" max={getTodayDateString()} value={refundDateInput} onChange={event => setRefundDateInput(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                <input required type="date" max={getTodayDateString(settings.businessProfile?.timeZone)} value={refundDateInput} onChange={event => setRefundDateInput(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
               </label>
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-200 sm:col-span-2">Note <span className="font-normal text-slate-500">(optional)</span>
                 <input value={refundNote} onChange={event => setRefundNote(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
@@ -1081,7 +1384,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           </section>
           <section className="space-y-2 border-t border-slate-100 pt-4 dark:border-slate-800">
             <h3 className="text-sm font-bold">Customer</h3>
-            <p className="text-sm font-semibold">{getCustomerDisplayName(selectedCustomerForPayment)}</p>
+            <p className="text-sm font-semibold"><CustomerNameWithType customer={selectedCustomerForPayment} /></p>
             <p className="text-xs text-slate-500">{selectedCustomerForPayment?.phone || 'No phone'} · {selectedCustomerForPayment?.email || 'No email'}</p>
             {selectedCustomerForPayment && <button type="button" onClick={() => { setSelectedPayment(null); onNavigateSection?.('customers', selectedCustomerForPayment.id); }} className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">View Customer</button>}
             {selectedCustomerForPayment && selectedPayment.paymentStatus !== 'failed' && selectedPayment.paymentStatus !== 'refunded' && canContact(selectedCustomerForPayment.id) && <button type="button" onClick={() => openMessage({ customerId: selectedCustomerForPayment.id, paymentId: selectedPayment.id, saleId: selectedSaleForPayment?.id, templateId: 'payment_received' })} className="ml-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp Confirmation</button>}

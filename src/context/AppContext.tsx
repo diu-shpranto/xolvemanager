@@ -41,11 +41,11 @@ import {
 } from '../data/mockData';
 import {
   calculateExpiryDate,
-  getDaysDifference,
+  getDaysDifferenceForTimeZone,
   formatCurrency,
   getTodayDateString,
   getDateInTimeZone,
-  getSubscriptionStatus,
+  getSubscriptionStatusForTimeZone,
   generateInvoiceNo,
 } from '../utils/dateUtils';
 import { getCustomerDisplayName } from '../utils/relationships';
@@ -151,6 +151,7 @@ import {
 } from '../services/notificationService';
 import { createAuditLog, getActivityCategory, sanitizeActivityDescription } from '../services/activityService';
 import { getAccountCapacity, isAccountOperational, isSubscriptionCompatibleWithResource } from '../utils/resourceManagement';
+import { allocateAccountPurchaseCost } from '../utils/actualProfitAnalytics';
 import {
   generateReminderCandidates,
   getResolvedReminderSourceKeys,
@@ -755,6 +756,8 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
   const [settings, setSettings] = useState<AppSettings>(() => {
     return normalizeSettings(getSettings() || {});
   });
+  const getDaysDifference = getDaysDifferenceForTimeZone(settings.businessProfile?.timeZone);
+  const getSubscriptionStatus = getSubscriptionStatusForTimeZone(settings.businessProfile?.timeZone);
   const getPaymentMethodSnapshot = (name: string) => {
     const method = normalizePaymentMethods(settings.paymentPreferences?.methods)
       .find(item => item.name.toLocaleLowerCase() === name.toLocaleLowerCase());
@@ -1011,6 +1014,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       payments,
       invoices,
       settings: businessSettings,
+      timeZone: settings.businessProfile?.timeZone,
       storageWarning,
     });
     setNotifications(previous => {
@@ -1495,13 +1499,17 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
   };
 
   const addCustomer = async (custData: Omit<Customer, 'id' | 'createdAt'>): Promise<Customer> => {
+    if (custData.customerType !== undefined && custData.customerType !== 'Customer' && custData.customerType !== 'Reseller') {
+      throw new Error('Choose a valid customer type.');
+    }
     if (custData.notes) assertSafeCustomerNote(custData.notes);
     const now = new Date().toISOString();
     const newCustomer: Customer = {
       ...custData,
+      customerType: custData.customerType || 'Customer',
       id: createRecordId('customer'),
       ...(currentBusiness?.businessId ? { businessId: currentBusiness.businessId } : {}),
-      createdAt: getTodayDateString(),
+      createdAt: getTodayDateString(settings.businessProfile?.timeZone),
       updatedAt: now,
       createdBy: currentUser?.uid || 'admin',
       isArchived: false,
@@ -1532,6 +1540,9 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
   };
 
   const updateCustomer = async (id: string, updates: Partial<Customer>): Promise<void> => {
+    if (updates.customerType !== undefined && updates.customerType !== 'Customer' && updates.customerType !== 'Reseller') {
+      throw new Error('Choose a valid customer type.');
+    }
     if (typeof updates.notes === 'string') assertSafeCustomerNote(updates.notes);
     const previousCustomer = customers.find(customer => customer.id === id);
     if (!previousCustomer) return;
@@ -1580,14 +1591,6 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         entityId: id,
         metadata: {
           changedFields: changedFields.join(', '),
-          ...(previousCustomer.name !== updatedCustomer.name ? {
-            beforeName: previousCustomer.name,
-            afterName: updatedCustomer.name,
-          } : {}),
-          ...(previousCustomer.phone !== updatedCustomer.phone ? {
-            beforePhone: previousCustomer.phone,
-            afterPhone: updatedCustomer.phone,
-          } : {}),
           ...(previousCustomer.status !== updatedCustomer.status ? {
             beforeStatus: previousCustomer.status || 'active',
             afterStatus: updatedCustomer.status || 'active',
@@ -1617,7 +1620,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     logActivity({
       type: 'customer_note_added',
       title: 'Customer Note Added',
-      description: `Note added for ${customer.name}: ${normalized}`,
+      description: `A note was added for ${customer.name}.`,
       customerName: customer.name,
       customerId,
       entityId: customerId,
@@ -1646,7 +1649,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     logActivity({
       type: 'customer_note_updated',
       title: 'Customer Note Updated',
-      description: `Note updated for ${customer.name}: ${normalized}`,
+      description: `A note was updated for ${customer.name}.`,
       customerName: customer.name,
       customerId,
       entityId: customerId,
@@ -1665,7 +1668,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     logActivity({
       type: 'customer_note_deleted',
       title: 'Customer Note Deleted',
-      description: `A note for ${customer.name} was deleted.`,
+      description: `A note was deleted for ${customer.name}.`,
       customerName: customer.name,
       customerId,
       entityId: customerId,
@@ -1690,7 +1693,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
 
     setCustomers(prev => prev.filter(c => c.id !== id));
     logActivity({
-      type: 'customer_added',
+      type: 'customer_removed',
       title: 'Customer Removed',
       description: `${cust.name} was permanently removed from database.`,
       customerName: cust.name,
@@ -1710,7 +1713,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     };
     setCustomers(prev => prev.map(c => (c.id === id ? updated : c)));
     logActivity({
-      type: 'customer_added',
+      type: 'customer_archived',
       title: 'Customer Archived',
       description: `${cust.name} was archived to preserve subscription and sales records.`,
       customerName: cust.name,
@@ -1730,7 +1733,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     };
     setCustomers(prev => prev.map(c => (c.id === id ? updated : c)));
     logActivity({
-      type: 'customer_added',
+      type: 'customer_restored',
       title: 'Customer Restored',
       description: `${cust.name} was restored from archive.`,
       customerName: cust.name,
@@ -1757,7 +1760,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     };
     setServices(prev => [...prev.filter(s => s.id !== newService.id), newService]);
     logActivity({
-      type: 'service_updated',
+      type: 'service_added',
       title: 'Service Created',
       description: `Service "${newService.name}" (${newService.category}) was added to the catalog.`,
       serviceName: newService.name,
@@ -1766,7 +1769,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       metadata: { status: newService.status, plansCount: newService.planDetails?.length || 0 },
     });
     (newService.planDetails || []).forEach(plan => logActivity({
-      type: 'service_updated',
+      type: 'plan_created',
       title: 'Plan Created',
       description: `Plan "${plan.name}" was added to ${newService.name}.`,
       entityType: 'plan',
@@ -1845,7 +1848,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         const before = previousPlans.find(previous => previous.id === plan.id);
         if (!before) {
           logActivity({
-            type: 'service_updated',
+            type: 'plan_created',
             title: 'Plan Created',
             description: `Plan "${plan.name}" was added to ${updatedService.name}.`,
             entityType: 'plan',
@@ -1858,8 +1861,11 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         }
         const planChanged = JSON.stringify(before) !== JSON.stringify(plan);
         if (planChanged) {
+          const planStatusChanged = before.status !== plan.status;
+          const planDeactivated = planStatusChanged && plan.status !== 'active';
           logActivity({
-            type: 'service_updated',
+            type: planDeactivated ? 'plan_deactivated' : 'plan_updated',
+            action: planDeactivated ? 'deactivated' : planStatusChanged ? 'activated' : 'updated',
             title: before.status !== plan.status
               ? `Plan ${plan.status === 'active' ? 'Activated' : 'Deactivated'}`
               : 'Plan Updated',
@@ -1881,7 +1887,8 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       });
       previousPlans.filter(plan => !nextPlans.some(next => next.id === plan.id)).forEach(plan => {
         logActivity({
-          type: 'service_updated',
+          type: 'plan_deactivated',
+          action: 'deactivated',
           title: 'Plan Deactivated',
           description: `Plan "${plan.name}" was removed from active service plans.`,
           entityType: 'plan',
@@ -1911,7 +1918,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
 
     setServices(prev => prev.filter(s => s.id !== id));
     logActivity({
-      type: 'service_updated',
+      type: 'service_removed',
       title: 'Service Removed',
       description: `Service "${srv.name}" was permanently removed.`,
       serviceName: srv.name,
@@ -1932,7 +1939,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     };
     setServices(prev => prev.map(s => (s.id === id ? updated : s)));
     logActivity({
-      type: 'service_updated',
+      type: 'service_archived',
       title: 'Service Archived',
       description: `Service "${srv.name}" was safely archived to protect inventory and order records.`,
       serviceName: srv.name,
@@ -1953,7 +1960,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     };
     setServices(prev => prev.map(s => (s.id === id ? updated : s)));
     logActivity({
-      type: 'service_updated',
+      type: 'service_restored',
       title: 'Service Restored',
       description: `Service "${srv.name}" was restored to active catalog.`,
       serviceName: srv.name,
@@ -1981,6 +1988,9 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     if (accData.expiryDate && !Number.isFinite(Date.parse(`${accData.expiryDate}T00:00:00`))) {
       throw new Error('Enter a valid account expiry date.');
     }
+    if (accData.purchaseCost !== undefined && (!Number.isFinite(accData.purchaseCost) || accData.purchaseCost < 0)) {
+      throw new Error('Enter a valid non-negative account purchase cost.');
+    }
     const newId = createRecordId('account');
     const accountProfiles = accData.profiles || [];
     if (accountProfiles.length > accData.maxProfiles) {
@@ -2003,7 +2013,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         };
       }),
       createdBy: currentUser?.uid || 'admin',
-      createdAt: getTodayDateString(),
+      createdAt: getTodayDateString(settings.businessProfile?.timeZone),
     };
     setAccounts(prev => [newAccount, ...prev]);
 
@@ -2058,6 +2068,10 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     if (updates.expiryDate && !Number.isFinite(Date.parse(`${updates.expiryDate}T00:00:00`))) {
       throw new Error('Enter a valid account expiry date.');
     }
+    const purchaseCost = updates.purchaseCost ?? previousAccount.purchaseCost;
+    if (purchaseCost !== undefined && (!Number.isFinite(purchaseCost) || purchaseCost < 0)) {
+      throw new Error('Enter a valid non-negative account purchase cost.');
+    }
     const updatedAccount = {
       ...previousAccount,
       ...updates,
@@ -2076,14 +2090,14 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       })
     );
     const changedFields = ([
-      'serviceId', 'plan', 'planId', 'status', 'purchaseDate', 'expiryDate', 'maxProfiles',
+      'serviceId', 'plan', 'planId', 'status', 'purchaseDate', 'purchaseCost', 'purchaseCostCurrency', 'expiryDate', 'maxProfiles',
       'name', 'email', 'username', 'password', 'allowProfileSharing',
       'requireCustomerAssignment', 'allowNewAssignment',
     ] as const)
       .filter(field => previousAccount[field] !== updatedAccount[field]);
     if (changedFields.length > 0) {
       logActivity({
-        type: 'account_updated',
+        type: 'account_removed',
         title: previousAccount.status !== updatedAccount.status
           ? `Account ${updatedAccount.status === 'Inactive' ? 'Deactivated' : 'Status Changed'}`
           : 'Account Updated',
@@ -2135,7 +2149,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
   ) => {
     const account = accounts.find(item => item.id === accountId);
     if (!account) throw new Error('Account not found.');
-    if (!isAccountOperational(account)) {
+    if (!isAccountOperational(account, settings.businessProfile?.timeZone)) {
       throw new Error('Profiles cannot be added to an inactive account.');
     }
     if (account.profiles.length >= account.maxProfiles) {
@@ -2153,7 +2167,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       ...details,
       status: 'Available',
       createdBy: currentUser?.uid || 'admin',
-      createdAt: getTodayDateString(),
+      createdAt: getTodayDateString(settings.businessProfile?.timeZone),
     };
     setAccounts(prev =>
       prev.map(acc => {
@@ -2287,7 +2301,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     const account = accounts.find(item => item.id === accountId);
     const profile = account?.profiles.find(item => item.id === profileId);
     if (!account || !profile) return;
-    if (customerId && !isAccountOperational(account)) {
+    if (customerId && !isAccountOperational(account, settings.businessProfile?.timeZone)) {
       throw new Error('This account is not active.');
     }
     if (customerId && account.allowNewAssignment === false) {
@@ -2434,7 +2448,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     const assignedProfile = assignedAccount?.profiles.find(profile => profile.id === subData.profileId);
     if (subData.accountId && (!assignedAccount
       || assignedAccount.serviceId !== subData.serviceId
-      || !isAccountOperational(assignedAccount)
+      || !isAccountOperational(assignedAccount, settings.businessProfile?.timeZone)
       || assignedAccount.allowNewAssignment === false
       || !assignedProfile
       || assignedProfile.status !== 'Available'
@@ -2460,7 +2474,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       ...(currentBusiness?.businessId ? { businessId: currentBusiness.businessId } : {}),
       planId: getPlanId(subData.serviceId, subData.plan) || subData.planId,
       expiryDate,
-      createdAt: getTodayDateString(),
+      createdAt: getTodayDateString(settings.businessProfile?.timeZone),
       createdBy: currentUser?.uid || 'admin',
     };
     const nextSubscriptions: Subscription[] = [newSub, ...subscriptions];
@@ -2486,7 +2500,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     const cust = getCustomerById(subData.customerId);
     const srv = getServiceById(subData.serviceId);
     logActivity({
-      type: 'subscription_updated',
+      type: 'subscription_created',
       title: 'Subscription Created',
       description: `${srv?.name || 'Service'} subscription created for ${getCustomerDisplayName(cust)}.`,
       customerName: getCustomerDisplayName(cust),
@@ -2581,7 +2595,12 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       const customer = getCustomerById(updatedSubscription.customerId);
       const service = getServiceById(updatedSubscription.serviceId);
       logActivity({
-        type: 'subscription_updated',
+        type: updatedSubscription.status === 'cancelled'
+          ? 'subscription_cancelled'
+          : updatedSubscription.status === 'expired' && previousSubscription.status !== 'expired'
+            ? 'subscription_expired'
+            : 'subscription_updated',
+        ...(updatedSubscription.status === 'cancelled' ? { action: 'cancelled' as const } : {}),
         title: updatedSubscription.status === 'cancelled'
           ? 'Subscription Cancelled'
           : updatedSubscription.status === 'expired' && previousSubscription.status !== 'expired'
@@ -2619,6 +2638,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     const subscription = subscriptions.find(item => item.id === id);
     if (!subscription) return;
     const customer = getCustomerById(subscription.customerId);
+    setSubscriptions(prev => prev.filter(s => s.id !== id));
     logActivity({
       type: 'subscription_deleted',
       title: 'Subscription Deleted',
@@ -2634,7 +2654,6 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         expiryDate: subscription.expiryDate,
       },
     });
-    setSubscriptions(prev => prev.filter(s => s.id !== id));
   };
 
   const renewSubscription = (
@@ -2664,10 +2683,8 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       throw new Error('A payment with this transaction ID already exists. Review the existing payment before continuing.');
     }
 
-    const baseDate =
-      new Date(sub.expiryDate).getTime() > new Date().getTime()
-        ? sub.expiryDate
-        : getTodayDateString();
+    const today = getTodayDateString(settings.businessProfile?.timeZone);
+    const baseDate = sub.expiryDate >= today ? sub.expiryDate : today;
 
     const newExpiry = calculateExpiryDate(baseDate, additionalDays);
 
@@ -2675,7 +2692,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     const invoiceNo = generateInvoiceNo([
       ...sales.map(sale => sale.invoiceNo),
       ...invoices.map(invoice => invoice.invoiceNumber),
-    ], settings.invoicePreferences?.prefix || 'INV-');
+    ], settings.invoicePreferences?.prefix || 'INV-', settings.businessProfile?.timeZone);
     const newSale: Sale = {
       id: createRecordId('sale'),
       ...(currentBusiness?.businessId ? { businessId: currentBusiness.businessId } : {}),
@@ -2691,12 +2708,12 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       paymentMethod,
       ...getPaymentMethodSnapshot(paymentMethod),
       paymentStatus: 'paid',
-      date: getTodayDateString(),
+      date: getTodayDateString(settings.businessProfile?.timeZone),
       invoiceNo,
       transactionId,
       notes: `Subscription renewed for ${additionalDays} days.`,
       createdBy: currentUser?.uid || 'admin',
-      createdAt: getTodayDateString(),
+      createdAt: getTodayDateString(settings.businessProfile?.timeZone),
     };
 
     // Record payment
@@ -2712,11 +2729,11 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       paymentMethod,
       transactionId: transactionId || '',
       ...getPaymentMethodSnapshot(paymentMethod),
-      paymentDate: getTodayDateString(),
+      paymentDate: getTodayDateString(settings.businessProfile?.timeZone),
       paymentStatus: 'paid',
       notes: `Renewal payment for ${invoiceNo}`,
       createdBy: currentUser?.uid || 'admin',
-      createdAt: getTodayDateString(),
+      createdAt: getTodayDateString(settings.businessProfile?.timeZone),
     };
     const renewalInvoice = {
       ...createInvoiceRecord(
@@ -2730,7 +2747,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     };
     const renewalRecord = {
       id: newSale.id,
-      renewalDate: getTodayDateString(),
+      renewalDate: getTodayDateString(settings.businessProfile?.timeZone),
       previousEndDate: sub.expiryDate,
       newStartDate: baseDate,
       newEndDate: newExpiry,
@@ -2920,7 +2937,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
   const createSale = (
     payload: NewSalePayload
   ): { subscription: Subscription; sale: Sale; payment: Payment; invoice: Invoice } => {
-    assertFinancialDateOpen(getTodayDateString());
+    assertFinancialDateOpen(getTodayDateString(settings.businessProfile?.timeZone));
     const customer = customers.find(item => item.id === payload.customerId && !item.isArchived && item.status !== 'archived');
     const service = services.find(item => item.id === payload.serviceId);
     const plan = service?.planDetails?.find(item => item.id === payload.planId && item.status === 'active');
@@ -3011,13 +3028,36 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       item.id === payload.accountId
       && item.serviceId === service.id
       && (!payload.planId || !item.planId || item.planId === payload.planId)
-      && isAccountOperational(item)
+      && isAccountOperational(item, settings.businessProfile?.timeZone)
     ) : undefined;
     if (payload.accountId && !account) {
       throw new Error('The selected account is no longer available.');
     }
     if (account && account.allowNewAssignment === false && !payload.renewalOfSubscriptionId) {
       throw new Error('New assignments are disabled for the selected account.');
+    }
+    const activeAccountSubscriptions = account
+      ? subscriptions.filter(subscription =>
+        subscription.accountId === account.id
+        && subscription.id !== payload.renewalOfSubscriptionId
+        && ['active', 'expiring_soon'].includes(
+          getSubscriptionStatus(subscription, service, settings.reminderNoticeDays)
+        )
+      )
+      : [];
+    const hasWholeAccountAllocation = activeAccountSubscriptions.some(subscription => !subscription.profileId);
+    if (account && hasWholeAccountAllocation) {
+      throw new Error('This account is already allocated to an active full-account sale.');
+    }
+    if (account && payload.profileId && !profileRequired) {
+      throw new Error('This service does not support profile-based allocation.');
+    }
+    if (account && !profileRequired && !payload.profileId && (
+      activeAccountSubscriptions.length > 0
+      || account.profiles.some(item => item.status === 'Assigned' || Boolean(item.assignedCustomerId))
+      || ['Assigned', 'Full'].includes(account.status)
+    )) {
+      throw new Error('This account is already allocated and cannot be sold again.');
     }
     const profile = account && payload.profileId
       ? account.profiles?.find(item => item.id === payload.profileId
@@ -3061,11 +3101,17 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     const invoiceNo = generateInvoiceNo([
       ...sales.map(sale => sale.invoiceNo),
       ...invoices.map(invoice => invoice.invoiceNumber),
-    ], settings.invoicePreferences?.prefix || 'INV-');
+    ], settings.invoicePreferences?.prefix || 'INV-', settings.businessProfile?.timeZone);
     const expiryDate = calculateExpiryDate(payload.startDate, payload.durationDays);
     const saleId = createRecordId('sale');
     const subscriptionId = createRecordId('subscription');
     const paymentId = createRecordId('payment');
+    const allocatedAccountCost = paymentStatus === 'failed' || !payload.accountId
+      ? undefined
+      : (() => {
+        const account = accounts.find(item => item.id === payload.accountId && item.serviceId === payload.serviceId);
+        return account ? allocateAccountPurchaseCost(account, Boolean(payload.profileId)) : undefined;
+      })();
 
     // 1. Create Subscription
     const newSub: Subscription = {
@@ -3086,8 +3132,18 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       price: payload.price,
       currency: payload.currency,
       paymentStatus,
+      ...(paymentStatus === 'failed' ? {
+        status: 'cancelled' as const,
+        cancelledAt: new Date().toISOString(),
+        cancellationReason: 'Payment failed before inventory was allocated.',
+      } : {}),
+      ...(paymentStatus === 'failed' ? {
+        status: 'cancelled' as const,
+        cancelledAt: new Date().toISOString(),
+        cancellationReason: 'Payment failed before inventory was allocated.',
+      } : {}),
       notes: payload.notes,
-      createdAt: getTodayDateString(),
+      createdAt: getTodayDateString(settings.businessProfile?.timeZone),
       createdBy: currentUser?.uid || 'admin',
     };
 
@@ -3109,11 +3165,16 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       subtotal,
       discount,
       amountPaid,
+      ...(allocatedAccountCost ? {
+        actualCostSnapshot: allocatedAccountCost.amount,
+        actualCostCurrency: allocatedAccountCost.currency,
+        actualCostAllocation: allocatedAccountCost.allocation,
+      } : {}),
       currency: payload.currency,
       paymentMethod: payload.paymentMethod,
       ...getPaymentMethodSnapshot(payload.paymentMethod),
       paymentStatus,
-      date: getTodayDateString(),
+      date: getTodayDateString(settings.businessProfile?.timeZone),
       invoiceNo,
       transactionId: payload.transactionId || '',
       senderNumber: payload.senderNumber || '',
@@ -3136,7 +3197,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       paymentMethod: payload.paymentMethod,
       transactionId: payload.transactionId || '',
       senderNumber: payload.senderNumber || '',
-      paymentDate: getTodayDateString(),
+      paymentDate: getTodayDateString(settings.businessProfile?.timeZone),
       paymentStatus,
       notes: payload.paymentNote || `Sale payment: ${invoiceNo}`,
       createdBy: currentUser?.uid || 'admin',
@@ -3159,7 +3220,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       if (!renewedSubscription) throw new Error('The subscription being renewed is no longer available.');
       const renewalRecord = {
         id: payload.operationId || newSale.id,
-        renewalDate: getTodayDateString(),
+        renewalDate: getTodayDateString(settings.businessProfile?.timeZone),
         previousEndDate: renewedSubscription.expiryDate,
         newStartDate: newSub.startDate,
         newEndDate: newSub.expiryDate,
@@ -3187,7 +3248,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     const nextSales = [newSale, ...sales];
     const nextPayments = [newPayment, ...payments];
     const nextInvoices = [newInvoice, ...invoices.filter(invoice => invoice.saleId !== newSale.id)];
-    const nextAccounts = payload.accountId && payload.profileId
+    const nextAccounts = paymentStatus !== 'failed' && payload.accountId && payload.profileId
       ? accounts.map(item => item.id === payload.accountId ? {
         ...item,
         profiles: item.profiles.map(itemProfile => itemProfile.id === payload.profileId ? {
@@ -3204,13 +3265,13 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       sales: nextSales,
       payments: nextPayments,
       invoices: nextInvoices,
-      ...(payload.accountId && payload.profileId ? { accounts: nextAccounts } : {}),
+      ...(paymentStatus !== 'failed' && payload.accountId && payload.profileId ? { accounts: nextAccounts } : {}),
     });
     setSubscriptions(nextSubscriptions);
     setSales(nextSales);
     setPayments(nextPayments);
     setInvoices(nextInvoices);
-    if (payload.accountId && payload.profileId) setAccounts(nextAccounts);
+    if (paymentStatus !== 'failed' && payload.accountId && payload.profileId) setAccounts(nextAccounts);
     logActivity({
       type: 'invoice_created',
       title: 'Invoice Created',
@@ -3512,7 +3573,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       || parsedPaymentDate.getFullYear() !== paymentYear
       || parsedPaymentDate.getMonth() !== paymentMonth - 1
       || parsedPaymentDate.getDate() !== paymentDay
-      || paymentData.paymentDate > getTodayDateString()) {
+      || paymentData.paymentDate > getTodayDateString(settings.businessProfile?.timeZone)) {
       throw new Error('Choose a valid payment date that is not in the future.');
     }
     assertFinancialDateOpen(paymentData.paymentDate);
@@ -3834,7 +3895,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       || parsedDate.getFullYear() !== year
       || parsedDate.getMonth() !== month - 1
       || parsedDate.getDate() !== day
-      || refundDate > getTodayDateString()) {
+      || refundDate > getTodayDateString(settings.businessProfile?.timeZone)) {
       throw new Error('Choose a valid refund date that is not in the future.');
     }
     assertFinancialDateOpen(refundDate);
@@ -3943,6 +4004,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       type: 'refund_created',
       title: 'Payment Refunded',
       description: `${formatCurrency(newPayment.amount, newPayment.currency)} refunded to ${getCustomerDisplayName(customer)}.`,
+      entityType: 'payment',
       customerName: getCustomerDisplayName(customer),
       entityId: newPayment.id,
       customerId: original.customerId,
@@ -4014,7 +4076,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         : {}),
       ...(currentBusiness?.businessId ? { businessId: currentBusiness.businessId } : {}),
       createdBy: currentUser?.uid || 'admin',
-      createdAt: paymentData.paymentDate || getTodayDateString(),
+      createdAt: paymentData.paymentDate || getTodayDateString(settings.businessProfile?.timeZone),
     };
     setPayments(prev => [newPayment, ...prev]);
     const customer = getCustomerById(newPayment.customerId);
@@ -5121,10 +5183,36 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
   };
 
   const exportDataJSON = (): string => {
+    const storageIssues = getStorageWarnings();
+    if (storageIssues.length) {
+      throw new Error(`Full backup is unavailable because browser storage has unresolved issues: ${storageIssues[0]}`);
+    }
+    const demoManifestRaw = readRawValue(getDemoDataManifestKey(currentBusiness?.businessId));
+    let demoDataManifest: DemoDataManifest;
+    if (demoManifestRaw) {
+      let parsedManifest: unknown;
+      try {
+        parsedManifest = JSON.parse(demoManifestRaw);
+      } catch {
+        throw new Error('The saved demo-data manifest is unreadable. Resolve the storage warning before creating a full backup.');
+      }
+      if (!isValidDemoDataManifest(parsedManifest)) {
+        throw new Error('The saved demo-data manifest is invalid. Resolve the data integrity issue before creating a full backup.');
+      }
+      demoDataManifest = parsedManifest;
+    } else {
+      demoDataManifest = discoverDemoDataManifest(getDemoSnapshot(), currentBusiness?.businessId);
+    }
     const data = {
       schemaVersion: 1,
       exportedAt: new Date().toISOString(),
       business: currentBusiness,
+      demoDataManifest,
+      preferences: {
+        theme: isDark ? 'dark' : 'light',
+        language,
+        currency,
+      },
       records: {
         customers,
         services,
@@ -5195,6 +5283,19 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       }
 
       const importedSettings = data.settings as Partial<AppSettings> | undefined;
+      const importedPreferences = data.preferences;
+      if (importedPreferences !== undefined && (
+        typeof importedPreferences !== 'object' || importedPreferences === null || Array.isArray(importedPreferences)
+      )) return false;
+      if (importedPreferences && typeof importedPreferences === 'object') {
+        const preferences = importedPreferences as Record<string, unknown>;
+        if ((preferences.theme !== undefined && preferences.theme !== 'light' && preferences.theme !== 'dark')
+          || (preferences.language !== undefined && preferences.language !== 'en' && preferences.language !== 'bn')
+          || (preferences.currency !== undefined && preferences.currency !== 'BDT' && preferences.currency !== 'USD')) return false;
+      }
+      const importedDemoManifest = data.demoDataManifest;
+      if (importedDemoManifest !== undefined && importedDemoManifest !== null
+        && !isValidDemoDataManifest(importedDemoManifest)) return false;
       if (importedSettings && (
         (importedSettings.storeName !== undefined && typeof importedSettings.storeName !== 'string') ||
         (importedSettings.currency !== undefined && importedSettings.currency !== 'BDT' && importedSettings.currency !== 'USD') ||
@@ -5234,19 +5335,20 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         business?.businessId
       );
       const restoredLogs = normalizeActivityLogs(imported.activityLogs, imported.accounts);
-      const restoreLog = createAuditLog({
-        type: 'backup_restored',
-        title: 'Backup Restored',
-        description: 'Business data was restored from a validated backup.',
-        entityType: 'data',
-        entityId: business?.businessId || 'business',
-        metadata: { importedActivityCount: restoredLogs.length },
-      }, {
-        id: createRecordId('activity'),
-        businessId: business?.businessId,
-        createdBy: currentUser?.uid || 'admin',
-      });
-      const logsWithRestore = [restoreLog, ...restoredLogs];
+      const logsWithRestore = data.restoreMode === 'merge'
+        ? restoredLogs
+        : [createAuditLog({
+          type: 'backup_restored',
+          title: 'Backup Restored',
+          description: 'Business data was restored from a validated backup.',
+          entityType: 'data',
+          entityId: business?.businessId || 'business',
+          metadata: { importedActivityCount: restoredLogs.length },
+        }, {
+          id: createRecordId('activity'),
+          businessId: business?.businessId,
+          createdBy: currentUser?.uid || 'admin',
+        }), ...restoredLogs];
       const importedNotifications = Array.isArray(records.notifications)
         ? records.notifications as BusinessNotification[]
         : [];
@@ -5275,6 +5377,42 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       const committedSettings = business
         ? { ...restoredSettings, businessId: business.businessId, storeName: business.name }
         : restoredSettings;
+      const restoredDemoManifest = importedDemoManifest && isValidDemoDataManifest(importedDemoManifest)
+        ? { ...importedDemoManifest, ...(business?.businessId ? { businessId: business.businessId } : {}) }
+        : discoverDemoDataManifest({
+          customers: imported.customers,
+          services: imported.services,
+          accounts: imported.accounts,
+          subscriptions: imported.subscriptions,
+          sales: imported.sales,
+          payments: imported.payments,
+          invoices: restoredInvoices,
+          financialAccounts: importedFinancialAccounts,
+          expenses: importedExpenses,
+          otherIncome: importedOtherIncome,
+          financialTransfers: importedFinancialTransfers,
+          financialAdjustments: importedFinancialAdjustments,
+          dailyClosings: importedDailyClosings,
+          financialReconciliations: importedFinancialReconciliations,
+          financialPeriods: importedFinancialPeriods,
+          reminders: importedReminders,
+          profitabilityCosts: importedProfitabilityCosts,
+          activityLogs: imported.activityLogs,
+          notifications: restoredNotifications,
+          settings: committedSettings,
+        }, business?.businessId);
+      const importedPreferenceValues = importedPreferences && typeof importedPreferences === 'object'
+        ? importedPreferences as Record<string, unknown>
+        : {};
+      const restoredTheme = importedPreferenceValues.theme === 'dark' || importedPreferenceValues.theme === 'light'
+        ? importedPreferenceValues.theme
+        : importedSettings?.appearance?.theme;
+      const restoredLanguage = importedPreferenceValues.language === 'bn' || importedPreferenceValues.language === 'en'
+        ? importedPreferenceValues.language
+        : importedSettings?.language;
+      const restoredCurrency = importedPreferenceValues.currency === 'USD' || importedPreferenceValues.currency === 'BDT'
+        ? importedPreferenceValues.currency
+        : importedSettings?.currency;
       const restoreIntegrity = runDataIntegrityCheck({
         businessId: business?.businessId,
         customers: imported.customers,
@@ -5306,6 +5444,10 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
 
       replaceRawValuesAtomically({
         ...(business ? { [STORAGE_KEYS.BUSINESS]: JSON.stringify(business) } : {}),
+        ...(currentBusiness?.businessId && currentBusiness.businessId !== business?.businessId
+          ? { [getDemoDataManifestKey(currentBusiness.businessId)]: null }
+          : {}),
+        [getDemoDataManifestKey(business?.businessId)]: JSON.stringify(restoredDemoManifest),
         [STORAGE_KEYS.CUSTOMERS]: JSON.stringify(imported.customers),
         [STORAGE_KEYS.SERVICES]: JSON.stringify(imported.services),
         [STORAGE_KEYS.ACCOUNTS]: JSON.stringify(imported.accounts),
@@ -5326,6 +5468,9 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         [STORAGE_KEYS.REMINDERS]: JSON.stringify(importedReminders),
         [STORAGE_KEYS.PROFITABILITY_COSTS]: JSON.stringify(importedProfitabilityCosts),
         [STORAGE_KEYS.SETTINGS]: JSON.stringify(committedSettings),
+        ...(restoredTheme ? { [STORAGE_KEYS.THEME]: String(restoredTheme === 'dark') } : {}),
+        ...(restoredLanguage ? { [STORAGE_KEYS.LANG]: restoredLanguage } : {}),
+        ...(restoredCurrency ? { [STORAGE_KEYS.CURRENCY]: restoredCurrency } : {}),
       });
 
       if (business && normalizedImportedName) {
@@ -5352,6 +5497,9 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       setActivityLogs(logsWithRestore);
       setNotifications(restoredNotifications);
       setSettings(committedSettings);
+      if (restoredTheme) setIsDark(restoredTheme === 'dark');
+      if (restoredLanguage) setLanguageState(restoredLanguage);
+      if (restoredCurrency) setCurrencyState(restoredCurrency);
       return true;
     } catch (error) {
       console.error('Business backup restore failed before completion.', error);

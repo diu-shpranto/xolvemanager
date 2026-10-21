@@ -19,6 +19,7 @@ export const sectionPaths: Record<NavSection, string> = {
   'daily-closing': '/daily-closing',
   invoices: '/invoices',
   history: '/history',
+  profitability: '/profitability',
   reports: '/reports',
   settings: '/settings',
   notifications: '/notifications',
@@ -39,7 +40,6 @@ const recordSections: Record<RecordSection, NavSection> = {
 const routeAliases: Record<string, NavSection> = {
   '/': 'dashboard',
   '/transfers': 'cashbook',
-  '/profitability': 'reports',
   '/communications': 'settings',
   '/audit-log': 'history',
   '/backup': 'settings',

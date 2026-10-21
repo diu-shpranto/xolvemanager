@@ -42,6 +42,9 @@ export function getActivityCategory(log: Pick<ActivityLog, 'category' | 'type' |
 export function getActivityAction(log: Pick<ActivityLog, 'action' | 'type' | 'title'>): ActivityAction {
   if (log.action) return log.action;
   const value = `${log.type} ${log.title}`.toLowerCase();
+  if (value.includes('restor')) return 'restored';
+  if (value.includes('cancel')) return 'cancelled';
+  if (value.includes('activat') && !value.includes('deactivat')) return 'activated';
   if (value.includes('deactivat') || value.includes('archiv')) return 'deactivated';
   if (value.includes('unassign')) return 'unassigned';
   if (value.includes('assign')) return 'assigned';
@@ -51,7 +54,7 @@ export function getActivityAction(log: Pick<ActivityLog, 'action' | 'type' | 'ti
   if (value.includes('expir')) return 'expired';
   if (value.includes('complet')) return 'completed';
   if (value.includes('clear') || value.includes('removed') || value.includes('deleted')) return 'deleted';
-  if (value.includes('updated') || value.includes('changed') || value.includes('edited') || value.includes('cancelled')) return 'updated';
+  if (value.includes('updated') || value.includes('changed') || value.includes('edited')) return 'updated';
   if (value.includes('created') || value.includes('added') || value.includes('generated')) return 'created';
   return 'other';
 }
@@ -110,6 +113,14 @@ export interface ActivityFilters {
   date?: ActivityDateFilter;
   customStart?: string;
   customEnd?: string;
+}
+
+export type ActivitySortOrder = 'newest' | 'oldest';
+
+export function sortActivities(logs: ActivityLog[], order: ActivitySortOrder = 'newest'): ActivityLog[] {
+  return [...logs].sort((left, right) => order === 'newest'
+    ? Date.parse(right.timestamp) - Date.parse(left.timestamp)
+    : Date.parse(left.timestamp) - Date.parse(right.timestamp));
 }
 
 const startOfDay = (date: Date): Date => new Date(date.getFullYear(), date.getMonth(), date.getDate());
