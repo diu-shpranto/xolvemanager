@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildInvoiceSaleDetails } from '../src/utils/invoiceUtils.ts';
+import { buildInvoiceSaleDetails, createInvoiceRecord } from '../src/utils/invoiceUtils.ts';
 import { getCustomerProfitability, getProfitabilityTrend } from '../src/utils/profitability.ts';
 import {
   STORAGE_KEYS,
@@ -11,9 +11,21 @@ import {
 } from '../src/services/localStorageStore.ts';
 import {
   calculatePlanPerformance,
+  calculateSalesFinancialSummary,
   calculateServicePerformance,
 } from '../src/utils/reportMetrics.ts';
-import { getSaleLineAllocations, getSaleLineItems, getSaleSubscriptionIds } from '../src/utils/saleUtils.ts';
+import {
+  getSaleDueAmount,
+  getSaleLineAllocations,
+  getSaleLineFinancialAllocations,
+  allocateAmountAcrossSaleLines,
+  getSaleLineItems,
+  getSalePaidAmount,
+  getSalePaymentStatus,
+  getSalePayments,
+  getSaleSubscriptionFinancialAllocation,
+  getSaleSubscriptionIds,
+} from '../src/utils/saleUtils.ts';
 
 const sale = {
   id: 'sale-multi',
@@ -132,6 +144,154 @@ test('line allocations preserve the combined discounted total without multiplyin
   assert.equal(lines.reduce((total, line) => total + line.amount, 0), sale.amount);
 });
 
+test('multi-service payment allocations reconcile to one parent invoice without repeating its balance per item', () => {
+  const consolidatedSale = {
+    ...sale,
+    amount: 750,
+    subtotal: 750,
+    discount: 0,
+    amountPaid: 0,
+    paymentStatus: 'pending',
+    lineItems: [
+      {
+        ...sale.lineItems[0],
+        id: 'item-netflix',
+        serviceId: 'service-netflix',
+        serviceNameSnapshot: 'Netflix',
+        plan: 'Monthly',
+        quantity: 1,
+        unitPrice: 450,
+        subtotal: 450,
+        amount: 450,
+        units: [{ subscriptionId: 'subscription-netflix' }],
+      },
+      {
+        ...sale.lineItems[1],
+        id: 'item-prime',
+        serviceId: 'service-prime',
+        serviceNameSnapshot: 'Prime Video',
+        plan: 'Monthly',
+        quantity: 1,
+        unitPrice: 300,
+        subtotal: 300,
+        amount: 300,
+        units: [{ subscriptionId: 'subscription-prime' }],
+      },
+    ],
+  };
+  const receivedPayment = {
+    ...payment,
+    id: 'payment-netflix-prime-300',
+    amount: 300,
+    paymentStatus: 'paid',
+    allocations: [{ saleId: consolidatedSale.id, amount: 300 }],
+  };
+  const payments = [receivedPayment];
+  const invoice = createInvoiceRecord(
+    consolidatedSale,
+    payments,
+    undefined,
+    undefined,
+    'invoice-netflix-prime'
+  );
+  const lineAllocations = getSaleLineFinancialAllocations(consolidatedSale, payments);
+
+  assert.equal(getSalePayments(consolidatedSale, payments).length, 1);
+  assert.equal(getSalePaidAmount(consolidatedSale, payments), 300);
+  assert.equal(getSaleDueAmount(consolidatedSale, payments), 450);
+  assert.equal(getSalePaymentStatus(consolidatedSale, payments), 'partial');
+  assert.equal(invoice.totalAmount, 750);
+  assert.equal(invoice.paidAmount, 300);
+  assert.equal(invoice.dueAmount, 450);
+  assert.equal(invoice.paymentStatus, 'partial');
+  assert.deepEqual(lineAllocations.map(({ amount, paid, due, paymentStatus }) =>
+    [amount, paid, due, paymentStatus]
+  ), [
+    [450, 180, 270, 'partial'],
+    [300, 120, 180, 'partial'],
+  ]);
+  const lineLinkedAllocations = allocateAmountAcrossSaleLines(consolidatedSale, 300)
+    .filter(line => line.amount > 0)
+    .map(({ item, amount }) => ({
+      saleId: consolidatedSale.id,
+      lineItemId: item.id,
+      amount,
+    }));
+  assert.deepEqual(lineLinkedAllocations.map(({ lineItemId, amount }) => [lineItemId, amount]), [
+    ['item-netflix', 180],
+    ['item-prime', 120],
+  ]);
+  const lineLinkedPayment = { ...receivedPayment, allocations: lineLinkedAllocations };
+  assert.deepEqual(
+    getSaleLineFinancialAllocations(consolidatedSale, [lineLinkedPayment])
+      .map(({ paid, due, paymentStatus }) => [paid, due, paymentStatus]),
+    [[180, 270, 'partial'], [120, 180, 'partial']]
+  );
+  const overallocatedLinePayment = {
+    ...receivedPayment,
+    amount: 500,
+    allocations: [{
+      saleId: consolidatedSale.id,
+      lineItemId: 'item-netflix',
+      amount: 500,
+    }],
+  };
+  assert.deepEqual(
+    getSaleLineFinancialAllocations(consolidatedSale, [overallocatedLinePayment])
+      .map(({ paid, due, paymentStatus }) => [paid, due, paymentStatus]),
+    [[450, 0, 'paid'], [50, 250, 'partial']]
+  );
+  assert.deepEqual(
+    lineAllocations.map(line => line.paid).reduce((total, amount) => total + amount, 0),
+    invoice.paidAmount
+  );
+  assert.deepEqual(
+    lineAllocations.map(line => line.due).reduce((total, amount) => total + amount, 0),
+    invoice.dueAmount
+  );
+  const salesSummary = calculateSalesFinancialSummary([consolidatedSale], payments, 'BDT');
+  assert.deepEqual([salesSummary.revenue, salesSummary.paid, salesSummary.due], [750, 300, 450]);
+  const serviceSummary = calculateServicePerformance(
+    [consolidatedSale],
+    [],
+    payments,
+    [
+      { ...services[0], id: 'service-netflix', name: 'Netflix' },
+      { ...services[1], id: 'service-prime', name: 'Prime Video' },
+    ],
+    'BDT',
+    () => false
+  );
+  assert.deepEqual(serviceSummary.map(({ revenue, paid, due }) => [revenue, paid, due]), [
+    [450, 180, 270],
+    [300, 120, 180],
+  ]);
+  assert.deepEqual(
+    [
+      getSaleSubscriptionFinancialAllocation(consolidatedSale, 'subscription-netflix', payments)?.paid,
+      getSaleSubscriptionFinancialAllocation(consolidatedSale, 'subscription-prime', payments)?.paid,
+    ],
+    [180, 120]
+  );
+
+  const unpaidAllocations = getSaleLineFinancialAllocations(consolidatedSale, []);
+  assert.deepEqual(unpaidAllocations.map(line => [line.paid, line.due, line.paymentStatus]), [
+    [0, 450, 'pending'],
+    [0, 300, 'pending'],
+  ]);
+  const fullPayment = {
+    ...receivedPayment,
+    id: 'payment-netflix-prime-full',
+    amount: 750,
+    allocations: [{ saleId: consolidatedSale.id, amount: 750 }],
+  };
+  const paidAllocations = getSaleLineFinancialAllocations(consolidatedSale, [fullPayment]);
+  assert.deepEqual(paidAllocations.map(line => [line.paid, line.due, line.paymentStatus]), [
+    [450, 0, 'paid'],
+    [300, 0, 'paid'],
+  ]);
+});
+
 test('service and plan reports attribute revenue, paid, and due by line item', () => {
   const subscriptions = [
     { id: 'subscription-a-1', customerId: customer.id, serviceId: 'service-a', planId: 'plan-a', plan: 'Plan A', status: 'active' },
@@ -207,10 +367,17 @@ test('invoice details retain every item and its independent subscription period'
     ['Original Service A', 'Plan A', 2],
     ['Original Service B', 'Plan B', 1],
   ]);
+  assert.deepEqual(invoiceDetails.lineItems.map(item => [item.total, item.amountPaid, item.amountDue, item.paymentStatus]), [
+    [92.31, 38.46, 53.85, 'partial'],
+    [147.69, 61.54, 86.15, 'partial'],
+  ]);
+  assert.equal(invoiceDetails.lineItems.reduce((total, item) => total + (item.total || 0), 0), invoiceDetails.amount);
+  assert.equal(invoiceDetails.lineItems.reduce((total, item) => total + (item.amountPaid || 0), 0), invoiceDetails.amountPaid);
+  assert.equal(invoiceDetails.lineItems.reduce((total, item) => total + (item.amountDue || 0), 0), invoiceDetails.amountDue);
   assert.equal(invoiceDetails.lineItems[1].expiryDate, '2025-05-02');
   assert.equal(invoiceDetails.amountReceived, 100);
   assert.equal(invoiceDetails.paymentHistory[0].amount, 100);
-  assert.equal(invoiceDetails.lineItems[0].total, 100);
+  assert.equal(invoiceDetails.lineItems[0].total, 92.31);
 
 });
 
@@ -255,7 +422,7 @@ test('invoice details retain line discounts and separate advance credit from cas
   );
   assert.equal(details.lineItems[0].subtotal, 100);
   assert.equal(details.lineItems[0].discount, 5);
-  assert.equal(details.lineItems[0].total, 95);
+  assert.equal(details.lineItems[0].total, 89.41);
   assert.equal(details.amountReceived, 100);
   assert.equal(details.advanceCreditApplied, 40);
   assert.equal(details.paymentHistory.length, 1);

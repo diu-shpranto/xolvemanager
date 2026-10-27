@@ -4,7 +4,7 @@ import { getCustomerDisplayName, getCustomerType } from './relationships.ts';
 import {
   getPaymentCashSaleAllocation,
   getSaleDueAmount,
-  getSaleLineItems,
+  getSaleLineFinancialAllocations,
   getSalePaidAmount,
   getSalePaymentStatus,
   getSalePayments,
@@ -70,7 +70,8 @@ export function buildInvoiceSaleDetails(
     : durationDays
       ? `${durationDays} ${displayDurationUnit || (durationDays === 1 ? 'day' : 'days')}`
       : undefined;
-  const lineItems = getSaleLineItems(sale).map(item => {
+  const lineFinancials = getSaleLineFinancialAllocations(sale, payments);
+  const lineItems = lineFinancials.map(({ item, amount, paid, due, paymentStatus }) => {
     const itemService = services.find(candidate => candidate.id === item.serviceId)
       || (service?.id === item.serviceId ? service : undefined);
     const itemPlan = itemService?.planDetails?.find(candidate => candidate.id === item.planId);
@@ -84,7 +85,10 @@ export function buildInvoiceSaleDetails(
       unitPrice: item.unitPrice,
       subtotal: item.subtotal,
       discount: item.discount,
-      total: item.amount,
+      total: amount,
+      amountPaid: paid,
+      amountDue: due,
+      paymentStatus,
       currency: item.currency,
       startDate: itemSubscription?.startDate || item.startDate || undefined,
       expiryDate: itemSubscription?.expiryDate
@@ -96,17 +100,28 @@ export function buildInvoiceSaleDetails(
   });
   const receivedPayments = linkedPayments.filter(payment =>
     (payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial')
-    && getPaymentCashSaleAllocation(payment, sale) > 0
+    && (getPaymentCashSaleAllocation(payment, sale) > 0
+      || (payment.saleId === sale.id && Number(payment.advanceCreditAmount) > 0))
+  );
+  const cashAppliedToSale = receivedPayments.reduce(
+    (total, payment) => total + getPaymentCashSaleAllocation(payment, sale),
+    0
   );
   const amountReceived = receivedPayments.reduce(
-    (total, payment) => total + getPaymentCashSaleAllocation(payment, sale),
+    (total, payment) => total + getPaymentCashSaleAllocation(payment, sale)
+      + (payment.saleId === sale.id ? Number(payment.advanceCreditAmount) || 0 : 0),
+    0
+  );
+  const advanceCreditCreated = receivedPayments.reduce(
+    (total, payment) => total + (payment.saleId === sale.id ? Number(payment.advanceCreditAmount) || 0 : 0),
     0
   );
   const paymentMethods = [...new Set(receivedPayments.map(payment => payment.paymentMethodName || payment.paymentMethod))];
   const paymentMethodBreakdown = [...receivedPayments.reduce((groups, payment) => {
     const methodName = payment.paymentMethodName || payment.paymentMethod;
     const current = groups.get(methodName) || { methodName, amount: 0 };
-    current.amount += getPaymentCashSaleAllocation(payment, sale);
+    current.amount += getPaymentCashSaleAllocation(payment, sale)
+      + (payment.saleId === sale.id ? Number(payment.advanceCreditAmount) || 0 : 0);
     groups.set(methodName, current);
     return groups;
   }, new Map<string, { methodName: string; amount: number }>()).values()];
@@ -134,7 +149,8 @@ export function buildInvoiceSaleDetails(
     amount: sale.amount,
     amountPaid: getSalePaidAmount(sale, payments),
     amountReceived,
-    advanceCreditApplied: Math.max(0, getSalePaidAmount(sale, payments) - amountReceived),
+    advanceCreditApplied: Math.max(0, getSalePaidAmount(sale, payments) - cashAppliedToSale),
+    advanceCreditCreated,
     amountDue: getSaleDueAmount(sale, payments),
     subtotal: sale.subtotal ?? sale.amount + (sale.discount || 0),
     discount: sale.discount || 0,
@@ -148,7 +164,8 @@ export function buildInvoiceSaleDetails(
       id: payment.id,
       paymentDate: payment.paymentDate,
       paymentMethod: payment.paymentMethodName || payment.paymentMethod,
-      amount: getPaymentCashSaleAllocation(payment, sale),
+      amount: getPaymentCashSaleAllocation(payment, sale)
+        + (payment.saleId === sale.id ? Number(payment.advanceCreditAmount) || 0 : 0),
       currency: payment.currency,
       paymentStatus: payment.paymentStatus,
       transactionId: payment.transactionId,

@@ -4,7 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
-import { PaymentMethod, PaymentStatus, AppCurrency, CustomerType, Subscription } from '../../types';
+import { PaymentMethod, AppCurrency, CustomerType, Subscription } from '../../types';
 import { getDefaultPaymentMethod, normalizePaymentMethods, paymentMethodRequiresTransactionId } from '../../utils/paymentMethods';
 import { calculateExpiryDate, formatAppDate, formatCurrency, getDaysDifferenceForTimeZone, getSubscriptionStatusForTimeZone, getTodayDateString } from '../../utils/dateUtils';
 import {
@@ -39,7 +39,15 @@ import {
 } from '../../utils/invoiceGenerator';
 import { buildInvoiceSaleDetails } from '../../utils/invoiceUtils';
 import { getAvailableProfiles, isAccountOperational } from '../../utils/resourceManagement';
-import { amountToMinorUnits, getSaleDueAmount, minorUnitsToAmount } from '../../utils/saleUtils';
+import {
+  allocateInitialSalePayment,
+  allocateMinorUnitsByWeight,
+  amountToMinorUnits,
+  getCustomerAdvanceCredit,
+  getSaleDueAmount,
+  minorUnitsToAmount,
+  parseAmountToMinorUnits,
+} from '../../utils/saleUtils';
 import { createRecordId } from '../../services/localStorageStore';
 import type { NewSaleLineItemPayload } from '../../context/AppContext';
 
@@ -109,9 +117,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() =>
     (getDefaultPaymentMethod(normalizePaymentMethods(settings.paymentPreferences?.methods), settings.paymentPreferences?.defaultMethodId) || 'Cash') as PaymentMethod
   );
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('paid');
   const [transactionId, setTransactionId] = useState('');
   const [senderNumber, setSenderNumber] = useState('');
+  const [paymentDate, setPaymentDate] = useState(getTodayDateString(settings.businessProfile?.timeZone));
   const [notes, setNotes] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
   const [step, setStep] = useState(0);
@@ -129,7 +137,10 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const [newAccountProfileCount, setNewAccountProfileCount] = useState(1);
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
   const [discountValue, setDiscountValue] = useState(0);
-  const [amountPaidInput, setAmountPaidInput] = useState('');
+  const [amountReceivedInput, setAmountReceivedInput] = useState('0');
+  const [applyExistingAdvance, setApplyExistingAdvance] = useState(false);
+  const [advanceCreditInput, setAdvanceCreditInput] = useState('0');
+  const [itemDiscountInput, setItemDiscountInput] = useState('0');
   const [itemQuantity, setItemQuantity] = useState(1);
   const [itemDrafts, setItemDrafts] = useState<SaleItemDraft[]>([]);
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(() =>
@@ -235,8 +246,6 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     if (itemDrafts.length === 0) {
       setDiscountMode('fixed');
       setDiscountValue(0);
-      setPaymentStatus('paid');
-      setAmountPaidInput('');
     }
   };
 
@@ -410,6 +419,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         planId,
         quantity: itemQuantity,
         unitPrice: Number(price),
+        discount: Number(itemDiscountInput) || 0,
         startDate,
         durationDays: Number(durationDays),
         ...(serviceUsesAccounts ? {
@@ -441,11 +451,18 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     setDurationDays(item.durationDays);
     setCurrency(item.currency);
     setPrice(item.unitPrice);
+    setItemDiscountInput(String(item.discount || 0));
     setStep(2);
   };
   const selectedProfile = selectedAccount?.profiles?.find(p => p.id === profileId);
   const currentItemSubtotal = isCurrentItemActive && Number.isSafeInteger(itemQuantity) && itemQuantity > 0
     ? minorUnitsToAmount(amountToMinorUnits(Number(price)) * itemQuantity)
+    : 0;
+  const parsedCurrentItemDiscount = parseAmountToMinorUnits(itemDiscountInput);
+  const currentItemDiscountValid = !isCurrentItemActive
+    || (parsedCurrentItemDiscount !== null && parsedCurrentItemDiscount <= amountToMinorUnits(currentItemSubtotal));
+  const currentItemDiscount = isCurrentItemActive && parsedCurrentItemDiscount !== null
+    ? minorUnitsToAmount(parsedCurrentItemDiscount)
     : 0;
   const subtotal = minorUnitsToAmount(
     itemDrafts.reduce((total, item, index) => total + (index === editingItemIndex
@@ -454,17 +471,92 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       + amountToMinorUnits(currentItemSubtotal)
   );
   const subtotalMinor = amountToMinorUnits(subtotal);
+  const itemDiscountMinor = itemDrafts.reduce((total, item, index) => total
+    + (index === editingItemIndex ? 0 : amountToMinorUnits(item.discount || 0)), 0)
+    + (isCurrentItemActive ? amountToMinorUnits(currentItemDiscount) : 0);
+  const itemDiscountAmount = minorUnitsToAmount(itemDiscountMinor);
+  const globalDiscountableMinor = Math.max(0, subtotalMinor - itemDiscountMinor);
   const requestedDiscountMinor = discountMode === 'percentage'
-    ? Math.round(subtotalMinor * Math.max(0, Number(discountValue) || 0) / 100)
+    ? Math.round(globalDiscountableMinor * Math.max(0, Number(discountValue) || 0) / 100)
     : amountToMinorUnits(Math.max(0, Number(discountValue) || 0));
-  const discountAmount = minorUnitsToAmount(Math.min(subtotalMinor, requestedDiscountMinor));
+  const invoiceDiscountAmount = minorUnitsToAmount(Math.min(globalDiscountableMinor, requestedDiscountMinor));
+  const discountAmount = minorUnitsToAmount(itemDiscountMinor + amountToMinorUnits(invoiceDiscountAmount));
   const totalAmount = minorUnitsToAmount(Math.max(0, subtotalMinor - amountToMinorUnits(discountAmount)));
-  const amountPaid = paymentStatus === 'paid'
-    ? totalAmount
-    : paymentStatus === 'partial'
-      ? Number(amountPaidInput) || 0
-      : 0;
-  const dueAmount = Math.max(0, totalAmount - amountPaid);
+  const availableCustomerAdvance = selectedCustomer
+    ? getCustomerAdvanceCredit(payments, selectedCustomer.id, currency)
+    : 0;
+  const parsedAdvanceMinor = parseAmountToMinorUnits(advanceCreditInput);
+  const maxAdvanceToApply = Math.min(availableCustomerAdvance, totalAmount);
+  const advanceInputValid = !applyExistingAdvance
+    || (parsedAdvanceMinor !== null && parsedAdvanceMinor <= amountToMinorUnits(maxAdvanceToApply));
+  const advanceCreditToApply = applyExistingAdvance && advanceInputValid && parsedAdvanceMinor !== null
+    ? minorUnitsToAmount(parsedAdvanceMinor)
+    : 0;
+  const parsedAmountReceivedMinor = parseAmountToMinorUnits(amountReceivedInput);
+  const amountReceivedValid = parsedAmountReceivedMinor !== null;
+  const amountReceived = amountReceivedValid && parsedAmountReceivedMinor !== null
+    ? minorUnitsToAmount(parsedAmountReceivedMinor)
+    : 0;
+  const tenderAllocation = allocateInitialSalePayment(amountReceived, totalAmount, advanceCreditToApply);
+  const amountPaid = tenderAllocation.amountPaid;
+  const dueAmount = tenderAllocation.amountDue;
+  const paymentStatus = totalAmount > 0 && dueAmount === 0
+    ? 'paid'
+    : amountPaid > 0 ? 'partial' : 'pending';
+  const paymentLineDrafts: SaleItemDraft[] = itemDrafts.filter((_, index) => index !== editingItemIndex);
+  if (isCurrentItemActive && selectedService) {
+    paymentLineDrafts.push({
+      serviceId: selectedService.id,
+      serviceNameSnapshot: selectedService.name,
+      planId: selectedPlan?.id || '',
+      plan: plan || '',
+      quantity: itemQuantity,
+      unitPrice: Number(price) || 0,
+      discount: currentItemDiscount,
+      currency,
+      durationDays: Number(durationDays) || 0,
+      startDate,
+      units: itemAllocations,
+    });
+  }
+  const paymentLineNetMinor = paymentLineDrafts.map(item =>
+    Math.max(0, amountToMinorUnits(item.unitPrice) * item.quantity - amountToMinorUnits(item.discount || 0))
+  );
+  const invoiceDiscountMinor = amountToMinorUnits(invoiceDiscountAmount);
+  const paymentLineNetTotalMinor = paymentLineNetMinor.reduce((total, amount) => total + amount, 0);
+  let remainingInvoiceDiscountMinor = invoiceDiscountMinor;
+  const paymentLineInvoiceDiscountMinor = paymentLineNetMinor.map((amount, index) => {
+    const share = index === paymentLineNetMinor.length - 1
+      ? remainingInvoiceDiscountMinor
+      : paymentLineNetTotalMinor > 0
+        ? Math.min(
+          remainingInvoiceDiscountMinor,
+          Math.round(invoiceDiscountMinor * amount / paymentLineNetTotalMinor)
+        )
+        : 0;
+    remainingInvoiceDiscountMinor -= share;
+    return share;
+  });
+  const paymentLineTotalsMinor = paymentLineNetMinor.map((amount, index) =>
+    Math.max(0, amount - paymentLineInvoiceDiscountMinor[index])
+  );
+  const paymentLinePaidMinor = allocateMinorUnitsByWeight(
+    amountToMinorUnits(amountPaid),
+    paymentLineTotalsMinor
+  );
+  const paymentLineFinancials = paymentLineDrafts.map((item, index) => {
+    const totalMinor = paymentLineTotalsMinor[index];
+    const paidMinor = paymentLinePaidMinor[index];
+    return {
+      item,
+      total: minorUnitsToAmount(totalMinor),
+      paid: minorUnitsToAmount(paidMinor),
+      due: minorUnitsToAmount(Math.max(0, totalMinor - paidMinor)),
+      status: totalMinor > 0 && paidMinor >= totalMinor
+        ? 'paid'
+        : paidMinor > 0 ? 'partial' : 'pending',
+    };
+  });
   const customerDueByCurrency = useMemo(() => {
     if (!selectedCustomer) return [];
     const dueByCurrency = new Map<AppCurrency, number>();
@@ -609,6 +701,10 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       reportValidationError('Item quantity must be a positive whole number.', 3);
       return;
     }
+    if (!currentItemDiscountValid) {
+      reportValidationError('Item discount must be a valid amount no greater than this line subtotal.', 3);
+      return;
+    }
     if (!Number.isFinite(Number(price)) || Number(price) <= 0) {
       reportValidationError('Sale item price must be greater than zero.', 3);
       return;
@@ -656,6 +752,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       planId,
       quantity: itemQuantity,
       unitPrice: Number(price),
+      discount: currentItemDiscount,
       startDate,
       durationDays: Number(durationDays),
       ...(unitAllocations ? { units: unitAllocations } : {}),
@@ -674,6 +771,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     setPlanId('');
     setItemAllocations([{ accountId: '', profileId: '' }]);
     setItemQuantity(1);
+    setItemDiscountInput('0');
     setStepError('');
     setStep(remainingServiceIds.length > 0 ? 2 : 1);
   };
@@ -731,7 +829,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       reportValidationError('Enter a valid sale price.', 3);
       return;
     }
-    if (!Number.isFinite(totalAmount) || totalAmount <= 0 || discountValue < 0 || (discountMode === 'fixed' && discountValue > subtotal) || (discountMode === 'percentage' && discountValue > 100)) {
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0 || discountValue < 0 || (discountMode === 'fixed' && amountToMinorUnits(discountValue) > globalDiscountableMinor) || (discountMode === 'percentage' && discountValue > 100)) {
       reportValidationError('Enter a valid price and discount.', 3);
       return;
     }
@@ -749,12 +847,17 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       return;
     }
 
-    if (paymentStatus === 'partial' && !(amountPaid > 0 && amountPaid < totalAmount)) {
-      reportValidationError('Partial payment must be greater than zero and less than the total.', 3);
+    if (!currentItemDiscountValid || !advanceInputValid || !amountReceivedValid) {
+      reportValidationError('Check item discounts, the amount received, and the advance application amount.', 3);
       return;
     }
-    if (amountPaid > totalAmount || amountPaid < 0) {
-      reportValidationError('Amount paid cannot exceed the total.', 3);
+    if (!Number.isFinite(amountReceived) || amountReceived < 0 || !Number.isFinite(amountPaid) || amountPaid < 0) {
+      reportValidationError('Enter a valid amount received.', 3);
+      return;
+    }
+    if (!paymentDate || !Number.isFinite(Date.parse(`${paymentDate}T00:00:00`))
+      || paymentDate > getTodayDateString(settings.businessProfile?.timeZone)) {
+      reportValidationError('Choose a valid payment date that is not in the future.', 3);
       return;
     }
     if ((settings.paymentPreferences?.methods ?? ['bKash', 'Nagad', 'Rocket', 'Bank', 'Card', 'Cash', 'Other']).length === 0) {
@@ -765,7 +868,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       reportValidationError('Choose an enabled payment method.', 3);
       return;
     }
-    if (paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) && !transactionId.trim()) {
+    if (amountReceived > 0 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) && !transactionId.trim()) {
       reportValidationError('Enter the required transaction ID.', 3);
       return;
     }
@@ -781,6 +884,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         planId,
         quantity: itemQuantity,
         unitPrice: Number(price),
+        discount: currentItemDiscount,
         startDate,
         durationDays: Number(durationDays),
         ...(serviceUsesAccounts ? {
@@ -812,7 +916,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         subtotal,
         discount: discountAmount,
         price: totalAmount,
-        amountPaid,
+        amountReceived,
+        advanceCreditToApply,
+        paymentDate,
         currency,
         paymentMethod,
         paymentStatus,
@@ -821,7 +927,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         senderNumber: senderNumber.trim() || undefined,
         notes,
         operationId: saleOperationId.current,
-        ...(requestedItems.length > 1 || requestedItems.some(item => item.quantity > 1) ? {
+        ...(requestedItems.length > 1 || requestedItems.some(item => item.quantity > 1 || (item.discount || 0) > 0) ? {
           lineItems: requestedItems.map(({ currency: _currency, ...item }) => item),
         } : {}),
       });
@@ -837,7 +943,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
           result.sale,
           cust,
           srv,
-          [result.payment],
+          result.payments,
           settings,
           result.subscription,
           services,
@@ -937,7 +1043,8 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       || paymentNote.trim()
       || itemDrafts.length > 0
       || startDate !== getTodayDateString(settings.businessProfile?.timeZone)
-      || paymentStatus !== 'paid'
+      || amountReceivedInput !== '0'
+      || applyExistingAdvance
       || (preselectedCustomerId && customerId === preselectedCustomerId)
     );
     if (!completedSaleData && hasDraft) {
@@ -965,9 +1072,13 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     setNotes('');
     setDiscountMode('fixed');
     setDiscountValue(0);
-    setAmountPaidInput('');
-    setPaymentStatus('paid');
+    setAmountReceivedInput('0');
+    setApplyExistingAdvance(false);
+    setAdvanceCreditInput('0');
+    setPaymentDate(getTodayDateString(settings.businessProfile?.timeZone));
+    setPaymentNote('');
     setItemQuantity(1);
+    setItemDiscountInput('0');
     setItemDrafts([]);
     setSelectedServiceIds(preselectedServiceId ? [preselectedServiceId] : []);
     setIsCurrentItemActive(true);
@@ -1051,25 +1162,23 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     if (step === 3 && ((!isCurrentItemActive && itemDrafts.length === 0)
       || (isCurrentItemActive && (!Number.isSafeInteger(itemQuantity) || itemQuantity < 1))
       || !Number.isFinite(subtotal) || subtotal <= 0 || discountValue < 0
-      || (discountMode === 'fixed' && discountValue > subtotal)
+      || (discountMode === 'fixed' && amountToMinorUnits(discountValue) > globalDiscountableMinor)
       || (discountMode === 'percentage' && discountValue > 100) || totalAmount <= 0)) {
       reportValidationError('Enter at least one valid item, price, and discount.');
       return;
     }
-    if (step === 3 && paymentStatus === 'partial' && !(amountPaid > 0 && amountPaid < totalAmount)) {
-      reportValidationError('Partial payment must be greater than zero and less than the total.');
+    if (step === 3 && (totalAmount <= 0 || !amountReceivedValid || !advanceInputValid
+      || !currentItemDiscountValid || !paymentMethods.includes(paymentMethod))) {
+      reportValidationError('Check the sale total, discounts, amount received, and advance application before continuing.');
       return;
     }
-    if (step === 3 && (totalAmount <= 0 || amountPaid > totalAmount || !paymentMethods.includes(paymentMethod))) {
-      reportValidationError('Check the sale total and amount paid before continuing.');
+    if (step === 3 && (!paymentDate || !Number.isFinite(Date.parse(`${paymentDate}T00:00:00`))
+      || paymentDate > getTodayDateString(settings.businessProfile?.timeZone))) {
+      reportValidationError('Choose a valid payment date that is not in the future.');
       return;
     }
-    if (step === 3 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) && !transactionId.trim()) {
+    if (step === 3 && amountReceived > 0 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) && !transactionId.trim()) {
       reportValidationError('Enter the required transaction ID.');
-      return;
-    }
-    if (step === 3 && paymentStatus === 'paid' && amountPaid !== totalAmount) {
-      reportValidationError('Paid amount must equal the total.');
       return;
     }
     if (step === 3 && isCurrentItemActive && selectedServiceQueue.some(id => id !== serviceId)) {
@@ -1081,6 +1190,8 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
   const handleChooseCustomer = (id: string) => {
     setCustomerId(id);
+    setApplyExistingAdvance(false);
+    setAdvanceCreditInput('0');
     setShowCustomerPicker(false);
     setCustomerSearch('');
   };
@@ -1177,8 +1288,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5 dark:border-slate-700 dark:bg-slate-800/60">
         <div className="space-y-2">
           <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{summaryLineCount} line{summaryLineCount === 1 ? '' : 's'} · {summaryUnitCount} unit{summaryUnitCount === 1 ? '' : 's'}</p>
-          {itemDrafts.map((item, index) => {
-            if (index === editingItemIndex) return null;
+          {paymentLineFinancials.map(({ item, total, paid, due, status }, index) => {
             const lineSubtotal = minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity);
             const allocations = getItemAllocationSummary(item);
             return (
@@ -1192,22 +1302,14 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
                   {item.quantity} × {formatCurrency(item.unitPrice, item.currency)} · {formatDurationDays(item.durationDays)}
                 </p>
+                {(item.discount || 0) > 0 && <p className="mt-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">Item discount −{formatCurrency(item.discount || 0, item.currency)}</p>}
+                <p className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-300">
+                  Line total {formatCurrency(total, currency)} · Paid {formatCurrency(paid, currency)} · Due {formatCurrency(due, currency)} · {status === 'paid' ? 'Paid' : status === 'partial' ? 'Partially paid' : 'Unpaid'}
+                </p>
                 {allocations && <p className="mt-0.5 break-words text-[11px] text-slate-500 dark:text-slate-400">Fulfillment: {allocations}</p>}
               </div>
             );
           })}
-          {isCurrentItemActive && (
-            <div className="min-w-0 border-t border-slate-200 pt-2 dark:border-slate-700">
-              <div className="flex min-w-0 items-start justify-between gap-2">
-                <p className="min-w-0 break-words text-xs font-semibold text-slate-900 dark:text-white">{selectedService?.name || 'Choose a service'} · {plan || 'Choose a plan'}</p>
-                <span className="shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(currentItemSubtotal, currency)}</span>
-              </div>
-              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                {itemQuantity} × {formatCurrency(Number(price) || 0, currency)} · {formatDurationDays(Number(durationDays) || 0)}
-              </p>
-              {selectedAccount && <p className="mt-0.5 break-words text-[11px] text-slate-500 dark:text-slate-400">Fulfillment: {selectedAccount.email}{selectedProfile ? ` · ${selectedProfile.profileName}` : ''}</p>}
-            </div>
-          )}
         </div>
         <div className="space-y-2 border-t border-slate-200 pt-3 text-xs dark:border-slate-700">
           <div className="flex justify-between gap-3">
@@ -1217,14 +1319,17 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         </div>
         <div className="space-y-2 border-t border-slate-200 pt-3 text-xs dark:border-slate-700">
           <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Subtotal</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(subtotal, currency)}</span></div>
-          <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Sale discount</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">−{formatCurrency(discountAmount, currency)}</span></div>
+          <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Item discounts</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">−{formatCurrency(itemDiscountAmount, currency)}</span></div>
+          <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Sale discount</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">−{formatCurrency(invoiceDiscountAmount, currency)}</span></div>
           <div className="flex items-end justify-between gap-3 border-t border-slate-200 pt-2 dark:border-slate-700">
             <span className="font-bold text-slate-900 dark:text-white">Grand total</span>
             <span className="whitespace-nowrap font-mono text-lg font-extrabold tabular-nums text-violet-700 dark:text-violet-300">{formatCurrency(totalAmount, currency)}</span>
           </div>
           {step >= 3 && <>
-            <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Initial payment</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(amountPaid, currency)}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">New cash received</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(amountReceived, currency)}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Existing advance applied</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(tenderAllocation.advanceApplied, currency)}</span></div>
             <div className="flex justify-between gap-3"><span className="font-semibold text-slate-700 dark:text-slate-300">Outstanding due</span><span className="whitespace-nowrap font-semibold tabular-nums text-amber-700 dark:text-amber-300">{formatCurrency(dueAmount, currency)}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">New advance credit</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(tenderAllocation.advanceCreditCreated, currency)}</span></div>
           </>}
         </div>
       </div>
@@ -1243,7 +1348,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
           completedSaleData
             ? language === 'bn'
               ? completedSaleData.paymentStatus === 'failed' ? 'বিক্রয় রেকর্ড করা হয়েছে' : 'বিক্রয় সফল ও ডিজিটাল ইনভয়েস'
-              : completedSaleData.paymentStatus === 'failed' ? 'Sale Recorded' : 'Sale Completed Successfully'
+              : completedSaleData.paymentStatus === 'failed' ? 'Sale Recorded'
+                : completedSaleData.paymentStatus === 'paid' ? 'Sale completed · paid in full'
+                  : completedSaleData.paymentStatus === 'partial' ? 'Sale created · partial payment' : 'Sale created · unpaid'
             : language === 'bn'
             ? 'নতুন সাবস্ক্রিপশন বিক্রয় ও অ্যাক্টিভেশন'
             : 'New Sale'
@@ -1256,7 +1363,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 : 'সাবস্ক্রিপশন সক্রিয় হয়েছে। নিচে JPG রসিদ ডাউনলোড বা শেয়ার করুন।'
               : completedSaleData.paymentStatus === 'failed'
                 ? 'Payment failed. Inventory was not allocated.'
-                : 'Subscription activated. Your customer-ready JPG receipt is available below.'
+                : `Invoice ${completedSaleData.invoiceNo} created for ${completedSaleData.customerName}. Your customer-ready JPG receipt is available below.`
             : language === 'bn'
             ? 'কাস্টমার, সার্ভিস, অ্যাকাউন্ট ও প্রোফাইল নির্বাচন করে সরাসরি বিক্রয় রেকর্ড করুন।'
             : 'Create one customer sale with separate services, plans, and fulfillment details.'
@@ -1276,7 +1383,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 <ChevronRight className="h-4 w-4 shrink-0" />
               </button>
             ) : (
-              <button type="submit" form="new-sale-form" disabled={isSubmitting || !selectedCustomer || (!isCurrentItemActive && itemDrafts.length === 0) || (isCurrentItemActive && (!selectedService || !selectedPlan)) || !Number.isFinite(totalAmount) || totalAmount <= 0 || !Number.isFinite(amountPaid) || amountPaid < 0 || amountPaid > totalAmount || (isCurrentItemActive && Number(durationDays) < 1)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:px-4">
+              <button type="submit" form="new-sale-form" disabled={isSubmitting || !selectedCustomer || (!isCurrentItemActive && itemDrafts.length === 0) || (isCurrentItemActive && (!selectedService || !selectedPlan)) || !Number.isFinite(totalAmount) || totalAmount <= 0 || !amountReceivedValid || !advanceInputValid || !currentItemDiscountValid || !paymentDate || (isCurrentItemActive && Number(durationDays) < 1)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:px-4">
                 {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 <span className="truncate">{isSubmitting ? 'Completing Sale…' : 'Confirm & Create Sale'}</span>
               </button>
@@ -1297,7 +1404,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
               <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
               {language === 'bn'
                 ? completedSaleData.paymentStatus === 'failed' ? 'বিক্রয় রেকর্ড করা হয়েছে' : 'বিক্রয় সফলভাবে সম্পন্ন হয়েছে!'
-                : completedSaleData.paymentStatus === 'failed' ? 'Sale Recorded · Payment Failed' : 'Sale Completed Successfully!'}
+                : completedSaleData.paymentStatus === 'failed' ? 'Sale Recorded · Payment Failed'
+                  : completedSaleData.paymentStatus === 'paid' ? 'Sale paid in full'
+                    : completedSaleData.paymentStatus === 'partial' ? 'Sale created · partial payment' : 'Sale created · unpaid'}
             </h2>
             <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-md mx-auto">
               {language === 'bn'
@@ -1334,6 +1443,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                       <div className="min-w-0">
                         <p className="break-words font-semibold text-slate-900 dark:text-white">{item.serviceName} · {item.planName}</p>
                         <p className="mt-0.5 text-slate-600 dark:text-slate-300">{item.quantity} × {formatCurrency(item.unitPrice, item.currency)} = {formatCurrency(item.subtotal, item.currency)}</p>
+                        {(item.discount || 0) > 0 && <p className="mt-0.5 text-emerald-700 dark:text-emerald-300">Item discount −{formatCurrency(item.discount || 0, item.currency)} · Line total {formatCurrency(item.total ?? item.subtotal - (item.discount || 0), item.currency)}</p>}
                         <p className="mt-0.5 text-slate-500 dark:text-slate-400">
                           {item.durationDays ? `${formatDurationDays(item.durationDays)} · ` : ''}
                           {item.startDate ? formatAppDate(item.startDate, language) : '—'} to {item.expiryDate ? formatAppDate(item.expiryDate, language) : '—'}
@@ -1365,10 +1475,13 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 </>
               )}
 
-              <div className="grid gap-3 border-t border-slate-200/70 pt-3 dark:border-slate-700 sm:grid-cols-3">
+              <div className="grid gap-3 border-t border-slate-200/70 pt-3 dark:border-slate-700 sm:grid-cols-2 lg:grid-cols-3">
                 <div><p className="text-[11px] font-medium text-slate-500">Total</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-slate-900 dark:text-white">{formatCurrency(completedSaleData.amount, completedSaleData.currency)}</p></div>
-                <div><p className="text-[11px] font-medium text-slate-500">Paid</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{formatCurrency(completedSaleData.amountPaid ?? completedSaleData.amount, completedSaleData.currency)}</p></div>
-                <div><p className="text-[11px] font-medium text-slate-500">Due</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-amber-700 dark:text-amber-300">{formatCurrency(completedSaleData.amountDue ?? 0, completedSaleData.currency)}</p></div>
+                <div><p className="text-[11px] font-medium text-slate-500">New cash received</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-slate-900 dark:text-white">{formatCurrency(completedSaleData.amountReceived ?? 0, completedSaleData.currency)}</p></div>
+                <div><p className="text-[11px] font-medium text-slate-500">Paid toward sale</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{formatCurrency(completedSaleData.amountPaid ?? 0, completedSaleData.currency)}</p></div>
+                <div><p className="text-[11px] font-medium text-slate-500">Existing advance applied</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-slate-900 dark:text-white">{formatCurrency(completedSaleData.advanceCreditApplied ?? 0, completedSaleData.currency)}</p></div>
+                <div><p className="text-[11px] font-medium text-slate-500">Outstanding due</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-amber-700 dark:text-amber-300">{formatCurrency(completedSaleData.amountDue ?? 0, completedSaleData.currency)}</p></div>
+                <div><p className="text-[11px] font-medium text-slate-500">New advance credit</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{formatCurrency(completedSaleData.advanceCreditCreated ?? 0, completedSaleData.currency)}</p></div>
               </div>
             </div>
 
@@ -1719,8 +1832,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                       <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">{t('price')} · {t('currency')}</span><p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-base font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{selectedPlan ? formatCurrency(selectedPlan.price, selectedPlan.currency) : 'Choose an active plan'}</p><span className="block text-[11px] font-normal">Price and currency are set by the selected plan.</span></div>
                       <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">Duration</span><p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{selectedPlan ? formatDurationDays(selectedPlan.durationDays) : 'Choose a plan'}</p></div>
                     </div>
+                    <label className="block max-w-sm space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Item discount</span><input aria-label="Item discount amount" type="number" min={0} max={currentItemSubtotal} step={currency === 'USD' ? '0.01' : '1'} value={itemDiscountInput} onChange={event => setItemDiscountInput(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /><span className="block text-[11px] font-normal">Applied only to this service line.</span></label>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Sale discount</span><div className="flex gap-2"><input aria-label="Discount amount" type="number" min={0} max={discountMode === 'percentage' ? 100 : subtotal} step={currency === 'USD' ? '0.01' : '1'} value={discountValue} onChange={event => setDiscountValue(Number(event.target.value))} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /><select aria-label="Discount type" value={discountMode} onChange={event => setDiscountMode(event.target.value as 'fixed' | 'percentage')} className="rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="fixed">Fixed</option><option value="percentage">Percent</option></select></div></label>
+                      <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Sale discount</span><div className="flex gap-2"><input aria-label="Discount amount" type="number" min={0} max={discountMode === 'percentage' ? 100 : minorUnitsToAmount(globalDiscountableMinor)} step={currency === 'USD' ? '0.01' : '1'} value={discountValue} onChange={event => setDiscountValue(Number(event.target.value))} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /><select aria-label="Discount type" value={discountMode} onChange={event => setDiscountMode(event.target.value as 'fixed' | 'percentage')} className="rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="fixed">Fixed</option><option value="percentage">Percent</option></select></div></label>
                       <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800/60"><div className="flex justify-between"><span className="text-slate-500">Order subtotal</span><span>{formatCurrency(subtotal || 0, currency)}</span></div><div className="flex justify-between"><span className="text-slate-500">Sale discount</span><span>−{formatCurrency(discountAmount, currency)}</span></div><div className="flex justify-between border-t border-slate-200 pt-2 font-bold dark:border-slate-700"><span>Grand total</span><span className="text-emerald-700 dark:text-emerald-300">{formatCurrency(totalAmount, currency)}</span></div></div>
                     </div>
                   </section>
@@ -1728,13 +1842,36 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
                 {step === 3 && (
                   <section aria-labelledby="sale-payment-title" className="space-y-4">
-                    <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5"><div><h2 id="sale-payment-title" className="text-base font-bold text-slate-900 dark:text-white">Payment details</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose an enabled method. {settings.paymentPreferences?.requireTransactionId ? 'A transaction ID is required by your payment settings.' : 'A transaction ID is optional.'}</p></div>
+                    <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5"><div><h2 id="sale-payment-title" className="text-base font-bold text-slate-900 dark:text-white">Payment details</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose an enabled method. {settings.paymentPreferences?.requireTransactionId && amountReceived > 0 ? 'A transaction ID is required for received cash.' : 'A transaction ID is optional when no cash is received.'}</p></div>
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{t('paymentMethod')}</span><select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white">{paymentMethods.length ? paymentMethods.map(method => <option key={method} value={method}>{method === 'Bank' ? 'Bank transfer' : method}</option>) : <option value="">No active payment methods</option>}</select></label>
-                        <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Payment Status</span><select value={paymentStatus} onChange={e => { const status = e.target.value as PaymentStatus; setPaymentStatus(status); if (status === 'partial') setAmountPaidInput(String(Math.max(0, Math.round(totalAmount / 2 * 100) / 100))); }} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="paid">Paid</option><option value="partial">Partial</option><option value="pending">Pending</option><option value="failed">Failed</option></select></label>
-                        <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Amount Paid</span><input aria-label="Amount paid" type="number" min={0} max={totalAmount} step={currency === 'USD' ? '0.01' : '1'} disabled={paymentStatus !== 'partial'} value={paymentStatus === 'paid' ? totalAmount : paymentStatus === 'partial' ? amountPaidInput : 0} onChange={event => setAmountPaidInput(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white disabled:opacity-70" /></label>
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-800/60"><div className="flex justify-between"><span>Total</span><span>{formatCurrency(totalAmount, currency)}</span></div><div className="mt-1 flex justify-between"><span>Paid</span><span>{formatCurrency(amountPaid, currency)}</span></div><div className="mt-1 flex justify-between font-semibold"><span>Due</span><span>{formatCurrency(dueAmount, currency)}</span></div></div>
-                        <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{t('transactionId')} <span className="font-normal text-slate-400">({paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) ? 'required' : 'optional'})</span></span><input aria-label="Transaction ID" required={paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId)} type="text" value={transactionId} onChange={e => setTransactionId(e.target.value)} placeholder="Enter transaction ID" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
+                        <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{t('paymentMethod')}</span><select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white">{paymentMethods.length ? paymentMethods.map(method => <option key={method} value={method}>{method === 'Bank' ? 'Bank transfer' : method}</option>) : <option value="">No active payment methods</option>}</select></label>
+                        <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Payment date</span><input aria-label="Payment date" type="date" max={getTodayDateString(settings.businessProfile?.timeZone)} value={paymentDate} onChange={event => setPaymentDate(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
+                        <div className="space-y-2 sm:col-span-2">
+                          <label className="block space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>New cash received</span><input aria-label="New cash received" type="number" min={0} step={currency === 'USD' ? '0.01' : '1'} value={amountReceivedInput} onChange={event => setAmountReceivedInput(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-base text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
+                          <div className="flex flex-wrap gap-2">
+                            <button type="button" onClick={() => setAmountReceivedInput(String(totalAmount))} className="min-h-9 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Pay full</button>
+                            <button type="button" onClick={() => setAmountReceivedInput(String(minorUnitsToAmount(Math.floor(amountToMinorUnits(totalAmount) / 2))))} className="min-h-9 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Enter partial</button>
+                            <button type="button" onClick={() => setAmountReceivedInput('0')} className="min-h-9 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Leave unpaid</button>
+                          </div>
+                        </div>
+                        <div className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700 sm:col-span-2">
+                          <label className="flex items-start gap-2 text-xs font-semibold text-slate-800 dark:text-slate-100"><input type="checkbox" checked={applyExistingAdvance} disabled={availableCustomerAdvance <= 0 || totalAmount <= 0} onChange={event => {
+                            const shouldApply = event.target.checked;
+                            setApplyExistingAdvance(shouldApply);
+                            setAdvanceCreditInput(shouldApply ? String(maxAdvanceToApply) : '0');
+                          }} className="mt-0.5 h-4 w-4 accent-violet-600" /><span>Apply existing customer advance <span className="block pt-0.5 font-normal text-slate-500 dark:text-slate-400">Available: {formatCurrency(availableCustomerAdvance, currency)} · this is stored credit, not new cash.</span></span></label>
+                          {applyExistingAdvance && <label className="block space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Advance to apply (up to {formatCurrency(maxAdvanceToApply, currency)})</span><input aria-label="Advance credit to apply" type="number" min={0} max={maxAdvanceToApply} step={currency === 'USD' ? '0.01' : '1'} value={advanceCreditInput} onChange={event => setAdvanceCreditInput(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />{!advanceInputValid && <span className="block text-rose-700 dark:text-rose-300">Enter no more than the available balance or sale total.</span>}</label>}
+                        </div>
+                        <div className="grid gap-2 rounded-xl border border-violet-200 bg-violet-50/60 p-3 text-xs dark:border-violet-900/60 dark:bg-violet-950/20 sm:col-span-2 sm:grid-cols-2">
+                          <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-300">Grand total</span><span className="font-semibold">{formatCurrency(totalAmount, currency)}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-300">New cash received</span><span>{formatCurrency(amountReceived, currency)}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-300">Cash allocated to sale</span><span>{formatCurrency(tenderAllocation.cashApplied, currency)}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-300">Existing advance applied</span><span>{formatCurrency(tenderAllocation.advanceApplied, currency)}</span></div>
+                          <div className="flex justify-between font-bold text-rose-700 dark:text-rose-300"><span>Outstanding due</span><span>{formatCurrency(dueAmount, currency)}</span></div>
+                          <div className="flex justify-between font-semibold text-emerald-700 dark:text-emerald-300"><span>New advance credit</span><span>{formatCurrency(tenderAllocation.advanceCreditCreated, currency)}</span></div>
+                          <div className="sm:col-span-2"><span className="inline-flex rounded-full bg-white px-2.5 py-1 font-bold capitalize text-violet-800 dark:bg-slate-900 dark:text-violet-200">{paymentStatus === 'paid' ? 'Fully paid' : paymentStatus === 'partial' ? 'Partially paid' : 'Unpaid'}</span>{tenderAllocation.advanceCreditCreated > 0 && <p className="mt-1.5 text-slate-600 dark:text-slate-300">The amount above the sale balance will be added to this customer’s advance credit.</p>}</div>
+                        </div>
+                        <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{t('transactionId')} <span className="font-normal text-slate-400">({amountReceived > 0 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) ? 'required' : 'optional'})</span></span><input aria-label="Transaction ID" required={amountReceived > 0 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId)} type="text" value={transactionId} onChange={e => setTransactionId(e.target.value)} placeholder="Enter transaction ID" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
                         <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{t('senderNumber')} <span className="font-normal text-slate-400">(optional)</span></span><input aria-label="Payment sender number" type="tel" value={senderNumber} onChange={e => setSenderNumber(e.target.value)} placeholder="Enter sender number" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
                         <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Payment note (optional)</span><textarea aria-label="Payment note" value={paymentNote} onChange={e => setPaymentNote(e.target.value)} rows={2} className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
                         <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Internal sale notes <span className="font-normal text-slate-400">(optional)</span></span><textarea aria-label="Internal sale notes" value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
@@ -1752,6 +1889,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                           <div className="min-w-0">
                             <p className="break-words font-semibold text-slate-900 dark:text-white">{item.serviceNameSnapshot || services.find(candidate => candidate.id === item.serviceId)?.name || 'Service'} · {item.plan}</p>
                             <p className="text-slate-500 dark:text-slate-400">{item.quantity} × {formatCurrency(item.unitPrice, item.currency)} = {formatCurrency(minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity), item.currency)} · {formatAppDate(item.startDate, language)} · {formatDurationDays(item.durationDays)}</p>
+                            {(item.discount || 0) > 0 && <p className="text-emerald-700 dark:text-emerald-300">Item discount −{formatCurrency(item.discount || 0, item.currency)} · Line total {formatCurrency(minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity - amountToMinorUnits(item.discount || 0)), item.currency)}</p>}
                             {getItemAllocationSummary(item) && <p className="mt-0.5 break-words text-slate-500 dark:text-slate-400">Fulfillment: {getItemAllocationSummary(item)}</p>}
                           </div>
                           <div className="flex shrink-0 gap-1"><button type="button" onClick={() => handleEditSaleItem(index)} className="rounded-md px-2 py-1 font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-slate-700">Edit</button><button type="button" onClick={() => setItemDrafts(current => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remove ${item.plan} item`} className="rounded-md px-2 py-1 font-semibold text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">Remove</button></div>
@@ -1762,6 +1900,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                       <div className="min-w-0">
                         <p className="truncate text-xs font-bold text-slate-900 dark:text-white">{selectedService?.name || 'Service'} · {plan || 'Plan'}</p>
                         <p className="text-[11px] text-slate-600 dark:text-slate-300">{itemQuantity} × {formatCurrency(Number(price) || 0, currency)} = {formatCurrency(currentItemSubtotal, currency)} · {formatAppDate(startDate, language)} · {formatDurationDays(Number(durationDays))}</p>
+                        {currentItemDiscount > 0 && <p className="text-[11px] text-emerald-700 dark:text-emerald-300">Item discount −{formatCurrency(currentItemDiscount, currency)} · Line total {formatCurrency(minorUnitsToAmount(amountToMinorUnits(currentItemSubtotal) - amountToMinorUnits(currentItemDiscount)), currency)}</p>}
                       </div>
                     </div>}
                     <button type="button" onClick={handleAddSaleItem} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-violet-300 bg-white px-4 text-sm font-semibold text-violet-800 hover:bg-violet-50 dark:border-violet-700 dark:bg-slate-900 dark:text-violet-300 dark:hover:bg-violet-950/50"><Plus className="h-4 w-4" />Add Another Item</button>
@@ -1779,8 +1918,10 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                       <div className="flex justify-between"><span className="text-slate-500">Items ({itemDrafts.length - (editingItemIndex === null ? 0 : 1) + (isCurrentItemActive ? 1 : 0)} lines · {itemDrafts.reduce((sum, item, index) => sum + (index === editingItemIndex ? 0 : item.quantity), 0) + (isCurrentItemActive ? itemQuantity : 0)} units)</span><span>{formatCurrency(subtotal, currency)}</span></div>
                       <div className="flex justify-between"><span className="text-slate-500">Discount</span><span>−{formatCurrency(discountAmount, currency)}</span></div>
                       <div className="flex justify-between border-t border-slate-200 pt-2 font-semibold dark:border-slate-700"><span>Total</span><span>{formatCurrency(totalAmount, currency)}</span></div>
-                      <div className="flex justify-between"><span className="text-slate-500">Paid</span><span>{formatCurrency(amountPaid, currency)}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-500">New cash received</span><span>{formatCurrency(amountReceived, currency)}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-500">Existing advance applied</span><span>{formatCurrency(tenderAllocation.advanceApplied, currency)}</span></div>
                       <div className="flex justify-between font-bold text-emerald-700 dark:text-emerald-300"><span>Due</span><span>{formatCurrency(dueAmount, currency)}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-500">New advance credit</span><span>{formatCurrency(tenderAllocation.advanceCreditCreated, currency)}</span></div>
                     </div>
                   </section>
                 )}

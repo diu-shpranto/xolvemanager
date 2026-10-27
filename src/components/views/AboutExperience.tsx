@@ -8,6 +8,7 @@ import type { LucideIcon } from 'lucide-react';
 import { ProductLogo } from '../common/BrandLockup';
 import { productBrand } from '../../config/brand';
 import type { NavSection } from '../navigation/Sidebar';
+import { XolveKartEcosystemSection } from './XolveKartEcosystemSection';
 
 interface AboutExperienceProps {
   currentBusinessName: string;
@@ -461,5 +462,6 @@ export const AboutExperience: React.FC<AboutExperienceProps> = ({
         <FileText aria-hidden="true" /> In-app data and backup guidance is available in Data &amp; Storage settings.
       </p>
     </footer>
+    <XolveKartEcosystemSection />
   </div>
 );

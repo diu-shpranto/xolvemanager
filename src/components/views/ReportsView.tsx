@@ -45,7 +45,12 @@ import {
   getComparisonDateBounds,
   sumPaymentRecords,
 } from '../../utils/reportMetrics';
-import { getSaleLineItems, getSalePaymentStatus } from '../../utils/saleUtils';
+import {
+  getSaleLineItems,
+  getSaleSubscriptionFinancialAllocations,
+  getSalePaymentStatus,
+  getSaleSubscriptionIds,
+} from '../../utils/saleUtils';
 import { getPaymentMethodSummary, normalizePaymentMethods } from '../../utils/paymentMethods';
 import { getCustomerDisplayName, getCustomerOptionLabel } from '../../utils/relationships';
 import { getOpenReminders, getOverdueReminders } from '../../services/reminderEngine';
@@ -246,6 +251,25 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const businessSales = useMemo(() => isInBusiness(sales), [sales, currentBusiness?.businessId]);
   const businessPayments = useMemo(() => isInBusiness(payments), [payments, currentBusiness?.businessId]);
   const businessSubscriptions = useMemo(() => isInBusiness(subscriptions), [subscriptions, currentBusiness?.businessId]);
+  const subscriptionPaymentStatuses = useMemo(() => {
+    const statuses = new Map<string, PaymentStatus>();
+    businessSales.forEach(sale => {
+      const saleStatus = getSalePaymentStatus(sale, businessPayments);
+      const allocations = new Map<string, PaymentStatus>();
+      getSaleSubscriptionFinancialAllocations(sale, businessPayments).forEach(allocation =>
+        allocations.set(allocation.subscriptionId, allocation.paymentStatus)
+      );
+      getSaleSubscriptionIds(sale).forEach(subscriptionId => {
+        statuses.set(subscriptionId, allocations.get(subscriptionId) || saleStatus);
+      });
+    });
+    return statuses;
+  }, [businessSales, businessPayments]);
+  const resolveSubscriptionPaymentStatus = useCallback(
+    (subscription: Subscription) =>
+      subscriptionPaymentStatuses.get(subscription.id) || subscription.paymentStatus,
+    [subscriptionPaymentStatuses]
+  );
   const businessCustomers = useMemo(() => isInBusiness(customers), [customers, currentBusiness?.businessId]);
   const businessServices = useMemo(() => isInBusiness(services), [services, currentBusiness?.businessId]);
   const businessAccounts = useMemo(() => isInBusiness(accounts), [accounts, currentBusiness?.businessId]);
@@ -550,7 +574,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       && (serviceFilter === 'all' || subscription.serviceId === serviceFilter)
       && (planFilter === 'all' || subscription.planId === planFilter)
       && (customerFilter === 'all' || subscription.customerId === customerFilter)
-      && (statusFilter === 'all' || subscription.paymentStatus === statusFilter)
+      && (statusFilter === 'all' || resolveSubscriptionPaymentStatus(subscription) === statusFilter)
       && (subscriptionStatusFilter === 'all' || (() => {
         const status = getSubscriptionStatus(
           subscription,
@@ -562,6 +586,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       })())
     )
     : [], [businessSubscriptions, bounds, boundsAreValid, serviceFilter, planFilter, customerFilter, statusFilter,
+      resolveSubscriptionPaymentStatus,
       subscriptionStatusFilter, businessServices, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
 
   const reportInvoices = useMemo(() => boundsAreValid
@@ -805,7 +830,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         if (serviceFilter !== 'all' && subscription.serviceId !== serviceFilter) return false;
         if (planFilter !== 'all' && subscription.planId !== planFilter) return false;
         if (customerFilter !== 'all' && subscription.customerId !== customerFilter) return false;
-        if (statusFilter !== 'all' && subscription.paymentStatus !== statusFilter) return false;
+        if (statusFilter !== 'all' && resolveSubscriptionPaymentStatus(subscription) !== statusFilter) return false;
         const state = subscriptionState(subscription);
         return state === 'ending' || state === 'expired';
       })
@@ -816,7 +841,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         amount: convertReportCurrency(Number(subscription.price) || 0, subscription.currency, currency),
       }));
     return [...renewed, ...expiryRows].sort((left, right) => right.date.localeCompare(left.date));
-  }, [renewalSales, businessSubscriptions, currency, bounds, boundsAreValid, serviceFilter, planFilter, customerFilter, statusFilter, subscriptionState]);
+  }, [renewalSales, businessSubscriptions, currency, bounds, boundsAreValid, serviceFilter, planFilter, customerFilter, statusFilter, subscriptionState, resolveSubscriptionPaymentStatus]);
 
   const invoiceRows = reportInvoices.map(invoice => {
     const sale = businessSales.find(item => item.id === invoice.saleId);
@@ -902,7 +927,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     && (serviceFilter === 'all' || subscription.serviceId === serviceFilter)
     && (planFilter === 'all' || subscription.planId === planFilter)
     && (customerFilter === 'all' || subscription.customerId === customerFilter)
-    && (statusFilter === 'all' || subscription.paymentStatus === statusFilter)
+    && (statusFilter === 'all' || resolveSubscriptionPaymentStatus(subscription) === statusFilter)
   ) : [];
   const accountPeriodSummary = boundsAreValid
     ? getFinancialAccountPeriodSummary(financialRecords.accounts, financialLedger, bounds, currency)
@@ -1059,7 +1084,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     && (serviceFilter === 'all' || subscription.serviceId === serviceFilter)
     && (planFilter === 'all' || subscription.planId === planFilter)
     && (customerFilter === 'all' || subscription.customerId === customerFilter)
-    && (statusFilter === 'all' || subscription.paymentStatus === statusFilter)
+    && (statusFilter === 'all' || resolveSubscriptionPaymentStatus(subscription) === statusFilter)
   );
 
   const reportSearch = tableSearch.trim().toLocaleLowerCase();
@@ -1224,7 +1249,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     && (serviceFilter === 'all' || subscription.serviceId === serviceFilter)
     && (planFilter === 'all' || subscription.planId === planFilter)
     && (customerFilter === 'all' || subscription.customerId === customerFilter)
-    && (statusFilter === 'all' || subscription.paymentStatus === statusFilter)
+    && (statusFilter === 'all' || resolveSubscriptionPaymentStatus(subscription) === statusFilter)
   ).length;
   const previousNewCustomerCount = comparisonBounds && comparisonIsValid
     ? businessCustomers.filter(customer =>

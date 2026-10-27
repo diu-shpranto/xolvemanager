@@ -75,7 +75,14 @@ import { getExpiryWhatsAppTemplateId } from '../../utils/whatsappService';
 import { createRecordId } from '../../services/localStorageStore';
 import { InvoiceSaleDetails } from '../../utils/invoiceGenerator';
 import { buildInvoiceSaleDetails } from '../../utils/invoiceUtils';
-import { getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus, getSaleSubscriptionIds } from '../../utils/saleUtils';
+import {
+  getSaleDueAmount,
+  getSaleLineItems,
+  getSalePaidAmount,
+  getSalePaymentStatus,
+  getSaleSubscriptionFinancialAllocations,
+  getSaleSubscriptionIds,
+} from '../../utils/saleUtils';
 import { getDefaultPaymentMethod, normalizePaymentMethods, paymentMethodRequiresTransactionId } from '../../utils/paymentMethods';
 import { getAccountCapacity, getAvailableProfiles, isAccountOperational } from '../../utils/resourceManagement';
 import { normalizePhoneDigits, normalizeSearchText } from '../../services/globalSearch';
@@ -272,8 +279,18 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     const accountById = new Map(accounts.map(account => [account.id, account]));
     const saleBySubscriptionId = new Map<string, typeof sales[number]>();
     const saleById = new Map(sales.map(sale => [sale.id, sale]));
+    const saleAllocationsBySubscriptionId = new Map<string, {
+      saleId: string;
+      allocation: ReturnType<typeof getSaleSubscriptionFinancialAllocations>[number];
+    }>();
     sales.forEach(sale => {
       getSaleSubscriptionIds(sale).forEach(subscriptionId => saleBySubscriptionId.set(subscriptionId, sale));
+      getSaleSubscriptionFinancialAllocations(sale, payments).forEach(allocation =>
+        saleAllocationsBySubscriptionId.set(allocation.subscriptionId, {
+          saleId: sale.id,
+          allocation,
+        })
+      );
     });
     const paymentBySaleId = new Map<string, typeof payments>();
     const paymentBySubscriptionId = new Map<string, typeof payments>();
@@ -298,13 +315,22 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       const relatedPayments = sale
         ? [...(paymentBySaleId.get(sale.id) || []), ...(paymentBySubscriptionId.get(subscription.id) || [])]
         : [];
-      const paymentStatus = sale
-        ? getSalePaymentStatus(sale, relatedPayments)
-        : subscription.paymentStatus;
-      const paid = sale ? getSalePaidAmount(sale, relatedPayments)
-        : paymentStatus === 'paid' ? subscription.price : 0;
-      const due = sale ? getSaleDueAmount(sale, relatedPayments)
-        : Math.max(0, subscription.price - paid);
+      const linkedSaleAllocation = saleAllocationsBySubscriptionId.get(subscription.id);
+      const saleAllocation = linkedSaleAllocation?.saleId === sale?.id
+        ? linkedSaleAllocation.allocation
+        : undefined;
+      const paymentStatus = saleAllocation?.paymentStatus
+        || (sale ? getSalePaymentStatus(sale, relatedPayments) : subscription.paymentStatus);
+      const amount = saleAllocation?.amount ?? (sale ? sale.amount : subscription.price);
+      const paid = saleAllocation?.paid ?? (sale
+        ? getSalePaidAmount(sale, relatedPayments)
+        : paymentStatus === 'paid' ? subscription.price : 0);
+      const due = saleAllocation?.due ?? (sale
+        ? getSaleDueAmount(sale, relatedPayments)
+        : Math.max(0, subscription.price - paid));
+      const paymentScope = saleAllocation
+        ? saleAllocation.item.quantity > 1 || getSaleLineItems(sale).length > 1 ? 'pro-rata' : 'invoice'
+        : sale ? 'invoice' : 'subscription';
       const status = getSubscriptionStatus(
         subscription,
         service,
@@ -325,7 +351,9 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         account,
         profile,
         sale,
+        amount,
         paymentStatus,
+        paymentScope,
         paid,
         due,
         status,
@@ -996,8 +1024,8 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
 
   const handleExportSubscriptions = () => {
     const rows = [
-      ['Subscription ID', 'Customer', 'Phone', 'Service', 'Plan', 'Account', 'Profile', 'Start Date', 'Expiry Date', 'Status', 'Total', 'Paid', 'Due', 'Payment Status'],
-      ...subscriptionRows.map(({ subscription, customer, service, account, profile, sale, status, paid, due, paymentStatus }) => [
+      ['Subscription ID', 'Customer', 'Phone', 'Service', 'Plan', 'Account', 'Profile', 'Start Date', 'Expiry Date', 'Status', 'Amount / allocated share', 'Paid', 'Due', 'Payment Status', 'Payment scope'],
+      ...subscriptionRows.map(({ subscription, customer, service, account, profile, amount, status, paid, due, paymentStatus, paymentScope }) => [
         subscription.id,
         customer?.name || '',
         customer?.phone || customer?.whatsapp || '',
@@ -1008,10 +1036,11 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         subscription.startDate,
         subscription.expiryDate,
         status,
-        sale?.amount ?? subscription.price,
+        amount,
         paid,
         due,
         paymentStatus,
+        paymentScope === 'pro-rata' ? 'Estimated pro-rata allocation' : paymentScope === 'invoice' ? 'Parent invoice' : 'Subscription',
       ]),
     ];
     const content = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
@@ -1429,9 +1458,12 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                       {/* Price Tag */}
                       <div className="text-right shrink-0">
                         <span className="font-mono font-bold text-xs text-slate-900 dark:text-white block tabular-nums">
-                          {formatCurrency(sub.price, sub.currency || currency)}
+                          {formatCurrency(row?.amount ?? sub.price, sub.currency || currency)}
                         </span>
                         <span className="text-[9px] font-mono text-slate-400 uppercase block">
+                        {row?.paymentScope === 'pro-rata'
+                          ? 'Estimated share · '
+                          : row?.paymentScope === 'invoice' ? 'Invoice · ' : ''}
                         {row?.paymentStatus ?? sub.paymentStatus} · Due {formatCurrency(row?.due ?? 0, sub.currency || currency)}
                         </span>
                       </div>
@@ -1990,11 +2022,11 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
 
                   <div className="space-y-1.5 text-xs">
                     <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
-                      <span className="text-slate-400">Total:</span>
+                      <span className="text-slate-400">{selectedSale ? 'Invoice total:' : 'Total:'}</span>
                       <span className="font-bold text-slate-900 dark:text-white">{formatCurrency(selectedPaymentSummary.total, selectedSub.currency)}</span>
                     </div>
                     <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
-                      <span className="text-slate-400">Paid / Due:</span>
+                      <span className="text-slate-400">{selectedSale ? 'Invoice paid / due:' : 'Paid / Due:'}</span>
                       <span className="font-bold text-slate-900 dark:text-white">{formatCurrency(selectedPaymentSummary.paid, selectedSub.currency)} / {formatCurrency(selectedPaymentSummary.due, selectedSub.currency)}</span>
                     </div>
                     <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
@@ -2031,7 +2063,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                       )}
                     </div>
                     <div className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
-                      <span className="text-slate-400">Payment Status:</span>
+                      <span className="text-slate-400">{selectedSale ? 'Invoice payment status:' : 'Payment Status:'}</span>
                       <span
                         className={`font-mono font-bold px-2 py-0.5 rounded-md text-[11px] uppercase ${
                           selectedPaymentSummary.status === 'paid'

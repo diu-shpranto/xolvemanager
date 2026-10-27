@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  allocateInitialSalePayment,
   amountToMinorUnits,
   applyAdvanceCreditToSale,
   getCustomerAdvanceCredit,
   getPaymentCashSaleAllocation,
   getPaymentRecognizedAmount,
   getSaleDueAmount,
+  getSaleLineAllocations,
   getSalePaidAmount,
   getSalePaymentStatus,
   splitPaymentAllocation,
@@ -18,6 +20,7 @@ import {
   replaceRawValuesAtomically,
   setActiveDataEnvironment,
 } from '../src/services/localStorageStore.ts';
+import { buildInvoiceSaleDetails } from '../src/utils/invoiceUtils.ts';
 
 const createSale = (overrides = {}) => ({
   id: 'sale-1',
@@ -72,6 +75,154 @@ test('partial payment preserves the remaining due and caps overpayment allocatio
   assert.equal(getSaleDueAmount(sale, [partial]), 90);
   assert.equal(getSalePaymentStatus(sale, [partial]), 'partial');
   assert.deepEqual(allocation, { allocatedAmount: 90, advanceCreditAmount: 60 });
+});
+
+test('initial checkout calculates unpaid, partial, and exact-payment allocations', () => {
+  assert.deepEqual(allocateInitialSalePayment(0, 1000), {
+    amountReceived: 0,
+    cashApplied: 0,
+    advanceApplied: 0,
+    advanceCreditCreated: 0,
+    amountPaid: 0,
+    amountDue: 1000,
+  });
+  assert.deepEqual(allocateInitialSalePayment(275.25, 1000), {
+    amountReceived: 275.25,
+    cashApplied: 275.25,
+    advanceApplied: 0,
+    advanceCreditCreated: 0,
+    amountPaid: 275.25,
+    amountDue: 724.75,
+  });
+  assert.deepEqual(allocateInitialSalePayment(1000, 1000), {
+    amountReceived: 1000,
+    cashApplied: 1000,
+    advanceApplied: 0,
+    advanceCreditCreated: 0,
+    amountPaid: 1000,
+    amountDue: 0,
+  });
+});
+
+test('initial checkout separates cash, existing advance, and excess credit', () => {
+  assert.deepEqual(allocateInitialSalePayment(800, 1000, 300), {
+    amountReceived: 800,
+    cashApplied: 700,
+    advanceApplied: 300,
+    advanceCreditCreated: 100,
+    amountPaid: 1000,
+    amountDue: 0,
+  });
+  assert.deepEqual(allocateInitialSalePayment(1200, 1000), {
+    amountReceived: 1200,
+    cashApplied: 1000,
+    advanceApplied: 0,
+    advanceCreditCreated: 200,
+    amountPaid: 1000,
+    amountDue: 0,
+  });
+  assert.throws(() => allocateInitialSalePayment(0, 1000, 1001), /cannot exceed the sale total/);
+});
+
+test('an excess initial receipt settles only the sale balance and remains customer advance', () => {
+  const sale = createSale({ amount: 1000 });
+  const payment = createPayment({
+    amount: 1200,
+    saleId: sale.id,
+    allocations: [{ saleId: sale.id, amount: 1000 }],
+    advanceCreditAmount: 200,
+  });
+
+  assert.equal(getSalePaidAmount(sale, [payment]), 1000);
+  assert.equal(getSaleDueAmount(sale, [payment]), 0);
+  assert.equal(getSalePaymentStatus(sale, [payment]), 'paid');
+  assert.equal(getCustomerAdvanceCredit([payment], sale.customerId, sale.currency), 200);
+});
+
+test('line discounts and invoice discounts are applied once across sale line allocations', () => {
+  const sale = createSale({
+    amount: 1750,
+    subtotal: 2000,
+    discount: 250,
+    lineItems: [
+      {
+        id: 'item-1',
+        serviceId: 'service-1',
+        plan: 'Monthly',
+        quantity: 1,
+        unitPrice: 1000,
+        subtotal: 1000,
+        discount: 100,
+        amount: 900,
+        currency: 'BDT',
+        startDate: '2025-01-01',
+        durationDays: 30,
+        units: [],
+      },
+      {
+        id: 'item-2',
+        serviceId: 'service-2',
+        plan: 'Annual',
+        quantity: 1,
+        unitPrice: 1000,
+        subtotal: 1000,
+        discount: 0,
+        amount: 1000,
+        currency: 'BDT',
+        startDate: '2025-01-01',
+        durationDays: 365,
+        units: [],
+      },
+    ],
+  });
+
+  assert.deepEqual(getSaleLineAllocations(sale).map(({ amount }) => amount), [828.95, 921.05]);
+  assert.equal(getSaleLineAllocations(sale).reduce((total, line) => total + line.amount, 0), sale.amount);
+});
+
+test('invoice details distinguish excess receipt, advance applied, and sale payment', () => {
+  const sale = createSale({ amount: 1000, subtotal: 1000 });
+  const payment = createPayment({
+    amount: 1200,
+    saleId: sale.id,
+    allocations: [{ saleId: sale.id, amount: 1000 }],
+    advanceCreditAmount: 200,
+  });
+  const details = buildInvoiceSaleDetails(
+    { invoiceId: 'invoice-1', invoiceNumber: 'INV-1', customerId: sale.customerId, saleId: sale.id, invoiceDate: sale.date },
+    sale,
+    undefined,
+    undefined,
+    [payment],
+    { storeName: 'Test' }
+  );
+
+  assert.equal(details.amountPaid, 1000);
+  assert.equal(details.amountReceived, 1200);
+  assert.equal(details.advanceCreditApplied, 0);
+  assert.equal(details.advanceCreditCreated, 200);
+  assert.equal(details.amountDue, 0);
+  assert.equal(details.paymentHistory?.[0]?.amount, 1200);
+});
+
+test('invoice details do not report applied customer advance as new cash received', () => {
+  const sale = createSale({ amount: 1000, subtotal: 1000 });
+  const advance = createPayment({ amount: 300, advanceCreditAmount: 300 });
+  const application = applyAdvanceCreditToSale([advance], sale, 300, 'invoice-advance-1', '2025-02-01T00:00:00.000Z');
+  const details = buildInvoiceSaleDetails(
+    { invoiceId: 'invoice-1', invoiceNumber: 'INV-1', customerId: sale.customerId, saleId: sale.id, invoiceDate: sale.date },
+    sale,
+    undefined,
+    undefined,
+    application.payments,
+    { storeName: 'Test' }
+  );
+
+  assert.equal(details.amountPaid, 300);
+  assert.equal(details.amountReceived, 0);
+  assert.equal(details.advanceCreditApplied, 300);
+  assert.equal(details.advanceCreditCreated, 0);
+  assert.equal(details.amountDue, 700);
 });
 
 test('advance payment allocations are added to a sale’s legacy paid baseline once', () => {

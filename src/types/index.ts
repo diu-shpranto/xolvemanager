@@ -693,6 +693,7 @@ export interface Payment {
 export interface PaymentAllocation {
   id?: string;
   saleId: string;
+  lineItemId?: string;
   invoiceId?: string;
   amount: number;
   fundingSource?: 'advance_credit';

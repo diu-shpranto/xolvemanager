@@ -8,7 +8,13 @@ import type {
   Service,
   Subscription,
 } from '../types';
-import { getSaleDueAmount, getSaleLineAllocations, getSalePaidAmount, getSalePaymentStatus } from './saleUtils.ts';
+import {
+  getSaleDueAmount,
+  getSaleLineAllocations,
+  getSaleLineFinancialAllocations,
+  getSalePaidAmount,
+  getSalePaymentStatus,
+} from './saleUtils.ts';
 
 export type ReportDatePreset =
   | 'today'
@@ -206,25 +212,22 @@ function calculateAttributedSalesSummary(
   sales: Sale[],
   payments: Payment[],
   currency: AppCurrency,
-  matches: (item: ReturnType<typeof getSaleLineAllocations>[number]['item']) => boolean
+  matches: (item: ReturnType<typeof getSaleLineFinancialAllocations>[number]['item']) => boolean
 ): SalesFinancialSummary {
-  const rows = sales.filter(isValidRevenueSale).flatMap(sale => {
-    const attributed = getSaleLineAllocations(sale)
-      .filter(line => matches(line.item))
-      .reduce((sum, line) => sum + line.amount, 0);
-    if (attributed <= 0) return [];
-    const share = sale.amount > 0 ? attributed / sale.amount : 0;
-    return [{ sale, attributed, share }];
-  });
+  const rows = sales.filter(isValidRevenueSale).flatMap(sale =>
+    getSaleLineFinancialAllocations(sale, payments)
+      .filter(line => matches(line.item) && line.amount > 0)
+      .map(line => ({ sale, ...line }))
+  );
   const revenue = rows.reduce((sum, row) =>
-    sum + convertReportCurrency(row.attributed, row.sale.currency, currency), 0);
+    sum + convertReportCurrency(row.amount, row.sale.currency, currency), 0);
   return {
     salesCount: new Set(rows.map(row => row.sale.id)).size,
     revenue,
     paid: rows.reduce((sum, row) =>
-      sum + convertReportCurrency(getSalePaidAmount(row.sale, payments) * row.share, row.sale.currency, currency), 0),
+      sum + convertReportCurrency(row.paid, row.sale.currency, currency), 0),
     due: rows.reduce((sum, row) =>
-      sum + convertReportCurrency(getSaleDueAmount(row.sale, payments) * row.share, row.sale.currency, currency), 0),
+      sum + convertReportCurrency(row.due, row.sale.currency, currency), 0),
     averageSale: rows.length ? revenue / new Set(rows.map(row => row.sale.id)).size : 0,
   };
 }

@@ -296,19 +296,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="app-sidebar-brand flex shrink-0 border-b border-slate-100 bg-slate-50/80 dark:border-slate-800/80 dark:bg-[#17132B]">
           <div className="app-sidebar-brand-content">
             <div className="app-sidebar-brand-row">
-              <ProductLogo
-                size="compact"
-                tone="inverse"
-                showTagline
-                className="app-sidebar-mobile-brand md:hidden"
-              />
-              <ProductLogo
-                size="compact"
-                tone="inverse"
-                showTagline
-                markOnly={isCollapsedDesktop}
-                className="app-sidebar-desktop-brand hidden md:inline-flex"
-              />
+              <button
+                type="button"
+                onClick={() => onSelectSection('dashboard')}
+                className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/80"
+                aria-label="Go to dashboard"
+                title="Go to dashboard"
+              >
+                <ProductLogo
+                  size="compact"
+                  tone="inverse"
+                  showTagline
+                  className="app-sidebar-mobile-brand md:hidden"
+                />
+                <ProductLogo
+                  size="compact"
+                  tone="inverse"
+                  showTagline
+                  markOnly={isCollapsedDesktop}
+                  className="app-sidebar-desktop-brand hidden md:inline-flex"
+                />
+              </button>
               <button
                 type="button"
                 onClick={onCloseMobile}

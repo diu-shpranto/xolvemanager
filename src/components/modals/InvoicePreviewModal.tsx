@@ -56,6 +56,7 @@ const buildPrintableInvoice = (data: InvoiceSaleDetails, language: Language): st
   const invoiceDiscount = Math.max(0, discount - itemDiscountTotal);
   const received = data.amountReceived ?? paid;
   const advanceCredit = data.advanceCreditApplied ?? Math.max(0, paid - received);
+  const advanceCreditCreated = data.advanceCreditCreated ?? 0;
   const logo = data.invoiceSettings?.showLogo !== false && data.invoiceLogoUrl
     ? `<img src="${escapeHtml(data.invoiceLogoUrl)}" alt="" class="logo">`
     : '';
@@ -78,6 +79,9 @@ const buildPrintableInvoice = (data: InvoiceSaleDetails, language: Language): st
       subtotal: data.amount,
       discount: 0,
       total: data.amount,
+      amountPaid: data.amountPaid,
+      amountDue: data.amountDue,
+      paymentStatus: data.paymentStatus,
       currency,
       startDate: data.startDate,
       expiryDate: data.expiryDate,
@@ -89,6 +93,9 @@ const buildPrintableInvoice = (data: InvoiceSaleDetails, language: Language): st
       .join(' – ');
     const itemDiscount = item.discount || 0;
     const lineTotal = item.total ?? Math.max(0, item.subtotal - itemDiscount);
+    const linePayment = item.amountPaid !== undefined || item.amountDue !== undefined
+      ? `Paid ${formatCurrency(item.amountPaid || 0, item.currency, language)} · Due ${formatCurrency(item.amountDue || 0, item.currency, language)} · ${(item.paymentStatus || 'pending').toUpperCase()}`
+      : '';
     const title = `${item.serviceName}${showPlan ? ` · ${item.planName}` : ''}`;
     const duration = item.durationDays ? `${item.durationDays} days` : '—';
     return {
@@ -98,7 +105,7 @@ const buildPrintableInvoice = (data: InvoiceSaleDetails, language: Language): st
       unitPrice: formatCurrency(item.unitPrice, item.currency, language),
       discount: formatCurrency(itemDiscount, item.currency, language),
       lineTotal: formatCurrency(lineTotal, item.currency, language),
-      details: itemPeriod,
+      details: [itemPeriod, linePayment].filter(Boolean).join(' · '),
     };
   });
   const rows = lineItemRows.map(item => `<tr>
@@ -131,6 +138,7 @@ const buildPrintableInvoice = (data: InvoiceSaleDetails, language: Language): st
     `<div class="summary-row"><span>Amount paid / applied</span><strong class="paid">${escapeHtml(formatCurrency(paid, currency, language))}</strong></div>`,
     received > 0 ? `<div class="summary-row"><span>Cash received</span><strong>${escapeHtml(formatCurrency(received, currency, language))}</strong></div>` : '',
     advanceCredit > 0 ? `<div class="summary-row"><span>Advance credit applied</span><strong>${escapeHtml(formatCurrency(advanceCredit, currency, language))}</strong></div>` : '',
+    advanceCreditCreated > 0 ? `<div class="summary-row"><span>New advance credit</span><strong>${escapeHtml(formatCurrency(advanceCreditCreated, currency, language))}</strong></div>` : '',
     `<div class="summary-row balance ${due > 0 ? 'due' : 'clear'}"><span>Outstanding due</span><strong>${escapeHtml(formatCurrency(due, currency, language))}</strong></div>`,
   ].filter(Boolean).join('');
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Invoice ${escapeHtml(data.invoiceNo)}</title><style>
@@ -347,6 +355,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
   const amountPaid = saleData.amountPaid ?? (saleData.paymentStatus === 'paid' ? saleData.amount : 0);
   const amountReceived = saleData.amountReceived ?? amountPaid;
   const advanceCreditApplied = saleData.advanceCreditApplied ?? Math.max(0, amountPaid - amountReceived);
+  const advanceCreditCreated = saleData.advanceCreditCreated ?? 0;
   const amountDue = saleData.amountDue ?? Math.max(0, saleData.amount - amountPaid);
 
   return (
@@ -474,6 +483,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                       <div className="flex justify-between gap-3"><span className="text-slate-500">Amount paid / applied</span><span className="whitespace-nowrap font-bold tabular-nums text-emerald-700">{formatCurrency(amountPaid, saleData.currency)}</span></div>
                       {amountReceived > 0 && <div className="flex justify-between gap-3"><span className="text-slate-500">Cash received</span><span className="whitespace-nowrap font-semibold tabular-nums">{formatCurrency(amountReceived, saleData.currency)}</span></div>}
                       {advanceCreditApplied > 0 && <div className="flex justify-between gap-3"><span className="text-slate-500">Advance credit applied</span><span className="whitespace-nowrap font-semibold tabular-nums">{formatCurrency(advanceCreditApplied, saleData.currency)}</span></div>}
+                      {advanceCreditCreated > 0 && <div className="flex justify-between gap-3"><span className="text-slate-500">New advance credit</span><span className="whitespace-nowrap font-semibold tabular-nums">{formatCurrency(advanceCreditCreated, saleData.currency)}</span></div>}
                       <div className={`flex justify-between gap-3 border-t px-3 py-2.5 ${amountDue > 0 ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
                         <span className="font-bold">Outstanding due</span>
                         <span className="whitespace-nowrap font-extrabold tabular-nums">{formatCurrency(amountDue, saleData.currency)}</span>

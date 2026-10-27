@@ -11,7 +11,12 @@ import type {
   Subscription,
 } from '../types';
 import { convertReportCurrency, isWithinDateBounds, type DateBounds } from './reportMetrics.ts';
-import { getSaleDueAmount, getSaleLineAllocations, getSalePaymentStatus } from './saleUtils.ts';
+import {
+  getSaleDueAmount,
+  getSaleLineAllocations,
+  getSaleLineFinancialAllocations,
+  getSalePaymentStatus,
+} from './saleUtils.ts';
 import type { Payment } from '../types';
 
 export interface ProfitabilityFilters {
@@ -285,8 +290,10 @@ export function getServiceProfitability(data: ProfitabilityData): ProfitabilityR
       revenue, directCost, grossProfit, grossMargin: revenue > 0 ? grossProfit / revenue * 100 : null,
       operatingCost, netContribution, netMargin: revenue > 0 ? netContribution / revenue * 100 : null,
       due: serviceSales.reduce((sum, sale) => {
-        const share = sale.amount > 0 ? saleLineAmount(sale, item => item.serviceId === service.id) / sale.amount : 0;
-        return sum + convertAmount(getSaleDueAmount(sale, data.payments) * share, sale.currency, data.currency);
+        const attributedDue = getSaleLineFinancialAllocations(sale, data.payments)
+          .filter(line => line.item.serviceId === service.id)
+          .reduce((total, line) => total + line.due, 0);
+        return sum + convertAmount(attributedDue, sale.currency, data.currency);
       }, 0),
       discounts: serviceSales.reduce((sum, sale) => {
         const matchingLines = getSaleLineAllocations(sale).filter(line => line.item.serviceId === service.id);
@@ -399,8 +406,10 @@ export function getPlanProfitability(data: ProfitabilityData): ProfitabilityRow[
       netContribution,
       netMargin: revenue > 0 ? netContribution / revenue * 100 : null,
       due: planSales.reduce((sum, sale) => {
-        const planRevenue = saleLineAmount(sale, item => item.serviceId === service.id && item.planId === plan.id);
-        return sum + convertAmount(getSaleDueAmount(sale, data.payments) * (sale.amount > 0 ? planRevenue / sale.amount : 0), sale.currency, data.currency);
+        const attributedDue = getSaleLineFinancialAllocations(sale, data.payments)
+          .filter(line => line.item.serviceId === service.id && line.item.planId === plan.id)
+          .reduce((total, line) => total + line.due, 0);
+        return sum + convertAmount(attributedDue, sale.currency, data.currency);
       }, 0),
       discounts: planSales.reduce((sum, sale) => {
         const planItems = getSaleLineAllocations(sale).filter(line =>
@@ -601,11 +610,13 @@ export function getAccountProfitability(
       netContribution,
       netMargin: revenue > 0 ? netContribution / revenue * 100 : null,
       due: accountSales.reduce(
-        (sum, item) => sum + convertAmount(
-          getSaleDueAmount(item.sale, data.payments) * (item.sale.amount > 0 ? item.amount / item.sale.amount : 0),
-          item.sale.currency,
-          data.currency
-        ),
+        (sum, item) => {
+          const accountLineIds = new Set(item.subscriptionIds);
+          const attributedDue = getSaleLineFinancialAllocations(item.sale, data.payments)
+            .filter(line => line.item.units.some(unit => accountLineIds.has(unit.subscriptionId)))
+            .reduce((total, line) => total + line.due, 0);
+          return sum + convertAmount(attributedDue, item.sale.currency, data.currency);
+        },
         0
       ),
       discounts: accountSales.reduce(

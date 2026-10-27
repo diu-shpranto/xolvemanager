@@ -25,7 +25,6 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { NavSection } from './Sidebar';
-import { ProductLogo } from '../common/BrandLockup';
 import { formatAppDateTime } from '../../utils/dateUtils';
 import type { BusinessNotification } from '../../types';
 import type { QuickAction } from './CommandCenter';
@@ -247,11 +246,14 @@ export const TopNav: React.FC<TopNavProps> = ({
         <button
           type="button"
           onClick={() => onNavigate('dashboard')}
-          className="app-topbar-brand-link md:hidden"
+          className="app-topbar-brand-link flex items-center gap-2 md:hidden"
           aria-label={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to dashboard'}
           title={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to dashboard'}
         >
-          <ProductLogo size="compact" markOnly className="app-topbar-brand" />
+          <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-lg bg-violet-600 text-[11px] font-bold text-white shadow-sm ring-1 ring-violet-300/60">
+            X
+          </span>
+          <span className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">XolveManager</span>
         </button>
         <div className="app-topbar-business hidden md:flex">
           <span className="app-topbar-business-divider" aria-hidden="true" />

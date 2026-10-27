@@ -21,6 +21,9 @@ export interface InvoiceSaleDetails {
     subtotal: number;
     discount?: number;
     total?: number;
+    amountPaid?: number;
+    amountDue?: number;
+    paymentStatus?: string;
     currency: AppCurrency;
     startDate?: string;
     expiryDate?: string;
@@ -39,6 +42,7 @@ export interface InvoiceSaleDetails {
   amountPaid?: number;
   amountReceived?: number;
   advanceCreditApplied?: number;
+  advanceCreditCreated?: number;
   amountDue?: number;
   subtotal?: number;
   discount?: number;
@@ -201,6 +205,9 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
       subtotal: data.subtotal ?? data.amount + (data.discount || 0),
       discount: data.discount || 0,
       total: data.amount,
+      amountPaid: data.amountPaid,
+      amountDue: data.amountDue,
+      paymentStatus: data.paymentStatus,
       currency: data.currency,
       startDate: data.startDate,
       expiryDate: data.expiryDate,
@@ -217,6 +224,7 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
   const due = data.amountDue ?? Math.max(0, data.amount - paid);
   const received = data.amountReceived ?? paid;
   const advanceCredit = data.advanceCreditApplied ?? Math.max(0, paid - received);
+  const advanceCreditCreated = data.advanceCreditCreated ?? 0;
   const itemDiscountTotal = invoiceItems.reduce((total, item) => total + (item.discount || 0), 0);
   const invoiceDiscount = Math.max(0, (data.discount || 0) - itemDiscountTotal);
   const canvas = document.createElement('canvas');
@@ -240,7 +248,10 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
     const period = [item.startDate && formatInvoiceDate(item.startDate, language), item.expiryDate && formatInvoiceDate(item.expiryDate, language)]
       .filter(Boolean)
       .join(' – ');
-    const detail = period;
+    const linePayment = item.amountPaid !== undefined || item.amountDue !== undefined
+      ? `Paid ${formatCurrency(item.amountPaid || 0, item.currency, language)} · Due ${formatCurrency(item.amountDue || 0, item.currency, language)} · ${(item.paymentStatus || 'pending').toUpperCase()}`
+      : '';
+    const detail = [period, linePayment].filter(Boolean).join(' · ');
     context!.font = `400 15px ${FONT}`;
     const detailLines = detail ? wrapText(context!, detail, 290) : [];
     return { item, titleLines, detailLines, height: 22 + titleLines.length * 24 + detailLines.length * 19 };
@@ -308,6 +319,7 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
     { label: 'Amount paid / applied', amount: paid, color: COLORS.green },
     ...(received > 0 ? [{ label: 'Cash received', amount: received }] : []),
     ...(advanceCredit > 0 ? [{ label: 'Advance credit applied', amount: advanceCredit }] : []),
+    ...(advanceCreditCreated > 0 ? [{ label: 'New advance credit', amount: advanceCreditCreated }] : []),
     { label: 'Outstanding due', amount: due, emphasis: true, color: due > 0 ? COLORS.amber : COLORS.green },
   ];
   const headerEndLayout = Math.max(184, 94 + businessLines.length * 30 + brandDetailLines.length * 19);

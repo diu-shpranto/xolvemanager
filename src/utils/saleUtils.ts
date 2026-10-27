@@ -57,8 +57,15 @@ export function getSaleLineAllocations(sale: Sale): { item: SaleLineItem; amount
   if (!sale.lineItems?.length) return items.map(item => ({ item, amount: sale.amount }));
   const baseAmounts = items.map(item => Math.max(0, amountToMinorUnits(item.amount)));
   const baseTotal = baseAmounts.reduce((total, amount) => total + amount, 0);
-  const totalDiscount = Math.max(0, amountToMinorUnits(sale.discount || 0));
-  let remainingDiscount = totalDiscount;
+  const itemDiscountTotal = items.reduce(
+    (total, item) => total + Math.max(0, amountToMinorUnits(item.discount || 0)),
+    0
+  );
+  let remainingDiscount = Math.max(
+    0,
+    amountToMinorUnits(sale.discount || 0) - itemDiscountTotal
+  );
+  const totalDiscount = remainingDiscount;
   return items.map((item, index) => {
     const share = index === items.length - 1
       ? remainingDiscount
@@ -71,6 +78,208 @@ export function getSaleLineAllocations(sale: Sale): { item: SaleLineItem; amount
       amount: minorUnitsToAmount(Math.max(0, baseAmounts[index] - share)),
     };
   });
+}
+
+export function allocateMinorUnitsByWeight(totalMinor: number, weights: number[]): number[] {
+  if (totalMinor <= 0 || weights.length === 0) return weights.map(() => 0);
+  const total = BigInt(totalMinor);
+  const weightsBigInt = weights.map(weight => BigInt(Math.max(0, weight)));
+  const weightTotal = weightsBigInt.reduce((sum, weight) => sum + weight, 0n);
+  if (weightTotal === 0n) return weights.map(() => 0);
+
+  const remainders: { index: number; remainder: bigint }[] = [];
+  const allocations = weightsBigInt.map((weight, index) => {
+    const weightedTotal = total * weight;
+    remainders.push({ index, remainder: weightedTotal % weightTotal });
+    return Number(weightedTotal / weightTotal);
+  });
+  const allocatedTotal = allocations.reduce((sum, amount) => sum + BigInt(amount), 0n);
+  const remainingMinor = Number(total - allocatedTotal);
+  remainders.sort((left, right) =>
+    left.remainder === right.remainder
+      ? left.index - right.index
+      : left.remainder > right.remainder ? -1 : 1
+  );
+  for (let index = 0; index < remainingMinor; index += 1) {
+    allocations[remainders[index].index] += 1;
+  }
+  return allocations;
+}
+
+function allocateMinorUnitsWithinCaps(totalMinor: number, weights: number[], caps: number[]): number[] {
+  const allocations = weights.map(() => 0);
+  let remainingMinor = Math.min(
+    Math.max(0, totalMinor),
+    caps.reduce((total, cap) => total + Math.max(0, cap), 0)
+  );
+
+  while (remainingMinor > 0) {
+    const eligibleIndexes = weights.flatMap((weight, index) =>
+      weight > 0 && allocations[index] < caps[index] ? [index] : []
+    );
+    if (eligibleIndexes.length === 0) break;
+    const proposed = allocateMinorUnitsByWeight(
+      remainingMinor,
+      eligibleIndexes.map(index => weights[index])
+    );
+    let allocatedThisRound = 0;
+    eligibleIndexes.forEach((index, eligibleIndex) => {
+      const amount = Math.min(proposed[eligibleIndex], caps[index] - allocations[index]);
+      allocations[index] += amount;
+      allocatedThisRound += amount;
+    });
+    if (allocatedThisRound === 0) break;
+    remainingMinor -= allocatedThisRound;
+  }
+
+  return allocations;
+}
+
+export function allocateAmountAcrossSaleLines(
+  sale: Sale,
+  amount: number,
+  lineWeights?: number[]
+): { item: SaleLineItem; amount: number }[] {
+  const lines = getSaleLineAllocations(sale);
+  const amountMinor = amountToMinorUnits(amount);
+  const weights = lineWeights
+    ? lineWeights.map(weight => Math.max(0, amountToMinorUnits(weight)))
+    : lines.map(line => Math.max(0, amountToMinorUnits(line.amount)));
+  if (weights.length !== lines.length) {
+    throw new Error('Payment allocation weights must match the sale line items.');
+  }
+  if (amountMinor < 0 || amountMinor > weights.reduce((total, weight) => total + weight, 0)) {
+    throw new Error('Payment allocation cannot exceed the selected sale line balances.');
+  }
+  const allocations = allocateMinorUnitsByWeight(amountMinor, weights);
+  return lines.map(({ item }, index) => ({
+    item,
+    amount: minorUnitsToAmount(allocations[index]),
+  }));
+}
+
+function getAllocatedPaymentStatus(
+  sale: Sale,
+  amountMinor: number,
+  paidMinor: number
+): PaymentStatus {
+  if (sale.paymentStatus === 'refunded') return sale.paymentStatus;
+  if (amountMinor > 0 && paidMinor >= amountMinor) return 'paid';
+  if (paidMinor > 0) return 'partial';
+  return sale.paymentStatus === 'failed' ? 'failed' : 'pending';
+}
+
+export function getSaleLineFinancialAllocations(
+  sale: Sale,
+  payments: Payment[]
+): {
+  item: SaleLineItem;
+  amount: number;
+  paid: number;
+  due: number;
+  paymentStatus: PaymentStatus;
+}[] {
+  const lines = getSaleLineAllocations(sale);
+  const amountMinorByLine = lines.map(line => Math.max(0, amountToMinorUnits(line.amount)));
+  const paidTotalMinor = Math.min(
+    amountToMinorUnits(getSalePaidAmount(sale, payments)),
+    amountMinorByLine.reduce((total, amount) => total + amount, 0)
+  );
+  const lineIndexById = new Map(lines.map(({ item }, index) => [item.id, index]));
+  const explicitPaidMinorByLine = lines.map(() => 0);
+  for (const payment of getSalePayments(sale, payments)) {
+    const allocations = payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial'
+      ? payment.allocations || []
+      : payment.paymentStatus === 'refunded'
+        ? payment.refundedSaleAllocations || []
+        : [];
+    const multiplier = payment.paymentStatus === 'refunded' ? -1 : 1;
+    allocations.forEach(allocation => {
+      if (allocation.saleId !== sale.id || !allocation.lineItemId) return;
+      const lineIndex = lineIndexById.get(allocation.lineItemId);
+      if (lineIndex === undefined) return;
+      explicitPaidMinorByLine[lineIndex] += multiplier * Math.max(
+        0,
+        amountToMinorUnits(Number(allocation.amount) || 0)
+      );
+    });
+  }
+  const explicitWeights = explicitPaidMinorByLine.map(amount => Math.max(0, amount));
+  const cappedExplicitWeights = explicitWeights.map((amount, index) =>
+    Math.min(amount, amountMinorByLine[index])
+  );
+  const cappedExplicitTotalMinor = cappedExplicitWeights.reduce((total, amount) => total + amount, 0);
+  const reconciledExplicitPaidMinorByLine = cappedExplicitTotalMinor > paidTotalMinor
+    ? allocateMinorUnitsWithinCaps(paidTotalMinor, cappedExplicitWeights, amountMinorByLine)
+    : cappedExplicitWeights;
+  const reconciledExplicitTotalMinor = reconciledExplicitPaidMinorByLine
+    .reduce((total, amount) => total + amount, 0);
+  const remainingPaidMinor = Math.max(0, paidTotalMinor - reconciledExplicitTotalMinor);
+  const remainingLineAmounts = amountMinorByLine.map((amount, index) =>
+    Math.max(0, amount - reconciledExplicitPaidMinorByLine[index])
+  );
+  const remainderAllocation = allocateMinorUnitsByWeight(remainingPaidMinor, remainingLineAmounts);
+  const paidMinorByLine = reconciledExplicitPaidMinorByLine.map(
+    (amount, index) => amount + remainderAllocation[index]
+  );
+  return lines.map(({ item }, index) => {
+    const amountMinor = amountMinorByLine[index];
+    const paidMinor = paidMinorByLine[index];
+    const dueMinor = sale.paymentStatus === 'refunded' ? 0 : Math.max(0, amountMinor - paidMinor);
+    return {
+      item,
+      amount: minorUnitsToAmount(amountMinor),
+      paid: minorUnitsToAmount(paidMinor),
+      due: minorUnitsToAmount(dueMinor),
+      paymentStatus: getAllocatedPaymentStatus(sale, amountMinor, paidMinor),
+    };
+  });
+}
+
+export function getSaleSubscriptionFinancialAllocations(
+  sale: Sale,
+  payments: Payment[]
+): {
+  subscriptionId: string;
+  item: SaleLineItem;
+  amount: number;
+  paid: number;
+  due: number;
+  paymentStatus: PaymentStatus;
+}[] {
+  return getSaleLineFinancialAllocations(sale, payments).flatMap(line => {
+    const quantity = Math.max(1, line.item.quantity);
+    const amountMinor = amountToMinorUnits(line.amount);
+    const unitAmounts = Array.from({ length: quantity }, (_, index) =>
+      Math.floor(amountMinor / quantity) + (index < amountMinor % quantity ? 1 : 0)
+    );
+    const unitPaidAmounts = allocateMinorUnitsByWeight(
+      Math.min(amountToMinorUnits(line.paid), amountMinor),
+      unitAmounts
+    );
+    return line.item.units.flatMap((unit, index) => {
+      if (index >= quantity) return [];
+      const unitAmount = unitAmounts[index];
+      const unitPaid = unitPaidAmounts[index];
+      return [{
+        subscriptionId: unit.subscriptionId,
+        item: line.item,
+        amount: minorUnitsToAmount(unitAmount),
+        paid: minorUnitsToAmount(unitPaid),
+        due: minorUnitsToAmount(sale.paymentStatus === 'refunded' ? 0 : Math.max(0, unitAmount - unitPaid)),
+        paymentStatus: getAllocatedPaymentStatus(sale, unitAmount, unitPaid),
+      }];
+    });
+  });
+}
+
+export function getSaleSubscriptionFinancialAllocation(
+  sale: Sale,
+  subscriptionId: string,
+  payments: Payment[]
+): ReturnType<typeof getSaleSubscriptionFinancialAllocations>[number] | undefined {
+  return getSaleSubscriptionFinancialAllocations(sale, payments)
+    .find(allocation => allocation.subscriptionId === subscriptionId);
 }
 
 export function findPaymentByOperationId(payments: Payment[], operationId?: string): Payment | undefined {
@@ -88,6 +297,40 @@ export function splitPaymentAllocation(amount: number, outstanding: number): {
   return {
     allocatedAmount: minorUnitsToAmount(allocatedMinor),
     advanceCreditAmount: minorUnitsToAmount(amountMinor - allocatedMinor),
+  };
+}
+
+export function allocateInitialSalePayment(
+  amountReceived: number,
+  saleTotal: number,
+  advanceCreditToApply = 0
+): {
+  amountReceived: number;
+  cashApplied: number;
+  advanceApplied: number;
+  advanceCreditCreated: number;
+  amountPaid: number;
+  amountDue: number;
+} {
+  if (![amountReceived, saleTotal, advanceCreditToApply].every(Number.isFinite)
+    || amountReceived < 0 || saleTotal < 0 || advanceCreditToApply < 0) {
+    throw new Error('Sale payment amounts must be finite and non-negative.');
+  }
+  const receivedMinor = amountToMinorUnits(amountReceived);
+  const totalMinor = amountToMinorUnits(saleTotal);
+  const advanceMinor = amountToMinorUnits(advanceCreditToApply);
+  if (advanceMinor > totalMinor) {
+    throw new Error('Applied advance credit cannot exceed the sale total.');
+  }
+  const cashAppliedMinor = Math.min(receivedMinor, totalMinor - advanceMinor);
+  const paidMinor = cashAppliedMinor + advanceMinor;
+  return {
+    amountReceived: minorUnitsToAmount(receivedMinor),
+    cashApplied: minorUnitsToAmount(cashAppliedMinor),
+    advanceApplied: minorUnitsToAmount(advanceMinor),
+    advanceCreditCreated: minorUnitsToAmount(receivedMinor - cashAppliedMinor),
+    amountPaid: minorUnitsToAmount(paidMinor),
+    amountDue: minorUnitsToAmount(Math.max(0, totalMinor - paidMinor)),
   };
 }
 
@@ -252,6 +495,16 @@ export function applyAdvanceCreditToSale(
       || left.payment.id.localeCompare(right.payment.id)
     );
 
+  const lineDueWeights = getSaleLineFinancialAllocations(sale, payments).map(line => line.due);
+  const requestedLineAllocations = allocateAmountAcrossSaleLines(
+    sale,
+    minorUnitsToAmount(amountMinor),
+    lineDueWeights
+  );
+  const remainingLineAllocation = new Map(requestedLineAllocations.map(({ item, amount }) => [
+    item.id,
+    amountToMinorUnits(amount),
+  ]));
   let remainingMinor = amountMinor;
   const updatedPaymentsByIndex = new Map<number, Payment>();
   for (const { payment, index, availableMinor } of advanceSources) {
@@ -269,20 +522,32 @@ export function applyAdvanceCreditToSale(
       }]
       : payment.allocations || [];
     const sourceAllocations = legacyAllocations.filter(allocation => allocation.amount > 0);
+    let sourceRemainingMinor = allocationMinor;
+    const lineCreditAllocations: NonNullable<Payment['allocations']> = [];
+    for (const { item } of requestedLineAllocations) {
+      if (sourceRemainingMinor <= 0) break;
+      const lineAvailableMinor = remainingLineAllocation.get(item.id) || 0;
+      const lineAllocationMinor = Math.min(sourceRemainingMinor, lineAvailableMinor);
+      if (lineAllocationMinor <= 0) continue;
+      lineCreditAllocations.push({
+        id: `advance-allocation:${applicationId}:${payment.id}:${item.id}`,
+        saleId: sale.id,
+        lineItemId: item.id,
+        invoiceId,
+        amount: minorUnitsToAmount(lineAllocationMinor),
+        fundingSource: 'advance_credit',
+        advanceApplicationId: applicationId,
+        createdAt,
+      });
+      remainingLineAllocation.set(item.id, lineAvailableMinor - lineAllocationMinor);
+      sourceRemainingMinor -= lineAllocationMinor;
+    }
+    if (sourceRemainingMinor > 0) {
+      throw new Error('The advance could not be reconciled to the sale line items.');
+    }
     const updatedPayment: Payment = {
       ...payment,
-      allocations: [
-        ...sourceAllocations,
-        {
-          id: `advance-allocation:${applicationId}:${payment.id}`,
-          saleId: sale.id,
-          invoiceId,
-          amount: minorUnitsToAmount(allocationMinor),
-          fundingSource: 'advance_credit',
-          advanceApplicationId: applicationId,
-          createdAt,
-        },
-      ],
+      allocations: [...sourceAllocations, ...lineCreditAllocations],
     };
     updatedPaymentsByIndex.set(index, updatedPayment);
     remainingMinor -= allocationMinor;

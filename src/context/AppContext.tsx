@@ -51,11 +51,14 @@ import {
 } from '../utils/dateUtils';
 import { getCustomerDisplayName } from '../utils/relationships';
 import {
+  allocateAmountAcrossSaleLines,
+  allocateInitialSalePayment,
   amountToMinorUnits,
   applyAdvanceCreditToSale as buildAdvanceCreditApplication,
   findPaymentByOperationId,
   getCustomerAdvanceCredit,
   getSaleDueAmount,
+  getSaleLineFinancialAllocations,
   getSaleSubscriptionIds,
   getPaymentSaleAllocation,
   getPaymentAvailableAdvanceCredit,
@@ -181,6 +184,9 @@ export interface NewSalePayload {
   discount?: number;
   price: number;
   amountPaid?: number;
+  amountReceived?: number;
+  advanceCreditToApply?: number;
+  paymentDate?: string;
   paymentNote?: string;
   currency: AppCurrency;
   paymentMethod: PaymentMethod;
@@ -200,6 +206,7 @@ export interface NewSaleLineItemPayload {
   planId?: string;
   quantity: number;
   unitPrice: number;
+  discount?: number;
   startDate: string;
   durationDays: number;
   units?: { accountId?: string; profileId?: string }[];
@@ -301,7 +308,7 @@ interface AppContextType {
   renewSubscription: (subscriptionId: string, additionalDays: number, price: number, paymentMethod: PaymentMethod, transactionId?: string) => void;
 
   // Actions - Sales Workflow
-  createSale: (payload: NewSalePayload) => { subscription: Subscription; sale: Sale; payment: Payment; invoice: Invoice };
+  createSale: (payload: NewSalePayload) => { subscription: Subscription; sale: Sale; payment: Payment; invoice: Invoice; payments: Payment[] };
   deleteSale: (id: string) => void;
   recordSalePayment: (
     saleId: string,
@@ -2963,7 +2970,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
   // Full Sales Workflow
   const createSale = (
     payload: NewSalePayload
-  ): { subscription: Subscription; sale: Sale; payment: Payment; invoice: Invoice } => {
+  ): { subscription: Subscription; sale: Sale; payment: Payment; invoice: Invoice; payments: Payment[] } => {
     assertFinancialDateOpen(getTodayDateString(settings.businessProfile?.timeZone));
     const requestedLineItems = payload.lineItems?.length
       ? payload.lineItems
@@ -2990,6 +2997,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       }
     }
     let requestedSubtotalMinor = 0;
+    let requestedItemDiscountMinor = 0;
     const lineServices = requestedLineItems.map(item => {
       if (!Number.isSafeInteger(item.quantity) || item.quantity < 1
         || !Number.isSafeInteger(item.durationDays) || item.durationDays < 1
@@ -3002,8 +3010,13 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       if (unitPriceMinor <= 0 || !Number.isSafeInteger(itemSubtotalMinor)) {
         throw new Error('A sale item price or quantity is too large.');
       }
+      const itemDiscountMinor = parseAmountToMinorUnits(item.discount ?? 0);
+      if (itemDiscountMinor === null || itemDiscountMinor < 0 || itemDiscountMinor > itemSubtotalMinor) {
+        throw new Error(`The discount for ${item.plan} must be between zero and its line subtotal.`);
+      }
+      requestedItemDiscountMinor += itemDiscountMinor;
       requestedSubtotalMinor += itemSubtotalMinor;
-      if (!Number.isSafeInteger(requestedSubtotalMinor)) {
+      if (!Number.isSafeInteger(requestedSubtotalMinor) || !Number.isSafeInteger(requestedItemDiscountMinor)) {
         throw new Error('The sale total is too large.');
       }
       const itemService = services.find(candidate => candidate.id === item.serviceId);
@@ -3057,21 +3070,50 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     }
     const subtotal = Math.round(Number(payload.subtotal ?? payload.price) * 100) / 100;
     const discount = Math.round(Number(payload.discount ?? 0) * 100) / 100;
-    const amountPaid = Math.round(Number(payload.amountPaid ?? (payload.paymentStatus === 'paid' ? payload.price : 0)) * 100) / 100;
+    if (requestedItemDiscountMinor > amountToMinorUnits(discount)) {
+      throw new Error('Line-item discounts cannot exceed the sale discount total.');
+    }
+    const hasExplicitTender = payload.amountReceived !== undefined;
+    const cashReceivedMinor = hasExplicitTender
+      ? parseAmountToMinorUnits(payload.amountReceived!)
+      : amountToMinorUnits(payload.amountPaid ?? (payload.paymentStatus === 'paid' ? payload.price : 0));
+    const advanceAppliedMinor = parseAmountToMinorUnits(payload.advanceCreditToApply ?? 0);
+    const tenderAllocation = cashReceivedMinor !== null && advanceAppliedMinor !== null
+      ? allocateInitialSalePayment(
+        minorUnitsToAmount(cashReceivedMinor),
+        payload.price,
+        minorUnitsToAmount(advanceAppliedMinor)
+      )
+      : null;
+    const amountPaid = hasExplicitTender
+      ? tenderAllocation?.amountPaid ?? -1
+      : Math.round(Number(payload.amountPaid ?? (payload.paymentStatus === 'paid' ? payload.price : 0)) * 100) / 100;
+    const paymentDate = payload.paymentDate || getTodayDateString(settings.businessProfile?.timeZone);
+    const [paymentYear, paymentMonth, paymentDay] = paymentDate.split('-').map(Number);
+    const parsedPaymentDate = new Date(paymentYear, paymentMonth - 1, paymentDay);
     if (!Number.isFinite(payload.price) || payload.price <= 0
       || !Number.isFinite(subtotal) || subtotal < 0
       || !Number.isFinite(discount) || discount < 0 || discount > subtotal
       || Math.abs(subtotal - discount - payload.price) > 0.01
+      || discount < minorUnitsToAmount(requestedItemDiscountMinor)
       || !Number.isFinite(amountPaid)
       || amountPaid < 0
       || amountPaid > payload.price
+      || (hasExplicitTender && (!tenderAllocation || advanceAppliedMinor === null))
       || (payload.paymentStatus === 'failed' && amountPaid > 0)
       || payload.paymentStatus === 'refunded'
+      || !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)
+      || !Number.isFinite(parsedPaymentDate.getTime())
+      || parsedPaymentDate.getFullYear() !== paymentYear
+      || parsedPaymentDate.getMonth() !== paymentMonth - 1
+      || parsedPaymentDate.getDate() !== paymentDay
+      || paymentDate > getTodayDateString(settings.businessProfile?.timeZone)
       || !Number.isSafeInteger(payload.durationDays) || payload.durationDays < 1
       || !Number.isFinite(Date.parse(`${payload.startDate}T00:00:00`))) {
       throw new Error('The sale amount or subscription period is invalid.');
     }
-    const paymentStatus: PaymentStatus = payload.paymentStatus === 'failed'
+    assertFinancialDateOpen(paymentDate);
+    const paymentStatus: PaymentStatus = payload.paymentStatus === 'failed' && !hasExplicitTender
       ? 'failed'
       : amountPaid >= payload.price
         ? 'paid'
@@ -3083,6 +3125,9 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       if (priorSale) {
         const priorSubscription = subscriptions.find(item => item.id === priorSale.subscriptionId);
         const priorPayment = payments.find(item => item.id === priorSale.paymentId);
+        const priorAdvanceApplied = payments.flatMap(payment => payment.allocations || [])
+          .filter(allocation => allocation.advanceApplicationId === `${payload.operationId}:initial-advance`)
+          .reduce((total, allocation) => total + amountToMinorUnits(allocation.amount), 0);
         const lineItemsMatch = payload.lineItems?.length
           ? Boolean(priorSale.lineItems
             && priorSale.lineItems.length === payload.lineItems.length
@@ -3093,6 +3138,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
                 && saved.plan === item.plan
                 && saved.quantity === item.quantity
                 && saved.unitPrice === item.unitPrice
+                && saved.discount === (item.discount || 0)
                 && saved.startDate === item.startDate
                 && saved.durationDays === item.durationDays
                 && item.units?.every((unit, unitIndex) =>
@@ -3108,6 +3154,11 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
           || priorSale.profileId !== payload.profileId
           || priorSale.amount !== payload.price
           || priorSale.amountPaid !== amountPaid
+          || priorSale.subtotal !== subtotal
+          || priorSale.discount !== discount
+          || (hasExplicitTender && priorPayment?.amount !== tenderAllocation?.amountReceived)
+          || (hasExplicitTender && priorAdvanceApplied !== advanceAppliedMinor)
+          || (hasExplicitTender && priorPayment?.paymentDate !== paymentDate)
           || priorSubscription?.startDate !== payload.startDate
           || priorSubscription?.durationDays !== payload.durationDays
           || !lineItemsMatch) {
@@ -3119,6 +3170,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
             sale: priorSale,
             payment: priorPayment,
             invoice: ensureInvoiceForSale(priorSale.id),
+            payments,
           };
         }
         throw new Error('This sale operation has already been recorded but its linked records are incomplete.');
@@ -3128,7 +3180,8 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     if (!configuredMethods.some(method => method.name === payload.paymentMethod)) {
       throw new Error('This payment method is not active in Settings.');
     }
-    if (paymentMethodRequiresTransactionId(payload.paymentMethod, configuredMethods, settings.paymentPreferences?.requireTransactionId)
+    if ((hasExplicitTender ? (cashReceivedMinor ?? 0) > 0 : amountPaid > 0)
+      && paymentMethodRequiresTransactionId(payload.paymentMethod, configuredMethods, settings.paymentPreferences?.requireTransactionId)
       && !payload.transactionId?.trim()) {
       throw new Error('A transaction ID is required for this payment method.');
     }
@@ -3417,8 +3470,11 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         subtotal: minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity),
-        discount: 0,
-        amount: minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity),
+        discount: item.discount || 0,
+        amount: minorUnitsToAmount(
+          amountToMinorUnits(item.unitPrice) * item.quantity
+          - amountToMinorUnits(item.discount || 0)
+        ),
         currency: payload.currency,
         startDate: item.startDate,
         durationDays: item.durationDays,
@@ -3453,7 +3509,8 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       ...(persistedLineItems ? { lineItems: persistedLineItems } : {}),
       subtotal,
       discount,
-      amountPaid,
+      amountPaid: hasExplicitTender ? 0 : amountPaid,
+      ...(hasExplicitTender ? { paymentAllocationBaseline: 0 } : {}),
       ...(allocatedAccountCost ? {
         actualCostSnapshot: allocatedAccountCost.amount,
         actualCostCurrency: allocatedAccountCost.currency,
@@ -3481,22 +3538,60 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       invoiceId,
       saleId: newSale.id,
       subscriptionId: newSub.id,
-      amount: amountPaid > 0 ? amountPaid : payload.price,
+      amount: hasExplicitTender
+        ? tenderAllocation!.amountReceived
+        : amountPaid > 0 ? amountPaid : payload.price,
+      ...(hasExplicitTender ? {
+        allocations: allocateAmountAcrossSaleLines(newSale, tenderAllocation!.cashApplied)
+          .filter(allocation => allocation.amount > 0)
+          .map(({ item, amount }) => ({
+            saleId: newSale.id,
+            lineItemId: item.id,
+            invoiceId,
+            amount,
+          })),
+        advanceCreditAmount: tenderAllocation!.advanceCreditCreated,
+      } : {}),
       currency: payload.currency,
       paymentMethod: payload.paymentMethod,
       transactionId: payload.transactionId || '',
       senderNumber: payload.senderNumber || '',
-      paymentDate: getTodayDateString(settings.businessProfile?.timeZone),
-      paymentStatus,
+      paymentDate,
+      paymentStatus: hasExplicitTender
+        ? tenderAllocation!.amountReceived > 0 ? 'paid' : 'pending'
+        : paymentStatus,
       notes: payload.paymentNote || `Sale payment: ${invoiceNo}`,
       createdBy: currentUser?.uid || 'admin',
       createdAt: new Date().toISOString(),
     };
 
+    const advanceApplicationId = `${payload.operationId || newSale.id}:initial-advance`;
+    const advanceResult = hasExplicitTender && tenderAllocation!.advanceApplied > 0
+      ? buildAdvanceCreditApplication(
+        payments,
+        { ...newSale, amountPaid: 0, paymentStatus: 'pending', paymentAllocationBaseline: 0 },
+        tenderAllocation!.advanceApplied,
+        advanceApplicationId,
+        new Date().toISOString(),
+        invoiceId
+      )
+      : { payments, appliedAmount: 0, alreadyApplied: false };
+    const nextPayments = [newPayment, ...advanceResult.payments];
+    const salePaymentBasis = hasExplicitTender
+      ? { ...newSale, amountPaid: 0, paymentStatus: 'pending' as PaymentStatus, paymentAllocationBaseline: 0 }
+      : newSale;
+    const persistedSale: Sale = hasExplicitTender
+      ? {
+        ...newSale,
+        amountPaid: getSalePaidAmount(salePaymentBasis, nextPayments),
+        paymentStatus: getSalePaymentStatus(salePaymentBasis, nextPayments),
+      }
+      : newSale;
+
     const newInvoice = {
       ...createInvoiceRecord(
-        newSale,
-        [newPayment],
+        persistedSale,
+        nextPayments,
         undefined,
         currentBusiness?.businessId,
         invoiceId
@@ -3534,9 +3629,8 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
           : subscription
       );
     }
-    const nextSales = [newSale, ...sales];
-    const nextPayments = [newPayment, ...payments];
-    const nextInvoices = [newInvoice, ...invoices.filter(invoice => invoice.saleId !== newSale.id)];
+    const nextSales = [persistedSale, ...sales];
+    const nextInvoices = [newInvoice, ...invoices.filter(invoice => invoice.saleId !== persistedSale.id)];
     const assignedProfiles = lineItemSubscriptions.flat().flatMap(unit =>
       unit.allocation.accountId && unit.allocation.profileId
         ? [{ accountId: unit.allocation.accountId, profileId: unit.allocation.profileId, subscriptionId: unit.subscriptionId }]
@@ -3660,15 +3754,15 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         metadata: { planName: payload.plan, startDate: newSub.startDate, expiryDate: newSub.expiryDate },
       });
     }
-    if (amountPaid > 0 || paymentStatus === 'failed' || paymentStatus === 'pending') {
+    if ((tenderAllocation?.amountReceived ?? amountPaid) > 0 || paymentStatus === 'failed' || paymentStatus === 'pending') {
       logActivity({
-        type: paymentStatus === 'paid' ? 'payment_received' : 'payment_recorded',
+        type: newPayment.paymentStatus === 'paid' ? 'payment_received' : 'payment_recorded',
         title: paymentStatus === 'failed' ? 'Payment Failed'
           : paymentStatus === 'partial' ? 'Payment Partially Received'
             : paymentStatus === 'paid' ? 'Payment Received' : 'Payment Created',
         description: paymentStatus === 'pending'
           ? `A payment record was created for sale ${invoiceNo} for ${getCustomerDisplayName(cust)}.`
-          : `${formatCurrency(amountPaid, payload.currency)} recorded for sale ${invoiceNo} from ${getCustomerDisplayName(cust)} via ${payload.paymentMethod}.`,
+          : `${formatCurrency(tenderAllocation?.amountReceived ?? amountPaid, payload.currency)} received for sale ${invoiceNo} from ${getCustomerDisplayName(cust)} via ${payload.paymentMethod}.`,
         customerName: getCustomerDisplayName(cust),
         serviceName: srv?.name || 'Service',
         entityId: newPayment.id,
@@ -3682,9 +3776,16 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         paymentId: newPayment.id,
         invoiceId: newInvoice.invoiceId,
         invoiceNumber: invoiceNo,
-        amount: amountPaid,
+        amount: tenderAllocation?.amountReceived ?? amountPaid,
         currency: payload.currency,
-        metadata: { amount: amountPaid, paymentMethod: payload.paymentMethod, status: paymentStatus },
+        metadata: {
+          amount: tenderAllocation?.amountReceived ?? amountPaid,
+          saleAllocation: tenderAllocation?.cashApplied ?? amountPaid,
+          existingAdvanceApplied: advanceResult.appliedAmount,
+          newAdvanceCredit: tenderAllocation?.advanceCreditCreated ?? 0,
+          paymentMethod: payload.paymentMethod,
+          status: newPayment.paymentStatus,
+        },
       });
     }
     if (paymentStatus === 'paid') {
@@ -3800,7 +3901,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       });
     }
 
-    return { subscription: newSub, sale: newSale, payment: newPayment, invoice: newInvoice };
+    return { subscription: newSub, sale: persistedSale, payment: newPayment, invoice: newInvoice, payments: nextPayments };
   };
 
   const deleteSale = (id: string) => {
@@ -3898,6 +3999,11 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       throw new Error('Pending or failed payment attempts cannot exceed the outstanding balance.');
     }
     const allocation = splitPaymentAllocation(amount, minorUnitsToAmount(dueMinor));
+    const lineAllocations = allocateAmountAcrossSaleLines(
+      sale,
+      allocation.allocatedAmount,
+      getSaleLineFinancialAllocations(sale, payments).map(line => line.due)
+    );
 
     const existingInvoice = invoices.find(item => item.saleId === saleId);
     const invoice = existingInvoice || {
@@ -3913,9 +4019,14 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     const newPayment: Payment = {
       ...paymentData,
       allocations: paymentData.paymentStatus === 'paid'
-        ? allocation.allocatedAmount > 0
-          ? [{ saleId, invoiceId: invoice.invoiceId, amount: allocation.allocatedAmount }]
-          : []
+        ? lineAllocations
+          .filter(line => line.amount > 0)
+          .map(({ item, amount }) => ({
+            saleId,
+            lineItemId: item.id,
+            invoiceId: invoice.invoiceId,
+            amount,
+          }))
         : [],
       advanceCreditAmount: paymentData.paymentStatus === 'paid' ? allocation.advanceCreditAmount : 0,
       ...getPaymentMethodSnapshot(paymentData.paymentMethod),
