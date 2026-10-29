@@ -51,7 +51,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
   if (n.includes('netflix')) {
     return {
       leftBorder: 'border-l-[#E50914]',
-      bgTint: 'bg-gradient-to-r from-rose-500/[0.04] via-white to-white dark:from-rose-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+      bgTint: '!bg-rose-100 dark:!bg-rose-950/50',
       border: 'border-rose-200/70 dark:border-rose-900/40',
       iconBg: 'bg-rose-50 dark:bg-rose-950/60 text-[#E50914] dark:text-rose-400 border border-rose-200/80 dark:border-rose-800/60 shadow-2xs',
       badge: 'bg-rose-50 text-[#E50914] dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/60',
@@ -63,7 +63,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
   if (n.includes('prime') || n.includes('amazon')) {
     return {
       leftBorder: 'border-l-[#00A8E1]',
-      bgTint: 'bg-gradient-to-r from-sky-500/[0.04] via-white to-white dark:from-sky-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+      bgTint: '!bg-sky-100 dark:!bg-sky-950/50',
       border: 'border-sky-200/70 dark:border-sky-900/40',
       iconBg: 'bg-sky-50 dark:bg-sky-950/60 text-[#00A8E1] dark:text-sky-400 border border-sky-200/80 dark:border-sky-800/60 shadow-2xs',
       badge: 'bg-sky-50 text-[#007EA7] dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200/80 dark:border-sky-800/60',
@@ -75,7 +75,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
   if (n.includes('canva')) {
     return {
       leftBorder: 'border-l-[#7C3AED]',
-      bgTint: 'bg-gradient-to-r from-purple-500/[0.04] via-white to-white dark:from-purple-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+      bgTint: '!bg-purple-100 dark:!bg-purple-950/50',
       border: 'border-purple-200/70 dark:border-purple-900/40',
       iconBg: 'bg-purple-50 dark:bg-purple-950/60 text-[#7C3AED] dark:text-purple-400 border border-purple-200/80 dark:border-purple-800/60 shadow-2xs',
       badge: 'bg-purple-50 text-[#7C3AED] dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/60',
@@ -87,7 +87,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
   if (n.includes('chatgpt') || n.includes('openai') || n.includes('gpt')) {
     return {
       leftBorder: 'border-l-[#D97706]',
-      bgTint: 'bg-gradient-to-r from-amber-500/[0.04] via-white to-white dark:from-amber-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+      bgTint: '!bg-amber-100 dark:!bg-amber-950/50',
       border: 'border-amber-200/70 dark:border-amber-900/40',
       iconBg: 'bg-amber-50 dark:bg-amber-950/60 text-[#D97706] dark:text-amber-400 border border-amber-200/80 dark:border-amber-800/60 shadow-2xs',
       badge: 'bg-amber-50 text-[#B45309] dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/60',
@@ -99,7 +99,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
   if (n.includes('spotify')) {
     return {
       leftBorder: 'border-l-[#10B981]',
-      bgTint: 'bg-gradient-to-r from-emerald-500/[0.04] via-white to-white dark:from-emerald-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+      bgTint: '!bg-emerald-100 dark:!bg-emerald-950/50',
       border: 'border-emerald-200/70 dark:border-emerald-900/40',
       iconBg: 'bg-emerald-50 dark:bg-emerald-950/60 text-[#10B981] dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60 shadow-2xs',
       badge: 'bg-emerald-50 text-[#047857] dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/60',
@@ -111,7 +111,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
   if (n.includes('youtube')) {
     return {
       leftBorder: 'border-l-[#EF4444]',
-      bgTint: 'bg-gradient-to-r from-red-500/[0.04] via-white to-white dark:from-red-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+      bgTint: '!bg-red-100 dark:!bg-red-950/50',
       border: 'border-red-200/70 dark:border-red-900/40',
       iconBg: 'bg-red-50 dark:bg-red-950/60 text-[#EF4444] dark:text-red-400 border border-red-200/80 dark:border-red-800/60 shadow-2xs',
       badge: 'bg-red-50 text-[#B91C1C] dark:bg-red-950/60 dark:text-red-300 border border-red-200/80 dark:border-red-800/60',
@@ -123,7 +123,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
   if (n.includes('hoichoi')) {
     return {
       leftBorder: 'border-l-[#E11D48]',
-      bgTint: 'bg-gradient-to-r from-rose-500/[0.04] via-white to-white dark:from-rose-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+      bgTint: '!bg-rose-100 dark:!bg-rose-950/50',
       border: 'border-rose-200/70 dark:border-rose-900/40',
       iconBg: 'bg-rose-50 dark:bg-rose-950/60 text-[#E11D48] dark:text-rose-400 border border-rose-200/80 dark:border-rose-800/60 shadow-2xs',
       badge: 'bg-rose-50 text-[#BE123C] dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/60',
@@ -135,7 +135,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
   if (n.includes('chorki')) {
     return {
       leftBorder: 'border-l-[#F59E0B]',
-      bgTint: 'bg-gradient-to-r from-amber-500/[0.04] via-white to-white dark:from-amber-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+      bgTint: '!bg-amber-100 dark:!bg-amber-950/50',
       border: 'border-amber-200/70 dark:border-amber-900/40',
       iconBg: 'bg-amber-50 dark:bg-amber-950/60 text-[#F59E0B] dark:text-amber-400 border border-amber-200/80 dark:border-amber-800/60 shadow-2xs',
       badge: 'bg-amber-50 text-[#B45309] dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/60',
@@ -147,7 +147,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
   if (n.includes('vpn') || n.includes('nord')) {
     return {
       leftBorder: 'border-l-[#2563EB]',
-      bgTint: 'bg-gradient-to-r from-blue-500/[0.04] via-white to-white dark:from-blue-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+      bgTint: '!bg-blue-100 dark:!bg-blue-950/50',
       border: 'border-blue-200/70 dark:border-blue-900/40',
       iconBg: 'bg-blue-50 dark:bg-blue-950/60 text-[#2563EB] dark:text-blue-400 border border-blue-200/80 dark:border-blue-800/60 shadow-2xs',
       badge: 'bg-blue-50 text-[#1D4ED8] dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800/60',
@@ -159,7 +159,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
   if (n.includes('microsoft') || n.includes('office') || n.includes('365')) {
     return {
       leftBorder: 'border-l-[#0284C7]',
-      bgTint: 'bg-gradient-to-r from-sky-500/[0.04] via-white to-white dark:from-sky-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+      bgTint: '!bg-sky-100 dark:!bg-sky-950/50',
       border: 'border-sky-200/70 dark:border-sky-900/40',
       iconBg: 'bg-sky-50 dark:bg-sky-950/60 text-[#0284C7] dark:text-sky-400 border border-sky-200/80 dark:border-sky-800/60 shadow-2xs',
       badge: 'bg-sky-50 text-[#0369A1] dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200/80 dark:border-sky-800/60',
@@ -172,7 +172,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
     case 'Streaming':
       return {
         leftBorder: 'border-l-rose-500',
-        bgTint: 'bg-gradient-to-r from-rose-500/[0.04] via-white to-white dark:from-rose-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+        bgTint: '!bg-rose-100 dark:!bg-rose-950/50',
         border: 'border-rose-200/70 dark:border-rose-900/40',
         iconBg: 'bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800/60 shadow-2xs',
         badge: 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/60',
@@ -181,7 +181,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
     case 'AI Tools':
       return {
         leftBorder: 'border-l-teal-500',
-        bgTint: 'bg-gradient-to-r from-teal-500/[0.04] via-white to-white dark:from-teal-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+        bgTint: '!bg-teal-100 dark:!bg-teal-950/50',
         border: 'border-teal-200/70 dark:border-teal-900/40',
         iconBg: 'bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 border border-teal-200/80 dark:border-teal-800/60 shadow-2xs',
         badge: 'bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300 border border-teal-200/80 dark:border-teal-800/60',
@@ -190,7 +190,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
     case 'Design':
       return {
         leftBorder: 'border-l-purple-500',
-        bgTint: 'bg-gradient-to-r from-purple-500/[0.04] via-white to-white dark:from-purple-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+        bgTint: '!bg-purple-100 dark:!bg-purple-950/50',
         border: 'border-purple-200/70 dark:border-purple-900/40',
         iconBg: 'bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200/80 dark:border-purple-800/60 shadow-2xs',
         badge: 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/60',
@@ -199,7 +199,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
     case 'Music':
       return {
         leftBorder: 'border-l-emerald-500',
-        bgTint: 'bg-gradient-to-r from-emerald-500/[0.04] via-white to-white dark:from-emerald-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+        bgTint: '!bg-emerald-100 dark:!bg-emerald-950/50',
         border: 'border-emerald-200/70 dark:border-emerald-900/40',
         iconBg: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60 shadow-2xs',
         badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/60',
@@ -208,7 +208,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
     case 'Productivity':
       return {
         leftBorder: 'border-l-blue-500',
-        bgTint: 'bg-gradient-to-r from-blue-500/[0.04] via-white to-white dark:from-blue-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+        bgTint: '!bg-blue-100 dark:!bg-blue-950/50',
         border: 'border-blue-200/70 dark:border-blue-900/40',
         iconBg: 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200/80 dark:border-blue-800/60 shadow-2xs',
         badge: 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800/60',
@@ -217,7 +217,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
     case 'VPN':
       return {
         leftBorder: 'border-l-indigo-500',
-        bgTint: 'bg-gradient-to-r from-indigo-500/[0.04] via-white to-white dark:from-indigo-500/[0.06] dark:via-[#151C28] dark:to-[#151C28]',
+        bgTint: '!bg-indigo-100 dark:!bg-indigo-950/50',
         border: 'border-indigo-200/70 dark:border-indigo-900/40',
         iconBg: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/80 dark:border-indigo-800/60 shadow-2xs',
         badge: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/60',
@@ -725,7 +725,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
                     {/* Service Label with Icon */}
                     <div className="flex items-center gap-1.5 min-w-0">
                       <div
-                        className={`w-6 h-6 rounded-md ${accent.iconBg} flex items-center justify-center shrink-0`}
+                        className={`profile-card-service-icon w-6 h-6 rounded-md ${accent.iconBg} flex items-center justify-center shrink-0`}
                         title={service?.name}
                       >
                         {service?.logoUrl ? (
@@ -735,7 +735,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
                         )}
                       </div>
                       <span
-                        className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md border truncate ${accent.badge}`}
+                        className={`profile-card-service-badge text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md border truncate ${accent.badge}`}
                         title={service?.name || 'Service'}
                       >
                         {service?.name || 'Service'}

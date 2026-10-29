@@ -61,6 +61,28 @@ export function formatAppDateTime(
   });
 }
 
+export function formatAppEventDateTime(
+  value: string | null | undefined,
+  language: Language = 'en',
+  options: Intl.DateTimeFormatOptions = {}
+): string {
+  if (!value) return 'N/A';
+  const dateOnly = dateOnlyPattern.exec(value);
+  if (!dateOnly) return formatAppDateTime(value, language, options);
+
+  const [, yearValue, monthValue, dayValue] = dateOnly;
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+  const parsedDate = new Date(Date.UTC(year, month - 1, day));
+  if (parsedDate.getUTCFullYear() !== year
+    || parsedDate.getUTCMonth() !== month - 1
+    || parsedDate.getUTCDate() !== day) return value;
+
+  const timeUnavailable = language === 'bn' ? 'সময় পাওয়া যায়নি' : 'time unavailable';
+  return `${formatAppDate(value, language, options)} · ${timeUnavailable}`;
+}
+
 export function formatAppNumber(
   value: number,
   language: Language = 'en',

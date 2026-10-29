@@ -21,11 +21,11 @@ import {
   UserCheck,
   Wifi,
   WifiOff,
-  LayoutDashboard,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { NavSection } from './Sidebar';
 import { formatAppDateTime } from '../../utils/dateUtils';
+import { ProductLogo } from '../common/BrandLockup';
 import type { BusinessNotification } from '../../types';
 import type { QuickAction } from './CommandCenter';
 import type { GlobalSearchResult } from '../../services/globalSearch';
@@ -250,22 +250,11 @@ export const TopNav: React.FC<TopNavProps> = ({
           aria-label={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to dashboard'}
           title={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to dashboard'}
         >
-          <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-lg bg-violet-600 text-[11px] font-bold text-white shadow-sm ring-1 ring-violet-300/60">
-            X
-          </span>
+          <ProductLogo size="compact" markOnly className="app-topbar-product-mark" />
           <span className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">XolveManager</span>
         </button>
         <div className="app-topbar-business hidden md:flex">
           <span className="app-topbar-business-divider" aria-hidden="true" />
-          <button
-            type="button"
-            onClick={() => onNavigate('dashboard')}
-            className="app-topbar-business-icon"
-            aria-label={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to dashboard'}
-            title={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to dashboard'}
-          >
-            <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
-          </button>
           <span className="app-topbar-business-copy">
             <span className="app-topbar-business-label">{language === 'bn' ? 'বর্তমান ব্যবসা' : 'Current business'}</span>
             <strong title={activeBusinessName}>{activeBusinessName}</strong>
@@ -284,7 +273,6 @@ export const TopNav: React.FC<TopNavProps> = ({
         aria-haspopup="dialog"
       >
         <Search className="h-[18px] w-[18px] shrink-0" />
-        <span className="mobile-search-label">{language === 'bn' ? 'সার্চ' : 'Search'}</span>
       </button>
       </div>
 

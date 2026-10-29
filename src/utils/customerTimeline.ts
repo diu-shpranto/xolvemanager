@@ -145,7 +145,7 @@ export function buildCustomerTimeline({
       id: `subscription-renewal:${subscription.id}:${renewal.id}`,
       type: 'subscription',
       recordId: subscription.id,
-      timestamp: renewal.renewalDate,
+      timestamp: renewal.renewalAt || renewal.renewalDate,
       title: 'Subscription renewed',
       description: getDescription(subscription.serviceId, renewal.plan) || renewal.plan,
       amount: renewal.amount,

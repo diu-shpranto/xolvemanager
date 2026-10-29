@@ -69,7 +69,8 @@ function subscription(id: string, overrides: Partial<Subscription> = {}): Subscr
 function renewal(id: string, subscriptionId: string): SubscriptionRenewalRecord {
   return {
     id,
-    renewalDate: '2026-10-01T10:00:00.000Z',
+    renewalDate: '2026-10-01',
+    renewalAt: '2026-10-01T10:00:00.000Z',
     previousEndDate: '2026-10-01',
     newStartDate: '2026-10-01',
     newEndDate: '2026-11-01',
@@ -179,6 +180,7 @@ test('timeline uses linked records for payments, refunds, renewals, cancellation
   assert.equal(events.find(event => event.id === 'payment:payment-1')?.description, 'Stream · Monthly');
   assert.equal(events.find(event => event.id === 'refund:refund-1')?.amount, -20);
   assert.equal(events.find(event => event.id === 'subscription-renewal:subscription-cancelled:renewal-1')?.title, 'Subscription renewed');
+  assert.equal(events.find(event => event.id === 'subscription-renewal:subscription-cancelled:renewal-1')?.timestamp, '2026-10-01T10:00:00.000Z');
   assert.equal(events.find(event => event.id === 'subscription-cancelled:subscription-cancelled')?.timestamp, '2026-09-06T10:00:00.000Z');
   assert.equal(events.find(event => event.id === 'subscription-expired:subscription-expired')?.title, 'Subscription expired');
   assert.equal(events.find(event => event.id === 'invoice-updated:invoice-updated:2026-09-07T10:00:00.000Z')?.title, 'Invoice updated');

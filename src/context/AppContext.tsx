@@ -1166,6 +1166,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       throw new Error('This sale does not belong to the current business.');
     }
 
+    const invoiceCreatedAt = new Date().toISOString();
     const invoice = {
       ...createInvoiceRecord(
         sale,
@@ -1174,6 +1175,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         currentBusiness?.businessId,
         `invoice-${sale.id}`
       ),
+      createdAt: invoiceCreatedAt,
       creationLogPending: true,
     };
     setInvoices(previous => previous.some(item => item.saleId === saleId) ? previous : [invoice, ...previous]);
@@ -1543,7 +1545,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       customerType: custData.customerType || 'Customer',
       id: createRecordId('customer'),
       ...(currentBusiness?.businessId ? { businessId: currentBusiness.businessId } : {}),
-      createdAt: getTodayDateString(settings.businessProfile?.timeZone),
+      createdAt: now,
       updatedAt: now,
       createdBy: currentUser?.uid || 'admin',
       isArchived: false,
@@ -1584,6 +1586,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       ...previousCustomer,
       ...updates,
       id: previousCustomer.id,
+      createdAt: previousCustomer.createdAt,
       ...(currentBusiness?.businessId ? { businessId: currentBusiness.businessId } : {}),
       updatedAt: new Date().toISOString(),
     };
@@ -2508,7 +2511,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       ...(currentBusiness?.businessId ? { businessId: currentBusiness.businessId } : {}),
       planId: getPlanId(subData.serviceId, subData.plan) || subData.planId,
       expiryDate,
-      createdAt: getTodayDateString(settings.businessProfile?.timeZone),
+      createdAt: new Date().toISOString(),
       createdBy: currentUser?.uid || 'admin',
     };
     const nextSubscriptions: Subscription[] = [newSub, ...subscriptions];
@@ -2578,6 +2581,8 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       ...previousSubscription,
       ...updates,
       id: previousSubscription.id,
+      createdAt: previousSubscription.createdAt,
+      updatedAt: new Date().toISOString(),
       ...(currentBusiness?.businessId ? { businessId: currentBusiness.businessId } : {}),
       ...((updates.serviceId || updates.plan) ? {
         planId: getPlanId(updates.serviceId || previousSubscription.serviceId, updates.plan || previousSubscription.plan),
@@ -2718,6 +2723,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     }
 
     const today = getTodayDateString(settings.businessProfile?.timeZone);
+    const renewedAt = new Date().toISOString();
     const baseDate = sub.expiryDate >= today ? sub.expiryDate : today;
 
     const newExpiry = calculateExpiryDate(baseDate, additionalDays);
@@ -2747,7 +2753,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       transactionId,
       notes: `Subscription renewed for ${additionalDays} days.`,
       createdBy: currentUser?.uid || 'admin',
-      createdAt: getTodayDateString(settings.businessProfile?.timeZone),
+      createdAt: renewedAt,
     };
 
     // Record payment
@@ -2767,7 +2773,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       paymentStatus: 'paid',
       notes: `Renewal payment for ${invoiceNo}`,
       createdBy: currentUser?.uid || 'admin',
-      createdAt: getTodayDateString(settings.businessProfile?.timeZone),
+      createdAt: renewedAt,
     };
     const renewalInvoice = {
       ...createInvoiceRecord(
@@ -2782,6 +2788,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     const renewalRecord = {
       id: newSale.id,
       renewalDate: getTodayDateString(settings.businessProfile?.timeZone),
+      renewalAt: renewedAt,
       previousEndDate: sub.expiryDate,
       newStartDate: baseDate,
       newEndDate: newExpiry,
@@ -2802,7 +2809,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       durationDays: sub.durationDays + additionalDays,
       paymentStatus: 'paid' as const,
       renewalHistory: [...(sub.renewalHistory || []), renewalRecord],
-      updatedAt: new Date().toISOString(),
+      updatedAt: renewedAt,
     };
     const nextSubscriptions = subscriptions.map(item => item.id === sub.id ? updatedSubscription : item);
     const nextSales = [newSale, ...sales];
@@ -3089,6 +3096,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       ? tenderAllocation?.amountPaid ?? -1
       : Math.round(Number(payload.amountPaid ?? (payload.paymentStatus === 'paid' ? payload.price : 0)) * 100) / 100;
     const paymentDate = payload.paymentDate || getTodayDateString(settings.businessProfile?.timeZone);
+    const createdAt = new Date().toISOString();
     const [paymentYear, paymentMonth, paymentDay] = paymentDate.split('-').map(Number);
     const parsedPaymentDate = new Date(paymentYear, paymentMonth - 1, paymentDay);
     if (!Number.isFinite(payload.price) || payload.price <= 0
@@ -3431,7 +3439,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         cancellationReason: 'Payment failed before inventory was allocated.',
       } : {}),
       notes: payload.notes,
-      createdAt: getTodayDateString(settings.businessProfile?.timeZone),
+      createdAt,
       createdBy: currentUser?.uid || 'admin',
     };
     const extraSubscriptions = lineItemSubscriptions.flat().slice(1).map(unit => ({
@@ -3457,7 +3465,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         cancellationReason: 'Payment failed before inventory was allocated.',
       } : {}),
       notes: payload.notes,
-      createdAt: getTodayDateString(settings.businessProfile?.timeZone),
+      createdAt,
       createdBy: currentUser?.uid || 'admin',
     } satisfies Subscription));
     const persistedLineItems: SaleLineItem[] | undefined = payload.lineItems?.length
@@ -3526,7 +3534,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       senderNumber: payload.senderNumber || '',
       notes: payload.notes || '',
       createdBy: currentUser?.uid || 'admin',
-      createdAt: new Date().toISOString(),
+      createdAt,
     };
 
     // 3. Create Payment
@@ -3562,7 +3570,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         : paymentStatus,
       notes: payload.paymentNote || `Sale payment: ${invoiceNo}`,
       createdBy: currentUser?.uid || 'admin',
-      createdAt: new Date().toISOString(),
+      createdAt,
     };
 
     const advanceApplicationId = `${payload.operationId || newSale.id}:initial-advance`;
@@ -3605,6 +3613,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       const renewalRecord = {
         id: payload.operationId || newSale.id,
         renewalDate: getTodayDateString(settings.businessProfile?.timeZone),
+        renewalAt: createdAt,
         previousEndDate: renewedSubscription.expiryDate,
         newStartDate: newSub.startDate,
         newEndDate: newSub.expiryDate,
@@ -4005,6 +4014,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       getSaleLineFinancialAllocations(sale, payments).map(line => line.due)
     );
 
+    const paymentCreatedAt = new Date().toISOString();
     const existingInvoice = invoices.find(item => item.saleId === saleId);
     const invoice = existingInvoice || {
       ...createInvoiceRecord(
@@ -4014,6 +4024,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         currentBusiness?.businessId,
         `invoice-${sale.id}`
       ),
+      createdAt: paymentCreatedAt,
       creationLogPending: true,
     };
     const newPayment: Payment = {
@@ -4036,8 +4047,8 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       invoiceId: invoice.invoiceId,
       ...(currentBusiness?.businessId ? { businessId: currentBusiness.businessId } : {}),
       createdBy: currentUser?.uid || 'admin',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: paymentCreatedAt,
+      updatedAt: paymentCreatedAt,
     };
     const amountPaid = minorUnitsToAmount(
       Math.min(amountToMinorUnits(sale.amount), amountToMinorUnits(recordedPaid) + amountToMinorUnits(allocation.allocatedAmount))
@@ -4608,7 +4619,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         : {}),
       ...(currentBusiness?.businessId ? { businessId: currentBusiness.businessId } : {}),
       createdBy: currentUser?.uid || 'admin',
-      createdAt: paymentData.paymentDate || getTodayDateString(settings.businessProfile?.timeZone),
+      createdAt: new Date().toISOString(),
     };
     setPayments(prev => [newPayment, ...prev]);
     const customer = getCustomerById(newPayment.customerId);
@@ -4672,7 +4683,13 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     if (financialFields.some(field => updates[field] !== undefined && updates[field] !== previousPayment[field])) {
       throw new Error('Historical payment values cannot be edited. Use a supported reversal workflow instead.');
     }
-    const updatedPayment = { ...previousPayment, ...updates, id: previousPayment.id };
+    const updatedPayment = {
+      ...previousPayment,
+      ...updates,
+      id: previousPayment.id,
+      createdAt: previousPayment.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
     setPayments(prev =>
       prev.map(p => {
         if (p.id === id) {

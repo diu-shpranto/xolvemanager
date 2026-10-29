@@ -20,10 +20,10 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: '/icons/xolvemanager-violet-16.png', type: 'image/png', sizes: '16x16' },
+      { url: '/icons/xolvemanager-brand-16.png', type: 'image/png', sizes: '16x16' },
       { url: productBrand.faviconUrl, type: 'image/png', sizes: '32x32' },
     ],
-    apple: [{ url: '/icons/xolvemanager-violet-180.png', sizes: '180x180' }],
+    apple: [{ url: '/icons/xolvemanager-brand-180.png', sizes: '180x180' }],
   },
   appleWebApp: {
     capable: true,

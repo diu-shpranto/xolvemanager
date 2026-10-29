@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   formatAppDate,
   formatAppDateTime,
+  formatAppEventDateTime,
   formatAppDurationDays,
   formatAppNumber,
   formatCurrency,
@@ -48,6 +49,29 @@ test('timestamps and missing or invalid timestamps are formatted safely', () => 
   assert.equal(formatAppDateTime('2025-01-02T16:05:00Z', 'en'), expectedDate);
   assert.equal(formatAppDateTime('invalid-time', 'en'), 'invalid-time');
   assert.equal(formatAppDateTime('', 'en'), 'N/A');
+});
+
+test('historical event formatting never invents a time for date-only values', () => {
+  assert.equal(formatAppEventDateTime('2025-01-02', 'en'), '2 Jan 2025 · time unavailable');
+  assert.equal(
+    formatAppEventDateTime('2025-01-02', 'en', { timeZone: 'America/Los_Angeles' }),
+    '2 Jan 2025 · time unavailable'
+  );
+  assert.equal(formatAppEventDateTime('2025-01-02', 'bn'), '২ জানু, ২০২৫ · সময় পাওয়া যায়নি');
+  assert.equal(formatAppEventDateTime('2025-02-30', 'en'), '2025-02-30');
+  assert.equal(formatAppEventDateTime('', 'en'), 'N/A');
+
+  const timestamp = '2025-01-01T20:00:00.000Z';
+  const expected = new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Dhaka',
+  }).format(new Date(timestamp));
+  assert.equal(formatAppEventDateTime(timestamp, 'en', { timeZone: 'Asia/Dhaka' }), expected);
+  assert.match(expected, /^2 Jan 2025/);
 });
 
 test('business timezone controls today and date differences across midnight', () => {

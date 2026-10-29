@@ -299,7 +299,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectSection('dashboard')}
-                className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/80"
+                className="flex min-w-0 flex-1 justify-start rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/80"
                 aria-label="Go to dashboard"
                 title="Go to dashboard"
               >
@@ -314,6 +314,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   tone="inverse"
                   showTagline
                   markOnly={isCollapsedDesktop}
+                  markSrc="/icons/xolvemanager-brand-192.png"
                   className="app-sidebar-desktop-brand hidden md:inline-flex"
                 />
               </button>

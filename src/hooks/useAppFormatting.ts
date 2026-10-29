@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import {
   formatAppDate,
   formatAppDateTime,
+  formatAppEventDateTime,
   formatAppDurationDays,
   formatAppNumber,
   formatCurrency as formatCurrencyValue,
@@ -31,6 +32,8 @@ export function useAppFormatting() {
     ) => typeof languageOrOptions === 'string'
       ? formatAppDateTime(value, languageOrOptions, { timeZone, ...options })
       : formatAppDateTime(value, language, { timeZone, ...languageOrOptions }),
+    formatEventDateTime: (value: string | null | undefined) =>
+      formatAppEventDateTime(value, language, { timeZone }),
     formatNumber: (value: number, options: Intl.NumberFormatOptions = {}) =>
       formatAppNumber(value, language, options),
     formatDurationDays: (days: number) => formatAppDurationDays(days, language),

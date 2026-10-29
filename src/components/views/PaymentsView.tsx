@@ -130,7 +130,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   preselectedSaleId,
   onNavigateSection,
 }) => {
-  const { formatCurrency, formatDate: formatAppDate, formatDateTime: formatAppDateTime, formatDurationDays, formatNumber } = useAppFormatting();
+  const { formatCurrency, formatDate: formatAppDate, formatEventDateTime: formatAppEventDateTime, formatDurationDays, formatNumber } = useAppFormatting();
   const {
     payments,
     reminders,
@@ -1230,7 +1230,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   const invoice = payment.invoiceId ? invoices.find(item => item.invoiceId === payment.invoiceId) : undefined;
                   return <tr id={`payment-${payment.id}`} key={payment.id} className={focusedPaymentIdState === payment.id ? 'bg-violet-50 dark:bg-violet-950/30' : ''}>
                     <td className="px-3 py-3 font-mono font-semibold text-slate-700 dark:text-slate-200">{payment.id}</td>
-                    <td className="whitespace-nowrap px-3 py-3">{formatAppDate(payment.paymentDate, language)}</td>
+                    <td className="whitespace-nowrap px-3 py-3">{formatAppEventDateTime(payment.createdAt || payment.paymentDate)}</td>
                     <td className="px-3 py-3"><div className="font-semibold text-slate-900 dark:text-white"><CustomerNameWithType customer={customer} /></div><div className="text-[10px] text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
                     <td className="px-3 py-3"><div>{invoice?.invoiceNumber || sale?.invoiceNo || '—'}</div><div className="font-mono text-[10px] text-slate-500">{sale?.id || payment.saleId || 'Unlinked legacy payment'}</div></td>
                     <td className="px-3 py-3">{sale ? saleItemLabel(sale) : '—'}</td>
@@ -1250,7 +1250,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               const customer = resolvePaymentCustomer(payment, customers, sales, subscriptions);
               return <article id={`payment-${payment.id}`} key={payment.id} className={`space-y-2 p-4 ${focusedPaymentIdState === payment.id ? 'bg-violet-50 dark:bg-violet-950/30' : ''}`}>
                 <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-mono text-xs text-slate-500">{payment.id}</p><h3 className="mt-1 text-sm font-bold text-slate-900 dark:text-white"><CustomerNameWithType customer={customer} nameClassName="min-w-0 break-words" /></h3><p className="text-xs text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</p><p className="break-words text-xs text-slate-500">{sale ? saleItemLabel(sale) : 'Payment'}</p></div><span className="shrink-0 font-mono font-bold">{formatCurrency(payment.amount, payment.currency)}</span></div>
-                <div className="flex flex-wrap items-center justify-between gap-2"><PaymentStatusBadge status={payment.paymentStatus} className={statusStyle(payment.paymentStatus)} icon={statusIcon(payment.paymentStatus)} /><span className="text-xs text-slate-500">{methodLabel(payment.paymentMethodName || payment.paymentMethod)} · {formatAppDate(payment.paymentDate, language)}</span></div>
+                <div className="flex flex-wrap items-center justify-between gap-2"><PaymentStatusBadge status={payment.paymentStatus} className={statusStyle(payment.paymentStatus)} icon={statusIcon(payment.paymentStatus)} /><span className="text-xs text-slate-500">{methodLabel(payment.paymentMethodName || payment.paymentMethod)} · {formatAppEventDateTime(payment.createdAt || payment.paymentDate)}</span></div>
                 <div className="flex items-center justify-between gap-2"><span className="truncate font-mono text-[11px] text-slate-500">{payment.transactionId || 'No transaction ID'}</span><button type="button" onClick={() => openPaymentDetails(payment)} className="min-h-9 shrink-0 rounded-lg px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/40">View details</button></div>
               </article>;
             })}
@@ -1273,7 +1273,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     <td className="px-4 py-3">{itemLabel}</td>
                     <td className="px-4 py-3">{formatCurrency(sale.amount, sale.currency)}</td><td className="px-4 py-3">{formatCurrency(paid, sale.currency)}</td>
                     <td className="px-4 py-3 font-bold text-amber-700 dark:text-amber-300">{formatCurrency(due, sale.currency)}</td>
-                    <td className="px-4 py-3">{lastPayment ? formatAppDate(lastPayment.paymentDate, language) : '—'}</td>
+                    <td className="px-4 py-3">{lastPayment ? formatAppEventDateTime(lastPayment.createdAt || lastPayment.paymentDate) : '—'}</td>
                     <td className="px-4 py-3"><span>{formatDurationDays(days)}</span><div className="text-[10px] text-slate-500">{getAgingBucket(days, formatNumber, language === 'bn' ? 'দিন' : 'days')}</div></td>
                     <td className="px-4 py-3"><div className="flex gap-1"><button type="button" onClick={() => openAddPayment(sale.customerId, sale.id)} className="rounded-lg bg-violet-600 px-2.5 py-1.5 font-semibold text-white hover:bg-violet-700">Add Payment</button>{customer && canContact(customer.id) && <button type="button" title="Compose payment reminder" aria-label={`Compose payment reminder for ${customer.name}`} onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })} className="rounded-lg p-1.5 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30"><MessageCircle className="h-4 w-4" /></button>}<button type="button" aria-label="View sale" onClick={() => onNavigateSection?.('sales', sale.id)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Eye className="h-4 w-4" /></button><button type="button" aria-label="View invoice" onClick={() => openInvoice(sale)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><FileText className="h-4 w-4" /></button></div></td>
                   </tr>;
@@ -1287,7 +1287,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               const days = getAgingDays(dueReferenceDate, settings.businessProfile?.timeZone);
               return <article key={sale.id} className="space-y-3 p-4">
                 <div className="flex items-start justify-between gap-2"><div><h3 className="font-bold"><CustomerNameWithType customer={customer} /></h3><p className="text-xs text-slate-500">{saleItemLabel(sale)}</p><p className="mt-1 text-[11px] text-slate-500">{invoice?.invoiceNumber || sale.invoiceNo}</p></div><p className="font-mono font-bold text-amber-700 dark:text-amber-300">{formatCurrency(due, sale.currency)} due</p></div>
-                <dl className="grid grid-cols-2 gap-2 text-xs"><div><dt className="text-slate-500">Total / Paid</dt><dd>{formatCurrency(sale.amount, sale.currency)} / {formatCurrency(paid, sale.currency)}</dd></div><div><dt className="text-slate-500">Outstanding</dt><dd>{formatDurationDays(days)} · {getAgingBucket(days, formatNumber, language === 'bn' ? 'দিন' : 'days')}</dd></div><div><dt className="text-slate-500">Last payment</dt><dd>{lastPayment ? formatAppDate(lastPayment.paymentDate, language) : 'None'}</dd></div></dl>
+                <dl className="grid grid-cols-2 gap-2 text-xs"><div><dt className="text-slate-500">Total / Paid</dt><dd>{formatCurrency(sale.amount, sale.currency)} / {formatCurrency(paid, sale.currency)}</dd></div><div><dt className="text-slate-500">Outstanding</dt><dd>{formatDurationDays(days)} · {getAgingBucket(days, formatNumber, language === 'bn' ? 'দিন' : 'days')}</dd></div><div><dt className="text-slate-500">Last payment</dt><dd>{lastPayment ? formatAppEventDateTime(lastPayment.createdAt || lastPayment.paymentDate) : 'None'}</dd></div></dl>
                 <div className="flex flex-wrap gap-2"><button type="button" onClick={() => openAddPayment(sale.customerId, sale.id)} className="min-h-9 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white hover:bg-violet-700">Add Payment</button>{customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-emerald-200 px-3 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp Reminder</button>}<button type="button" onClick={() => onNavigateSection?.('sales', sale.id)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Sale</button><button type="button" onClick={() => openInvoice(sale)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Invoice</button><button type="button" onClick={() => onNavigateSection?.('customers', sale.customerId)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">Customer</button></div>
               </article>;
             })}
@@ -1464,7 +1464,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </form>
       </Modal>
 
-      <Modal isOpen={Boolean(selectedPayment)} onClose={() => { setSelectedPayment(null); setRefundFormOpen(false); }} title={selectedPayment?.id || 'Payment Details'} subtitle={selectedPayment ? `${formatAppDate(selectedPayment.paymentDate, language)} · ${selectedPayment.paymentStatus}` : undefined} maxWidth="xl">
+      <Modal isOpen={Boolean(selectedPayment)} onClose={() => { setSelectedPayment(null); setRefundFormOpen(false); }} title={selectedPayment?.id || 'Payment Details'} subtitle={selectedPayment ? `${formatAppEventDateTime(selectedPayment.createdAt || selectedPayment.paymentDate)} · ${selectedPayment.paymentStatus}` : undefined} maxWidth="xl">
         {selectedPayment && <div className="space-y-5">
           <section className="grid gap-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-700 sm:grid-cols-3">
             <Detail label="Amount" value={formatCurrency(selectedPayment.amount, selectedPayment.currency)} strong />
@@ -1473,8 +1473,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             {selectedPayment.paymentAccount && <Detail label="Account label" value={selectedPayment.paymentAccount} />}
             <div><dt className="text-xs text-slate-500">Status</dt><dd className="mt-1"><PaymentStatusBadge status={selectedPayment.paymentStatus} className={statusStyle(selectedPayment.paymentStatus)} icon={statusIcon(selectedPayment.paymentStatus)} /></dd></div>
             <Detail label="Transaction ID" value={selectedPayment.transactionId || 'Not provided'} />
-            <Detail label="Payment date" value={formatAppDate(selectedPayment.paymentDate, language)} />
-            <Detail label="Created" value={selectedPayment.createdAt ? formatAppDateTime(selectedPayment.createdAt, language) : '—'} />
+            <Detail label="Payment date" value={formatAppEventDateTime(selectedPayment.paymentDate)} />
+            <Detail label="Recorded at" value={selectedPayment.createdAt ? formatAppEventDateTime(selectedPayment.createdAt) : '—'} />
           </section>
           <section aria-label="Payment refunds" className="space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1497,7 +1497,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             </div>
             {payments.filter(payment => payment.refundOfPaymentId === selectedPayment.id).map(refund => (
               <div key={refund.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs dark:bg-rose-950/30">
-                <span>{formatAppDate(refund.paymentDate, language)} · {refund.notes || 'Refund recorded'}</span>
+                <span>{formatAppEventDateTime(refund.createdAt || refund.paymentDate)} · {refund.notes || 'Refund recorded'}</span>
                 <strong className="font-mono text-rose-800 dark:text-rose-200">{formatCurrency(refund.amount, refund.currency)}</strong>
               </div>
             ))}
@@ -1543,7 +1543,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               <Detail label="Sale ID" value={selectedSaleForPayment.id} />
               <Detail label="Invoice" value={selectedInvoiceForPayment?.invoiceNumber || selectedSaleForPayment.invoiceNo} />
               <Detail label="Service / Plan" value={`${servicesById.get(selectedSaleForPayment.serviceId)?.name || 'Service'} · ${selectedSaleForPayment.plan}`} />
-              <Detail label="Sale date" value={formatAppDate(selectedSaleForPayment.date, language)} />
+              <Detail label="Sale date" value={formatAppEventDateTime(selectedSaleForPayment.createdAt || selectedSaleForPayment.date)} />
               <Detail label="Total / Paid / Due" value={`${formatCurrency(selectedSaleForPayment.amount, selectedSaleForPayment.currency)} · ${formatCurrency(selectedSalePaid, selectedSaleForPayment.currency)} · ${formatCurrency(selectedSaleDue, selectedSaleForPayment.currency)}`} />
             </dl>
             <div className="flex flex-wrap gap-3"><button type="button" onClick={() => { setSelectedPayment(null); onNavigateSection?.('sales', selectedSaleForPayment.id); }} className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">View Sale</button>{selectedInvoiceForPayment && <button type="button" onClick={() => { setSelectedPayment(null); openInvoice(selectedSaleForPayment); }} className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">View Invoice</button>}</div>
@@ -1566,7 +1566,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               );
               const cashMinor = Math.max(0, allocatedMinor - advanceMinor);
               return <li key={`${payment.id}:${saleAllocations.map(allocation => allocation.id || allocation.advanceApplicationId || allocation.saleId).join('|')}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/70">
-                <span>{formatAppDate(payment.paymentDate, language)} · {advanceMinor > 0 && cashMinor === 0 ? 'Customer advance applied' : methodLabel(payment.paymentMethodName || payment.paymentMethod)}{payment.transactionId && cashMinor > 0 ? ` · ${payment.transactionId}` : ''}</span>
+                <span>{formatAppEventDateTime(payment.createdAt || payment.paymentDate)} · {advanceMinor > 0 && cashMinor === 0 ? 'Customer advance applied' : methodLabel(payment.paymentMethodName || payment.paymentMethod)}{payment.transactionId && cashMinor > 0 ? ` · ${payment.transactionId}` : ''}</span>
                 <span className="text-right font-semibold">
                   {cashMinor > 0 && <span className="block">{formatCurrency(minorUnitsToAmount(cashMinor), payment.currency)} received</span>}
                   {advanceMinor > 0 && <span className="block">{formatCurrency(minorUnitsToAmount(advanceMinor), payment.currency)} from advance</span>}
@@ -1579,12 +1579,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           </section>}
           {selectedInvoiceForPayment && selectedSaleForPayment && <section className="space-y-2 border-t border-slate-100 pt-4 dark:border-slate-800">
             <h3 className="text-sm font-bold">Invoice Information</h3>
-            <dl className="grid gap-2 text-sm sm:grid-cols-2"><Detail label="Invoice number" value={selectedInvoiceForPayment.invoiceNumber} /><Detail label="Invoice date" value={formatAppDate(selectedInvoiceForPayment.invoiceDate, language)} /><Detail label="Total · Paid · Due" value={`${formatCurrency(selectedSaleForPayment.amount, selectedSaleForPayment.currency)} · ${formatCurrency(selectedSalePaid, selectedSaleForPayment.currency)} · ${formatCurrency(selectedSaleDue, selectedSaleForPayment.currency)}`} /><Detail label="Status" value={getSalePaymentStatus(selectedSaleForPayment, selectedSalePayments)} /></dl>
+            <dl className="grid gap-2 text-sm sm:grid-cols-2"><Detail label="Invoice number" value={selectedInvoiceForPayment.invoiceNumber} /><Detail label="Invoice date" value={formatAppEventDateTime(selectedInvoiceForPayment.createdAt || selectedInvoiceForPayment.invoiceDate)} /><Detail label="Total · Paid · Due" value={`${formatCurrency(selectedSaleForPayment.amount, selectedSaleForPayment.currency)} · ${formatCurrency(selectedSalePaid, selectedSaleForPayment.currency)} · ${formatCurrency(selectedSaleDue, selectedSaleForPayment.currency)}`} /><Detail label="Status" value={getSalePaymentStatus(selectedSaleForPayment, selectedSalePayments)} /></dl>
             <button type="button" onClick={() => { setSelectedPayment(null); openInvoice(selectedSaleForPayment); }} className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">View / Print / Download Invoice</button>
           </section>}
           <section aria-label="Payment activity" className="space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800">
             <h3 className="text-sm font-bold">Activity</h3>
-            {activityLogs.filter(log => log.paymentId === selectedPayment.id || log.entityId === selectedPayment.id).sort((left, right) => right.timestamp.localeCompare(left.timestamp)).map(log => <div key={log.id} className="border-l-2 border-emerald-300 pl-3"><p className="text-xs font-semibold">{log.title}</p><p className="mt-0.5 text-xs text-slate-500">{log.description}</p><time className="mt-1 block text-[10px] text-slate-400">{formatAppDateTime(log.timestamp, language)}</time></div>)}
+            {activityLogs.filter(log => log.paymentId === selectedPayment.id || log.entityId === selectedPayment.id).sort((left, right) => right.timestamp.localeCompare(left.timestamp)).map(log => <div key={log.id} className="border-l-2 border-emerald-300 pl-3"><p className="text-xs font-semibold">{log.title}</p><p className="mt-0.5 text-xs text-slate-500">{log.description}</p><time className="mt-1 block text-[10px] text-slate-400">{formatAppEventDateTime(log.timestamp)}</time></div>)}
             {!activityLogs.some(log => log.paymentId === selectedPayment.id || log.entityId === selectedPayment.id) && <p className="text-xs text-slate-500">No activity recorded for this payment.</p>}
           </section>
         </div>}

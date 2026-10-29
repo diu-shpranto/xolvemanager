@@ -256,6 +256,7 @@ export type PaymentStatus = 'paid' | 'pending' | 'partial' | 'failed' | 'refunde
 export interface SubscriptionRenewalRecord {
   id: string;
   renewalDate: string;
+  renewalAt?: string;
   previousEndDate: string;
   newStartDate: string;
   newEndDate: string;

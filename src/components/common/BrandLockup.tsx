@@ -7,6 +7,7 @@ interface ProductLogoProps {
   tone?: 'default' | 'inverse';
   className?: string;
   markOnly?: boolean;
+  markSrc?: string;
   showTagline?: boolean;
 }
 
@@ -15,6 +16,7 @@ export const ProductLogo: React.FC<ProductLogoProps> = ({
   tone = 'default',
   className = '',
   markOnly = false,
+  markSrc,
   showTagline = false,
 }) => {
   return (
@@ -28,7 +30,7 @@ export const ProductLogo: React.FC<ProductLogoProps> = ({
         <span className="brand-lockup__mark" aria-hidden="true">
           <Image
             className="brand-lockup__uploaded-mark"
-            src={productBrand.iconUrl}
+            src={markSrc ?? productBrand.iconUrl}
             alt=""
             width={192}
             height={192}

@@ -26,6 +26,7 @@ import { getSaleDueAmount, getSaleLineItems, getSalePaidAmount, getSalePayments 
 import { normalizePhoneDigits, normalizeSearchText } from '../../services/globalSearch';
 import { exportInvoicesCSV } from '../../services/dataBackupService';
 import { downloadCSV } from '../../utils/csvParser';
+import { formatCompactIdentifier } from '../../utils/idDisplay';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
 import { convertReportCurrency } from '../../utils/reportMetrics';
 import type { Customer, Invoice, Reminder, Sale, Service } from '../../types';
@@ -108,7 +109,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
   onFocusedInvoiceHandled,
   onNavigateSection,
 }) => {
-  const { formatCurrency, formatDate: formatAppDate } = useAppFormatting();
+  const { formatCurrency, formatDate: formatAppDate, formatEventDateTime: formatAppEventDateTime } = useAppFormatting();
   const {
     invoices, sales, customers, services, subscriptions, payments, reminders, settings,
     currentBusiness, currency, language, ensureInvoiceForSale,
@@ -450,8 +451,13 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {pageRows.map(({ invoice, sale, customer, service, paid, due, status, agingDays }) => (
                     <tr key={invoice.invoiceId} className="text-slate-700 dark:text-slate-200">
-                      <td className="whitespace-nowrap px-3 py-3 font-mono font-semibold text-violet-800 dark:text-violet-300">{invoice.invoiceNumber}<div className="mt-1 font-sans text-[10px] font-normal text-slate-400">{invoice.invoiceId}</div></td>
-                      <td className="px-3 py-3">{formatAppDate(invoice.invoiceDate, language)}</td>
+                      <td className="whitespace-nowrap px-3 py-3 font-mono font-semibold text-violet-800 dark:text-violet-300" title={invoice.invoiceNumber}>
+                        {formatCompactIdentifier(invoice.invoiceNumber)}
+                        <div className="mt-1 font-sans text-[10px] font-normal text-slate-400" title={invoice.invoiceId}>
+                          {formatCompactIdentifier(invoice.invoiceId)}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">{formatAppEventDateTime(invoice.createdAt || invoice.invoiceDate)}</td>
                       <td className="px-3 py-3"><button type="button" onClick={() => customer && onViewCustomer(customer.id)} disabled={!customer} className="text-left font-semibold hover:text-violet-700 disabled:cursor-default dark:hover:text-violet-300"><CustomerNameWithType customer={customer} /></button><div className="mt-0.5 text-[10px] text-slate-400">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
                       <td className="px-3 py-3">{getSaleLineItems(sale).map((item, index) => <div key={`${item.id}-${index}`} className="mb-1 last:mb-0">{servicesById.get(item.serviceId)?.name || 'Service unavailable'}<div className="mt-1 text-[10px] text-slate-400">{item.plan}{item.quantity > 1 ? ` × ${item.quantity}` : ''}</div></div>)}</td>
                       <td className="whitespace-nowrap px-3 py-3 font-semibold tabular-nums">{formatCurrency(sale.amount, sale.currency)}</td>
@@ -480,8 +486,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                 <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
                   <div className="flex min-w-0 items-start gap-1.5">
                     <div className="min-w-0 flex-1">
-                      <div title={invoice.invoiceNumber} className="truncate whitespace-nowrap font-mono text-sm font-bold text-violet-800 dark:text-violet-300">{invoice.invoiceNumber}</div>
-                      <div className="mt-1 text-xs text-slate-500">{formatAppDate(invoice.invoiceDate, language)}</div>
+                      <div title={invoice.invoiceNumber} className="truncate whitespace-nowrap font-mono text-sm font-bold text-violet-800 dark:text-violet-300">{formatCompactIdentifier(invoice.invoiceNumber)}</div>
+                      <div className="mt-1 text-xs text-slate-500">{formatAppEventDateTime(invoice.createdAt || invoice.invoiceDate)}</div>
                     </div>
                     <button type="button" title="Copy full invoice number" aria-label={`Copy full invoice number ${invoice.invoiceNumber}`} onClick={() => void copyInvoiceNumber(invoice.invoiceNumber)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-800">
                       <Copy className="h-3.5 w-3.5" />

@@ -1,16 +1,16 @@
 const CACHE_PREFIX = 'xolve-manager-static-v';
-const CACHE_NAME = `${CACHE_PREFIX}next-5`;
+const CACHE_NAME = `${CACHE_PREFIX}next-7`;
 const PRECACHE_URLS = [
   '/manifest.webmanifest',
   '/favicon.svg',
   '/xolvemanager-wordmark-violet-dark.png',
   '/xolvemanager-wordmark-violet-light.png',
-  '/icons/xolvemanager-violet-16.png',
-  '/icons/xolvemanager-violet-32.png',
-  '/icons/xolvemanager-violet-180.png',
-  '/icons/xolvemanager-violet-192.png',
-  '/icons/xolvemanager-violet-512.png',
-  '/icons/xolvemanager-violet-maskable-512.png',
+  '/icons/xolvemanager-brand-16.png',
+  '/icons/xolvemanager-brand-32.png',
+  '/icons/xolvemanager-brand-180.png',
+  '/icons/xolvemanager-brand-192.png',
+  '/icons/xolvemanager-brand-512.png',
+  '/icons/xolvemanager-brand-maskable-512.png',
 ];
 
 self.addEventListener('install', event => {

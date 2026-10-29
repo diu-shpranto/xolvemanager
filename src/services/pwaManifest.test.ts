@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { productBrand } from '../config/brand.ts';
 
 const manifest = JSON.parse(readFileSync(new URL('../../public/manifest.webmanifest', import.meta.url), 'utf8')) as {
   name: string;
@@ -25,7 +26,9 @@ test('PWA manifest has the product identity and standalone launch configuration'
   assert.equal(manifest.orientation, undefined);
   assert.equal(manifest.theme_color, '#8B5CF6');
   assert.equal(manifest.background_color, '#0B0B1B');
-  assert.ok(manifest.icons.every(icon => icon.src.startsWith('/icons/xolvemanager-violet-')));
+  assert.ok(manifest.icons.every(icon => icon.src.startsWith('/icons/xolvemanager-brand-')));
+  assert.equal(productBrand.faviconUrl, '/icons/xolvemanager-brand-32.png');
+  assert.equal(productBrand.iconUrl, manifest.icons.find(icon => icon.sizes === '192x192')?.src);
 });
 
 test('manifest icons exist as PNG assets with their declared dimensions', () => {
@@ -55,12 +58,18 @@ test('manifest icons exist as PNG assets with their declared dimensions', () => 
   assert.ok(manifest.icons.some(icon => icon.sizes === '512x512' && icon.purpose === 'maskable'));
 
   for (const [file, size] of [
-    ['xolvemanager-violet-16.png', 16],
-    ['xolvemanager-violet-32.png', 32],
-    ['xolvemanager-violet-180.png', 180],
+    ['xolvemanager-brand-16.png', 16],
+    ['xolvemanager-brand-32.png', 32],
+    ['xolvemanager-brand-180.png', 180],
+    ['xolvemanager-brand-192.png', 192],
+    ['xolvemanager-brand-512.png', 512],
+    ['xolvemanager-brand-maskable-512.png', 512],
   ] as const) {
     const bytes = readFileSync(new URL(`../../public/icons/${file}`, import.meta.url));
     assert.equal(bytes.readUInt32BE(16), size);
     assert.equal(bytes.readUInt32BE(20), size);
   }
+
+  const maskableIcon = manifest.icons.find(icon => icon.purpose === 'maskable');
+  assert.equal(maskableIcon?.src, '/icons/xolvemanager-brand-maskable-512.png');
 });

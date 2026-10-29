@@ -97,7 +97,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   saleIdFilter,
   onClearSaleIdFilter,
 }) => {
-  const { formatCurrency, formatDate: formatAppDate, formatDateTime: formatAppDateTime } = useAppFormatting();
+  const { formatCurrency, formatDate: formatAppDate, formatEventDateTime: formatAppEventDateTime } = useAppFormatting();
   const {
     sales,
     invoices,
@@ -858,7 +858,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       {servicesById.get(item.serviceId)?.name || 'Service unavailable'} · {item.plan}{item.quantity > 1 ? ` × ${item.quantity}` : ''}
                     </p>
                   ))}
-                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Sale date · {formatAppDate(sale.date, language)}</p>
+                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Sale date · {formatAppEventDateTime(sale.createdAt || sale.date)}</p>
                 </div>
                 <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold capitalize ${status === 'paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : status === 'partial' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' : status === 'pending' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'}`}>{status === 'refunded' ? 'Refunded' : status}</span>
               </div>
@@ -960,7 +960,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       </td>
 
                       <td className="py-3 px-4 font-mono text-slate-500 whitespace-nowrap">
-                        {formatAppDate(sale.date, language)}
+                        {formatAppEventDateTime(sale.createdAt || sale.date)}
                       </td>
 
                       <td className="py-3 px-4">
@@ -1098,7 +1098,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 <h3 className="mb-2.5 font-bold text-slate-900 dark:text-white">Sale</h3>
                 <dl className="space-y-2 text-slate-600 dark:text-slate-300">
                   <div className="flex min-w-0 items-start justify-between gap-3"><dt className="shrink-0">Sale ID</dt><dd className="min-w-0 max-w-[68%] break-all text-right font-mono text-xs font-semibold">{receiptSale.id}</dd></div>
-                  <div className="flex min-w-0 items-start justify-between gap-3"><dt className="shrink-0">Created</dt><dd className="min-w-0 text-right">{formatAppDate((receiptSale.createdAt || receiptSale.date).slice(0, 10), language)}</dd></div>
+                  <div className="flex min-w-0 items-start justify-between gap-3"><dt className="shrink-0">Created</dt><dd className="min-w-0 text-right">{formatAppEventDateTime(receiptSale.createdAt || receiptSale.date)}</dd></div>
                   {receiptSale.renewalOfSubscriptionId && <div className="rounded-lg bg-emerald-50 px-3 py-2 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">Renewal Sale · linked to previous subscription</div>}
                 </dl>
               </section>
@@ -1214,7 +1214,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 <div><dt className="text-slate-400">Discount</dt><dd className="mt-0.5">{formatCurrency(receiptSale.discount || 0, receiptSale.currency)}</dd></div>
                 <div><dt className="text-slate-400">Payment Method Breakdown</dt><dd className="mt-0.5">{receiptPaymentBreakdown.length ? receiptPaymentBreakdown.map(item => `${item.methodName}: ${formatCurrency(item.amount, receiptSale.currency)}`).join(' · ') : receiptSale.paymentMethod}</dd></div>
                 <div className="min-w-0"><dt className="text-slate-400">Transaction Number</dt><dd className="mt-0.5 break-all font-mono">{receiptPayments[0]?.transactionId || receiptSale.transactionId || '—'}</dd></div>
-                <div><dt className="text-slate-400">Payment Date</dt><dd className="mt-0.5">{formatAppDate(receiptPayments[0]?.paymentDate || receiptSale.date, language)}</dd></div>
+                <div><dt className="text-slate-400">Payment Date</dt><dd className="mt-0.5">{formatAppEventDateTime(receiptPayments[0]?.createdAt || receiptPayments[0]?.paymentDate || receiptSale.date)}</dd></div>
               </dl>
               {getSaleDueAmount(receiptSale, businessPayments) > 0 && (
                 <button type="button" onClick={() => {
@@ -1236,7 +1236,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                   {receiptPayments.map(payment => (
                     <div key={payment.id} className="grid grid-cols-2 gap-2 rounded-lg bg-slate-50 p-3 dark:bg-slate-800/60 sm:grid-cols-6">
                       <span className="break-all font-mono">{payment.id}</span>
-                      <span>{formatAppDate(payment.paymentDate, language)}</span>
+                      <span>{formatAppEventDateTime(payment.createdAt || payment.paymentDate)}</span>
                       <span className="font-semibold">{formatCurrency(payment.amount, payment.currency)}</span>
                       <span>{payment.paymentMethodName || payment.paymentMethod}</span>
                       <span className="break-all font-mono">{payment.transactionId || '—'}</span>
@@ -1259,7 +1259,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                     <li key={activity.id} className="border-l-2 border-emerald-200 pl-3 dark:border-emerald-900">
                       <p className="font-semibold text-slate-800 dark:text-slate-100">{activity.title}</p>
                       <p className="mt-0.5 text-slate-500 dark:text-slate-400">{activity.description}</p>
-                      <time dateTime={activity.timestamp} className="mt-1 block text-[10px] text-slate-400">{formatAppDateTime(activity.timestamp, language)}</time>
+                      <time dateTime={activity.timestamp} className="mt-1 block text-[10px] text-slate-400">{formatAppEventDateTime(activity.timestamp)}</time>
                     </li>
                   ))}
                 </ol>

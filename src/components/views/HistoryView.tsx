@@ -120,7 +120,7 @@ function ActivityMetric({ label, value, icon: Icon, language }: { label: string;
 
 export const HistoryView: React.FC<HistoryViewProps> = ({ onViewRelated }) => {
   const { activityLogs, customers, services, accounts, subscriptions, sales, payments, invoices, financialAccounts, currentBusiness, language, settings } = useApp();
-  const { formatDateTime: formatAppDateTime } = useAppFormatting();
+  const { formatDateTime: formatAppDateTime, formatEventDateTime: formatAppEventDateTime } = useAppFormatting();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<ActivityCategory | 'all'>('all');
   const [action, setAction] = useState<ActivityAction | 'all'>('all');
@@ -263,6 +263,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onViewRelated }) => {
     return bits.length ? bits.join(' · ') : log.entityId || '—';
   };
   const formatHistoryTimestamp = (timestamp: string) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(timestamp)) return formatAppEventDateTime(timestamp);
     const parsed = new Date(timestamp);
     if (!Number.isFinite(parsed.getTime())) return timestamp;
     const timeZone = settings.businessProfile?.timeZone;
@@ -418,7 +419,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onViewRelated }) => {
         )}
       </section>
 
-      <Modal isOpen={Boolean(selectedActivity)} onClose={() => setSelectedActivity(null)} title={selectedActivity?.title || 'Activity details'} subtitle={selectedActivity ? formatAppDateTime(selectedActivity.timestamp) : undefined} maxWidth="2xl">
+      <Modal isOpen={Boolean(selectedActivity)} onClose={() => setSelectedActivity(null)} title={selectedActivity?.title || 'Activity details'} subtitle={selectedActivity ? formatAppEventDateTime(selectedActivity.timestamp) : undefined} maxWidth="2xl">
         {selectedActivity && (
           <div className="space-y-5">
             <dl className="grid gap-4 sm:grid-cols-2">
@@ -426,7 +427,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onViewRelated }) => {
               <div><dt className="text-xs font-medium text-slate-500">Action</dt><dd className="mt-1 text-sm font-semibold capitalize text-slate-900 dark:text-white">{getActivityAction(selectedActivity)}</dd></div>
               <div><dt className="text-xs font-medium text-slate-500">Event type</dt><dd className="mt-1 break-words text-sm font-medium capitalize text-slate-900 dark:text-white">{selectedActivity.type.replace(/_/g, ' ')}</dd></div>
               <div><dt className="text-xs font-medium text-slate-500">Related entity</dt><dd className="mt-1 text-sm font-semibold capitalize text-slate-900 dark:text-white">{getActivityEntityType(selectedActivity)}</dd></div>
-              <div><dt className="text-xs font-medium text-slate-500">Exact date and time</dt><dd className="mt-1 text-sm text-slate-900 dark:text-white"><time dateTime={selectedActivity.timestamp}>{formatAppDateTime(selectedActivity.timestamp)}</time></dd></div>
+              <div><dt className="text-xs font-medium text-slate-500">Exact date and time</dt><dd className="mt-1 text-sm text-slate-900 dark:text-white"><time dateTime={selectedActivity.timestamp}>{formatAppEventDateTime(selectedActivity.timestamp)}</time></dd></div>
               {selectedActivity.createdBy && <div className="sm:col-span-2"><dt className="text-xs font-medium text-slate-500">Actor</dt><dd className="mt-1 break-all text-sm text-slate-900 dark:text-white">{formatActor(selectedActivity.createdBy)}</dd></div>}
               <div className="sm:col-span-2"><dt className="text-xs font-medium text-slate-500">Description</dt><dd className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-200">{selectedActivity.description}</dd></div>
               <div className="sm:col-span-2"><dt className="text-xs font-medium text-slate-500">Activity ID</dt><dd className="mt-1 break-all font-mono text-xs text-slate-700 dark:text-slate-300">{selectedActivity.id}</dd></div>

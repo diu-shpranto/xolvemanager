@@ -170,15 +170,23 @@ export function buildCustomerCrmMetrics(
     const sortedPurchaseDates = customerSales.map(sale => sale.date).filter(Boolean).sort();
     const lastPurchase = sortedPurchaseDates[sortedPurchaseDates.length - 1];
     const firstPurchase = customerSales.map(sale => sale.date).filter(Boolean).sort()[0];
-    const lastActivityTimestamp = Math.max(
-      timestampValue(customer.createdAt),
-      timestampValue(customer.updatedAt),
-      ...customerActivities.map(item => timestampValue(item.timestamp)),
-      ...customerSales.map(item => timestampValue(item.date)),
-      ...customerPayments.map(item => timestampValue(item.paymentDate)),
-      ...customerSubscriptions.map(item => timestampValue(item.updatedAt || item.createdAt))
-    );
-    const lastActivity = lastActivityTimestamp ? new Date(lastActivityTimestamp).toISOString() : undefined;
+    const lastActivityRecord = [
+      customer.createdAt,
+      customer.updatedAt,
+      ...customerActivities.map(item => item.timestamp),
+      ...customerSales.map(item => item.createdAt || item.date),
+      ...customerPayments.map(item => item.createdAt || item.paymentDate),
+      ...customerSubscriptions.map(item => item.updatedAt || item.createdAt || item.startDate),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map(value => ({ value, timestamp: timestampValue(value) }))
+      .filter(item => item.timestamp > 0)
+      .reduce<{ value: string; timestamp: number } | undefined>(
+        (latest, item) => !latest || item.timestamp > latest.timestamp ? item : latest,
+        undefined
+      );
+    const lastActivityTimestamp = lastActivityRecord?.timestamp || 0;
+    const lastActivity = lastActivityRecord?.value;
     const daysSinceActivity = lastActivityTimestamp
       ? Math.max(0, Math.floor((now.getTime() - lastActivityTimestamp) / 86400000))
       : Number.POSITIVE_INFINITY;

@@ -118,7 +118,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   onFocusedSubscriptionHandled,
   onAddPaymentForCustomer,
 }) => {
-  const { formatCurrency, formatDate: formatAppDate, formatDateTime: formatAppDateTime, formatNumber, formatDurationDays } = useAppFormatting();
+  const { formatCurrency, formatDate: formatAppDate, formatEventDateTime: formatAppEventDateTime, formatNumber, formatDurationDays } = useAppFormatting();
   const {
     subscriptions,
     customers,
@@ -846,7 +846,11 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     try {
       updateSubscription(selectedSub.id, {
         status: 'cancelled',
-        cancelledAt: cancellationDate ? `${cancellationDate}T00:00:00` : new Date().toISOString(),
+        cancelledAt: cancellationDate
+          ? cancellationDate === getTodayDateString(settings.businessProfile?.timeZone)
+            ? new Date().toISOString()
+            : cancellationDate
+          : new Date().toISOString(),
         cancelledBy: currentUser?.uid || 'admin',
         cancellationReason: cancellationReason.trim(),
       });
@@ -1057,7 +1061,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   const pendingPaymentCount = subscriptionRows.filter(row => row.due > 0).length;
 
   return (
-    <div className="subscriptions-view section-layout-shell mx-auto max-w-[1600px] space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-6 lg:px-8">
+    <div className="subscriptions-view section-layout-shell mx-auto max-w-[1600px] space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-5 lg:px-8">
       <div className="customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:flex-nowrap sm:gap-4 sm:pb-4">
         <div className="customer-heading flex min-w-0 flex-1 items-start gap-3">
           <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11">
@@ -1065,15 +1069,15 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
           </div>
           <div className="min-w-0">
             <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">
-              {language === 'bn' ? 'গ্রাহক ধরে রাখুন' : 'Customer retention'}
+              {language === 'bn' ? 'সাবস্ক্রিপশন ব্যবস্থাপনা' : 'SUBSCRIPTION MANAGEMENT'}
             </p>
             <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">
               {language === 'bn' ? 'সাবস্ক্রিপশন' : 'Subscriptions'}
             </h1>
             <p className="mt-0.5 max-w-[28rem] text-sm leading-5 text-slate-600 dark:text-slate-400">
               {language === 'bn'
-                ? 'সাবস্ক্রিপশন, নবায়ন ও মেয়াদ'
-                : 'Plans, renewals & customer access.'}
+                ? 'প্ল্যান, নবায়ন ও মেয়াদ'
+                : 'Manage plans, renewals, and customer access.'}
             </p>
           </div>
         </div>
@@ -1103,7 +1107,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         </div>
       </div>
 
-      <section aria-label="Subscription summary" className="subscription-summary-grid grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      <section aria-label="Subscription summary" className="subscription-summary-grid grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
         {[
           { label: 'Total Subscriptions', value: statusCounts.all, icon: Layers, tone: 'slate' },
           { label: 'Active', value: statusCounts.active, icon: CheckCircle2, tone: 'emerald' },
@@ -1120,7 +1124,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             violet: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300',
           }[item.tone];
           return (
-          <div key={item.label} className={`subscription-summary-card flex min-h-[76px] min-w-0 items-center justify-between gap-2 rounded-xl border p-3 transition-colors ${item.tone === 'slate' ? 'border-violet-200 bg-violet-50/70 dark:border-violet-900/60 dark:bg-violet-950/25' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-[#151C28]'}`}>
+          <div key={item.label} className={`subscription-summary-card flex min-h-[68px] min-w-0 items-center justify-between gap-2 rounded-xl border p-3 transition-colors ${item.tone === 'slate' ? 'border-violet-200 bg-violet-50/70 dark:border-violet-900/60 dark:bg-violet-950/25' : 'border-slate-200/80 bg-white dark:border-slate-800 dark:bg-[#151C28]'}`}>
             <div className="min-w-0">
               <p className="text-[11px] font-semibold leading-tight text-slate-500 dark:text-slate-400">{item.label}</p>
               <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-slate-950 dark:text-white">{item.value}</p>
@@ -1133,7 +1137,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         })}
       </section>
 
-      <section aria-label="Quick subscription filters" className="subscription-quick-followup flex flex-col gap-2.5 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:flex-row sm:items-center sm:justify-between">
+      <section aria-label="Quick subscription filters" className="subscription-quick-followup flex flex-col gap-2 rounded-xl border border-violet-100 bg-gradient-to-r from-violet-50/70 via-white to-white p-3 dark:border-violet-950/70 dark:from-violet-950/20 dark:via-[#151C28] dark:to-[#151C28] sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
             {language === 'bn' ? 'দ্রুত ফলো-আপ' : 'Quick follow-up'}
@@ -1231,12 +1235,12 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       {/* ========================================================================= */}
       {/* 2. SPLIT WORKSPACE: LEFT LIST BROWSER + RIGHT SELECTED WORKSPACE         */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 items-start gap-3.5 md:grid-cols-12 md:gap-5">
+      <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-12 md:gap-4 xl:gap-5">
         {/* ===================================================================== */}
         {/* LEFT PANEL: SUBSCRIPTION BROWSER (List view on mobile)                */}
         {/* ===================================================================== */}
         <div
-          className={`space-y-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900/50 sm:p-4 md:col-span-5 lg:col-span-4 ${
+          className={`space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900/60 sm:p-4 md:sticky md:top-4 md:col-span-5 lg:col-span-4 ${
             mobileView === 'detail' ? 'hidden md:block' : 'block'
           }`}
         >
@@ -1379,7 +1383,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
           )}
 
           {/* Subscription List Items */}
-          <div className="space-y-2 overflow-visible pr-1 md:max-h-[calc(100vh-270px)] md:overflow-y-auto md:scrollbar-thin">
+          <div className="space-y-2 overflow-visible pr-1 md:max-h-[calc(100vh-22rem)] md:overflow-y-auto md:scrollbar-thin">
             {filteredSubscriptions.length === 0 ? (
               <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 text-slate-400">
                 <CreditCard className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
@@ -1501,7 +1505,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                             e.stopPropagation();
                             openRenewDrawer(sub);
                           }}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-[10px] font-bold shadow-2xs flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                          className="px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white text-[10px] font-bold shadow-2xs flex items-center gap-1 cursor-pointer transition-colors shrink-0"
                         >
                           <Zap className="w-3 h-3 fill-current" />
                           <span>Renew</span>
@@ -1537,7 +1541,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
           }`}
         >
           {selectedSub && selectedService ? (
-            <div className="space-y-4">
+            <div className="subscription-detail-workspace space-y-4">
               {/* Mobile Back Button */}
               <div className="md:hidden flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
                 <button
@@ -1554,12 +1558,12 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               </div>
 
               {/* Workspace Main Header Card */}
-              <div className="p-4 sm:p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4">
+              <div className="subscription-detail-header p-4 sm:p-5 bg-white dark:bg-slate-900 rounded-2xl border border-violet-200/70 dark:border-violet-900/50 shadow-xs space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div className="flex items-start gap-3.5 min-w-0">
                     <div
-                      className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-sm"
-                      style={{ backgroundColor: selectedService.color || '#10b981' }}
+                      className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-sm ring-4 ring-violet-50 dark:ring-violet-950/40"
+                      style={{ backgroundColor: selectedService.color || '#7c3aed' }}
                     >
                       {selectedService.logoUrl
                         ? <img src={selectedService.logoUrl} alt="" className="h-7 w-7 rounded-lg object-contain" />
@@ -1609,7 +1613,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                       type="button"
                       onClick={() => openRenewDrawer(selectedSub)}
                       disabled={selectedSubStatus === 'cancelled'}
-                      className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex items-center gap-2 px-3.5 py-2 bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Zap className="w-4 h-4 fill-current stroke-[2.5]" />
                       <span>{language === 'bn' ? 'রিনিউ করুন' : 'Renew'}</span>
@@ -1700,7 +1704,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
 
                 {/* Subscription Summary 4-Box Metrics */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
-                  <div className="p-3 bg-slate-50 dark:bg-slate-800/70 rounded-xl border border-slate-100 dark:border-slate-700">
+                  <div className="p-3 bg-violet-50/60 dark:bg-violet-950/20 rounded-xl border border-violet-100 dark:border-violet-900/50">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
                       Days Remaining
                     </span>
@@ -1780,7 +1784,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                               ? 'bg-rose-500 w-full'
                               : percentLeft <= 25
                               ? 'bg-amber-500'
-                              : 'bg-emerald-500'
+                              : 'bg-violet-500'
                           }`}
                           style={{ width: `${isExpired ? 100 : percentLeft}%` }}
                         />
@@ -1798,10 +1802,10 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               {/* Core Business Relationship Grid */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* 1. Customer Information Card */}
-                <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div className="p-4 bg-sky-100/80 dark:bg-sky-950/35 rounded-2xl border border-sky-300 dark:border-sky-800 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-sky-100 dark:border-sky-900/60">
                     <div className="flex items-center gap-2">
-                      <User className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <User className="w-4 h-4 text-sky-600 dark:text-sky-400" />
                       <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
                         Customer Information
                       </h3>
@@ -1814,7 +1818,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                         }
                       }}
                       disabled={!selectedCustomer}
-                      className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer flex items-center gap-1"
+                      className="text-xs font-bold text-sky-700 dark:text-sky-300 hover:underline cursor-pointer flex items-center gap-1"
                     >
                       <span>{selectedCustomer ? 'View Customer' : getCustomerDisplayName(undefined)}</span>
                       {selectedCustomer && <ExternalLink className="w-3 h-3" />}
@@ -1879,10 +1883,10 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                 </div>
 
                 {/* 2. Service & Plan Details Card */}
-                <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div className="p-4 bg-violet-100/80 dark:bg-violet-950/35 rounded-2xl border border-violet-300 dark:border-violet-800 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-violet-100 dark:border-violet-900/60">
                     <div className="flex items-center gap-2">
-                      <Tv className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <Tv className="w-4 h-4 text-violet-600 dark:text-violet-400" />
                       <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
                         Service Details
                       </h3>
@@ -1892,7 +1896,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                       onClick={() => {
                         if (onNavigateSection) onNavigateSection('services', selectedService.id);
                       }}
-                      className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer flex items-center gap-1"
+                      className="text-xs font-bold text-violet-700 dark:text-violet-300 hover:underline cursor-pointer flex items-center gap-1"
                     >
                       <span>View Service</span>
                       <ExternalLink className="w-3 h-3" />
@@ -1928,10 +1932,10 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                 </div>
 
                 {/* 3. Account & Profile Assignment Card */}
-                {selectedRequiresResource && <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                {selectedRequiresResource && <div className="p-4 bg-amber-100/80 dark:bg-amber-950/35 rounded-2xl border border-amber-300 dark:border-amber-800 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-amber-100 dark:border-amber-900/60">
                     <div className="flex items-center gap-2">
-                      <Lock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                       <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
                         Account & Profile
                       </h3>
@@ -1942,7 +1946,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                         onClick={() => {
                           if (onNavigateSection) onNavigateSection('accounts', selectedAccount.id);
                         }}
-                        className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer flex items-center gap-1"
+                        className="text-xs font-bold text-amber-700 dark:text-amber-300 hover:underline cursor-pointer flex items-center gap-1"
                       >
                         <span>View Account</span>
                         <ExternalLink className="w-3 h-3" />
@@ -2000,8 +2004,8 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                 </div>}
 
                 {/* 4. Payment & Invoice Record Card */}
-                <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div className="p-4 bg-emerald-100/80 dark:bg-emerald-950/35 rounded-2xl border border-emerald-300 dark:border-emerald-800 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-emerald-100 dark:border-emerald-900/60">
                     <div className="flex items-center gap-2">
                       <DollarSign className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                       <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
@@ -2113,10 +2117,10 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               </div>
 
               {/* 5. Subscription Timeline & Historical Activity */}
-              <div className="p-4 sm:p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div className="p-4 sm:p-5 bg-slate-50/70 dark:bg-slate-900/80 rounded-2xl border border-slate-300/80 dark:border-slate-700 shadow-xs space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
                   <div className="flex items-center gap-2">
-                    <History className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <History className="w-4 h-4 text-slate-600 dark:text-slate-300" />
                     <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
                       Subscription Activity Timeline
                     </h3>
@@ -2131,7 +2135,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                     <div key={renewal.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800/50">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-bold text-slate-900 dark:text-white">Renewal · {renewal.plan}</span>
-                        <span className="text-slate-500">{formatAppDate(renewal.renewalDate, language)}</span>
+                        <span className="text-slate-500">{formatAppEventDateTime(renewal.renewalAt || renewal.renewalDate)}</span>
                       </div>
                       <p className="mt-1 text-slate-600 dark:text-slate-300">Previous end {formatAppDate(renewal.previousEndDate, language)} · New period {formatAppDate(renewal.newStartDate, language)} – {formatAppDate(renewal.newEndDate, language)}</p>
                       <p className="mt-1 text-slate-600 dark:text-slate-300">{formatCurrency(renewal.amount, renewal.currency || selectedSub.currency)} · {formatCurrency(renewal.amountPaid, renewal.currency || selectedSub.currency)} paid · {formatCurrency(renewal.amountDue, renewal.currency || selectedSub.currency)} due · {renewal.paymentStatus}</p>
@@ -2155,7 +2159,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                               {log.title}
                             </span>
                             <span className="text-[10px] text-slate-400 font-mono shrink-0">
-                              {formatAppDateTime(log.timestamp, language)}
+                              {formatAppEventDateTime(log.timestamp)}
                             </span>
                           </div>
                           <p className="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5">

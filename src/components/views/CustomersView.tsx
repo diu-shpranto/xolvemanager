@@ -110,12 +110,14 @@ function getInitials(name: string): string {
 
 // Curated subtle palette for customer avatars.
 const avatarColorStyles = [
-  'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-800/40',
-  'bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300 border-teal-200/60 dark:border-teal-800/40',
-  'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200/60 dark:border-slate-700/40',
-  'bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200/60 dark:border-amber-800/40',
+  'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200/60 dark:border-indigo-800/40',
   'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200/60 dark:border-blue-800/40',
+  'bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300 border-sky-200/60 dark:border-sky-800/40',
+  'bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 border-violet-200/60 dark:border-violet-800/40',
+  'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-200 border-indigo-300/60 dark:border-indigo-700/40',
 ];
+
+const customerCardAccentColors = ['#6366f1', '#3b82f6', '#0ea5e9', '#8b5cf6', '#4f46e5', '#2563eb'];
 
 function getAvatarColorClass(name: string): string {
   let hash = 0;
@@ -124,6 +126,14 @@ function getAvatarColorClass(name: string): string {
   }
   const index = Math.abs(hash) % avatarColorStyles.length;
   return avatarColorStyles[index];
+}
+
+function getCustomerCardAccent(customerId: string): string {
+  let hash = 0;
+  for (let i = 0; i < customerId.length; i++) {
+    hash = customerId.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return customerCardAccentColors[Math.abs(hash) % customerCardAccentColors.length];
 }
 
 export const CustomersView: React.FC<CustomersViewProps> = ({
@@ -143,7 +153,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   initialServiceFilterId,
   onInitialCustomerFilterHandled,
 }) => {
-  const { formatCurrency, formatDate: formatAppDate, formatDateTime: formatAppDateTime, formatNumber } = useAppFormatting();
+  const { formatCurrency, formatDate: formatAppDate, formatEventDateTime: formatAppEventDateTime, formatNumber } = useAppFormatting();
   const {
     customers,
     customersLoading,
@@ -1530,7 +1540,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       </td>
 
                       <td className="py-3.5 px-5 text-xs text-slate-500 dark:text-slate-400 font-mono">
-                        {metrics?.lastActivity ? formatAppDate(metrics.lastActivity, language) : '—'}
+                        {metrics?.lastActivity ? formatAppEventDateTime(metrics.lastActivity) : '—'}
                       </td>
 
                       <td className="py-3.5 px-5">
@@ -1663,6 +1673,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               const canWhatsApp = canContact(cust.id);
               const initials = getInitials(cust.name);
               const avatarColor = getAvatarColorClass(cust.name);
+              const cardAccent = getCustomerCardAccent(cust.id);
               const valueTag = cust.tags?.find(tag => ['vip', 'high value'].includes(tag.trim().toLowerCase()));
               const customerStatus = cust.isArchived ? 'Archived'
                 : metrics?.status === 'at_risk' ? 'At Risk'
@@ -1683,7 +1694,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               return (
                 <article
                   key={cust.id}
-                  className="customer-card group min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-sm dark:border-slate-800 dark:bg-[#151C28] dark:hover:border-violet-800"
+                  className="customer-card group min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:shadow-sm dark:border-slate-800 dark:bg-[#151C28]"
+                  style={{ '--customer-card-accent': cardAccent } as React.CSSProperties & { '--customer-card-accent': string }}
                 >
                   <div className="customer-card-header flex min-w-0 items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
@@ -1721,7 +1733,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     <div className="customer-card-metric min-w-0"><p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Active Subscriptions</p><p className="mt-1 text-base font-semibold tabular-nums text-slate-900 dark:text-white">{activeCount}</p></div>
                     <div className="customer-card-metric min-w-0"><p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Total Spent</p><p className="mt-1 truncate text-base font-semibold tabular-nums text-slate-900 dark:text-white">{formatCurrency(spending, currency)}</p></div>
                     <div className={`customer-card-metric customer-card-due min-w-0 rounded-lg ${metrics?.totalDue ? 'bg-amber-50/80 dark:bg-amber-950/25' : ''}`}><p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Due Amount</p><p className={`mt-1 truncate text-base font-semibold tabular-nums ${metrics?.totalDue ? 'text-amber-800 dark:text-amber-300' : 'text-slate-700 dark:text-slate-200'}`}>{formatCurrency(metrics?.totalDue || 0, currency)}</p></div>
-                    <div className="customer-card-metric min-w-0"><p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Last Activity</p><p className="mt-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">{metrics?.lastActivity ? formatAppDate(metrics.lastActivity, language) : '—'}</p></div>
+                    <div className="customer-card-metric min-w-0"><p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Last Activity</p><p className="mt-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">{metrics?.lastActivity ? formatAppEventDateTime(metrics.lastActivity) : '—'}</p></div>
                   </div>
 
                   {renewalSubscription && (
@@ -1839,7 +1851,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 <li key={sale.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 dark:border-slate-800">
                   <button type="button" onClick={() => openCustomerDetails(customer.id)} className="min-w-0 text-left">
                     <span className="block truncate text-xs font-semibold text-slate-900 dark:text-white">{customer.name} · {sale.invoiceNo}</span>
-                    <span className="block text-[11px] text-slate-500">{getSaleLineItems(sale).map(item => `${services.find(service => service.id === item.serviceId)?.name || 'Service'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`).join('; ')} · {formatAppDate(sale.date, language)} · Due {formatCurrency(due, sale.currency)}</span>
+                    <span className="block text-[11px] text-slate-500">{getSaleLineItems(sale).map(item => `${services.find(service => service.id === item.serviceId)?.name || 'Service'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`).join('; ')} · {formatAppEventDateTime(sale.createdAt || sale.date)} · Due {formatCurrency(due, sale.currency)}</span>
                   </button>
                   <div className="flex gap-1.5">
                     {onAddPaymentForCustomer && <button type="button" onClick={() => onAddPaymentForCustomer(customer.id)} className="rounded-md bg-amber-600 px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-amber-700">Add Payment</button>}
@@ -1959,7 +1971,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   {detailedCustomer.createdAt && (
                     <p className="customer-profile-since mt-2 inline-flex items-center gap-1.5 text-xs font-medium">
                       <CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                      <span>{language === 'bn' ? 'গ্রাহক হিসেবে যোগদান:' : 'Customer since'} {formatAppDate(detailedCustomer.createdAt, language)}</span>
+                      <span>{language === 'bn' ? 'গ্রাহক হিসেবে যোগদান:' : 'Customer since'} {formatAppEventDateTime(detailedCustomer.createdAt)}</span>
                     </p>
                   )}
                 </div>
@@ -2108,13 +2120,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 <div>
                   <dt className="text-slate-500 dark:text-slate-400">Customer Since</dt>
                   <dd className="mt-1 font-medium text-slate-900 dark:text-white">
-                    {detailedCustomer.createdAt ? formatAppDate(detailedCustomer.createdAt, language) : '—'}
+                    {detailedCustomer.createdAt ? formatAppEventDateTime(detailedCustomer.createdAt) : '—'}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-slate-500 dark:text-slate-400">Last Updated</dt>
                   <dd className="mt-1 font-medium text-slate-900 dark:text-white">
-                    {detailedCustomer.updatedAt ? formatAppDateTime(detailedCustomer.updatedAt, language) : '—'}
+                    {detailedCustomer.updatedAt ? formatAppEventDateTime(detailedCustomer.updatedAt) : '—'}
                   </dd>
                 </div>
                 <div>
@@ -2183,7 +2195,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                         <>
                           <p className="whitespace-pre-wrap text-xs text-slate-800 dark:text-slate-200">{safeCustomerNote(note.text)}</p>
                           <div className="mt-2 flex items-center justify-between gap-2">
-                            <time className="text-[10px] text-slate-500">{formatAppDateTime(note.createdAt, language)}{note.updatedAt !== note.createdAt ? ' · edited' : ''}</time>
+                            <time className="text-[10px] text-slate-500">{formatAppEventDateTime(note.createdAt)}{note.updatedAt !== note.createdAt ? ' · edited' : ''}</time>
                             <div className="flex gap-2">
                               <button type="button" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text); }} className="text-[10px] font-semibold text-slate-600 hover:text-emerald-700 dark:text-slate-300">Edit</button>
                               <button type="button" onClick={() => removeCustomerNote(note.id)} className="text-[10px] font-semibold text-rose-600">Delete</button>
@@ -2389,7 +2401,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     {detailedPaymentHistory.map(payment => (
                       <li key={payment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 text-xs dark:border-slate-700">
                         <div className="min-w-0">
-                          <p className="font-semibold text-slate-800 dark:text-slate-100">{formatAppDate(payment.paymentDate, language)} · {payment.paymentMethodName || payment.paymentMethod} · {payment.paymentStatus}</p>
+                          <p className="font-semibold text-slate-800 dark:text-slate-100">{formatAppEventDateTime(payment.createdAt || payment.paymentDate)} · {payment.paymentMethodName || payment.paymentMethod} · {payment.paymentStatus}</p>
                           <p className="mt-1 text-[11px] text-slate-500">
                             {payment.allocations?.length
                               ? `Allocated to sale${payment.allocations.length === 1 ? '' : 's'}: ${formatCurrency(getPaymentRecognizedAmount(payment), payment.currency)}`
@@ -2422,7 +2434,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       <div key={sale.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-800">
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-semibold text-slate-800 dark:text-slate-100">
-                            {formatAppDate(sale.date, language)} · {getSaleLineItems(sale).map(item => `${services.find(service => service.id === item.serviceId)?.name || '—'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`).join('; ')}
+                            {formatAppEventDateTime(sale.createdAt || sale.date)} · {getSaleLineItems(sale).map(item => `${services.find(service => service.id === item.serviceId)?.name || '—'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`).join('; ')}
                           </div>
                           <div className="mt-0.5 text-slate-500 dark:text-slate-400">{sale.invoiceNo}</div>
                         </div>
@@ -2474,7 +2486,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       <div key={invoice.invoiceId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-800">
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold text-slate-800 dark:text-slate-100">
-                            {invoice.invoiceNumber} · {formatAppDate(invoice.invoiceDate, language)}
+                            {invoice.invoiceNumber} · {formatAppEventDateTime(invoice.createdAt || invoice.invoiceDate)}
                           </div>
                           <div className="mt-0.5 text-slate-500 dark:text-slate-400">
                             Total {formatCurrency(invoice.totalAmount, sale.currency)}
@@ -2536,7 +2548,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                               {services.find(service => service.id === serviceId)?.name || (language === 'bn' ? 'সার্ভিস অনুপলব্ধ' : 'Service unavailable')}
                             </div>
                             <div className="mt-0.5 text-slate-500 dark:text-slate-400">
-                              {formatAppDate(pay.paymentDate, language)} · {pay.paymentMethodName || pay.paymentMethod}
+                              {formatAppEventDateTime(pay.createdAt || pay.paymentDate)} · {pay.paymentMethodName || pay.paymentMethod}
                               {pay.transactionId ? ` · ${pay.transactionId}` : ''}
                             </div>
                           </div>
@@ -2638,7 +2650,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                             {event.status && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium capitalize text-slate-600 dark:bg-slate-800 dark:text-slate-300">{event.status.replaceAll('_', ' ')}</span>}
                           </span>
                           <span className="mt-1 block break-words text-xs text-slate-500 dark:text-slate-400">{event.description}</span>
-                          <time className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">{formatAppDateTime(event.timestamp, language)}</time>
+                          <time className="mt-1 block text-[11px] text-slate-400 dark:text-slate-500">{formatAppEventDateTime(event.timestamp)}</time>
                         </span>
                         {event.amount !== undefined && (
                           <strong className={`shrink-0 text-left text-sm font-bold tabular-nums sm:text-right ${event.amount < 0 ? 'text-rose-700 dark:text-rose-300' : 'text-slate-900 dark:text-white'}`}>
@@ -2678,7 +2690,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                           <div className="font-semibold text-slate-800 dark:text-slate-200">{activity.title}</div>
                           <div className="break-words text-[11px] text-slate-500 dark:text-slate-400">{activity.description}</div>
                         </div>
-                        <time className="shrink-0 whitespace-nowrap font-mono text-[10px] text-slate-400">{formatAppDateTime(activity.timestamp, language)}</time>
+                        <time className="shrink-0 whitespace-nowrap font-mono text-[10px] text-slate-400">{formatAppEventDateTime(activity.timestamp)}</time>
                       </li>
                     ))}
                   </ol>

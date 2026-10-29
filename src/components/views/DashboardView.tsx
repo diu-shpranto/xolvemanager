@@ -217,7 +217,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onViewSale,
   onNavigateToCustomers,
 }) => {
-  const { formatCurrency, formatDate: formatAppDate, formatDateTime: formatAppDateTime, formatNumber, formatDurationDays } = useAppFormatting();
+  const { formatCurrency, formatDate: formatAppDate, formatEventDateTime: formatAppEventDateTime, formatNumber, formatDurationDays } = useAppFormatting();
   const prefersReducedMotion = useReducedMotionPreference();
   const {
     stats,
@@ -1401,8 +1401,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const dashboardCopy = language === 'bn' ? {
     overview: 'ব্যবসার সারসংক্ষেপ',
     title: 'ড্যাশবোর্ড',
-    context: 'বিক্রয়, নবায়ন ও আদায় এক নজরে',
     dateRange: 'তারিখের সীমা',
+    addSale: 'নতুন বিক্রয়',
     receivedRevenue: 'প্রাপ্ত আয়',
     receivedContext: 'নির্বাচিত সময়ে আদায়',
     customers: 'গ্রাহক',
@@ -1453,8 +1453,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   } : {
     overview: 'BUSINESS OVERVIEW',
     title: 'Dashboard',
-    context: 'Sales, renewals, and collections at a glance',
     dateRange: 'Date range',
+    addSale: 'Add Sale',
     receivedRevenue: 'Received revenue',
     receivedContext: 'Payments received',
     customers: 'Customers',
@@ -1639,13 +1639,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <h1 className="mt-1 break-words text-3xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-4xl">
             {dashboardCopy.title}
           </h1>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            {currentBusinessName || currentBusiness?.name || settings.storeName || 'Your Business'}
-            <span className="mx-2 text-slate-300 dark:text-slate-600">·</span>
-            {dashboardCopy.context}
-          </p>
         </div>
-        <div className="grid w-full grid-cols-1 items-end gap-2 sm:w-auto sm:flex">
+        <div className="grid w-full grid-cols-1 items-end gap-2 sm:w-auto sm:flex sm:flex-wrap sm:justify-end">
+          <button
+            type="button"
+            onClick={() => onOpenNewSale()}
+            aria-label={language === 'bn' ? dashboardCopy.addSale : '+ Add Sale'}
+            title={dashboardCopy.addSale}
+            className="inline-flex h-10 w-10 justify-self-start items-center justify-center gap-2 rounded-lg bg-violet-700 p-0 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:w-auto sm:justify-self-auto sm:px-4 sm:py-2 sm:text-sm lg:hidden"
+          >
+            <Plus className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="hidden sm:inline">{dashboardCopy.addSale}</span>
+          </button>
           <label className="min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-200 sm:min-w-44">
             {dashboardCopy.dateRange}
             <select
@@ -1951,7 +1956,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <strong>{getCustomerDisplayName(customer)}</strong>
                   <span>{itemSummary}</span>
                 </div>
-                <span className="dashboard-recent-sale-date">{formatAppDate(sale.date, language)}</span>
+                <span className="dashboard-recent-sale-date">{formatAppEventDateTime(sale.createdAt || sale.date)}</span>
                 <span className="dashboard-recent-sale-amount">{formatCurrency(financial.revenue, sale.currency)}</span>
                 <PaymentStatusBadge status={getSalePaymentStatus(sale, scopedPayments)} />
                 <button type="button" onClick={() => onViewSale(sale.id)} className="dashboard-recent-sale-action">{dashboardCopy.viewSale}</button>
@@ -2093,7 +2098,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       `${serviceById.get(item.serviceId)?.name || 'Service unavailable'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`
                     ).join('; ');
                     const financial = getSalePaymentSummary(sale, scopedPayments, currency);
-                    return <tr key={sale.id} className="border-b border-slate-100 dark:border-slate-800"><td className="p-2 whitespace-nowrap">{formatAppDate(sale.date, language)}</td><td className="p-2">{getCustomerDisplayName(customer)}</td><td className="p-2">{itemSummary}</td><td className="p-2 font-mono font-semibold">{formatCurrency(financial.revenue, currency)}</td><td className="p-2 font-mono">{formatCurrency(financial.paid, currency)}</td><td className="p-2 font-mono">{formatCurrency(financial.due, currency)}</td><td className="p-2"><PaymentStatusBadge status={getSalePaymentStatus(sale, scopedPayments)} /></td><td className="p-2"><div className="flex gap-1"><button type="button" onClick={() => onViewSale(sale.id)} className="rounded px-2 py-1 font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300">View</button><button type="button" aria-label={`View customer for ${sale.invoiceNo}`} onClick={() => onSelectCustomer(sale.customerId)} className="rounded px-2 py-1 font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300">Customer</button>{invoiceBySaleId.has(sale.id) && <button type="button" aria-label={`View invoice ${sale.invoiceNo}`} onClick={() => onViewInvoice(invoiceBySaleId.get(sale.id)!.invoiceId)} className="rounded px-2 py-1 font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300">Invoice</button>}</div></td></tr>;
+                    return <tr key={sale.id} className="border-b border-slate-100 dark:border-slate-800"><td className="p-2 whitespace-nowrap">{formatAppEventDateTime(sale.createdAt || sale.date)}</td><td className="p-2">{getCustomerDisplayName(customer)}</td><td className="p-2">{itemSummary}</td><td className="p-2 font-mono font-semibold">{formatCurrency(financial.revenue, currency)}</td><td className="p-2 font-mono">{formatCurrency(financial.paid, currency)}</td><td className="p-2 font-mono">{formatCurrency(financial.due, currency)}</td><td className="p-2"><PaymentStatusBadge status={getSalePaymentStatus(sale, scopedPayments)} /></td><td className="p-2"><div className="flex gap-1"><button type="button" onClick={() => onViewSale(sale.id)} className="rounded px-2 py-1 font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300">View</button><button type="button" aria-label={`View customer for ${sale.invoiceNo}`} onClick={() => onSelectCustomer(sale.customerId)} className="rounded px-2 py-1 font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300">Customer</button>{invoiceBySaleId.has(sale.id) && <button type="button" aria-label={`View invoice ${sale.invoiceNo}`} onClick={() => onViewInvoice(invoiceBySaleId.get(sale.id)!.invoiceId)} className="rounded px-2 py-1 font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300">Invoice</button>}</div></td></tr>;
                   })}</tbody>
                 </table>
               </div>
@@ -2103,7 +2108,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   `${serviceById.get(item.serviceId)?.name || 'Service unavailable'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`
                 ).join('; ');
                 const financial = getSalePaymentSummary(sale, scopedPayments, currency);
-                return <article key={sale.id} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800"><div className="flex justify-between gap-2"><div className="min-w-0"><p className="truncate font-semibold">{getCustomerDisplayName(customer)}</p><p className="mt-1 text-[11px] text-slate-500">{itemSummary}</p></div><p className="shrink-0 font-mono text-xs font-bold">{formatCurrency(financial.revenue, currency)}</p></div><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><span className="text-[10px] text-slate-500">{formatAppDate(sale.date, language)}</span><PaymentStatusBadge status={getSalePaymentStatus(sale, scopedPayments)} /></div><p className="mt-2 text-[11px] text-slate-600 dark:text-slate-300">Paid {formatCurrency(financial.paid, currency)} · Due {formatCurrency(financial.due, currency)}</p><div className="mt-2 flex gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><button type="button" onClick={() => onViewSale(sale.id)}>View Sale</button><button type="button" onClick={() => onSelectCustomer(sale.customerId)}>Customer</button>{invoiceBySaleId.has(sale.id) && <button type="button" onClick={() => onViewInvoice(invoiceBySaleId.get(sale.id)!.invoiceId)}>Invoice</button>}</div></article>;
+                return <article key={sale.id} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800"><div className="flex justify-between gap-2"><div className="min-w-0"><p className="truncate font-semibold">{getCustomerDisplayName(customer)}</p><p className="mt-1 text-[11px] text-slate-500">{itemSummary}</p></div><p className="shrink-0 font-mono text-xs font-bold">{formatCurrency(financial.revenue, currency)}</p></div><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><span className="text-[10px] text-slate-500">{formatAppEventDateTime(sale.createdAt || sale.date)}</span><PaymentStatusBadge status={getSalePaymentStatus(sale, scopedPayments)} /></div><p className="mt-2 text-[11px] text-slate-600 dark:text-slate-300">Paid {formatCurrency(financial.paid, currency)} · Due {formatCurrency(financial.due, currency)}</p><div className="mt-2 flex gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><button type="button" onClick={() => onViewSale(sale.id)}>View Sale</button><button type="button" onClick={() => onSelectCustomer(sale.customerId)}>Customer</button>{invoiceBySaleId.has(sale.id) && <button type="button" onClick={() => onViewInvoice(invoiceBySaleId.get(sale.id)!.invoiceId)}>Invoice</button>}</div></article>;
               })}</div>
             </>
           )}
@@ -2115,7 +2120,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               const sale = paymentSaleById.get(payment.id);
               const customer = customerById.get(payment.customerId);
               const invoice = (payment.invoiceId && scopedInvoices.find(item => item.invoiceId === payment.invoiceId)) || (sale && invoiceBySaleId.get(sale.id));
-              return <article key={payment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 dark:border-slate-800"><div className="min-w-40"><p className="font-semibold">{getCustomerDisplayName(customer)}</p><p className="mt-0.5 text-[11px] text-slate-500">{formatAppDate(payment.paymentDate, language)} · {payment.paymentMethodName || payment.paymentMethod}{invoice ? ` · ${invoice.invoiceNumber}` : ''}</p></div><div className="flex items-center gap-2"><span className="font-mono text-xs font-bold">{formatCurrency(payment.amount, payment.currency)}</span><PaymentStatusBadge status={payment.paymentStatus} /></div><div className="flex gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><button type="button" onClick={() => onNavigate('payments', payment.id)}>View Payment</button>{sale && <button type="button" onClick={() => onViewSale(sale.id)}>View Sale</button>}{invoice && <button type="button" onClick={() => onViewInvoice(invoice.invoiceId)}>Invoice</button>}</div></article>;
+              return <article key={payment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 dark:border-slate-800"><div className="min-w-40"><p className="font-semibold">{getCustomerDisplayName(customer)}</p><p className="mt-0.5 text-[11px] text-slate-500">{formatAppEventDateTime(payment.createdAt || payment.paymentDate)} · {payment.paymentMethodName || payment.paymentMethod}{invoice ? ` · ${invoice.invoiceNumber}` : ''}</p></div><div className="flex items-center gap-2"><span className="font-mono text-xs font-bold">{formatCurrency(payment.amount, payment.currency)}</span><PaymentStatusBadge status={payment.paymentStatus} /></div><div className="flex gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><button type="button" onClick={() => onNavigate('payments', payment.id)}>View Payment</button>{sale && <button type="button" onClick={() => onViewSale(sale.id)}>View Sale</button>}{invoice && <button type="button" onClick={() => onViewInvoice(invoice.invoiceId)}>Invoice</button>}</div></article>;
             })}</div>
           )}
         </DashboardPanel>
@@ -2201,13 +2206,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           const customer = customerById.get(invoice.customerId);
           const service = serviceById.get(invoice.serviceId);
           const status = sale ? getSalePaymentStatus(sale, scopedPayments) : invoice.paymentStatus;
-          return <article key={invoice.invoiceId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 text-xs dark:border-slate-800"><div className="min-w-40"><p className="font-semibold">{invoice.invoiceNumber} · {formatAppDate(invoice.invoiceDate, language)}</p><p className="mt-1 text-slate-500">{getCustomerDisplayName(customer)} · {service?.name || 'Service unavailable'} · {sale?.plan || 'Plan unavailable'}</p></div><p className="font-mono font-bold">{formatCurrency(sale?.amount ?? invoice.totalAmount, sale?.currency || currency)}</p><PaymentStatusBadge status={status} /><div className="flex gap-2"><button type="button" onClick={() => onViewInvoice(invoice.invoiceId)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">View</button><button type="button" disabled={isDownloadingInvoice} onClick={() => void handleDownloadInvoice(invoice)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"><Download className="h-3 w-3" /> JPG</button></div></article>;
+          return <article key={invoice.invoiceId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 text-xs dark:border-slate-800"><div className="min-w-40"><p className="font-semibold">{invoice.invoiceNumber} · {formatAppEventDateTime(invoice.createdAt || invoice.invoiceDate)}</p><p className="mt-1 text-slate-500">{getCustomerDisplayName(customer)} · {service?.name || 'Service unavailable'} · {sale?.plan || 'Plan unavailable'}</p></div><p className="font-mono font-bold">{formatCurrency(sale?.amount ?? invoice.totalAmount, sale?.currency || currency)}</p><PaymentStatusBadge status={status} /><div className="flex gap-2"><button type="button" onClick={() => onViewInvoice(invoice.invoiceId)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">View</button><button type="button" disabled={isDownloadingInvoice} onClick={() => void handleDownloadInvoice(invoice)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"><Download className="h-3 w-3" /> JPG</button></div></article>;
         })}</div>}
       </DashboardPanel>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <DashboardPanel title="Recent Activity" action={{ label: 'View All Activity', onClick: () => onNavigate('history') }}>
-          {recentActivities.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No recent activity.</p> : <ol className="space-y-3">{recentActivities.map(activity => <li key={activity.id} className="flex gap-3"><span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><Activity className="h-3.5 w-3.5" /></span><div className="min-w-0"><p className="text-xs font-semibold text-slate-800 dark:text-slate-100">{activity.title}</p><p className="mt-0.5 text-xs text-slate-500">{activity.description}</p><p className="mt-1 text-[10px] text-slate-400">{formatAppDateTime(activity.timestamp, language)}</p></div></li>)}</ol>}
+          {recentActivities.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No recent activity.</p> : <ol className="space-y-3">{recentActivities.map(activity => <li key={activity.id} className="flex gap-3"><span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><Activity className="h-3.5 w-3.5" /></span><div className="min-w-0"><p className="text-xs font-semibold text-slate-800 dark:text-slate-100">{activity.title}</p><p className="mt-0.5 text-xs text-slate-500">{activity.description}</p><p className="mt-1 text-[10px] text-slate-400">{formatAppEventDateTime(activity.timestamp)}</p></div></li>)}</ol>}
         </DashboardPanel>
       </div>
 
@@ -4078,7 +4083,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                           <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{log.title}</p>
                           <time className="shrink-0 text-[11px] text-slate-400 dark:text-slate-500">
-                            {formatAppDateTime(log.timestamp, language)}
+                            {formatAppEventDateTime(log.timestamp)}
                           </time>
                         </div>
                         <p className="mt-0.5 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{log.description}</p>
