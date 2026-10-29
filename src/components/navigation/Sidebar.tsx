@@ -379,6 +379,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 key={item.id}
                 type="button"
+                data-section={item.id}
                 onClick={() => handleNav(item.id)}
                 className={`app-nav-item relative flex h-11 w-full cursor-pointer items-center justify-between rounded-[10px] border border-transparent px-3 py-2 text-[13px] font-medium transition-all duration-200 group lg:rounded-xl lg:py-2.5 ${
                   isCollapsedDesktop ? 'lg:justify-center lg:px-0' : ''

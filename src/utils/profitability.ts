@@ -524,13 +524,16 @@ export function getAccountProfitability(
             : Math.floor(netMinor / item.quantity)
         )
         : [netMinor];
-      const assignedUnits = item.units.length > 0
+      const assignedUnits = (item.units.length > 0
         ? item.units
         : [{
           subscriptionId: sale.subscriptionId || subscriptionsBySaleId.get(sale.id)?.id || '',
           accountId: sale.accountId,
           profileId: sale.profileId,
-        }];
+        }]).map(unit => ({
+          ...unit,
+          accountId: unit.accountId || subscriptionsById.get(unit.subscriptionId)?.accountId,
+        }));
       const isInventoryAllocated = assignedUnits.some(unit => unit.accountId);
       const allocations = isInventoryAllocated
         ? assignedUnits.map((unit, index) => ({

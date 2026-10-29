@@ -5,8 +5,8 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "theme_color": "#8B5CF6",
-  "background_color": "#0B0B1B",
+  "theme_color": "#380759",
+  "background_color": "#380759",
   "icons": [
     {
       "src": "/icons/xolvemanager-brand-192.png",

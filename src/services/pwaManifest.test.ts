@@ -24,8 +24,8 @@ test('PWA manifest has the product identity and standalone launch configuration'
   assert.equal(manifest.scope, '/');
   assert.equal(manifest.display, 'standalone');
   assert.equal(manifest.orientation, undefined);
-  assert.equal(manifest.theme_color, '#8B5CF6');
-  assert.equal(manifest.background_color, '#0B0B1B');
+  assert.equal(manifest.theme_color, productBrand.launchColor);
+  assert.equal(manifest.background_color, productBrand.launchColor);
   assert.ok(manifest.icons.every(icon => icon.src.startsWith('/icons/xolvemanager-brand-')));
   assert.equal(productBrand.faviconUrl, '/icons/xolvemanager-brand-32.png');
   assert.equal(productBrand.iconUrl, manifest.icons.find(icon => icon.sizes === '192x192')?.src);

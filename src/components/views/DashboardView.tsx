@@ -1641,16 +1641,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </h1>
         </div>
         <div className="grid w-full grid-cols-1 items-end gap-2 sm:w-auto sm:flex sm:flex-wrap sm:justify-end">
-          <button
-            type="button"
-            onClick={() => onOpenNewSale()}
-            aria-label={language === 'bn' ? dashboardCopy.addSale : '+ Add Sale'}
-            title={dashboardCopy.addSale}
-            className="inline-flex h-10 w-10 justify-self-start items-center justify-center gap-2 rounded-lg bg-violet-700 p-0 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:w-auto sm:justify-self-auto sm:px-4 sm:py-2 sm:text-sm lg:hidden"
-          >
-            <Plus className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <span className="hidden sm:inline">{dashboardCopy.addSale}</span>
-          </button>
           <label className="min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-200 sm:min-w-44">
             {dashboardCopy.dateRange}
             <select

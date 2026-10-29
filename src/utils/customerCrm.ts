@@ -138,7 +138,10 @@ export function buildCustomerCrmMetrics(
             (Boolean(payment.subscriptionId) && sale.subscriptionId === payment.subscriptionId)
             || sale.paymentId === payment.id
           );
-        return !linkedSale || !saleIds.has(linkedSale.id);
+        const allocatedToCustomerSale = payment.allocations?.some(allocation =>
+          saleIds.has(allocation.saleId)
+        ) ?? false;
+        return !allocatedToCustomerSale && (!linkedSale || !saleIds.has(linkedSale.id));
       })
       .reduce((sum, payment) => sum + convertReportCurrency(getPaymentRecognizedAmount(payment), payment.currency, currency), 0);
     const subscriptionStates = customerSubscriptions

@@ -56,7 +56,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: productBrand.primaryColor,
+  themeColor: productBrand.launchColor,
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

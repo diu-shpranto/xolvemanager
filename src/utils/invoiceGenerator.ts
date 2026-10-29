@@ -91,6 +91,17 @@ export interface GeneratedInvoiceResult {
   height: number;
 }
 
+export function getInvoiceCustomerDisplayName(data: InvoiceSaleDetails): string {
+  return data.customerName.trim() || 'Customer unavailable';
+}
+
+export function getInvoiceCustomerContactDetails(data: InvoiceSaleDetails): string[] {
+  return [
+    data.invoiceSettings?.showCustomerPhone !== false ? data.customerPhone?.trim() : undefined,
+    data.invoiceSettings?.showCustomerEmail !== false ? data.customerEmail?.trim() : undefined,
+  ].filter((detail): detail is string => Boolean(detail));
+}
+
 const FONT = 'Arial, "Noto Sans Bengali", "Noto Sans", sans-serif';
 const COLORS = {
   ink: '#17211f',
@@ -272,15 +283,11 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
   context.font = `700 20px ${FONT}`;
   const customerNameLines = wrapText(
     context,
-    `${data.customerName || 'Customer'}${data.customerType ? ` · ${data.customerType}` : ''}`,
+    `${getInvoiceCustomerDisplayName(data)}${data.customerType ? ` · ${data.customerType}` : ''}`,
     360
   );
   context.font = `400 15px ${FONT}`;
-  const customerDetails = [
-    data.customerId && `Customer ID: ${data.customerId}`,
-    data.invoiceSettings?.showCustomerPhone !== false && data.customerPhone,
-    data.invoiceSettings?.showCustomerEmail !== false && data.customerEmail,
-  ].filter(Boolean);
+  const customerDetails = getInvoiceCustomerContactDetails(data);
   const customerDetailLines = customerDetails.flatMap(line => wrapText(context!, line!, 360));
   const paymentHistory = (data.paymentHistory || []).filter(payment => payment.amount > 0);
   const transactionLines = data.invoiceSettings?.showTransactionId !== false && data.transactionId

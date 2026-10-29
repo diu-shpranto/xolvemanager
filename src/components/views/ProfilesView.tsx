@@ -436,7 +436,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
   const activeCustomers = customers.filter(customer => !customer.isArchived && customer.status !== 'archived');
 
   return (
-    <div className="profiles-view section-layout-shell mx-auto max-w-[1600px] space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-6 lg:px-8">
+    <div className="profiles-view section-layout-shell mx-auto max-w-[1600px] space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-6 lg:px-8" data-section="profiles">
       {/* 1. PAGE HEADER */}
       <div className="profile-page-header flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="profile-page-heading flex min-w-0 flex-1 items-start gap-3">

@@ -974,7 +974,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   };
 
   return (
-    <div className="customers-view section-layout-shell mx-auto max-w-[1600px] px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
+    <div className="customers-view section-layout-shell mx-auto max-w-[1600px] px-3 py-3 sm:px-6 sm:py-6 lg:px-8" data-section="customers">
       <div className={detailedCustomerId ? 'hidden' : 'customer-list-page space-y-3 sm:space-y-4'}>
       {/* 1. PAGE HEADER */}
       <div className="customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:flex-nowrap sm:gap-4 sm:pb-4">

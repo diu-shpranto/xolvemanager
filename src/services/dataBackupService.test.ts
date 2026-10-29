@@ -74,7 +74,7 @@ test('merges idempotently, keeps conflicting IDs and avoids duplicate sale and p
   assert.equal(merged.added.sales, 1);
   assert.equal(merged.added.payments, 1);
   assert.equal(merged.duplicatesSkipped.sales, 1);
-  assert.equal(merged.duplicatesSkipped.payments, 1);
+  assert.equal(merged.duplicatesSkipped.payments, 2);
   assert.equal(merged.conflicts.length, 2);
 
   const repeated = planBackupMerge(merged.records, incoming);

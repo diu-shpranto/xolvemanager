@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useLayoutEffect, useRef, ReactNode, useMemo } from 'react';
 import {
   Customer,
   Service,
@@ -67,6 +67,7 @@ import {
   getSalePaymentStatus,
   minorUnitsToAmount,
   parseAmountToMinorUnits,
+  parsePositivePaymentAmountToMinorUnits,
   splitPaymentAllocation,
 } from '../utils/saleUtils';
 import { calculateTotalRevenue, convertReportCurrency } from '../utils/reportMetrics';
@@ -618,7 +619,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     return false;
   });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     try {
       writeRawValue(STORAGE_KEYS.THEME, String(isDark));
     } catch (error) {
@@ -3994,8 +3995,8 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       throw new Error('Choose received, pending, or failed for a new payment attempt.');
     }
 
-    const amountMinor = parseAmountToMinorUnits(paymentData.amount);
-    if (amountMinor === null || amountMinor <= 0) {
+    const amountMinor = parsePositivePaymentAmountToMinorUnits(paymentData.amount);
+    if (amountMinor === null) {
       throw new Error('Enter a valid payment amount greater than zero.');
     }
     const amount = minorUnitsToAmount(amountMinor);
@@ -4579,6 +4580,9 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         }
         return existing;
       }
+    }
+    if (parsePositivePaymentAmountToMinorUnits(paymentData.amount) === null) {
+      throw new Error('Enter a valid payment amount greater than zero.');
     }
     const transactionId = paymentData.transactionId?.trim().toLocaleLowerCase();
     if (transactionId && payments.some(payment =>

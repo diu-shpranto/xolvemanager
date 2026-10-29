@@ -17,8 +17,19 @@ import type {
   Subscription,
 } from '../types';
 import { convertReportCurrency } from './reportMetrics';
-import { getPaymentSaleAllocation, getSaleDueAmount, getSalePaidAmount, getSalePaymentStatus } from './saleUtils';
-import { getAccountBalanceAtDate, getFinancialLedger, type FinancialLedgerEntry } from './financialLedger';
+import {
+  getPaymentSaleAllocation,
+  getSaleDueAmount,
+  getSalePaidAmount,
+  getSalePaymentStatus,
+  parsePositivePaymentAmountToMinorUnits,
+} from './saleUtils';
+import {
+  getAccountBalanceAtDate,
+  getFinancialLedger,
+  resolvePaymentAccount,
+  type FinancialLedgerEntry,
+} from './financialLedger';
 
 export interface ReceivableRow {
   saleId: string;
@@ -217,28 +228,42 @@ export function runFinancialIntegrityCheck(records: AccountingRecords): Financia
   records.payments.forEach(payment => {
     const linkedSaleId = payment.saleId && sales.has(payment.saleId)
       ? payment.saleId : invoiceToSaleId.get(payment.invoiceId || '');
-    if (!linkedSaleId || !sales.has(linkedSaleId)) {
+    const isStandaloneAdvance = payment.paymentStatus === 'paid' && Number(payment.advanceCreditAmount) > 0;
+    if ((!linkedSaleId || !sales.has(linkedSaleId)) && !isStandaloneAdvance) {
       issues.push({ severity: 'ERROR', type: 'orphaned_payment', entityType: 'payment', entityId: payment.id, message: 'Payment is not linked to an existing sale.', suggestedFix: 'Review the payment and attach it to the correct sale or void it.' });
     }
     if (!customers.has(payment.customerId)) {
       issues.push({ severity: 'ERROR', type: 'missing_customer', entityType: 'payment', entityId: payment.id, message: 'Payment customer does not exist.' });
     }
-    checkAmount(payment.amount, 'payment', payment.id);
-    if (payment.amount === 0) issues.push({ severity: 'ERROR', type: 'invalid_amount', entityType: 'payment', entityId: payment.id, message: 'Payment amount must be greater than zero.' });
+    const amountMinor = parsePositivePaymentAmountToMinorUnits(payment.amount);
+    if (amountMinor === null) {
+      issues.push({ severity: 'ERROR', type: 'invalid_amount', entityType: 'payment', entityId: payment.id, message: 'Payment amount must be greater than zero.' });
+    }
     if (!isValidDateOnly(payment.paymentDate)) issues.push({ severity: 'ERROR', type: 'invalid_date', entityType: 'payment', entityId: payment.id, message: 'Payment date is invalid.' });
     const method = records.paymentMethods.find(item => item.id === payment.paymentMethodId);
     if (method?.requireTransactionId && !payment.transactionId?.trim()) {
       issues.push({ severity: 'WARNING', type: 'missing_transaction_id', entityType: 'payment', entityId: payment.id, message: 'Payment method requires a transaction ID but this payment has none.' });
     }
-    if (payment.financialAccountId && !accounts.has(payment.financialAccountId)) {
+    const paymentAccountId = resolvePaymentAccount(payment, accountRecords);
+    if (paymentAccountId && !accounts.has(paymentAccountId)) {
       issues.push({ severity: 'ERROR', type: 'missing_account', entityType: 'payment', entityId: payment.id, message: 'Payment refers to a missing financial account.' });
     }
     if (!payment.paymentMethod && !payment.paymentMethodId) {
       issues.push({ severity: 'ERROR', type: 'missing_payment_method', entityType: 'payment', entityId: payment.id, message: 'Payment is missing its payment method.' });
     }
-    if (payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial') {
-      const paymentLedgerEntry = paymentMovementIds.has(payment.id);
-      if (!paymentLedgerEntry) issues.push({ severity: 'WARNING', type: 'missing_payment_movement', entityType: 'payment', entityId: payment.id, message: 'Received payment has no account ledger movement.', suggestedFix: 'Assign a financial account and verify whether this receipt was recorded.' });
+    if ((payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial') && amountMinor !== null) {
+      if (!paymentAccountId) {
+        issues.push({
+          severity: 'WARNING',
+          type: 'unmapped_payment_account',
+          entityType: 'payment',
+          entityId: payment.id,
+          message: 'Received payment has no mapped financial account, so it cannot appear in the account ledger.',
+          suggestedFix: 'Verify the original receipt account before mapping it; do not guess.',
+        });
+      } else if (accounts.has(paymentAccountId) && !paymentMovementIds.has(payment.id)) {
+        issues.push({ severity: 'WARNING', type: 'missing_payment_movement', entityType: 'payment', entityId: payment.id, message: 'Received payment has no account ledger movement.', suggestedFix: 'Verify the original receipt and account before reconciling this payment.' });
+      }
     }
   });
 

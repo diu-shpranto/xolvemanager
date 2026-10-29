@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'xolve-manager-static-v';
-const CACHE_NAME = `${CACHE_PREFIX}next-7`;
+const CACHE_NAME = `${CACHE_PREFIX}next-8`;
 const PRECACHE_URLS = [
   '/manifest.webmanifest',
   '/favicon.svg',

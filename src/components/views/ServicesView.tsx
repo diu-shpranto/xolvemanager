@@ -1188,7 +1188,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   }, [catalogServices, servicePerformanceById, sales, payments, currency, currentMonthPrefix]);
 
   return (
-    <div className="services-view mx-auto max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+    <div className="services-view mx-auto max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8" data-section="services">
       {!detailedService && (
         <div className="service-list-page space-y-5">
       {/* 1. PAGE HEADER */}

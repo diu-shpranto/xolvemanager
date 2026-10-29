@@ -10,6 +10,11 @@ export function parseAmountToMinorUnits(value: string | number): number | null {
   return Number.isSafeInteger(minorUnits) ? minorUnits : null;
 }
 
+export function parsePositivePaymentAmountToMinorUnits(value: string | number): number | null {
+  const amount = parseAmountToMinorUnits(value);
+  return amount !== null && amount > 0 ? amount : null;
+}
+
 export function amountToMinorUnits(amount: number): number {
   return Number.isFinite(amount) ? Math.round(amount * minorUnitScale) : 0;
 }

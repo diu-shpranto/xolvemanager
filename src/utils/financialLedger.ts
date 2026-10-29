@@ -91,7 +91,7 @@ export interface FinancialAccountPeriodSummary extends AccountDailySummary {
 const RECEIVED_PAYMENT_STATUSES = new Set(['paid', 'partial']);
 const posted = (status: string | undefined) => status === undefined || status === 'posted';
 
-const resolvePaymentAccount = (payment: Payment, records: FinancialRecords): string =>
+export const resolvePaymentAccount = (payment: Payment, records: FinancialRecords): string =>
   payment.financialAccountId
   || records.paymentMethods.find(method =>
     method.id === payment.paymentMethodId
@@ -131,6 +131,8 @@ export function getFinancialLedger(records: FinancialRecords, accountId?: string
   records.payments.forEach(payment => {
     const accountIdForPayment = resolvePaymentAccount(payment, records);
     if (!accountIdForPayment || !accounts.has(accountIdForPayment)) return;
+    const amount = Number(payment.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return;
     const sale = payment.saleId ? saleById.get(payment.saleId) : undefined;
     const invoice = payment.invoiceId ? invoiceById.get(payment.invoiceId) : undefined;
     const customerName = customersById.get(sale?.customerId || payment.customerId);
@@ -143,7 +145,7 @@ export function getFinancialLedger(records: FinancialRecords, accountId?: string
       direction: payment.paymentStatus === 'refunded' ? 'out' : 'in',
       description: payment.paymentMethodName || payment.paymentMethod,
       accountId: accountIdForPayment,
-      amount: Number(payment.amount) || 0,
+      amount,
       currency: payment.currency,
       categoryName: payment.paymentStatus === 'refunded'
         ? 'Refund'

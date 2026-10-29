@@ -10,6 +10,7 @@ import {
   getSalePaymentStatus,
   minorUnitsToAmount,
   parseAmountToMinorUnits,
+  parsePositivePaymentAmountToMinorUnits,
   splitPaymentAllocation,
 } from './saleUtils.ts';
 
@@ -61,6 +62,14 @@ test('accepts exact whole-taka and two-decimal payment amounts', () => {
   assert.equal(parseAmountToMinorUnits('3000'), 300000);
   assert.equal(parseAmountToMinorUnits('3000.50'), 300050);
   assert.equal(parseAmountToMinorUnits('3000.005'), null);
+});
+
+test('positive payment amount validation rejects zero, negative, missing, and invalid amounts', () => {
+  for (const invalidAmount of [0, -0.01, '', 'not-a-number', Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(parsePositivePaymentAmountToMinorUnits(invalidAmount), null);
+  }
+  assert.equal(parsePositivePaymentAmountToMinorUnits('0.01'), 1);
+  assert.equal(parsePositivePaymentAmountToMinorUnits(1500), 150000);
 });
 
 test('a payment exactly equal to outstanding closes the sale', () => {

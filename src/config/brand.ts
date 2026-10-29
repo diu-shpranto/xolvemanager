@@ -12,6 +12,7 @@ export const productBrand = {
   primaryColor: '#8B5CF6',
   primaryHoverColor: '#7C3AED',
   accentColor: '#C4B5FD',
+  launchColor: '#380759',
   surfaceColor: '#ffffff',
   backgroundColor: '#0B0B1B',
   version: packageJson.version,

@@ -1256,6 +1256,22 @@ const stableRecordJson = (value: unknown, excludedKeys: Set<string> = new Set())
   return JSON.stringify(sortValue(value));
 };
 
+const comparableRecordJson = (
+  collection: string,
+  value: unknown,
+  excludedKeys: Set<string>
+): string => {
+  if (!isRecord(value)) return stableRecordJson(value, excludedKeys);
+  const invoiceField = collection === 'sales'
+    ? 'invoiceNo'
+    : collection === 'invoices' ? 'invoiceNumber' : undefined;
+  const invoiceValue = invoiceField ? value[invoiceField] : undefined;
+  const normalizedValue = invoiceField && typeof invoiceValue === 'string'
+    ? { ...value, [invoiceField]: invoiceValue.trim().toLocaleLowerCase() }
+    : value;
+  return stableRecordJson(normalizedValue, excludedKeys);
+};
+
 const mergeIdentityKey = (collection: string, item: unknown): string | undefined => {
   if (!isRecord(item)) return undefined;
   if (collection === 'sales' && typeof item.invoiceNo === 'string' && item.invoiceNo.trim()) {
@@ -1310,7 +1326,8 @@ export function planBackupMerge(current: Record<string, unknown[]>, incoming: Re
       }
       const sameId = byId.get(id);
       if (sameId !== undefined) {
-        if (stableRecordJson(sameId, ignoredMetadata) === stableRecordJson(item, ignoredMetadata)) {
+        if (comparableRecordJson(collection, sameId, ignoredMetadata)
+          === comparableRecordJson(collection, item, ignoredMetadata)) {
           duplicateCount += 1;
         } else {
           conflicts.push({ collection, id, reason: 'The same ID has different stored data; the existing record was kept.' });
@@ -1320,8 +1337,9 @@ export function planBackupMerge(current: Record<string, unknown[]>, incoming: Re
       const semanticKey = mergeIdentityKey(collection, item);
       const semanticMatch = semanticKey ? bySemantic.get(semanticKey)?.[0] : undefined;
       if (semanticMatch !== undefined) {
-        if (stableRecordJson(semanticMatch, new Set([...ignoredMetadata, 'id', 'invoiceId']))
-          === stableRecordJson(item, new Set([...ignoredMetadata, 'id', 'invoiceId']))) {
+        const ignoredIdentity = new Set([...ignoredMetadata, 'id', 'invoiceId']);
+        if (comparableRecordJson(collection, semanticMatch, ignoredIdentity)
+          === comparableRecordJson(collection, item, ignoredIdentity)) {
           duplicateCount += 1;
         } else {
           conflicts.push({ collection, id, reason: 'A transaction with the same invoice or operation reference differs; it was not imported.' });

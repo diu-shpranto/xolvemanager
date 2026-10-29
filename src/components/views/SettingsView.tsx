@@ -687,7 +687,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
               <ProductLogo size="large" tone={isDark ? 'inverse' : 'default'} showTagline />
               <div className="flex items-center gap-4">
                 <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-                  <NextImage src={productBrand.faviconUrl} alt={`${productBrand.name} favicon`} width={32} height={32} className="h-10 w-10" />
+                  <NextImage src={productBrand.iconUrl} alt={`${productBrand.name} favicon`} width={192} height={192} className="h-10 w-10" unoptimized />
                 </div>
                 <div>
                   <div className={labelClass}>Favicon</div>

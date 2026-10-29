@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "clean": "node -e \"require('node:fs').rmSync('.next', { recursive: true, force: true })\"",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "tsx --test"
   },
   "dependencies": {
     "lucide-react": "^0.546.0",
@@ -25,6 +26,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
 }

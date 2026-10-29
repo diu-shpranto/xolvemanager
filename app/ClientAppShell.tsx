@@ -1,8 +1,10 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import Image from 'next/image';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthScreen } from '../src/components/auth/AuthScreen';
+import { productBrand } from '../src/config/brand';
 import type { LocalAuthUser } from '../src/services/localAuthService';
 import {
   AUTH_ACCOUNTS_KEY,
@@ -13,13 +15,31 @@ import {
   signOutLocally,
 } from '../src/services/localAuthService';
 
+const AppLaunchScreen = () => (
+  <div
+    className="app-launch-screen"
+    style={{ backgroundColor: productBrand.launchColor }}
+    role="status"
+    aria-live="polite"
+    aria-label="Loading XolveManager"
+  >
+    <div className="app-launch-content">
+      <Image
+        src={productBrand.iconUrl}
+        alt=""
+        width={96}
+        height={96}
+        priority
+        className="app-launch-icon"
+      />
+      <span className="app-launch-label">Loading XolveManager…</span>
+    </div>
+  </div>
+);
+
 const App = dynamic(() => import('../src/App'), {
   ssr: false,
-  loading: () => (
-    <div className="grid min-h-screen place-items-center text-sm text-slate-500" role="status">
-      Loading XolveManager…
-    </div>
-  ),
+  loading: () => <AppLaunchScreen />,
 });
 
 type AuthStatus = 'checking' | 'authenticated' | 'anonymous' | 'error';
@@ -141,7 +161,7 @@ export default function ClientAppShell() {
   };
 
   if (status === 'checking') {
-    return <div className="grid min-h-screen place-items-center text-sm text-slate-500" role="status">Loading XolveManager…</div>;
+    return <AppLaunchScreen />;
   }
 
   if (status === 'authenticated' && user) {

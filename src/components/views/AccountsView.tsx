@@ -761,7 +761,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
     + Number(selectedAssignment !== 'all');
 
   return (
-    <div className="accounts-view section-layout-shell mx-auto max-w-[1600px] space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-6 lg:px-8">
+    <div className="accounts-view section-layout-shell mx-auto max-w-[1600px] space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-6 lg:px-8" data-section="accounts">
       {/* 1. PAGE HEADER */}
       <div className="account-page-header flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="account-heading flex min-w-0 flex-1 items-start gap-3">

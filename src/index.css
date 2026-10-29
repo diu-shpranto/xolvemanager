@@ -7,9 +7,34 @@
     --brand-primary: #8b5cf6;
     --brand-primary-hover: #7c3aed;
     --brand-accent: #c4b5fd;
+    --app-launch-background: #380759;
     --brand-surface: #ffffff;
     --brand-background: #0b0b1b;
     --brand-focus: rgba(139, 92, 246, 0.34);
+    --section-customers-accent: #4f46e5;
+    --section-customers-border: rgba(79, 70, 229, 0.22);
+    --section-customers-border-hover: rgba(79, 70, 229, 0.42);
+    --section-customers-icon-bg: #eef2ff;
+    --section-customers-icon-color: #4338ca;
+    --section-customers-header-accent: #c7d2fe;
+    --section-services-accent: #0f766e;
+    --section-services-border: rgba(15, 118, 110, 0.22);
+    --section-services-border-hover: rgba(15, 118, 110, 0.42);
+    --section-services-icon-bg: #ecfeff;
+    --section-services-icon-color: #0e7490;
+    --section-services-header-accent: #99f6e4;
+    --section-accounts-accent: #7c3aed;
+    --section-accounts-border: rgba(124, 58, 237, 0.22);
+    --section-accounts-border-hover: rgba(124, 58, 237, 0.42);
+    --section-accounts-icon-bg: #f5f3ff;
+    --section-accounts-icon-color: #6d28d9;
+    --section-accounts-header-accent: #ddd6fe;
+    --section-profiles-accent: #d97706;
+    --section-profiles-border: rgba(217, 119, 6, 0.22);
+    --section-profiles-border-hover: rgba(217, 119, 6, 0.42);
+    --section-profiles-icon-bg: #fffbeb;
+    --section-profiles-icon-color: #b45309;
+    --section-profiles-header-accent: #fed7aa;
     --font-sans: 'Plus Jakarta Sans', 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-bn: 'Noto Sans Bengali', 'Hind Siliguri', -apple-system, BlinkMacSystemFont, sans-serif;
 
@@ -72,6 +97,30 @@
   }
 
   .dark {
+    --section-customers-accent: #a5b4fc;
+    --section-customers-border: rgba(129, 140, 248, 0.34);
+    --section-customers-border-hover: rgba(165, 180, 252, 0.56);
+    --section-customers-icon-bg: #252440;
+    --section-customers-icon-color: #c7d2fe;
+    --section-customers-header-accent: #c7d2fe;
+    --section-services-accent: #5eead4;
+    --section-services-border: rgba(45, 212, 191, 0.32);
+    --section-services-border-hover: rgba(94, 234, 212, 0.54);
+    --section-services-icon-bg: #173331;
+    --section-services-icon-color: #99f6e4;
+    --section-services-header-accent: #99f6e4;
+    --section-accounts-accent: #c4b5fd;
+    --section-accounts-border: rgba(167, 139, 250, 0.34);
+    --section-accounts-border-hover: rgba(196, 181, 253, 0.56);
+    --section-accounts-icon-bg: #2a2140;
+    --section-accounts-icon-color: #ddd6fe;
+    --section-accounts-header-accent: #ddd6fe;
+    --section-profiles-accent: #fdba74;
+    --section-profiles-border: rgba(251, 146, 60, 0.34);
+    --section-profiles-border-hover: rgba(253, 186, 116, 0.56);
+    --section-profiles-icon-bg: #39291d;
+    --section-profiles-icon-color: #fed7aa;
+    --section-profiles-header-accent: #fed7aa;
     --app-bg: #0b0b1b;
     --app-bg-strong: #111126;
     --panel-bg: rgba(17, 17, 38, 0.96);
@@ -101,6 +150,7 @@
   }
 
   html {
+    background-color: var(--app-launch-background);
     scroll-behavior: smooth;
   }
 
@@ -119,6 +169,36 @@
     font-family: var(--font-bn);
     letter-spacing: 0;
   }
+}
+
+.app-launch-screen {
+  position: fixed;
+  z-index: 9999;
+  inset: 0;
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  place-items: center;
+  color: #ffffff;
+}
+
+.app-launch-content {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+}
+
+.app-launch-icon {
+  display: block;
+  width: 96px;
+  height: 96px;
+  border-radius: 22px;
+}
+
+.app-launch-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 html[lang="bn"] .font-sans {
@@ -1818,8 +1898,7 @@ button:is(.bg-emerald-600, .bg-emerald-700, .bg-emerald-500, .action-primary):ho
   }
 
   .app-topbar .app-topbar-collapse,
-  .app-topbar .app-connection-status,
-  .app-topbar .app-new-sale {
+  .app-topbar .app-connection-status {
     display: none;
   }
 
@@ -13807,67 +13886,39 @@ button.dashboard-metric:hover {
 }
 
 .customers-view {
-  --section-accent: #4f46e5;
-  --section-border: rgba(79, 70, 229, 0.22);
-  --section-border-hover: rgba(79, 70, 229, 0.42);
-  --section-icon-bg: #eef2ff;
-  --section-icon-color: #4338ca;
+  --section-accent: var(--section-customers-accent);
+  --section-border: var(--section-customers-border);
+  --section-border-hover: var(--section-customers-border-hover);
+  --section-icon-bg: var(--section-customers-icon-bg);
+  --section-icon-color: var(--section-customers-icon-color);
+  --section-header-accent: var(--section-customers-header-accent);
 }
 
 .services-view {
-  --section-accent: #0f766e;
-  --section-border: rgba(15, 118, 110, 0.22);
-  --section-border-hover: rgba(15, 118, 110, 0.42);
-  --section-icon-bg: #ecfeff;
-  --section-icon-color: #0e7490;
+  --section-accent: var(--section-services-accent);
+  --section-border: var(--section-services-border);
+  --section-border-hover: var(--section-services-border-hover);
+  --section-icon-bg: var(--section-services-icon-bg);
+  --section-icon-color: var(--section-services-icon-color);
+  --section-header-accent: var(--section-services-header-accent);
 }
 
 .accounts-view {
-  --section-accent: #7c3aed;
-  --section-border: rgba(124, 58, 237, 0.22);
-  --section-border-hover: rgba(124, 58, 237, 0.42);
-  --section-icon-bg: #f5f3ff;
-  --section-icon-color: #6d28d9;
+  --section-accent: var(--section-accounts-accent);
+  --section-border: var(--section-accounts-border);
+  --section-border-hover: var(--section-accounts-border-hover);
+  --section-icon-bg: var(--section-accounts-icon-bg);
+  --section-icon-color: var(--section-accounts-icon-color);
+  --section-header-accent: var(--section-accounts-header-accent);
 }
 
 .profiles-view {
-  --section-accent: #d97706;
-  --section-border: rgba(217, 119, 6, 0.22);
-  --section-border-hover: rgba(217, 119, 6, 0.42);
-  --section-icon-bg: #fffbeb;
-  --section-icon-color: #b45309;
-}
-
-.dark .customers-view {
-  --section-accent: #a5b4fc;
-  --section-border: rgba(129, 140, 248, 0.34);
-  --section-border-hover: rgba(165, 180, 252, 0.56);
-  --section-icon-bg: #252440;
-  --section-icon-color: #c7d2fe;
-}
-
-.dark .services-view {
-  --section-accent: #5eead4;
-  --section-border: rgba(45, 212, 191, 0.32);
-  --section-border-hover: rgba(94, 234, 212, 0.54);
-  --section-icon-bg: #173331;
-  --section-icon-color: #99f6e4;
-}
-
-.dark .accounts-view {
-  --section-accent: #c4b5fd;
-  --section-border: rgba(167, 139, 250, 0.34);
-  --section-border-hover: rgba(196, 181, 253, 0.56);
-  --section-icon-bg: #2a2140;
-  --section-icon-color: #ddd6fe;
-}
-
-.dark .profiles-view {
-  --section-accent: #fdba74;
-  --section-border: rgba(251, 146, 60, 0.34);
-  --section-border-hover: rgba(253, 186, 116, 0.56);
-  --section-icon-bg: #39291d;
-  --section-icon-color: #fed7aa;
+  --section-accent: var(--section-profiles-accent);
+  --section-border: var(--section-profiles-border);
+  --section-border-hover: var(--section-profiles-border-hover);
+  --section-icon-bg: var(--section-profiles-icon-bg);
+  --section-icon-color: var(--section-profiles-icon-color);
+  --section-header-accent: var(--section-profiles-header-accent);
 }
 
 .app-main .customers-view .customer-card {
@@ -14021,4 +14072,118 @@ button.dashboard-metric:hover {
   border-color: var(--section-border);
   background-color: var(--section-icon-bg);
   color: var(--section-icon-color);
+}
+
+.app-sidebar .app-nav-item[data-section="customers"] {
+  --nav-section-accent: var(--section-customers-accent);
+}
+
+.app-sidebar .app-nav-item[data-section="services"] {
+  --nav-section-accent: var(--section-services-accent);
+}
+
+.app-sidebar .app-nav-item[data-section="accounts"] {
+  --nav-section-accent: var(--section-accounts-accent);
+}
+
+.app-sidebar .app-nav-item[data-section="profiles"] {
+  --nav-section-accent: var(--section-profiles-accent);
+}
+
+.app-sidebar .app-nav-item.is-active[data-section="customers"],
+.app-sidebar .app-nav-item.is-active[data-section="services"],
+.app-sidebar .app-nav-item.is-active[data-section="accounts"],
+.app-sidebar .app-nav-item.is-active[data-section="profiles"] {
+  border-color: color-mix(in srgb, var(--nav-section-accent) 42%, transparent) !important;
+  background: color-mix(in srgb, var(--nav-section-accent) 15%, transparent) !important;
+  box-shadow: none !important;
+}
+
+.app-sidebar .app-nav-item.is-active[data-section="customers"]::before,
+.app-sidebar .app-nav-item.is-active[data-section="services"]::before,
+.app-sidebar .app-nav-item.is-active[data-section="accounts"]::before,
+.app-sidebar .app-nav-item.is-active[data-section="profiles"]::before {
+  background: var(--nav-section-accent);
+}
+
+.app-sidebar .app-nav-item.is-active[data-section="customers"] svg,
+.app-sidebar .app-nav-item.is-active[data-section="services"] svg,
+.app-sidebar .app-nav-item.is-active[data-section="accounts"] svg,
+.app-sidebar .app-nav-item.is-active[data-section="profiles"] svg {
+  color: var(--nav-section-accent) !important;
+}
+
+.app-sidebar .app-nav-item.is-active[data-section="customers"] .app-nav-badge--active,
+.app-sidebar .app-nav-item.is-active[data-section="services"] .app-nav-badge--active,
+.app-sidebar .app-nav-item.is-active[data-section="accounts"] .app-nav-badge--active,
+.app-sidebar .app-nav-item.is-active[data-section="profiles"] .app-nav-badge--active {
+  background: color-mix(in srgb, var(--nav-section-accent) 30%, transparent) !important;
+  color: #fff !important;
+}
+
+.app-sidebar .app-nav-item[data-section="customers"]:focus-visible,
+.app-sidebar .app-nav-item[data-section="services"]:focus-visible,
+.app-sidebar .app-nav-item[data-section="accounts"]:focus-visible,
+.app-sidebar .app-nav-item[data-section="profiles"]:focus-visible {
+  outline-color: var(--nav-section-accent) !important;
+}
+
+.app-main .customers-view[data-section="customers"] .customer-page-header,
+.app-main .services-view[data-section="services"] .service-page-header,
+.app-main .accounts-view[data-section="accounts"] .account-page-header,
+.app-main .profiles-view[data-section="profiles"] .profile-page-header {
+  border-color: rgba(196, 181, 253, 0.22) !important;
+  background: linear-gradient(112deg, #302044 0%, #44305d 100%) !important;
+  box-shadow: inset 3px 0 var(--section-accent), var(--shadow-card);
+}
+
+.app-main .customers-view[data-section="customers"] .customer-page-icon,
+.app-main .services-view[data-section="services"] .service-page-icon,
+.app-main .accounts-view[data-section="accounts"] .account-page-icon,
+.app-main .profiles-view[data-section="profiles"] .profile-page-icon {
+  border-color: color-mix(in srgb, var(--section-accent) 24%, var(--panel-border));
+  background-color: var(--section-icon-bg) !important;
+  background-image: none;
+  color: var(--section-icon-color) !important;
+  box-shadow: none;
+}
+
+.app-main .customers-view[data-section="customers"] .customer-page-eyebrow,
+.app-main .services-view[data-section="services"] .service-page-eyebrow,
+.app-main .accounts-view[data-section="accounts"] .account-page-eyebrow,
+.app-main .profiles-view[data-section="profiles"] .profile-page-eyebrow {
+  color: var(--section-icon-color) !important;
+}
+
+.app-main .customers-view[data-section="customers"] .customer-heading h1,
+.app-main .services-view[data-section="services"] .service-page-heading h1,
+.app-main .accounts-view[data-section="accounts"] .account-heading h1,
+.app-main .profiles-view[data-section="profiles"] .profile-page-heading h1 {
+  color: #fff !important;
+}
+
+.app-main .customers-view[data-section="customers"] .customer-heading p:last-child,
+.app-main .accounts-view[data-section="accounts"] .account-heading p:last-child,
+.app-main .services-view[data-section="services"] .service-page-description,
+.app-main .profiles-view[data-section="profiles"] .profile-page-description {
+  color: #e2d9f3 !important;
+}
+
+.app-main .customers-view[data-section="customers"] .customer-page-eyebrow,
+.app-main .services-view[data-section="services"] .service-page-eyebrow,
+.app-main .accounts-view[data-section="accounts"] .account-page-eyebrow,
+.app-main .profiles-view[data-section="profiles"] .profile-page-eyebrow {
+  color: var(--section-header-accent) !important;
+}
+
+.app-main .services-view[data-section="services"] .service-page-actions > button:first-child {
+  border-color: var(--section-border);
+  background: var(--panel-bg-strong);
+  color: var(--text-secondary);
+  backdrop-filter: none;
+}
+
+.app-main .services-view[data-section="services"] .service-page-actions > button:first-child:hover {
+  border-color: var(--section-border-hover);
+  background: var(--section-icon-bg);
 }

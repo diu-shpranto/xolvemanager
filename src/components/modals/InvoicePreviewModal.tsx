@@ -11,6 +11,8 @@ import type { Language } from '../../types';
 import {
   InvoiceSaleDetails,
   GeneratedInvoiceResult,
+  getInvoiceCustomerContactDetails,
+  getInvoiceCustomerDisplayName,
   generateInvoiceJpg,
   downloadInvoiceJpg,
   shareInvoiceJpg,
@@ -69,6 +71,9 @@ const buildPrintableInvoice = (data: InvoiceSaleDetails, language: Language): st
   const customerTypeBadge = data.customerType
     ? `<span class="customer-type">${escapeHtml(data.customerType)}</span>`
     : '';
+  const customerContactDetails = getInvoiceCustomerContactDetails(data)
+    .map(detail => `<div class="customer-line">${escapeHtml(detail)}</div>`)
+    .join('');
   const invoiceLineItems = data.lineItems?.length
     ? data.lineItems
     : [{
@@ -147,10 +152,8 @@ const buildPrintableInvoice = (data: InvoiceSaleDetails, language: Language): st
     @media print{@page{size:A4 portrait;margin:12mm}html,body{background:#fff!important}body{padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{max-width:none}.card{border:0}.content{padding:0}.accent{height:3px}.items-table{display:table}.mobile-items{display:none}.section{break-inside:auto}.items-table thead{display:table-header-group}.items-table tr{break-inside:avoid;page-break-inside:avoid}.summary-wrap,.summary,.payment-details,.payment-history,.history-row,.footer,.header,.grid{break-inside:avoid}.section-title{break-after:avoid}}
   </style></head><body><main class="page"><article class="card"><div class="accent"></div><div class="content">
     <header class="header"><div class="brand">${logo}<div><div class="brand-name">${escapeHtml(data.storeName || 'Your Business')}</div>${data.tagline ? `<div class="muted" style="margin-top:4px;font-size:11px">${escapeHtml(data.tagline)}</div>` : ''}<div class="contact">${contactLines}</div></div></div><div class="invoice-meta"><div class="invoice-title">INVOICE</div><div class="invoice-number">${escapeHtml(data.invoiceNo)}</div><div class="meta-row">Date · ${escapeHtml(formatAppDate(data.date, language))}</div><span class="status">${escapeHtml(getStatusLabel(data.paymentStatus))}</span></div></header>
-    <section class="grid"><div><div class="box-title">Bill To</div><div class="name">${escapeHtml(data.customerName || 'Customer')}${customerTypeBadge}</div>
-      ${data.customerId ? `<div class="customer-line">Customer ID · ${escapeHtml(data.customerId)}</div>` : ''}
-      ${data.invoiceSettings?.showCustomerPhone !== false && data.customerPhone ? `<div class="customer-line">${escapeHtml(data.customerPhone)}</div>` : ''}
-      ${data.invoiceSettings?.showCustomerEmail !== false && data.customerEmail ? `<div class="customer-line">${escapeHtml(data.customerEmail)}</div>` : ''}
+    <section class="grid"><div><div class="box-title">Bill To</div><div class="name">${escapeHtml(getInvoiceCustomerDisplayName(data))}${customerTypeBadge}</div>
+      ${customerContactDetails}
     </div><div><div class="box-title">Payment</div><div class="payment-details" style="margin-top:8px;padding-top:0;border:0">${paymentDetails || '<div class="payment-detail"><small>Status</small><strong>Payment not recorded</strong></div>'}</div></div></section>
     <section class="section"><h2 class="section-title">Items and services</h2><table class="items-table"><thead><tr><th>Item / service and plan</th><th>Duration</th><th class="numeric">Qty</th><th class="numeric">Unit price</th><th class="numeric">Discount</th><th class="numeric">Line total</th></tr></thead><tbody>${rows}</tbody></table><div class="mobile-items">${mobileRows}</div></section>
     <section class="summary-wrap"><div class="summary">${summaryRows}</div></section>
@@ -424,10 +427,8 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                 <section className="mt-5 grid gap-5 sm:grid-cols-2">
                   <div className="min-w-0">
                     <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-violet-800">Bill To</p>
-                    <h3 className="mt-2 break-words text-sm font-bold text-slate-900"><CustomerNameWithType name={saleData.customerName || 'Customer'} customer={saleData.customerType ? { name: saleData.customerName, customerType: saleData.customerType } : undefined} /></h3>
-                    {saleData.customerId && <p className="mt-1 break-all text-xs text-slate-500">Customer ID · {saleData.customerId}</p>}
-                    {saleData.invoiceSettings?.showCustomerPhone !== false && saleData.customerPhone && <p className="mt-1 break-all text-xs text-slate-500">{saleData.customerPhone}</p>}
-                    {saleData.invoiceSettings?.showCustomerEmail !== false && saleData.customerEmail && <p className="mt-1 break-all text-xs text-slate-500">{saleData.customerEmail}</p>}
+                    <h3 className="mt-2 break-words text-sm font-bold text-slate-900"><CustomerNameWithType name={getInvoiceCustomerDisplayName(saleData)} customer={saleData.customerType ? { name: getInvoiceCustomerDisplayName(saleData), customerType: saleData.customerType } : undefined} /></h3>
+                    {getInvoiceCustomerContactDetails(saleData).map(detail => <p key={detail} className="mt-1 break-all text-xs text-slate-500">{detail}</p>)}
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-violet-800">Payment details</p>
