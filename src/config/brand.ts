@@ -6,7 +6,7 @@ export const productBrand = {
   tagline: 'Business, Simplified.',
   description: 'Business management for customers, services, subscriptions, sales, and payments.',
   faviconUrl: '/icons/xolvemanager-brand-32.png',
-  iconUrl: '/icons/xolvemanager-brand-192.png',
+  iconUrl: '/icons/xolvemanager-violet-192.png',
   wordmarkDarkUrl: '/xolvemanager-wordmark-violet-dark.png',
   wordmarkLightUrl: '/xolvemanager-wordmark-violet-light.png',
   primaryColor: '#8B5CF6',

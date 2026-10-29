@@ -191,18 +191,20 @@ export const registerPwa = (): void => {
       const installing = registered.installing;
       if (!installing) return;
       installing.addEventListener('statechange', () => {
-        if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-          setWaitingWorker(registered.waiting || installing);
+        if (installing.state === 'installed' && navigator.serviceWorker.controller && registered.waiting) {
+          setWaitingWorker(registered.waiting);
         }
       });
     });
+    const checkForUpdate = () => {
+      if (document.visibilityState === 'visible') {
+        void registration?.update().catch(error => console.error('Could not check for an app update.', error));
+      }
+    };
+    document.addEventListener('visibilitychange', checkForUpdate);
     await registered.update();
     if (updatePoll === undefined) {
-      updatePoll = window.setInterval(() => {
-        if (document.visibilityState === 'visible') {
-          void registration?.update().catch(error => console.error('Could not check for an app update.', error));
-        }
-      }, 60 * 60 * 1000);
+      updatePoll = window.setInterval(checkForUpdate, 60 * 60 * 1000);
     }
   }).catch(error => {
     console.error('Offline application support could not be initialized.', error);
@@ -232,7 +234,7 @@ export const dismissPwaInstallPrompt = (): void => {
 };
 
 export const requestPwaUpdate = (): void => {
-  if (!waitingWorker) return;
+  if (!waitingWorker || state.updatePending) return;
   publish({ updatePending: true });
   activateWaitingWorkerWhenSafe();
 };

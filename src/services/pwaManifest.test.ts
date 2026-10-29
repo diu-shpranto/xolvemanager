@@ -26,7 +26,7 @@ test('PWA manifest has the product identity and standalone launch configuration'
   assert.equal(manifest.orientation, undefined);
   assert.equal(manifest.theme_color, productBrand.launchColor);
   assert.equal(manifest.background_color, productBrand.launchColor);
-  assert.ok(manifest.icons.every(icon => icon.src.startsWith('/icons/xolvemanager-brand-')));
+  assert.ok(manifest.icons.every(icon => icon.src.startsWith('/icons/xolvemanager-violet-')));
   assert.equal(productBrand.faviconUrl, '/icons/xolvemanager-brand-32.png');
   assert.equal(productBrand.iconUrl, manifest.icons.find(icon => icon.sizes === '192x192')?.src);
 });
@@ -61,9 +61,9 @@ test('manifest icons exist as PNG assets with their declared dimensions', () => 
     ['xolvemanager-brand-16.png', 16],
     ['xolvemanager-brand-32.png', 32],
     ['xolvemanager-brand-180.png', 180],
-    ['xolvemanager-brand-192.png', 192],
-    ['xolvemanager-brand-512.png', 512],
-    ['xolvemanager-brand-maskable-512.png', 512],
+    ['xolvemanager-violet-192.png', 192],
+    ['xolvemanager-violet-512.png', 512],
+    ['xolvemanager-violet-maskable-512.png', 512],
   ] as const) {
     const bytes = readFileSync(new URL(`../../public/icons/${file}`, import.meta.url));
     assert.equal(bytes.readUInt32BE(16), size);
@@ -71,5 +71,5 @@ test('manifest icons exist as PNG assets with their declared dimensions', () => 
   }
 
   const maskableIcon = manifest.icons.find(icon => icon.purpose === 'maskable');
-  assert.equal(maskableIcon?.src, '/icons/xolvemanager-brand-maskable-512.png');
+  assert.equal(maskableIcon?.src, '/icons/xolvemanager-violet-maskable-512.png');
 });
