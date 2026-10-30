@@ -185,7 +185,7 @@ export const ProfitAnalyticsView: React.FC<ProfitAnalyticsViewProps> = ({ onView
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300"><TrendingUp className="h-5 w-5" /></div>
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">Financial performance</p>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Profit Analytics</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Profit Report</h1>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Account purchase costs are snapshotted to sales; customer payments are not treated as revenue again.</p>
           </div>
         </div>
@@ -208,7 +208,7 @@ export const ProfitAnalyticsView: React.FC<ProfitAnalyticsViewProps> = ({ onView
         }} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-violet-300 hover:bg-violet-50 dark:border-slate-700 dark:bg-[#151C28] dark:text-slate-200"><Download className="h-4 w-4" />Export CSV</button>}
       </header>
 
-      <section aria-label="Profit analytics filters" className={`${cardClass} space-y-3`}>
+      <section aria-label="Profit report filters" className={`${cardClass} space-y-3`}>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Profit date range">
           {presetOptions.map(preset => (
             <button key={preset} type="button" aria-pressed={datePreset === preset} onClick={() => setDatePreset(preset)} className={`min-h-9 rounded-lg px-3 text-xs font-semibold ${datePreset === preset ? 'bg-violet-700 text-white' : 'border border-slate-200 text-slate-600 hover:border-violet-300 dark:border-slate-700 dark:text-slate-300'}`}>{rangeLabels[preset]}</button>

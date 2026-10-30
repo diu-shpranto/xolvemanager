@@ -55,6 +55,14 @@ export interface AppLocation {
   isNotFound?: boolean;
 }
 
+const decodeRouteSegment = (segment: string): string => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+};
+
 export const getAppLocation = (pathname: string): AppLocation => {
   const normalizedPath = pathname.replace(/\/+$/, '') || '/';
   const segments = normalizedPath.split('/').filter(Boolean);
@@ -64,7 +72,7 @@ export const getAppLocation = (pathname: string): AppLocation => {
     return {
       section: recordSections[recordSection],
       recordSection,
-      recordId: segments[1],
+      recordId: decodeRouteSegment(segments[1]),
     };
   }
 

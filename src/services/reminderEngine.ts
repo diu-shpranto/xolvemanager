@@ -13,7 +13,7 @@ import type {
   Service,
   Subscription,
 } from '../types';
-import { getSaleDueAmount, getSalePaidAmount } from '../utils/saleUtils';
+import { getSaleDueAmount, getSaleExpectedPaymentDate, getSalePaidAmount } from '../utils/saleUtils';
 import { formatAppNumber, getDaysDifferenceInTimeZone } from '../utils/dateUtils';
 import { createRecordId } from './localStorageStore';
 
@@ -119,6 +119,7 @@ export function generateReminderCandidates(
   const candidates: ReminderCandidate[] = [];
   const customersById = new Map(scopedData.customers.map(customer => [customer.id, customer]));
   const servicesById = new Map(scopedData.services.map(service => [service.id, service]));
+  const salesById = new Map(scopedData.sales.map(sale => [sale.id, sale]));
   const invoicesBySaleId = new Map(scopedData.invoices.map(invoice => [invoice.saleId, invoice]));
 
   scopedData.subscriptions.forEach(subscription => {
@@ -176,8 +177,13 @@ export function generateReminderCandidates(
   });
 
   scopedData.invoices.forEach(invoice => {
-    if (invoice.dueAmount <= 0 || !parseDate(invoice.invoiceDate)) return;
-    const daysOverdue = Math.max(0, -getDaysDifferenceInTimeZone(invoice.invoiceDate, data.settings.businessProfile?.timeZone));
+    if (invoice.dueAmount <= 0) return;
+    const sale = salesById.get(invoice.saleId);
+    const expectedPaymentDate = invoice.dueDate
+      || (sale ? getSaleExpectedPaymentDate(sale, scopedData.payments) : undefined)
+      || invoice.invoiceDate;
+    if (!parseDate(expectedPaymentDate)) return;
+    const daysOverdue = Math.max(0, -getDaysDifferenceInTimeZone(expectedPaymentDate, data.settings.businessProfile?.timeZone));
     const stage = pickStage(daysOverdue, preferences.invoiceOverdueDays);
     if (stage === undefined) return;
     const overdue = daysOverdue > 0;
@@ -200,19 +206,23 @@ export function generateReminderCandidates(
       invoiceId: invoice.invoiceId,
       sourceEntityType: 'invoice',
       sourceEntityId: invoice.invoiceId,
-      dueDate: invoice.invoiceDate,
-      targetDate: invoice.invoiceDate,
+      dueDate: expectedPaymentDate,
+      targetDate: expectedPaymentDate,
       stage: `${stage}${overdue ? '_DAYS_OVERDUE' : '_DUE'}`,
       amount: invoice.dueAmount,
-      currency: scopedData.sales.find(sale => sale.id === invoice.saleId)?.currency || data.settings.currency,
+      currency: sale?.currency || data.settings.currency,
     }));
   });
 
   scopedData.sales.forEach(sale => {
-    if (invoicesBySaleId.has(sale.id) || sale.paymentStatus === 'refunded' || !parseDate(sale.date)) return;
+    if (invoicesBySaleId.has(sale.id)
+      || sale.paymentStatus === 'refunded'
+      || sale.paymentStatus === 'voided') return;
     const due = getSaleDueAmount(sale, scopedData.payments);
     if (due <= 0) return;
-    const daysOverdue = Math.max(0, -getDaysDifferenceInTimeZone(sale.date, data.settings.businessProfile?.timeZone));
+    const expectedPaymentDate = getSaleExpectedPaymentDate(sale, scopedData.payments) || sale.date;
+    if (!parseDate(expectedPaymentDate)) return;
+    const daysOverdue = Math.max(0, -getDaysDifferenceInTimeZone(expectedPaymentDate, data.settings.businessProfile?.timeZone));
     const stage = pickStage(daysOverdue, preferences.paymentOverdueDays);
     if (stage === undefined) return;
     const paid = getSalePaidAmount(sale, scopedData.payments);
@@ -232,8 +242,8 @@ export function generateReminderCandidates(
       saleId: sale.id,
       sourceEntityType: 'sale',
       sourceEntityId: sale.id,
-      dueDate: sale.date,
-      targetDate: sale.date,
+      dueDate: expectedPaymentDate,
+      targetDate: expectedPaymentDate,
       stage: `${stage}${daysOverdue > 0 ? '_DAYS_OVERDUE' : '_DUE'}`,
       amount: due,
       currency: sale.currency,
@@ -357,7 +367,8 @@ export function getResolvedReminderSourceKeys(
       }
     } else if (reminder.sourceEntityType === 'sale') {
       const sale = sales.find(item => item.id === reminder.sourceEntityId);
-      if (!sale || sale.paymentStatus === 'refunded' || getSaleDueAmount(sale, data.payments) <= 0) {
+      if (!sale || sale.paymentStatus === 'refunded' || sale.paymentStatus === 'voided'
+        || getSaleDueAmount(sale, data.payments) <= 0) {
         resolved.add(reminderSourceKey(data.businessId || reminder.businessId, 'sale', reminder.sourceEntityId));
       }
     } else if (reminder.sourceEntityType === 'invoice') {

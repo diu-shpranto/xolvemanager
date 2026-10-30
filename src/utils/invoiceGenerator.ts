@@ -1,5 +1,5 @@
 import type { AppCurrency, CustomerType, Language } from '../types';
-import { formatAppDate, formatCurrency } from './dateUtils';
+import { formatAppDate, formatCurrency, getDateInTimeZone } from './dateUtils';
 
 export interface InvoiceSaleDetails {
   saleId?: string;
@@ -12,6 +12,7 @@ export interface InvoiceSaleDetails {
   customerName: string;
   customerPhone?: string;
   customerEmail?: string;
+  customerAddress?: string;
   serviceName: string;
   lineItems?: {
     serviceName: string;
@@ -28,6 +29,7 @@ export interface InvoiceSaleDetails {
     startDate?: string;
     expiryDate?: string;
     durationDays?: number;
+    expectedPaymentDate?: string;
   }[];
   serviceDescription?: string;
   serviceLogoUrl?: string;
@@ -51,6 +53,8 @@ export interface InvoiceSaleDetails {
   paymentMethodBreakdown?: { methodName: string; amount: number }[];
   paymentStatus: string;
   paymentDate?: string;
+  dueDate?: string;
+  todayDate?: string;
   transactionId?: string;
   paymentHistory?: {
     id: string;
@@ -102,7 +106,41 @@ export function getInvoiceCustomerContactDetails(data: InvoiceSaleDetails): stri
   ].filter((detail): detail is string => Boolean(detail));
 }
 
-const FONT = 'Arial, "Noto Sans Bengali", "Noto Sans", sans-serif';
+export function getInvoicePaymentStatusLabel(
+  status: string,
+  dueDate?: string,
+  amountDue = 0,
+  today = getDateInTimeZone()
+): string {
+  if (status === 'paid') return 'PAID';
+  if (status === 'partial') return 'PARTIALLY PAID';
+  if (status === 'voided') return 'VOIDED';
+  if (status === 'refunded') return 'REFUNDED';
+  if (status === 'failed') return 'PAYMENT FAILED';
+  if (amountDue > 0 && dueDate && dueDate < today) return 'OVERDUE';
+  return 'PENDING';
+}
+
+export function buildInvoiceWhatsAppMessage(data: InvoiceSaleDetails, language: Language = 'en'): string {
+  const amountPaid = data.amountPaid ?? (data.paymentStatus === 'paid' ? data.amount : 0);
+  const amountDue = data.amountDue ?? Math.max(0, data.amount - amountPaid);
+  const businessName = data.storeName?.trim() || 'our business';
+  return [
+    `Hello ${getInvoiceCustomerDisplayName(data)},`,
+    '',
+    `Your invoice from ${businessName} is ready.`,
+    `Invoice: ${data.invoiceNo}`,
+    `Total: ${formatCurrency(data.amount, data.currency, language)}`,
+    `Paid: ${formatCurrency(amountPaid, data.currency, language)}`,
+    `Remaining due: ${formatCurrency(amountDue, data.currency, language)}`,
+    '',
+    'Please attach the downloaded invoice file manually if you want to include the document.',
+    '',
+    `Thank you,\n${businessName}`,
+  ].join('\n');
+}
+
+const FONT = 'Inter, Arial, "Noto Sans Bengali", "Noto Sans", sans-serif';
 const COLORS = {
   ink: '#17211f',
   muted: '#687572',
@@ -170,7 +208,7 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
     canvas.toBlob(blob => {
       if (blob && blob.size > 0) resolve(blob);
       else reject(new Error('Invoice image encoding returned an empty file.'));
-    }, 'image/jpeg', 0.94);
+    }, 'image/png');
   });
 }
 
@@ -198,14 +236,14 @@ function loadInvoiceLogo(url: string): Promise<HTMLImageElement> {
 
 function safeFileName(invoiceNo: string): string {
   const safeNumber = invoiceNo.trim().replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
-  return `Invoice-${safeNumber || 'Invoice'}.jpg`;
+  return `Invoice-${safeNumber || 'Invoice'}.png`;
 }
 
 function formatInvoiceDate(date: string, language: Language): string {
   return formatAppDate(date, language, { day: '2-digit' });
 }
 
-export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Language = 'en'): Promise<GeneratedInvoiceResult> {
+export async function generateInvoiceImage(data: InvoiceSaleDetails, language: Language = 'en'): Promise<GeneratedInvoiceResult> {
   const invoiceItems = data.lineItems?.length
     ? data.lineItems
     : [{
@@ -224,17 +262,11 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
       expiryDate: data.expiryDate,
       durationDays: data.durationDays,
     }];
-  const statusLabel = data.paymentStatus === 'paid'
-    ? 'PAID'
-    : data.paymentStatus === 'partial'
-      ? 'PARTIAL'
-      : data.paymentStatus === 'pending'
-        ? 'PENDING'
-        : data.paymentStatus.replace(/_/g, ' ').toUpperCase();
+  const statusLabel = getInvoicePaymentStatusLabel(data.paymentStatus, data.dueDate, data.amountDue, data.todayDate);
   const paid = data.amountPaid ?? (data.paymentStatus === 'paid' ? data.amount : 0);
   const due = data.amountDue ?? Math.max(0, data.amount - paid);
-  const received = data.amountReceived ?? paid;
-  const advanceCredit = data.advanceCreditApplied ?? Math.max(0, paid - received);
+  const advanceCredit = data.advanceCreditApplied ?? Math.max(0, paid - (data.amountReceived ?? paid));
+  const received = data.amountReceived ?? Math.max(0, paid - advanceCredit);
   const advanceCreditCreated = data.advanceCreditCreated ?? 0;
   const itemDiscountTotal = invoiceItems.reduce((total, item) => total + (item.discount || 0), 0);
   const invoiceDiscount = Math.max(0, (data.discount || 0) - itemDiscountTotal);
@@ -259,10 +291,13 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
     const period = [item.startDate && formatInvoiceDate(item.startDate, language), item.expiryDate && formatInvoiceDate(item.expiryDate, language)]
       .filter(Boolean)
       .join(' – ');
+    const expectedPayment = item.expectedPaymentDate
+      ? `Expected payment: ${formatInvoiceDate(item.expectedPaymentDate, language)}`
+      : '';
     const linePayment = item.amountPaid !== undefined || item.amountDue !== undefined
       ? `Paid ${formatCurrency(item.amountPaid || 0, item.currency, language)} · Due ${formatCurrency(item.amountDue || 0, item.currency, language)} · ${(item.paymentStatus || 'pending').toUpperCase()}`
       : '';
-    const detail = [period, linePayment].filter(Boolean).join(' · ');
+    const detail = [period, expectedPayment, linePayment].filter(Boolean).join(' · ');
     context!.font = `400 15px ${FONT}`;
     const detailLines = detail ? wrapText(context!, detail, 290) : [];
     return { item, titleLines, detailLines, height: 22 + titleLines.length * 24 + detailLines.length * 19 };
@@ -287,7 +322,7 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
     360
   );
   context.font = `400 15px ${FONT}`;
-  const customerDetails = getInvoiceCustomerContactDetails(data);
+  const customerDetails = [...getInvoiceCustomerContactDetails(data), data.customerAddress?.trim()].filter(Boolean);
   const customerDetailLines = customerDetails.flatMap(line => wrapText(context!, line!, 360));
   const paymentHistory = (data.paymentHistory || []).filter(payment => payment.amount > 0);
   const transactionLines = data.invoiceSettings?.showTransactionId !== false && data.transactionId
@@ -297,7 +332,8 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
     ? wrapText(context, `Latest payment: ${formatInvoiceDate(data.paymentDate, language)}`, 420)
     : [];
   const methodText = data.invoiceSettings?.showPaymentMethod !== false
-    ? data.paymentMethodBreakdown?.map(item => `${item.methodName}: ${formatCurrency(item.amount, data.currency, language)}`).join(', ') || data.paymentMethod
+    ? data.paymentMethodBreakdown?.map(item => `${item.methodName}: ${formatCurrency(item.amount, data.currency, language)}`).join(', ')
+      || (data.paymentMethod.trim().toLocaleLowerCase() === 'not specified' ? '' : data.paymentMethod.trim())
     : '';
   context.font = `400 14px ${FONT}`;
   const methodLines = methodText ? wrapText(context, `Method: ${methodText}`, 420) : [];
@@ -320,14 +356,15 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
   });
   const paymentRows: { label: string; amount: number; emphasis?: boolean; color?: string }[] = [
     { label: 'Subtotal', amount: data.subtotal ?? data.amount + (data.discount || 0) },
-    ...(itemDiscountTotal > 0 ? [{ label: 'Item discounts', amount: -itemDiscountTotal, color: COLORS.purple }] : []),
-    ...(invoiceDiscount > 0 ? [{ label: 'Invoice discount', amount: -invoiceDiscount, color: COLORS.purple }] : []),
+    { label: 'Total discount', amount: -(itemDiscountTotal + invoiceDiscount), color: COLORS.purple },
     { label: 'Grand total', amount: data.amount, emphasis: true },
-    { label: 'Amount paid / applied', amount: paid, color: COLORS.green },
-    ...(received > 0 ? [{ label: 'Cash received', amount: received }] : []),
-    ...(advanceCredit > 0 ? [{ label: 'Advance credit applied', amount: advanceCredit }] : []),
-    ...(advanceCreditCreated > 0 ? [{ label: 'New advance credit', amount: advanceCreditCreated }] : []),
-    { label: 'Outstanding due', amount: due, emphasis: true, color: due > 0 ? COLORS.amber : COLORS.green },
+    { label: 'Total paid', amount: paid, color: COLORS.green },
+    ...(received > 0 && (advanceCredit > 0 || advanceCreditCreated > 0)
+      ? [{ label: 'Cash received', amount: received }]
+      : []),
+    ...(advanceCredit > 0 ? [{ label: 'Advance payment used', amount: advanceCredit }] : []),
+    ...(advanceCreditCreated > 0 ? [{ label: 'Extra advance payment', amount: advanceCreditCreated }] : []),
+    { label: 'Remaining due', amount: due, emphasis: true, color: due > 0 ? COLORS.amber : COLORS.green },
   ];
   const headerEndLayout = Math.max(184, 94 + businessLines.length * 30 + brandDetailLines.length * 19);
   const paymentDetailsLines = methodLines.length + paymentDateLines.length + transactionLines.length + senderLines.length;
@@ -345,7 +382,7 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
     + 56 + paymentRows.length * 31 + historyHeight
     + 37 + 25 + footerContactLines.length * 17
     + (footerLines.length ? 8 + footerLines.length * 17 : 0)
-    + 24;
+    + 42;
   canvas.height = finalHeight;
   context = canvas.getContext('2d');
   if (!context) throw new Error('Canvas 2D context is unavailable.');
@@ -402,14 +439,18 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
   context.fillText(`Date · ${formatInvoiceDate(data.date, language)}`, contentRight, 117);
   const statusColor = data.paymentStatus === 'paid'
     ? COLORS.green
-    : data.paymentStatus === 'failed' || data.paymentStatus === 'refunded'
+    : data.paymentStatus === 'voided'
+      ? COLORS.muted
+      : data.paymentStatus === 'failed' || data.paymentStatus === 'refunded'
       ? COLORS.red
       : data.paymentStatus === 'partial'
         ? COLORS.purple
         : COLORS.amber;
   const statusBackground = data.paymentStatus === 'paid'
     ? COLORS.greenLight
-    : data.paymentStatus === 'failed' || data.paymentStatus === 'refunded'
+    : data.paymentStatus === 'voided'
+      ? COLORS.border
+      : data.paymentStatus === 'failed' || data.paymentStatus === 'refunded'
       ? COLORS.redLight
       : data.paymentStatus === 'partial'
         ? COLORS.purpleLight
@@ -540,7 +581,11 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
   context.fillStyle = COLORS.purple;
   context.font = `700 18px ${FONT}`;
   context.textAlign = 'center';
-  context.fillText('Thank you for your business', canvas.width / 2, y);
+  context.fillText(
+    data.paymentStatus === 'voided' ? 'Invoice voided. No payment is due.' : 'Thank you for your business',
+    canvas.width / 2,
+    y
+  );
   y += 25;
   context.font = `400 12px ${FONT}`;
   context.fillStyle = COLORS.muted;
@@ -553,6 +598,10 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
     const start = y + 8;
     writeLines(footerLines, canvas.width / 2, start, 17, COLORS.muted, `400 12px ${FONT}`, 800, 'center');
   }
+  context.fillStyle = '#96909d';
+  context.font = `400 10px ${FONT}`;
+  context.textAlign = 'center';
+  context.fillText('Prepared with XolveManager', canvas.width / 2, y + footerLines.length * 17 + 20);
 
   const blob = await canvasToBlob(canvas);
   return {
@@ -564,7 +613,7 @@ export async function generateInvoiceJpg(data: InvoiceSaleDetails, language: Lan
   };
 }
 
-export function downloadInvoiceJpg(data: string | Blob, fileName: string): void {
+export function downloadInvoiceImage(data: string | Blob, fileName: string): void {
   const objectUrl = typeof data === 'string' ? data : URL.createObjectURL(data);
   const link = document.createElement('a');
   link.href = objectUrl;
@@ -576,12 +625,12 @@ export function downloadInvoiceJpg(data: string | Blob, fileName: string): void 
   if (typeof data !== 'string') window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
-export function canShareInvoiceJpg(): boolean {
+export function canShareInvoiceFile(): boolean {
   if (typeof navigator === 'undefined' || !navigator.share || !navigator.canShare || typeof File === 'undefined') {
     return false;
   }
   try {
-    const file = new File(['invoice'], 'invoice.jpg', { type: 'image/jpeg' });
+    const file = new File(['invoice'], 'invoice.png', { type: 'image/png' });
     return navigator.canShare({ files: [file] });
   } catch (error) {
     console.error('Invoice file sharing capability could not be checked.', error);
@@ -591,14 +640,14 @@ export function canShareInvoiceJpg(): boolean {
 
 export type InvoiceShareResult = 'shared' | 'unsupported' | 'cancelled';
 
-export async function shareInvoiceJpg(
+export async function shareInvoiceFile(
   blob: Blob,
   fileName: string,
   title: string,
   text: string
 ): Promise<InvoiceShareResult> {
-  if (!canShareInvoiceJpg()) return 'unsupported';
-  const file = new File([blob], fileName, { type: 'image/jpeg' });
+  if (!canShareInvoiceFile()) return 'unsupported';
+  const file = new File([blob], fileName, { type: 'image/png' });
   try {
     await navigator.share({ files: [file], title, text });
     return 'shared';

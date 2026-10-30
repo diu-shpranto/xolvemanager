@@ -4,7 +4,8 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
-import { PaymentMethod, AppCurrency, CustomerType, Subscription } from '../../types';
+import { PaymentMethod, AppCurrency, CustomerType, Subscription, OrderSource } from '../../types';
+import type { Service } from '../../types';
 import { getDefaultPaymentMethod, normalizePaymentMethods, paymentMethodRequiresTransactionId } from '../../utils/paymentMethods';
 import { calculateExpiryDate, formatAppDate, formatCurrency, getDaysDifferenceForTimeZone, getSubscriptionStatusForTimeZone, getTodayDateString } from '../../utils/dateUtils';
 import {
@@ -24,6 +25,7 @@ import {
   Layers,
   CreditCard,
   CalendarDays,
+  ChevronDown,
   AlertTriangle,
   LoaderCircle,
   MessageCircle,
@@ -32,19 +34,28 @@ import { InvoicePreviewModal } from './InvoicePreviewModal';
 import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import {
   InvoiceSaleDetails,
-  generateInvoiceJpg,
-  downloadInvoiceJpg,
-  shareInvoiceJpg,
-  canShareInvoiceJpg,
+  generateInvoiceImage,
+  downloadInvoiceImage,
+  shareInvoiceFile,
+  canShareInvoiceFile,
 } from '../../utils/invoiceGenerator';
 import { buildInvoiceSaleDetails } from '../../utils/invoiceUtils';
+import {
+  filterAndSortServiceSelection,
+  getActiveServicePlanCount,
+  getServiceSelectionCategories,
+  hasServiceCreationDates,
+  type ServiceSelectionSort,
+} from '../../utils/serviceSelection';
 import { getAvailableProfiles, isAccountOperational } from '../../utils/resourceManagement';
 import {
   allocateInitialSalePayment,
   allocateMinorUnitsByWeight,
+  allocateMinorUnitsInOrder,
   amountToMinorUnits,
   getCustomerAdvanceCredit,
   getSaleDueAmount,
+  isValidPaymentLineAllocation,
   minorUnitsToAmount,
   parseAmountToMinorUnits,
 } from '../../utils/saleUtils';
@@ -53,6 +64,7 @@ import type { NewSaleLineItemPayload } from '../../context/AppContext';
 
 interface SaleItemDraft extends NewSaleLineItemPayload {
   currency: AppCurrency;
+  draftId: string;
 }
 
 interface NewSaleModalProps {
@@ -63,6 +75,7 @@ interface NewSaleModalProps {
   preselectedAccountId?: string;
   preselectedProfileId?: string;
   preselectedPlanId?: string;
+  preselectedOrderId?: string;
   onViewSubscription?: (subscriptionId: string) => void;
   onViewCustomer?: (customerId: string) => void;
   onViewSale?: (saleId: string) => void;
@@ -78,6 +91,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   preselectedAccountId,
   preselectedProfileId,
   preselectedPlanId,
+  preselectedOrderId,
   onViewSubscription,
   onViewCustomer,
   onViewSale,
@@ -85,7 +99,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   onAddService,
 }) => {
   const { formatCurrency, formatDate: formatAppDate, formatDurationDays } = useAppFormatting();
-  const { customers, services, accounts, subscriptions, sales, payments, createSale, addCustomer, addAccount, logActivity, settings, currency: globalCurrency, t, language } = useApp();
+  const { currentBusiness, customers, services, accounts, subscriptions, sales, payments, orders, createSale, createOrderQuotation, updateOrderQuotation, addCustomer, addAccount, logActivity, settings, currency: globalCurrency, t, language } = useApp();
   const getDaysDifference = getDaysDifferenceForTimeZone(settings.businessProfile?.timeZone);
   const getSubscriptionStatus = getSubscriptionStatusForTimeZone(settings.businessProfile?.timeZone);
   const { showToast } = useToast();
@@ -102,7 +116,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
   // Form Fields
   const [customerId, setCustomerId] = useState(preselectedCustomerId || '');
-  const [serviceId, setServiceId] = useState(preselectedServiceId || (services.find(s => s.status === 'active' && !s.isArchived)?.id || ''));
+  const [serviceId, setServiceId] = useState(preselectedServiceId || '');
   const [plan, setPlan] = useState('');
   const [planId, setPlanId] = useState(preselectedPlanId || '');
   const [itemAllocations, setItemAllocations] = useState<{ accountId: string; profileId: string }[]>([
@@ -122,12 +136,17 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const [paymentDate, setPaymentDate] = useState(getTodayDateString(settings.businessProfile?.timeZone));
   const [notes, setNotes] = useState('');
   const [paymentNote, setPaymentNote] = useState('');
+  const [expectedPaymentDate, setExpectedPaymentDate] = useState('');
+  const [orderSource, setOrderSource] = useState<OrderSource>('whatsapp');
+  const [orderQuotationId, setOrderQuotationId] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [stepError, setStepError] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [debouncedCustomerSearch, setDebouncedCustomerSearch] = useState('');
   const [serviceSearch, setServiceSearch] = useState('');
-  const [debouncedServiceSearch, setDebouncedServiceSearch] = useState('');
+  const [serviceCategory, setServiceCategory] = useState('');
+  const [serviceSort, setServiceSort] = useState<ServiceSelectionSort>('name');
+  const [isServiceSearchOpen, setIsServiceSearchOpen] = useState(false);
   const [showCustomerPicker, setShowCustomerPicker] = useState(!preselectedCustomerId);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAddingCustomer, setIsAddingCustomer] = useState(false);
@@ -138,6 +157,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
   const [discountValue, setDiscountValue] = useState(0);
   const [amountReceivedInput, setAmountReceivedInput] = useState('0');
+  const [paymentStatusChoice, setPaymentStatusChoice] = useState<'paid' | 'partial' | 'due'>('due');
   const [applyExistingAdvance, setApplyExistingAdvance] = useState(false);
   const [advanceCreditInput, setAdvanceCreditInput] = useState('0');
   const [itemDiscountInput, setItemDiscountInput] = useState('0');
@@ -146,15 +166,18 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(() =>
     preselectedServiceId ? [preselectedServiceId] : []
   );
-  const [isCurrentItemActive, setIsCurrentItemActive] = useState(true);
+  const [isCurrentItemActive, setIsCurrentItemActive] = useState(Boolean(preselectedServiceId));
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const selectedServiceQueue = selectedServiceIds;
   const submissionLock = useRef(false);
   const resourcePresetApplied = useRef(false);
   const saleOperationId = useRef(createRecordId('new-sale-operation'));
+  const orderQuotationIdRef = useRef<string | null>(null);
+  const currentItemDraftId = useRef(createRecordId('sale-line-draft'));
   const customerCreationLock = useRef(false);
   const accountCreationLock = useRef(false);
   const invoiceGenerationLock = useRef(false);
+  const servicePickerRef = useRef<HTMLDivElement>(null);
 
   const reportValidationError = (message: string, targetStep?: number) => {
     setStepError(message);
@@ -186,18 +209,43 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     if (preselectedServiceId) {
       setServiceId(preselectedServiceId);
       setSelectedServiceIds([preselectedServiceId]);
+      setIsCurrentItemActive(true);
     }
   }, [preselectedServiceId]);
+
+  const resumedOrderId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isOpen || !preselectedOrderId || resumedOrderId.current === preselectedOrderId) return;
+    const savedOrder = orders.find(order => order.id === preselectedOrderId);
+    if (!savedOrder || ['invoiced', 'cancelled'].includes(savedOrder.status)) return;
+    resumedOrderId.current = savedOrder.id;
+    orderQuotationIdRef.current = savedOrder.id;
+    saleOperationId.current = `order-${savedOrder.id}`;
+    setOrderQuotationId(savedOrder.id);
+    setOrderSource(savedOrder.source);
+    setCustomerId(savedOrder.customerId);
+    setShowCustomerPicker(false);
+    setCurrency(savedOrder.currency);
+    setItemDrafts(savedOrder.items.map((item, index) => ({
+      ...item,
+      currency: savedOrder.currency,
+      draftId: `${savedOrder.id}-line-${index + 1}`,
+    })));
+    setSelectedServiceIds([]);
+    setIsCurrentItemActive(false);
+    setEditingItemIndex(null);
+    setDiscountMode('fixed');
+    const lineDiscount = savedOrder.items.reduce((sum, item) => sum + item.discount, 0);
+    setDiscountValue(Math.max(0, savedOrder.discount - lineDiscount));
+    setAmountReceivedInput('0');
+    setPaymentStatusChoice('due');
+    setStep(5);
+  }, [isOpen, preselectedOrderId, orders]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedCustomerSearch(customerSearch.trim().toLocaleLowerCase()), 180);
     return () => window.clearTimeout(timeout);
   }, [customerSearch]);
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => setDebouncedServiceSearch(serviceSearch.trim().toLocaleLowerCase()), 180);
-    return () => window.clearTimeout(timeout);
-  }, [serviceSearch]);
 
   // Keep plan defaults synchronized while preserving account/profile selections unless the service changes.
   useEffect(() => {
@@ -226,13 +274,68 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   }, [serviceId, services]);
 
   const handleServiceChange = (nextServiceId: string) => {
-    setIsCurrentItemActive(false);
-    setSelectedServiceIds(current => {
-      const selectedIds = current;
-      return selectedIds.includes(nextServiceId)
-        ? selectedIds.filter(id => id !== nextServiceId)
-        : [...selectedIds, nextServiceId];
-    });
+    const configuredIndex = itemDrafts.findIndex((item, index) =>
+      index !== editingItemIndex && item.serviceId === nextServiceId
+    );
+    const hasCurrentItemSelection = isCurrentItemActive
+      && (step !== 1 || editingItemIndex !== null || selectedServiceQueue.includes(serviceId));
+    const isCurrentSelection = hasCurrentItemSelection && serviceId === nextServiceId;
+    if (isCurrentSelection) {
+      setIsCurrentItemActive(false);
+      setSelectedServiceIds(current => current.filter(id => id !== nextServiceId));
+      setItemDrafts(current => current.filter((_, index) => index !== editingItemIndex));
+      setEditingItemIndex(null);
+      return;
+    }
+
+    if (hasCurrentItemSelection && selectedService) {
+      const currentItem: SaleItemDraft = {
+        serviceId,
+        serviceNameSnapshot: selectedService.name,
+        plan,
+        planId,
+        quantity: itemQuantity,
+        unitPrice: Number(price),
+        discount: Number(itemDiscountInput) || 0,
+        startDate,
+        durationDays: Number(durationDays),
+        expectedPaymentDate,
+        ...(serviceUsesAccounts ? {
+          units: allocationRows.map(allocation => ({
+            accountId: allocation.accountId || undefined,
+            profileId: allocation.profileId || undefined,
+          })),
+        } : {}),
+        currency,
+        draftId: editingItemIndex === null
+          ? currentItemDraftId.current
+          : itemDrafts[editingItemIndex]?.draftId || currentItemDraftId.current,
+      };
+      setItemDrafts(current => {
+        if (editingItemIndex !== null) {
+          return current.map((item, index) => index === editingItemIndex ? currentItem : item);
+        }
+        const existingIndex = current.findIndex(item => item.serviceId === currentItem.serviceId);
+        return existingIndex >= 0
+          ? current.map((item, index) => index === existingIndex ? currentItem : item)
+          : [...current, currentItem];
+      });
+      setSelectedServiceIds(current => current.filter(id => id !== serviceId));
+      setEditingItemIndex(null);
+      currentItemDraftId.current = createRecordId('sale-line-draft');
+      setIsCurrentItemActive(false);
+    } else if (isCurrentItemActive) {
+      setIsCurrentItemActive(false);
+    }
+
+    if (configuredIndex >= 0) {
+      setItemDrafts(current => current.filter((_, index) => index !== configuredIndex));
+      setSelectedServiceIds(current => current.filter(id => id !== nextServiceId));
+      return;
+    }
+    setSelectedServiceIds(current => current.includes(nextServiceId)
+      ? current.filter(id => id !== nextServiceId)
+      : [...current, nextServiceId]);
   };
 
   const handlePlanChange = (selectedPlan: NonNullable<(typeof services)[number]['planDetails']>[number]) => {
@@ -286,19 +389,41 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     ),
     [services]
   );
+  const selectedServiceIdsForDisplay = [...new Set([
+    ...selectedServiceQueue,
+    ...itemDrafts.map(item => item.serviceId),
+    ...(isCurrentItemActive
+      && selectedService
+      && (step !== 1 || editingItemIndex !== null || selectedServiceQueue.includes(serviceId))
+      ? [selectedService.id]
+      : []),
+  ])];
+  const selectedServiceCount = selectedServiceIdsForDisplay.length;
   const isPreselectedServiceReady = Boolean(
     preselectedServiceId
     && selectedService?.id === preselectedServiceId
     && eligibleServices.some(service => service.id === preselectedServiceId)
     && selectedPlan
   );
-  const filteredServices = useMemo(() => {
-    const query = debouncedServiceSearch;
-    return eligibleServices.filter(service =>
-      !query || [service.name, service.description, service.category]
-        .some(value => value?.toLowerCase().includes(query))
-    ).slice(0, 50);
-  }, [eligibleServices, debouncedServiceSearch]);
+  const serviceCategories = useMemo(
+    () => getServiceSelectionCategories(eligibleServices),
+    [eligibleServices]
+  );
+  const canSortByRecentlyAdded = useMemo(
+    () => hasServiceCreationDates(eligibleServices),
+    [eligibleServices]
+  );
+  const filteredServices = useMemo(
+    () => filterAndSortServiceSelection(eligibleServices, serviceSearch, serviceCategory, serviceSort),
+    [eligibleServices, serviceSearch, serviceCategory, serviceSort]
+  );
+  const serviceSearchQuery = serviceSearch.trim();
+  const matchingServicesToAdd = filteredServices.filter(service =>
+    !selectedServiceIdsForDisplay.includes(service.id)
+  );
+  const servicesToDisplay = matchingServicesToAdd.slice(0, 50);
+  const availableMatchingServiceCount = matchingServicesToAdd.length;
+  const hasActiveServiceFilters = Boolean(serviceSearchQuery || serviceCategory || serviceSort !== 'name');
   const profileRequired = selectedService?.settings?.usesProfiles === true
     || selectedService?.settings?.profileAssignmentRequired === true;
   const serviceUsesAccounts = selectedService?.settings?.usesAccounts === true || profileRequired;
@@ -429,12 +554,14 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
           })),
         } : {}),
         currency,
+        draftId: currentItemDraftId.current,
       };
       setItemDrafts(current => [...current, currentItem]);
       setSelectedServiceIds(current => current.filter(id => id !== serviceId));
       setIsCurrentItemActive(false);
     }
     setEditingItemIndex(index);
+    currentItemDraftId.current = item.draftId;
     setIsCurrentItemActive(true);
     setServiceId(item.serviceId);
     setPlan(item.plan);
@@ -449,10 +576,49 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     ));
     setStartDate(item.startDate);
     setDurationDays(item.durationDays);
+    setExpectedPaymentDate(item.expectedPaymentDate || '');
     setCurrency(item.currency);
     setPrice(item.unitPrice);
     setItemDiscountInput(String(item.discount || 0));
     setStep(2);
+  };
+  const handleRemoveSaleItem = (index: number) => {
+    const item = itemDrafts[index];
+    if (!item) return;
+    setItemDrafts(current => current.filter((_, itemIndex) => itemIndex !== index));
+    setSelectedServiceIds(current => current.filter(id => id !== item.serviceId));
+    if (editingItemIndex === index) {
+      setEditingItemIndex(null);
+      setIsCurrentItemActive(false);
+      setServiceId('');
+      setPlan('');
+      setPlanId('');
+      setItemQuantity(1);
+      setItemDiscountInput('0');
+      setExpectedPaymentDate('');
+      setStep(1);
+    } else if (editingItemIndex !== null && index < editingItemIndex) {
+      setEditingItemIndex(current => current === null ? null : current - 1);
+    }
+  };
+  const handleRemoveCurrentService = () => {
+    if (editingItemIndex !== null) {
+      handleRemoveSaleItem(editingItemIndex);
+      return;
+    }
+    const remainingServiceIds = selectedServiceQueue.filter(id => id !== serviceId);
+    setSelectedServiceIds(remainingServiceIds);
+    setIsCurrentItemActive(remainingServiceIds.length > 0);
+    setServiceId(remainingServiceIds[0] || '');
+    setPlan('');
+    setPlanId('');
+    setItemQuantity(1);
+    setItemDiscountInput('0');
+    setItemAllocations([{ accountId: '', profileId: '' }]);
+    setStartDate(getTodayDateString(settings.businessProfile?.timeZone));
+    setExpectedPaymentDate('');
+    currentItemDraftId.current = createRecordId('sale-line-draft');
+    if (!remainingServiceIds.length) setStep(1);
   };
   const selectedProfile = selectedAccount?.profiles?.find(p => p.id === profileId);
   const currentItemSubtotal = isCurrentItemActive && Number.isSafeInteger(itemQuantity) && itemQuantity > 0
@@ -492,17 +658,6 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const advanceCreditToApply = applyExistingAdvance && advanceInputValid && parsedAdvanceMinor !== null
     ? minorUnitsToAmount(parsedAdvanceMinor)
     : 0;
-  const parsedAmountReceivedMinor = parseAmountToMinorUnits(amountReceivedInput);
-  const amountReceivedValid = parsedAmountReceivedMinor !== null;
-  const amountReceived = amountReceivedValid && parsedAmountReceivedMinor !== null
-    ? minorUnitsToAmount(parsedAmountReceivedMinor)
-    : 0;
-  const tenderAllocation = allocateInitialSalePayment(amountReceived, totalAmount, advanceCreditToApply);
-  const amountPaid = tenderAllocation.amountPaid;
-  const dueAmount = tenderAllocation.amountDue;
-  const paymentStatus = totalAmount > 0 && dueAmount === 0
-    ? 'paid'
-    : amountPaid > 0 ? 'partial' : 'pending';
   const paymentLineDrafts: SaleItemDraft[] = itemDrafts.filter((_, index) => index !== editingItemIndex);
   if (isCurrentItemActive && selectedService) {
     paymentLineDrafts.push({
@@ -516,9 +671,126 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       currency,
       durationDays: Number(durationDays) || 0,
       startDate,
+      expectedPaymentDate,
       units: itemAllocations,
+      draftId: editingItemIndex === null
+        ? currentItemDraftId.current
+        : itemDrafts[editingItemIndex]?.draftId || currentItemDraftId.current,
     });
   }
+  const updateExpectedPaymentDate = (draftId: string, value: string) => {
+    if (isCurrentItemActive && draftId === currentItemDraftId.current) {
+      setExpectedPaymentDate(value);
+      return;
+    }
+    setItemDrafts(current => current.map(item => item.draftId === draftId
+      ? { ...item, expectedPaymentDate: value || undefined }
+      : item
+    ));
+  };
+  const persistCurrentQuotation = (status: 'quotation' | 'confirmed' = 'quotation') => {
+    if (!selectedCustomer || !paymentLineDrafts.length) {
+      throw new Error('Choose a customer and configure at least one service before saving the quotation.');
+    }
+    const items = paymentLineDrafts.map(({ currency: _currency, draftId: _draftId, ...item }) => ({
+      ...item,
+      serviceNameSnapshot: item.serviceNameSnapshot || services.find(service => service.id === item.serviceId)?.name || 'Service',
+      discount: item.discount || 0,
+      expectedPaymentDate: item.expectedPaymentDate || undefined,
+    }));
+    const now = new Date().toISOString();
+    const existing = orderQuotationIdRef.current
+      ? orders.find(order => order.id === orderQuotationIdRef.current)
+      : undefined;
+    const statusData = status === 'confirmed'
+      ? { status, confirmedAt: existing?.confirmedAt || now }
+      : {
+        status: existing?.status === 'confirmed' ? 'confirmed' as const : 'quotation' as const,
+        quotedAt: existing?.quotedAt || now,
+      };
+    if (existing) {
+      const updated = updateOrderQuotation(existing.id, {
+        customerId,
+        source: orderSource,
+        currency,
+        items,
+        subtotal,
+        discount: discountAmount,
+        total: totalAmount,
+        notes: notes.trim() || undefined,
+        ...statusData,
+      });
+      setOrderQuotationId(updated.id);
+      return updated;
+    }
+    const generatedId = createRecordId('order');
+    const id = currentBusiness?.businessId?.startsWith('xvm_demo_')
+      ? `xvm_demo_order_${generatedId}`
+      : generatedId;
+    const reference = `QUO-${id.replace(/[^a-z0-9]/gi, '').slice(-8).toUpperCase()}`;
+    const order = createOrderQuotation({
+      id,
+      reference,
+      customerId,
+      source: orderSource,
+      status,
+      quotedAt: now,
+      ...(status === 'confirmed' ? { confirmedAt: now } : {}),
+      currency,
+      items,
+      subtotal,
+      discount: discountAmount,
+      total: totalAmount,
+      notes: notes.trim() || undefined,
+    });
+    orderQuotationIdRef.current = order.id;
+    saleOperationId.current = `order-${order.id}`;
+    setOrderQuotationId(order.id);
+    return order;
+  };
+  const buildQuotationMessage = (reference: string) => {
+    const lines = paymentLineDrafts.map(item => {
+      const lineTotal = minorUnitsToAmount(
+        amountToMinorUnits(item.unitPrice) * item.quantity - amountToMinorUnits(item.discount || 0)
+      );
+      return `• ${item.serviceNameSnapshot || 'Service'} — ${item.plan}, ${formatDurationDays(item.durationDays)}, ${item.quantity} × ${formatCurrency(item.unitPrice, item.currency)} = ${formatCurrency(lineTotal, item.currency)}`;
+    });
+    return [
+      `Hello ${selectedCustomer?.name || 'there'},`,
+      '',
+      `Here is your quotation ${reference} from ${settings.storeName}.`,
+      ...lines,
+      `Subtotal: ${formatCurrency(subtotal, currency)}`,
+      `Discounts: -${formatCurrency(discountAmount, currency)}`,
+      `Total: ${formatCurrency(totalAmount, currency)}`,
+      '',
+      'This is a quotation, not an invoice or payment receipt. Please reply to confirm the order.',
+      `Thank you, ${settings.storeName}`,
+    ].join('\n');
+  };
+  const handleShareQuotation = () => {
+    try {
+      const order = persistCurrentQuotation('quotation');
+      const opened = openMessage({
+        customerId: order.customerId,
+        templateId: 'custom_message',
+        customMessage: buildQuotationMessage(order.reference),
+      });
+      if (opened) showToast('Quotation message prepared. WhatsApp does not confirm delivery.', 'info');
+    } catch (error) {
+      reportValidationError(error instanceof Error ? error.message : 'Unable to prepare the quotation.');
+    }
+  };
+  const handleCopyQuotation = async () => {
+    try {
+      const order = persistCurrentQuotation('quotation');
+      await navigator.clipboard.writeText(buildQuotationMessage(order.reference));
+      showToast('Quotation text copied.', 'success');
+    } catch (error) {
+      console.error('Quotation copy failed.', error);
+      showToast('Could not copy the quotation. Check browser clipboard permission.', 'error');
+    }
+  };
   const paymentLineNetMinor = paymentLineDrafts.map(item =>
     Math.max(0, amountToMinorUnits(item.unitPrice) * item.quantity - amountToMinorUnits(item.discount || 0))
   );
@@ -540,9 +812,37 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const paymentLineTotalsMinor = paymentLineNetMinor.map((amount, index) =>
     Math.max(0, amount - paymentLineInvoiceDiscountMinor[index])
   );
-  const paymentLinePaidMinor = allocateMinorUnitsByWeight(
-    amountToMinorUnits(amountPaid),
+  const parsedAmountReceivedMinor = parseAmountToMinorUnits(amountReceivedInput);
+  const amountReceivedValid = parsedAmountReceivedMinor !== null;
+  const amountReceivedMinor = parsedAmountReceivedMinor || 0;
+  const amountReceived = minorUnitsToAmount(amountReceivedMinor);
+  const tenderAllocation = allocateInitialSalePayment(amountReceived, totalAmount, advanceCreditToApply);
+  const amountPaid = tenderAllocation.amountPaid;
+  const dueAmount = tenderAllocation.amountDue;
+  const paymentStatus = totalAmount > 0 && dueAmount === 0
+    ? 'paid'
+    : amountPaid > 0 ? 'partial' : 'pending';
+  const paymentLineCashMinor = allocateMinorUnitsInOrder(
+    amountToMinorUnits(tenderAllocation.cashApplied),
     paymentLineTotalsMinor
+  );
+  const paymentLineAllocationsValid = paymentLineDrafts.length > 0
+    && amountReceivedValid
+    && advanceInputValid
+    && isValidPaymentLineAllocation(
+      amountToMinorUnits(tenderAllocation.cashApplied),
+      paymentLineTotalsMinor,
+      paymentLineCashMinor
+    );
+  const previewLineCashMinor = paymentLineAllocationsValid
+    ? paymentLineCashMinor
+    : allocateMinorUnitsInOrder(amountToMinorUnits(tenderAllocation.cashApplied), paymentLineTotalsMinor);
+  const advanceLinePaidMinor = allocateMinorUnitsByWeight(
+    amountToMinorUnits(tenderAllocation.advanceApplied),
+    paymentLineTotalsMinor.map((total, index) => Math.max(0, total - previewLineCashMinor[index]))
+  );
+  const paymentLinePaidMinor = paymentLineTotalsMinor.map((total, index) =>
+    Math.min(total, previewLineCashMinor[index] + advanceLinePaidMinor[index])
   );
   const paymentLineFinancials = paymentLineDrafts.map((item, index) => {
     const totalMinor = paymentLineTotalsMinor[index];
@@ -698,7 +998,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       return;
     }
     if (!Number.isSafeInteger(itemQuantity) || itemQuantity < 1) {
-      reportValidationError('Item quantity must be a positive whole number.', 3);
+      reportValidationError('Item quantity must be a positive whole number.', 2);
       return;
     }
     if (!currentItemDiscountValid) {
@@ -735,7 +1035,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     if (!startDate || !Number.isFinite(Date.parse(`${startDate}T00:00:00`))
       || !Number.isSafeInteger(Number(durationDays)) || Number(durationDays) < 1
       || calculatedExpiryDate <= startDate) {
-      reportValidationError('Enter a valid start date and duration.', 3);
+      reportValidationError('Enter a valid start date and duration.', 2);
       return;
     }
 
@@ -755,8 +1055,12 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       discount: currentItemDiscount,
       startDate,
       durationDays: Number(durationDays),
+      expectedPaymentDate,
       ...(unitAllocations ? { units: unitAllocations } : {}),
       currency,
+      draftId: editingItemIndex === null
+        ? currentItemDraftId.current
+        : itemDrafts[editingItemIndex]?.draftId || currentItemDraftId.current,
     };
     const wasEditing = editingItemIndex !== null;
     setItemDrafts(current => editingItemIndex === null
@@ -772,6 +1076,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     setItemAllocations([{ accountId: '', profileId: '' }]);
     setItemQuantity(1);
     setItemDiscountInput('0');
+    setStartDate(getTodayDateString(settings.businessProfile?.timeZone));
+    setExpectedPaymentDate('');
+    currentItemDraftId.current = createRecordId('sale-line-draft');
     setStepError('');
     setStep(remainingServiceIds.length > 0 ? 2 : 1);
   };
@@ -803,7 +1110,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       reportValidationError('This service is no longer available. Choose an active service.', 1);
       return;
     }
-    const selectedServicePlan = selectedService.planDetails?.find(item => item.id === planId);
+    const selectedServicePlan = selectedService?.planDetails?.find(item => item.id === planId);
     if (isCurrentItemActive && (!selectedServicePlan || selectedServicePlan.status !== 'active' || selectedServicePlan.name !== plan)) {
       reportValidationError('The selected plan is no longer available. Choose a plan for this service.', 2);
       return;
@@ -814,7 +1121,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       return;
     }
     if (isCurrentItemActive && (!Number.isSafeInteger(itemQuantity) || itemQuantity < 1)) {
-      reportValidationError('Item quantity must be a positive whole number.', 3);
+      reportValidationError('Item quantity must be a positive whole number.', 2);
       return;
     }
     if (isCurrentItemActive && itemDrafts.some((item, index) => index !== editingItemIndex && item.currency !== currency)) {
@@ -822,15 +1129,15 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       return;
     }
     if (isCurrentItemActive && (!startDate || !Number.isFinite(Date.parse(`${startDate}T00:00:00`)) || !Number.isSafeInteger(Number(durationDays)) || Number(durationDays) < 1 || calculatedExpiryDate <= startDate)) {
-      reportValidationError('Enter a valid start date and duration.', 3);
+      reportValidationError('Enter a valid start date and duration.', 2);
       return;
     }
     if (isCurrentItemActive && (!Number.isFinite(Number(price)) || Number(price) < 0)) {
-      reportValidationError('Enter a valid sale price.', 3);
+      reportValidationError('Enter a valid sale price.', 2);
       return;
     }
     if (!Number.isFinite(totalAmount) || totalAmount <= 0 || discountValue < 0 || (discountMode === 'fixed' && amountToMinorUnits(discountValue) > globalDiscountableMinor) || (discountMode === 'percentage' && discountValue > 100)) {
-      reportValidationError('Enter a valid price and discount.', 3);
+      reportValidationError('Enter a valid price and discount.', 5);
       return;
     }
     if (isCurrentItemActive && serviceUsesAccounts && allocationRows.some(allocation =>
@@ -848,28 +1155,32 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     }
 
     if (!currentItemDiscountValid || !advanceInputValid || !amountReceivedValid) {
-      reportValidationError('Check item discounts, the amount received, and the advance application amount.', 3);
+      reportValidationError('Check item discounts, the amount received, and the advance application amount.', 5);
+      return;
+    }
+    if (!paymentLineAllocationsValid) {
+      reportValidationError('Service payment allocations must equal the cash applied to this sale and stay within each line total.', 5);
       return;
     }
     if (!Number.isFinite(amountReceived) || amountReceived < 0 || !Number.isFinite(amountPaid) || amountPaid < 0) {
-      reportValidationError('Enter a valid amount received.', 3);
+      reportValidationError('Enter a valid amount received.', 5);
       return;
     }
     if (!paymentDate || !Number.isFinite(Date.parse(`${paymentDate}T00:00:00`))
       || paymentDate > getTodayDateString(settings.businessProfile?.timeZone)) {
-      reportValidationError('Choose a valid payment date that is not in the future.', 3);
+      reportValidationError('Choose a valid payment date that is not in the future.', 5);
       return;
     }
     if ((settings.paymentPreferences?.methods ?? ['bKash', 'Nagad', 'Rocket', 'Bank', 'Card', 'Cash', 'Other']).length === 0) {
-      reportValidationError('Enable at least one payment method in Settings before creating a sale.', 3);
+      reportValidationError('Enable at least one payment method in Settings before creating a sale.', 5);
       return;
     }
     if (!paymentMethods.includes(paymentMethod)) {
-      reportValidationError('Choose an enabled payment method.', 3);
+      reportValidationError('Choose an enabled payment method.', 5);
       return;
     }
     if (amountReceived > 0 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) && !transactionId.trim()) {
-      reportValidationError('Enter the required transaction ID.', 3);
+      reportValidationError('Enter the required transaction ID.', 5);
       return;
     }
 
@@ -887,6 +1198,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         discount: currentItemDiscount,
         startDate,
         durationDays: Number(durationDays),
+        expectedPaymentDate,
         ...(serviceUsesAccounts ? {
           units: allocationRows.map(allocation => ({
             accountId: allocation.accountId || undefined,
@@ -894,6 +1206,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
           })),
         } : {}),
         currency,
+        draftId: currentItemDraftId.current,
       } : undefined;
       const requestedItems = itemDrafts
         .filter((_, index) => index !== editingItemIndex)
@@ -904,6 +1217,25 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       }
       const primaryItem = requestedItems[0];
       const primaryAllocation = primaryItem.units?.[0];
+      if (orderQuotationIdRef.current) {
+        updateOrderQuotation(orderQuotationIdRef.current, {
+          customerId,
+          source: orderSource,
+          currency,
+          items: requestedItems.map(({ currency: _currency, draftId: _draftId, ...item }) => ({
+            ...item,
+            serviceNameSnapshot: item.serviceNameSnapshot || services.find(service => service.id === item.serviceId)?.name || 'Service',
+            discount: item.discount || 0,
+            expectedPaymentDate: item.expectedPaymentDate || undefined,
+          })),
+          subtotal,
+          discount: discountAmount,
+          total: totalAmount,
+          status: 'confirmed',
+          confirmedAt: orders.find(order => order.id === orderQuotationIdRef.current)?.confirmedAt || new Date().toISOString(),
+          notes: notes.trim() || undefined,
+        });
+      }
       const result = createSale({
         customerId,
         serviceId: primaryItem.serviceId,
@@ -927,10 +1259,26 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         senderNumber: senderNumber.trim() || undefined,
         notes,
         operationId: saleOperationId.current,
-        ...(requestedItems.length > 1 || requestedItems.some(item => item.quantity > 1 || (item.discount || 0) > 0) ? {
-          lineItems: requestedItems.map(({ currency: _currency, ...item }) => item),
+        paymentLineAllocations: paymentLineCashMinor.map(minorUnitsToAmount),
+        ...(requestedItems.length > 1 || requestedItems.some(item => item.quantity > 1 || (item.discount || 0) > 0 || item.expectedPaymentDate) ? {
+          lineItems: requestedItems.map(({ currency: _currency, draftId: _draftId, ...item }) => ({
+            ...item,
+            expectedPaymentDate: item.expectedPaymentDate || undefined,
+          })),
         } : {}),
       });
+      if (orderQuotationIdRef.current) {
+        try {
+          updateOrderQuotation(orderQuotationIdRef.current, {
+            status: 'invoiced',
+            saleId: result.sale.id,
+            invoiceId: result.invoice.invoiceId,
+          });
+        } catch (error) {
+          console.error('Sale was created, but its quotation status could not be updated.', error);
+          showToast('Sale and invoice were created, but the quotation status needs attention.', 'error');
+        }
+      }
 
       const cust = customers.find(c => c.id === customerId);
       const srv = services.find(s => s.id === primaryItem.serviceId);
@@ -984,8 +1332,8 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     invoiceGenerationLock.current = true;
     setIsDownloadingDirect(true);
     try {
-      const result = await generateInvoiceJpg(completedSaleData, language);
-      downloadInvoiceJpg(result.blob, result.fileName);
+      const result = await generateInvoiceImage(completedSaleData, language);
+      downloadInvoiceImage(result.blob, result.fileName);
       recordInvoiceGenerated(completedSaleData);
       showToast(`Invoice generated · ${Math.round(result.blob.size / 1024)} KB`, 'success');
     } catch (err) {
@@ -1002,21 +1350,21 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     invoiceGenerationLock.current = true;
     setIsSharingDirect(true);
     try {
-      const result = await generateInvoiceJpg(completedSaleData, language);
+      const result = await generateInvoiceImage(completedSaleData, language);
       recordInvoiceGenerated(completedSaleData);
-      if (!canShareInvoiceJpg()) {
-        downloadInvoiceJpg(result.blob, result.fileName);
-        showToast('File sharing is unavailable here. A JPG download was requested.', 'info');
+      if (!canShareInvoiceFile()) {
+        downloadInvoiceImage(result.blob, result.fileName);
+        showToast('File sharing is unavailable here. A PNG download was requested.', 'info');
         return;
       }
-      const shared = await shareInvoiceJpg(
+      const shared = await shareInvoiceFile(
         result.blob,
         result.fileName,
         `${settings.storeName} Invoice ${completedSaleData.invoiceNo}`,
         `Receipt for ${completedSaleData.serviceName} · ${formatCurrency(completedSaleData.amount, completedSaleData.currency)}`
       );
       if (shared === 'shared') {
-        showToast('Invoice shared successfully!', 'success');
+        showToast('Share sheet opened. Check your selected app to complete sharing; delivery is not confirmed.', 'info');
       } else if (shared === 'cancelled') {
         showToast('Invoice sharing was cancelled.', 'info');
       }
@@ -1073,13 +1421,20 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     setDiscountMode('fixed');
     setDiscountValue(0);
     setAmountReceivedInput('0');
+    setPaymentStatusChoice('due');
     setApplyExistingAdvance(false);
     setAdvanceCreditInput('0');
     setPaymentDate(getTodayDateString(settings.businessProfile?.timeZone));
+    setExpectedPaymentDate('');
+    setOrderSource('whatsapp');
+    setOrderQuotationId(null);
+    orderQuotationIdRef.current = null;
+    resumedOrderId.current = null;
     setPaymentNote('');
     setItemQuantity(1);
     setItemDiscountInput('0');
     setItemDrafts([]);
+    currentItemDraftId.current = createRecordId('sale-line-draft');
     setSelectedServiceIds(preselectedServiceId ? [preselectedServiceId] : []);
     setIsCurrentItemActive(true);
     setEditingItemIndex(null);
@@ -1096,7 +1451,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     if (step === 1) {
       const servicesToConfigure = selectedServiceQueue;
       if (!servicesToConfigure.length && itemDrafts.length) {
-        setStep(4);
+        setStep(5);
         return;
       }
       const firstService = eligibleServices.find(service => service.id === servicesToConfigure[0]);
@@ -1121,6 +1476,15 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
           return;
         }
       }
+      if (serviceId !== firstService.id) {
+        setPlan('');
+        setPlanId('');
+        setItemQuantity(1);
+        setItemDiscountInput('0');
+        setItemAllocations([{ accountId: '', profileId: '' }]);
+        setStartDate(getTodayDateString(settings.businessProfile?.timeZone));
+        currentItemDraftId.current = createRecordId('sale-line-draft');
+      }
       setServiceId(firstService.id);
       setIsCurrentItemActive(true);
       setStep(2);
@@ -1138,8 +1502,20 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       reportValidationError(`Only ${allocationCapacity} inventory unit${allocationCapacity === 1 ? '' : 's'} are currently available.`, 2);
       return;
     }
+    if (step === 2 && isCurrentItemActive && (!startDate || !Number.isFinite(Date.parse(`${startDate}T00:00:00`)) || !Number.isSafeInteger(Number(durationDays)) || Number(durationDays) < 1 || calculatedExpiryDate <= startDate)) {
+      reportValidationError('Enter a valid start date and duration.', 2);
+      return;
+    }
+    if (step === 2 && !currentItemDiscountValid) {
+      reportValidationError('Item discount cannot exceed this service line total.', 2);
+      return;
+    }
     if (step === 2 && selectedPlan && (Number(durationDays) !== selectedPlan.durationDays || Number(price) !== selectedPlan.price || currency !== selectedPlan.currency)) {
       reportValidationError('Price and duration must match the selected plan.');
+      return;
+    }
+    if (step === 2 && !serviceUsesAccounts) {
+      handleAddSaleItem();
       return;
     }
     if (step === 3 && isCurrentItemActive && serviceUsesAccounts && allocationRows.some(allocation =>
@@ -1155,37 +1531,51 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       reportValidationError('One or more selected inventory units are no longer available.');
       return;
     }
-    if (step === 3 && isCurrentItemActive && (!startDate || !Number.isFinite(Date.parse(`${startDate}T00:00:00`)) || !Number.isSafeInteger(Number(durationDays)) || Number(durationDays) < 1 || calculatedExpiryDate <= startDate)) {
-      reportValidationError('Enter a valid start date and duration.');
+    if (step === 3) {
+      if (!isCurrentItemActive && itemDrafts.length > 0) {
+        setStep(1);
+        return;
+      }
+      if (!isCurrentItemActive || !Number.isSafeInteger(itemQuantity) || itemQuantity < 1
+        || !Number.isFinite(subtotal) || subtotal <= 0 || discountValue < 0
+        || (discountMode === 'fixed' && amountToMinorUnits(discountValue) > globalDiscountableMinor)
+        || (discountMode === 'percentage' && discountValue > 100) || totalAmount <= 0) {
+        reportValidationError('Add a valid service, price, and discount before continuing.', 2);
+        return;
+      }
+      if (isCurrentItemActive && selectedServiceQueue.some(id => id !== serviceId)) {
+        handleAddSaleItem();
+        return;
+      }
+      handleAddSaleItem();
       return;
     }
-    if (step === 3 && ((!isCurrentItemActive && itemDrafts.length === 0)
-      || (isCurrentItemActive && (!Number.isSafeInteger(itemQuantity) || itemQuantity < 1))
-      || !Number.isFinite(subtotal) || subtotal <= 0 || discountValue < 0
-      || (discountMode === 'fixed' && amountToMinorUnits(discountValue) > globalDiscountableMinor)
-      || (discountMode === 'percentage' && discountValue > 100) || totalAmount <= 0)) {
-      reportValidationError('Enter at least one valid item, price, and discount.');
+    if (step === 4) {
+      try {
+        persistCurrentQuotation('confirmed');
+        setStep(5);
+      } catch (error) {
+        reportValidationError(error instanceof Error ? error.message : 'Unable to confirm this quotation.');
+      }
       return;
     }
-    if (step === 3 && (totalAmount <= 0 || !amountReceivedValid || !advanceInputValid
+    if (step === 5 && (totalAmount <= 0 || !amountReceivedValid || !advanceInputValid
+      || !paymentLineAllocationsValid
       || !currentItemDiscountValid || !paymentMethods.includes(paymentMethod))) {
-      reportValidationError('Check the sale total, discounts, amount received, and advance application before continuing.');
+      reportValidationError('Check the sale total, payment amount, discounts, and advance application.');
       return;
     }
-    if (step === 3 && (!paymentDate || !Number.isFinite(Date.parse(`${paymentDate}T00:00:00`))
+    if (step === 5 && (!paymentDate || !Number.isFinite(Date.parse(`${paymentDate}T00:00:00`))
       || paymentDate > getTodayDateString(settings.businessProfile?.timeZone))) {
       reportValidationError('Choose a valid payment date that is not in the future.');
       return;
     }
-    if (step === 3 && amountReceived > 0 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) && !transactionId.trim()) {
+    if (step === 5 && amountReceived > 0 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) && !transactionId.trim()) {
       reportValidationError('Enter the required transaction ID.');
       return;
     }
-    if (step === 3 && isCurrentItemActive && selectedServiceQueue.some(id => id !== serviceId)) {
-      handleAddSaleItem();
-      return;
-    }
-    setStep(current => current === 0 && isPreselectedServiceReady ? 2 : Math.min(current + 1, 4));
+    if (step === 5) return;
+    setStep(current => current === 0 && isPreselectedServiceReady ? 2 : Math.min(current + 1, 6));
   };
 
   const handleChooseCustomer = (id: string) => {
@@ -1258,85 +1648,113 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       setPaymentMethod(getDefaultPaymentMethod(paymentMethodConfigs, settings.paymentPreferences?.defaultMethodId) as PaymentMethod);
     }
   }, [paymentMethods, paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.defaultMethodId]);
-  const steps = [
+  const visibleSteps = [
     { label: 'Customer', icon: UserRound },
-    { label: 'Service', icon: Layers },
-    { label: 'Plan', icon: Layers },
-    { label: 'Fulfillment & Payment', icon: CreditCard },
-    { label: 'Review', icon: Receipt },
+    { label: 'Services & subscriptions', icon: Layers },
+    ...(serviceUsesAccounts
+      || selectedServiceQueue.some(id => {
+        const service = eligibleServices.find(candidate => candidate.id === id);
+        return service?.settings?.usesAccounts === true
+          || service?.settings?.usesProfiles === true
+          || service?.settings?.profileAssignmentRequired === true;
+      })
+      || itemDrafts.some(item => Boolean(item.units?.length))
+      ? [{ label: 'Fulfillment', icon: Layers }]
+      : []),
+    { label: 'Payment', icon: CreditCard },
   ];
-  const visibleSteps = isPreselectedServiceReady && step !== 1
-    ? steps.filter((_, index) => index !== 1)
-    : steps;
-  const visibleStepIndexes = visibleSteps.map(item => steps.indexOf(item));
-  const summaryLineCount = itemDrafts.length - (editingItemIndex === null ? 0 : 1) + (isCurrentItemActive ? 1 : 0);
-  const summaryUnitCount = itemDrafts.reduce(
-    (total, item, index) => total + (index === editingItemIndex ? 0 : item.quantity),
+  const hasFulfillmentStep = visibleSteps.some(item => item.label === 'Fulfillment');
+  const activeVisibleStep = step === 0 ? 0 : step <= 2 ? 1 : hasFulfillmentStep ? step === 3 ? 2 : 3 : 2;
+  const visibleStepInternalIndexes = hasFulfillmentStep ? [0, 1, 3, 5] : [0, 1, 5];
+  const summaryPaymentLines = paymentLineFinancials.filter(({ item }) =>
+    selectedServiceIdsForDisplay.includes(item.serviceId)
+  );
+  const summaryConfiguredServiceIds = new Set(summaryPaymentLines.map(({ item }) => item.serviceId));
+  const pendingSummaryServices = selectedServiceIdsForDisplay
+    .filter(id => !summaryConfiguredServiceIds.has(id))
+    .map(id => eligibleServices.find(service => service.id === id))
+    .filter((service): service is NonNullable<typeof service> => Boolean(service));
+  const summaryLineCount = summaryPaymentLines.length;
+  const summaryUnitCount = summaryPaymentLines.reduce((total, { item }) => total + item.quantity, 0);
+  const summaryIsComplete = selectedServiceCount > 0 && pendingSummaryServices.length === 0;
+  const summarySubtotal = summaryPaymentLines.reduce(
+    (total, { item }) => total + amountToMinorUnits(item.unitPrice) * item.quantity,
     0
-  ) + (isCurrentItemActive ? itemQuantity : 0);
+  );
+  const summaryItemDiscount = summaryPaymentLines.reduce(
+    (total, { item }) => total + amountToMinorUnits(item.discount || 0),
+    0
+  );
+  const summaryGrandTotal = summaryPaymentLines.reduce(
+    (total, { total: lineTotal }) => total + amountToMinorUnits(lineTotal),
+    0
+  );
   const getItemAllocationSummary = (item: SaleItemDraft) => (item.units || []).map(unit => {
     const account = accounts.find(candidate => candidate.id === unit.accountId);
     const profile = account?.profiles.find(candidate => candidate.id === unit.profileId);
     return [account?.email, profile?.profileName].filter(Boolean).join(' · ');
   }).filter(Boolean).join(', ');
   const orderSummary = (
-    <div className="space-y-4">
+    <section aria-label="Live order summary" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:p-5">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-bold text-slate-900 dark:text-white">Order Summary</h3>
         <Receipt className="w-4 h-4 text-violet-600 dark:text-violet-400" />
       </div>
-      <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5 dark:border-slate-700 dark:bg-slate-800/60">
-        <div className="space-y-2">
-          <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{summaryLineCount} line{summaryLineCount === 1 ? '' : 's'} · {summaryUnitCount} unit{summaryUnitCount === 1 ? '' : 's'}</p>
-          {paymentLineFinancials.map(({ item, total, paid, due, status }, index) => {
-            const lineSubtotal = minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity);
-            const allocations = getItemAllocationSummary(item);
-            return (
-              <div key={`${item.serviceId}-${item.planId}-${index}`} className="min-w-0 border-t border-slate-200 pt-2 dark:border-slate-700">
-                <div className="flex min-w-0 items-start justify-between gap-2">
-                  <p className="min-w-0 break-words text-xs font-semibold text-slate-900 dark:text-white">
-                    {item.serviceNameSnapshot || services.find(service => service.id === item.serviceId)?.name || 'Service'} · {item.plan}
-                  </p>
-                  <span className="shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(lineSubtotal, item.currency)}</span>
+      {selectedServiceCount === 0 ? (
+        <div className="flex min-h-40 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center dark:border-slate-700 dark:bg-slate-800/50">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300"><Layers className="h-5 w-5" /></span>
+          <p className="mt-3 text-sm font-semibold text-slate-800 dark:text-slate-100">No services selected</p>
+          <p className="mt-1 max-w-xs text-xs leading-relaxed text-slate-500 dark:text-slate-400">Select a service to see your order summary.</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-3 rounded-xl bg-violet-50/70 px-3 py-2.5 text-xs dark:bg-violet-950/30">
+            <span className="font-semibold text-violet-900 dark:text-violet-200">{selectedServiceCount} service{selectedServiceCount === 1 ? '' : 's'} selected</span>
+            <span className="text-right text-violet-800 dark:text-violet-300">{summaryLineCount} configured line{summaryLineCount === 1 ? '' : 's'} · {summaryUnitCount} unit{summaryUnitCount === 1 ? '' : 's'}</span>
+          </div>
+          {step === 5 && summaryPaymentLines.length > 0 && <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
+            {summaryPaymentLines.map(({ item, total }) => (
+              <div key={item.draftId} className="flex min-w-0 items-start justify-between gap-3 p-3">
+                <div className="min-w-0">
+                  <p className="break-words text-xs font-semibold text-slate-900 dark:text-white">{item.serviceNameSnapshot || 'Service'}</p>
+                  <p className="mt-0.5 break-words text-[11px] text-slate-500 dark:text-slate-400">{item.plan} · {item.quantity} × {formatCurrency(item.unitPrice, item.currency)}</p>
                 </div>
-                <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                  {item.quantity} × {formatCurrency(item.unitPrice, item.currency)} · {formatDurationDays(item.durationDays)}
-                </p>
-                {(item.discount || 0) > 0 && <p className="mt-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">Item discount −{formatCurrency(item.discount || 0, item.currency)}</p>}
-                <p className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-300">
-                  Line total {formatCurrency(total, currency)} · Paid {formatCurrency(paid, currency)} · Due {formatCurrency(due, currency)} · {status === 'paid' ? 'Paid' : status === 'partial' ? 'Partially paid' : 'Unpaid'}
-                </p>
-                {allocations && <p className="mt-0.5 break-words text-[11px] text-slate-500 dark:text-slate-400">Fulfillment: {allocations}</p>}
+                <span className="shrink-0 whitespace-nowrap text-xs font-bold tabular-nums text-slate-900 dark:text-white">{formatCurrency(total, item.currency)}</span>
               </div>
-            );
-          })}
-        </div>
-        <div className="space-y-2 border-t border-slate-200 pt-3 text-xs dark:border-slate-700">
-          <div className="flex justify-between gap-3">
-            <span className="text-slate-500 dark:text-slate-400">Customer</span>
-            <span className="min-w-0 break-words text-right font-medium text-slate-800 dark:text-slate-200">{selectedCustomer?.name || 'Not selected'}</span>
+            ))}
+          </div>}
+          {pendingSummaryServices.length > 0 && <p role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">Configure the remaining service{pendingSummaryServices.length === 1 ? '' : 's'} to see the complete order total.</p>}
+          {selectedCustomer && <div className="flex min-w-0 justify-between gap-3 border-t border-slate-200 pt-3 text-xs dark:border-slate-700">
+            <span className="shrink-0 text-slate-500 dark:text-slate-400">Customer</span>
+            <span className="min-w-0 break-words text-right font-medium text-slate-800 dark:text-slate-200">{selectedCustomer.name}</span>
+          </div>}
+          <div className="space-y-2 border-t border-slate-200 pt-3 text-xs dark:border-slate-700">
+            <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">{summaryIsComplete ? 'Subtotal' : 'Configured subtotal'}</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(minorUnitsToAmount(summarySubtotal), currency)}</span></div>
+            <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Item discounts</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">−{formatCurrency(minorUnitsToAmount(summaryItemDiscount), currency)}</span></div>
+            {summaryIsComplete && <>
+              <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Sale discount</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">−{formatCurrency(invoiceDiscountAmount, currency)}</span></div>
+              <div className="flex items-end justify-between gap-3 border-t border-slate-200 pt-2 dark:border-slate-700">
+                <span className="font-bold text-slate-900 dark:text-white">{step === 5 ? 'Total bill' : 'Grand total'}</span>
+                <span className="whitespace-nowrap font-mono text-lg font-extrabold tabular-nums text-violet-700 dark:text-violet-300">{formatCurrency(minorUnitsToAmount(summaryGrandTotal), currency)}</span>
+              </div>
+            </>}
+            {step >= 5 && summaryIsComplete && <>
+              <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">New cash received</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(amountReceived, currency)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Advance payment used</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(tenderAllocation.advanceApplied, currency)}</span></div>
+              <div className="flex justify-between gap-3"><span className="font-semibold text-slate-700 dark:text-slate-300">Outstanding due</span><span className="whitespace-nowrap font-semibold tabular-nums text-amber-700 dark:text-amber-300">{formatCurrency(dueAmount, currency)}</span></div>
+              <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Extra advance payment</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(tenderAllocation.advanceCreditCreated, currency)}</span></div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">Payment status</span>
+                <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : paymentStatus === 'partial' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>
+                  {paymentStatus === 'paid' ? 'Paid' : paymentStatus === 'partial' ? 'Partly paid' : 'Due'}
+                </span>
+              </div>
+            </>}
           </div>
-        </div>
-        <div className="space-y-2 border-t border-slate-200 pt-3 text-xs dark:border-slate-700">
-          <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Subtotal</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(subtotal, currency)}</span></div>
-          <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Item discounts</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">−{formatCurrency(itemDiscountAmount, currency)}</span></div>
-          <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Sale discount</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">−{formatCurrency(invoiceDiscountAmount, currency)}</span></div>
-          <div className="flex items-end justify-between gap-3 border-t border-slate-200 pt-2 dark:border-slate-700">
-            <span className="font-bold text-slate-900 dark:text-white">Grand total</span>
-            <span className="whitespace-nowrap font-mono text-lg font-extrabold tabular-nums text-violet-700 dark:text-violet-300">{formatCurrency(totalAmount, currency)}</span>
-          </div>
-          {step >= 3 && <>
-            <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">New cash received</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(amountReceived, currency)}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Existing advance applied</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(tenderAllocation.advanceApplied, currency)}</span></div>
-            <div className="flex justify-between gap-3"><span className="font-semibold text-slate-700 dark:text-slate-300">Outstanding due</span><span className="whitespace-nowrap font-semibold tabular-nums text-amber-700 dark:text-amber-300">{formatCurrency(dueAmount, currency)}</span></div>
-            <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">New advance credit</span><span className="whitespace-nowrap font-medium tabular-nums text-slate-800 dark:text-slate-200">{formatCurrency(tenderAllocation.advanceCreditCreated, currency)}</span></div>
-          </>}
-        </div>
-      </div>
-      <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-        Sale discount applies to the combined subtotal. Each line retains its selected plan price and duration.
-      </p>
-    </div>
+        </>
+      )}
+      {selectedServiceCount > 0 && <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">Sale discount applies to the combined subtotal. Each service keeps its own plan, dates, quantity, and fulfillment.</p>}
+    </section>
   );
 
   return (
@@ -1360,10 +1778,10 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
             ? language === 'bn'
               ? completedSaleData.paymentStatus === 'failed'
                 ? 'পেমেন্ট ব্যর্থ হয়েছে; ইনভেন্টরি বরাদ্দ করা হয়নি।'
-                : 'সাবস্ক্রিপশন সক্রিয় হয়েছে। নিচে JPG রসিদ ডাউনলোড বা শেয়ার করুন।'
+                : 'সাবস্ক্রিপশন সক্রিয় হয়েছে। নিচে PNG রসিদ ডাউনলোড বা শেয়ার করুন।'
               : completedSaleData.paymentStatus === 'failed'
                 ? 'Payment failed. Inventory was not allocated.'
-                : `Invoice ${completedSaleData.invoiceNo} created for ${completedSaleData.customerName}. Your customer-ready JPG receipt is available below.`
+                : `Invoice ${completedSaleData.invoiceNo} created for ${completedSaleData.customerName}. Your customer-ready PNG invoice is available below.`
             : language === 'bn'
             ? 'কাস্টমার, সার্ভিস, অ্যাকাউন্ট ও প্রোফাইল নির্বাচন করে সরাসরি বিক্রয় রেকর্ড করুন।'
             : 'Create one customer sale with separate services, plans, and fulfillment details.'
@@ -1371,21 +1789,20 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         maxWidth="5xl"
         protectUnsavedChanges={!completedSaleData}
         footer={!completedSaleData ? (
-          <nav aria-label="Sale workflow navigation" className="flex items-center justify-between gap-2 sm:gap-3">
-            {step > 0 ? <button type="button" onClick={() => {
-              const currentIndex = visibleStepIndexes.indexOf(step);
-              setStep(visibleStepIndexes[Math.max(currentIndex - 1, 0)]);
-            }} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-800 sm:px-3"><ChevronLeft className="h-4 w-4" />Back</button> : <button type="button" onClick={handleModalClose} className="inline-flex min-h-11 shrink-0 items-center rounded-lg px-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-800 sm:px-3">{t('cancel')}</button>}
-            {step < steps.length - 1 ? (
-              <button type="button" onClick={handleContinue} disabled={step === 1 && selectedServiceQueue.length === 0 && itemDrafts.length === 0} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:px-4">
+        <nav aria-label="Sale workflow navigation" className="flex items-center justify-between gap-2 sm:gap-3">
+          {step > 0 ? <button type="button" onClick={() => {
+            setStep(step >= 5 ? 1 : step === 4 ? 3 : step === 3 ? 2 : step === 2 ? 1 : 0);
+          }} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-800 sm:px-3"><ChevronLeft className="h-4 w-4" />Back</button> : <button type="button" onClick={handleModalClose} className="inline-flex min-h-11 shrink-0 items-center rounded-lg px-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-800 sm:px-3">{t('cancel')}</button>}
+            {step < 5 ? (
+              <button key="continue" type="button" onClick={handleContinue} disabled={step === 1 && selectedServiceQueue.length === 0 && itemDrafts.length === 0} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:px-4">
                 <span className="sm:hidden">Continue</span>
-                <span className="hidden sm:inline">{step === 1 ? selectedServiceQueue.length ? `Continue with ${selectedServiceQueue.length} service${selectedServiceQueue.length === 1 ? '' : 's'}` : 'Review items' : 'Continue'}</span>
+                <span className="hidden sm:inline">{step === 1 ? selectedServiceQueue.length ? `Continue with ${selectedServiceQueue.length} service${selectedServiceQueue.length === 1 ? '' : 's'}` : 'View order summary' : step === 3 ? 'Save service' : 'Continue'}</span>
                 <ChevronRight className="h-4 w-4 shrink-0" />
               </button>
             ) : (
-              <button type="submit" form="new-sale-form" disabled={isSubmitting || !selectedCustomer || (!isCurrentItemActive && itemDrafts.length === 0) || (isCurrentItemActive && (!selectedService || !selectedPlan)) || !Number.isFinite(totalAmount) || totalAmount <= 0 || !amountReceivedValid || !advanceInputValid || !currentItemDiscountValid || !paymentDate || (isCurrentItemActive && Number(durationDays) < 1)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:px-4">
+              <button key="create-invoice" type="submit" form="new-sale-form" disabled={isSubmitting || !selectedCustomer || (!isCurrentItemActive && itemDrafts.length === 0) || (isCurrentItemActive && (!selectedService || !selectedPlan)) || !Number.isFinite(totalAmount) || totalAmount <= 0 || !amountReceivedValid || !paymentLineAllocationsValid || !advanceInputValid || !currentItemDiscountValid || !paymentDate || (isCurrentItemActive && Number(durationDays) < 1)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:px-4">
                 {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                <span className="truncate">{isSubmitting ? 'Completing Sale…' : 'Confirm & Create Sale'}</span>
+                <span className="truncate">{isSubmitting ? 'Creating invoice…' : 'Create Invoice'}</span>
               </button>
             )}
           </nav>
@@ -1479,9 +1896,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 <div><p className="text-[11px] font-medium text-slate-500">Total</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-slate-900 dark:text-white">{formatCurrency(completedSaleData.amount, completedSaleData.currency)}</p></div>
                 <div><p className="text-[11px] font-medium text-slate-500">New cash received</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-slate-900 dark:text-white">{formatCurrency(completedSaleData.amountReceived ?? 0, completedSaleData.currency)}</p></div>
                 <div><p className="text-[11px] font-medium text-slate-500">Paid toward sale</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{formatCurrency(completedSaleData.amountPaid ?? 0, completedSaleData.currency)}</p></div>
-                <div><p className="text-[11px] font-medium text-slate-500">Existing advance applied</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-slate-900 dark:text-white">{formatCurrency(completedSaleData.advanceCreditApplied ?? 0, completedSaleData.currency)}</p></div>
+                <div><p className="text-[11px] font-medium text-slate-500">Advance payment used</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-slate-900 dark:text-white">{formatCurrency(completedSaleData.advanceCreditApplied ?? 0, completedSaleData.currency)}</p></div>
                 <div><p className="text-[11px] font-medium text-slate-500">Outstanding due</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-amber-700 dark:text-amber-300">{formatCurrency(completedSaleData.amountDue ?? 0, completedSaleData.currency)}</p></div>
-                <div><p className="text-[11px] font-medium text-slate-500">New advance credit</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{formatCurrency(completedSaleData.advanceCreditCreated ?? 0, completedSaleData.currency)}</p></div>
+                <div><p className="text-[11px] font-medium text-slate-500">Extra advance payment</p><p className="mt-0.5 whitespace-nowrap font-mono text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{formatCurrency(completedSaleData.advanceCreditCreated ?? 0, completedSaleData.currency)}</p></div>
               </div>
             </div>
 
@@ -1492,7 +1909,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 <span className="font-bold text-xs">Customer Invoice Options</span>
               </div>
               <p className="text-[11px] text-slate-500">
-                View, download, or share a compact 900 × 1200 JPG receipt.
+                View, download, or share the complete invoice as a PNG image.
               </p>
 
               <div className="grid grid-cols-1 gap-2.5 pt-1 sm:grid-cols-3">
@@ -1501,7 +1918,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                   onClick={() => setIsInvoicePreviewOpen(true)}
                   disabled={isDownloadingDirect || isSharingDirect}
                   className="px-3.5 py-2.5 bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  title="Preview the generated JPG invoice"
+                  title="Preview the generated PNG invoice"
                 >
                   <FileText className="w-4 h-4" />
                   <span>View Invoice</span>
@@ -1512,14 +1929,14 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                   onClick={handleDirectDownload}
                   disabled={isDownloadingDirect || isSharingDirect}
                   className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs rounded-xl border border-slate-200 dark:border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  title="Generate and download compact JPG"
+                  title="Generate and download the complete invoice PNG"
                 >
                   {isDownloadingDirect ? (
                     <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
                   ) : (
                     <Download className="w-4 h-4" />
                   )}
-                  <span>{isDownloadingDirect ? 'Generating…' : 'Download Invoice JPG'}</span>
+                  <span>{isDownloadingDirect ? 'Generating…' : 'Download Invoice PNG'}</span>
                 </button>
 
                 <button
@@ -1527,7 +1944,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                   onClick={handleDirectShare}
                   disabled={isSharingDirect || isDownloadingDirect}
                   className="px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs rounded-xl border border-emerald-200 dark:border-emerald-800 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  title="Share this JPG where supported, or download it"
+                  title="Share this PNG where supported, or download it"
                 >
                   {isSharingDirect ? (
                     <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
@@ -1625,18 +2042,17 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
           >
               <div className="rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2.5 dark:border-violet-900/60 dark:bg-violet-950/20">
                 <div className="mb-2 flex items-center justify-between gap-3 md:hidden">
-                  <span className="text-xs font-semibold text-violet-900 dark:text-violet-200">{visibleSteps[visibleStepIndexes.indexOf(step)]?.label || 'Sale'}</span>
-                  <span className="shrink-0 text-[11px] font-medium tabular-nums text-violet-700 dark:text-violet-300">Step {visibleStepIndexes.indexOf(step) + 1} of {visibleSteps.length}</span>
+                  <span className="text-xs font-semibold text-violet-900 dark:text-violet-200">{visibleSteps[activeVisibleStep]?.label || 'Sale'}</span>
+                  <span className="shrink-0 text-[11px] font-medium tabular-nums text-violet-700 dark:text-violet-300">Step {activeVisibleStep + 1} of {visibleSteps.length}</span>
                 </div>
                 <ol aria-label="Sale progress" className="flex min-w-0 items-center gap-1 sm:gap-2">
                   {visibleSteps.map((item, visibleIndex) => {
-                    const index = visibleStepIndexes[visibleIndex];
                     const Icon = item.icon;
-                    const isCurrent = step === index;
-                    const isComplete = index < step;
+                    const isCurrent = activeVisibleStep === visibleIndex;
+                    const isComplete = visibleIndex < activeVisibleStep;
                     return (
                       <li key={item.label} className="flex min-w-0 flex-1 items-center">
-                        <button type="button" onClick={() => index < step && setStep(index)} disabled={index > step} aria-current={isCurrent ? 'step' : undefined} aria-label={`${item.label}${isComplete ? ', completed' : isCurrent ? ', current step' : ', upcoming'}`} className={`flex min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1.5 text-left text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:gap-2 sm:px-2.5 ${isCurrent ? 'bg-white text-violet-900 shadow-sm ring-1 ring-violet-200 dark:bg-slate-900 dark:text-violet-200 dark:ring-violet-800' : isComplete ? 'text-violet-700 dark:text-violet-300' : 'text-slate-400 dark:text-slate-500'}`}>
+                        <button type="button" onClick={() => isComplete && setStep(visibleStepInternalIndexes[visibleIndex])} disabled={visibleIndex > activeVisibleStep} aria-current={isCurrent ? 'step' : undefined} aria-label={`${item.label}${isComplete ? ', completed' : isCurrent ? ', current step' : ', upcoming'}`} className={`flex min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1.5 text-left text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:gap-2 sm:px-2.5 ${isCurrent ? 'bg-white text-violet-900 shadow-sm ring-1 ring-violet-200 dark:bg-slate-900 dark:text-violet-200 dark:ring-violet-800' : isComplete ? 'text-violet-700 dark:text-violet-300' : 'text-slate-400 dark:text-slate-500'}`}>
                           <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${isCurrent ? 'bg-violet-600 text-white' : isComplete ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/70 dark:text-violet-200' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{isComplete ? <Check className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}</span>
                           <span className="hidden truncate md:inline">{item.label}</span>
                         </button>
@@ -1649,7 +2065,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
             {stepError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{stepError}</p>}
 
-            <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <div className={`grid min-w-0 gap-4 ${step === 1 ? 'lg:grid-cols-[minmax(0,2.6fr)_minmax(16rem,1fr)]' : 'lg:grid-cols-[minmax(0,1fr)_280px]'}`}>
               <div className="min-w-0 space-y-4">
                 {step === 0 && (
                   <section aria-labelledby="sale-customer-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
@@ -1691,19 +2107,122 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
                 {step === 1 && (
                   <section aria-labelledby="sale-service-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="sale-service-title" className="text-base font-bold text-slate-900 dark:text-white">Choose services</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Select one or more services. Each can have its own plan, quantity, and fulfillment details.</p></div><span className="inline-flex min-h-7 items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 text-[11px] font-semibold text-violet-800 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-200">{selectedServiceQueue.length} selected</span></div>
+                    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="sale-service-title" className="text-base font-bold text-slate-900 dark:text-white">Choose Services</h2><p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500 dark:text-slate-400">Select one or more services. Each can have its own plan, quantity, and fulfillment details.</p></div><span className="inline-flex min-h-7 shrink-0 items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 text-[11px] font-semibold text-violet-800 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-200">{selectedServiceCount} selected</span></div>
                     {itemDrafts.length > 0 && <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50/50 p-3 dark:border-violet-800 dark:bg-violet-950/20">
-                      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-xs font-bold text-slate-800 dark:text-slate-100">Items in this sale ({itemDrafts.length})</h3><span className="text-xs text-slate-600 dark:text-slate-300">Choose another service or review the current items.</span></div>
+                      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-xs font-bold text-slate-800 dark:text-slate-100">Configured services ({itemDrafts.length})</h3><span className="text-xs text-slate-600 dark:text-slate-300">Choose another service or update an existing configuration.</span></div>
                       {itemDrafts.map((item, index) => <div key={`${item.serviceId}-${item.planId}-${index}`} className="flex min-w-0 items-start justify-between gap-2 rounded-lg bg-white px-3 py-2 text-xs dark:bg-slate-900">
                         <div className="min-w-0"><p className="break-words font-semibold text-slate-900 dark:text-white">{item.serviceNameSnapshot || services.find(candidate => candidate.id === item.serviceId)?.name || 'Service'} · {item.plan}</p><p className="text-slate-600 dark:text-slate-300">{item.quantity} × {formatCurrency(item.unitPrice, item.currency)} = {formatCurrency(minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity), item.currency)} · {formatDurationDays(item.durationDays)}</p></div>
                         <div className="flex shrink-0 gap-1"><button type="button" onClick={() => handleEditSaleItem(index)} className="min-h-8 rounded-md px-2 font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-slate-800">Edit</button><button type="button" onClick={() => setItemDrafts(current => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remove ${item.plan} item`} className="min-h-8 rounded-md px-2 font-semibold text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-slate-800">Remove</button></div>
                       </div>)}
                     </div>}
-                    <label className="relative block"><span className="sr-only">Search services</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="search" value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} placeholder="Search services..." className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-10 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />{serviceSearch && <button type="button" onClick={() => setServiceSearch('')} aria-label="Clear service search" className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-violet-600 dark:hover:bg-slate-800 dark:hover:text-white"><X className="h-4 w-4" /></button>}</label>
-                    {selectedServiceQueue.length > 0 && <p role="status" className="text-xs font-medium text-slate-600 dark:text-slate-300">Choose any available service below. Selected services stay selected while searching.</p>}
-                    {filteredServices.length ? <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-2.5">{filteredServices.map(service => {
-                      const isSelected = selectedServiceQueue.includes(service.id);
+                    {selectedServiceQueue.length > 0 && <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50/50 p-3 dark:border-violet-800 dark:bg-violet-950/20">
+                      <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100">Selected services ({selectedServiceQueue.length})</h3>
+                      {selectedServiceQueue.map(id => {
+                        const service = services.find(candidate => candidate.id === id);
+                        const activePlanCount = service ? getActiveServicePlanCount(service) : 0;
+                        return <div key={id} className="grid min-h-24 min-w-0 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-violet-300 bg-violet-50/80 p-3 shadow-sm dark:border-violet-800 dark:bg-violet-950/30">
+                          <span className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-violet-100 text-sm font-bold text-violet-800 dark:bg-violet-900/70 dark:text-violet-200">
+                            <span aria-hidden="true">{service?.name.trim().charAt(0).toUpperCase() || '?'}</span>
+                            {service?.logoUrl && <img src={service.logoUrl} alt="" className="absolute inset-0 h-full w-full bg-white object-contain p-1.5 dark:bg-slate-900" onError={event => { event.currentTarget.style.visibility = 'hidden'; }} />}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block line-clamp-2 break-words text-sm font-semibold text-slate-900 dark:text-white">{service?.name || 'Selected service'}</span>
+                            <span className="mt-1 block line-clamp-2 break-words text-xs leading-4 text-slate-600 dark:text-slate-300">{service?.description || service?.category || 'Service selected for this sale'}</span>
+                            <span className="mt-2 inline-flex max-w-full items-center rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-violet-800 dark:bg-slate-900/80 dark:text-violet-200">{activePlanCount} active {activePlanCount === 1 ? 'plan' : 'plans'}</span>
+                          </span>
+                          <span className="flex shrink-0 flex-col items-center gap-1">
+                            <span aria-label="Selected" className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-700 text-white shadow-sm dark:bg-violet-500"><Check className="h-4 w-4" /></span>
+                            <button type="button" onClick={() => handleServiceChange(id)} aria-label={`Remove ${service?.name || 'service'} from selection`} className="min-h-8 rounded-md px-2 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-white hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-violet-200">Remove</button>
+                          </span>
+                        </div>;
+                      })}
+                    </div>}
+                    <div ref={servicePickerRef} className="space-y-2">
+                      <label className="group relative block">
+                        <span className="sr-only">Search services</span>
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-violet-600" />
+                        <input
+                          type="text"
+                          role="searchbox"
+                          value={serviceSearch}
+                          onClick={() => setIsServiceSearchOpen(true)}
+                          onFocus={() => setIsServiceSearchOpen(true)}
+                          onBlur={() => window.setTimeout(() => {
+                            if (!servicePickerRef.current?.contains(document.activeElement)) {
+                              setIsServiceSearchOpen(false);
+                            }
+                          }, 0)}
+                          onKeyDown={event => { if (event.key === 'Escape') setIsServiceSearchOpen(false); }}
+                          onChange={event => { setServiceSearch(event.target.value); setIsServiceSearchOpen(true); }}
+                          aria-expanded={isServiceSearchOpen}
+                          aria-controls="sale-service-suggestions"
+                          placeholder="Search services..."
+                          className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-10 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:border-violet-600"
+                        />
+                        {serviceSearch && <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { setServiceSearch(''); setIsServiceSearchOpen(true); }} aria-label="Clear service search" className="absolute right-1.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-violet-600 dark:hover:bg-slate-800 dark:hover:text-white"><X className="h-4 w-4" /></button>}
+                      </label>
+                      {selectedServiceCount > 0 && !serviceSearchQuery && !isServiceSearchOpen && <p role="status" className="text-xs font-medium text-slate-600 dark:text-slate-300">Click to see all services or type to search.</p>}
+                      {isServiceSearchOpen && <div id="sale-service-suggestions" className="max-h-[min(56vh,30rem)] space-y-3 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <p role="status" className="text-xs font-semibold text-slate-700 dark:text-slate-200">{filteredServices.length} matching {filteredServices.length === 1 ? 'service' : 'services'} · {availableMatchingServiceCount} available to add</p>
+                            {hasActiveServiceFilters && <p className="mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400">Filters: {[
+                              serviceSearchQuery && `“${serviceSearchQuery}”`,
+                              serviceCategory,
+                              serviceSort === 'plans' ? 'Most plans' : serviceSort === 'recent' ? 'Recently added' : '',
+                            ].filter(Boolean).join(' · ')}</p>}
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <label htmlFor="sale-service-sort" className="sr-only">Sort services</label>
+                            <select
+                              id="sale-service-sort"
+                              value={serviceSort}
+                              onChange={event => {
+                                const value = event.target.value;
+                                if (value === 'name' || value === 'plans' || value === 'recent') {
+                                  setServiceSort(value);
+                                }
+                              }}
+                              className="h-9 min-w-32 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                            >
+                              <option value="name">Name A–Z</option>
+                              <option value="plans">Most plans</option>
+                              {canSortByRecentlyAdded && <option value="recent">Recently added</option>}
+                            </select>
+                            {hasActiveServiceFilters && <button
+                              type="button"
+                              onMouseDown={event => event.preventDefault()}
+                              onClick={() => { setServiceSearch(''); setServiceCategory(''); setServiceSort('name'); setIsServiceSearchOpen(true); }}
+                              className="min-h-9 rounded-lg px-2.5 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40"
+                            >Clear filters</button>}
+                          </div>
+                        </div>
+                        <div role="group" aria-label="Filter by service category" className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+                          {[{ label: 'All Services', value: '', count: eligibleServices.length }, ...serviceCategories.map(category => ({
+                            label: category,
+                            value: category,
+                            count: eligibleServices.filter(service => service.category.trim() === category).length,
+                          }))].map(option => {
+                            const isSelected = serviceCategory === option.value;
+                            return <button
+                              key={option.value || 'all'}
+                              type="button"
+                              onMouseDown={event => event.preventDefault()}
+                              onClick={() => setServiceCategory(option.value)}
+                              aria-pressed={isSelected}
+                              className={`inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 ${isSelected
+                                ? 'border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-200'
+                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+                              }`}
+                            >
+                              {option.label}<span className="rounded-full bg-black/5 px-1.5 py-0.5 text-[10px] tabular-nums dark:bg-white/10">{option.count}</span>
+                            </button>;
+                          })}
+                        </div>
+                        <div role={servicesToDisplay.length ? 'listbox' : undefined} aria-label={servicesToDisplay.length ? 'Service suggestions' : undefined} className="grid gap-2 sm:grid-cols-2">
+                        {servicesToDisplay.length ? servicesToDisplay.map(service => {
                       const hasActivePlans = Boolean(service.planDetails?.some(item => item.status === 'active'));
+                      const activePlanCount = getActiveServicePlanCount(service);
                       const requiresProfiles = service.settings?.usesProfiles === true
                         || service.settings?.profileAssignmentRequired === true;
                       const tracksInventory = service.settings?.usesAccounts === true || requiresProfiles;
@@ -1745,8 +2264,51 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                           : capacity
                             ? `${capacity} ${requiresProfiles ? 'profiles' : 'accounts'} available`
                             : `No available ${requiresProfiles ? 'profiles' : 'accounts'}`;
-                      return <button key={service.id} type="button" onClick={() => handleServiceChange(service.id)} disabled={!hasActivePlans || (tracksInventory && capacity === 0)} aria-pressed={isSelected} title={!hasActivePlans ? 'No active plans; manage this service to add a plan' : tracksInventory && capacity === 0 ? 'No available inventory for this service' : undefined} className={`grid min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_1.75rem] items-start gap-x-3 gap-y-2 rounded-xl border p-3.5 text-left transition-all focus-visible:outline-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed disabled:opacity-60 ${isSelected ? 'border-violet-500 bg-violet-50/70 ring-1 ring-violet-500/20 dark:border-violet-700 dark:bg-violet-950/30' : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600'}`} style={service.color ? { borderLeftWidth: 3, borderLeftColor: service.color } : undefined}><span className="row-span-2 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-sm font-bold dark:bg-slate-800">{service.logoUrl ? <img src={service.logoUrl} alt="" className="h-6 w-6 object-contain" /> : <span aria-hidden="true">{service.name.trim().charAt(0).toUpperCase() || '?'}</span>}</span><span className="min-w-0"><span className="block break-words text-sm font-semibold text-slate-900 dark:text-white">{service.name}</span><span className="mt-0.5 block break-words text-xs leading-4 text-slate-500 dark:text-slate-400">{service.description || service.category} · {service.planDetails?.filter(item => item.status === 'active').length || 0} active plans</span>{isSelected && <span className="mt-1 block text-[10px] font-semibold text-violet-800 dark:text-violet-300">Selected for this sale</span>}</span><span className="flex h-7 w-7 items-center justify-center">{isSelected && <CheckCircle2 aria-hidden="true" className="h-5 w-5 text-violet-700 dark:text-violet-300" />}</span><span className={`col-start-2 col-span-2 max-w-full justify-self-start rounded-full px-2 py-1 text-[10px] font-semibold leading-4 ${!hasActivePlans ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' : tracksInventory && !capacity ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' : tracksInventory ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>{availabilityLabel}</span></button>;
-                    })}</div> : eligibleServices.length ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">No services match your search.</p> : <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><p>There are no active services available for sale.</p><button type="button" onClick={onAddService} className="mt-3 inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-amber-700 px-3 text-xs font-semibold text-white hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"><Plus className="h-3.5 w-3.5" />Add Service</button></div>}
+                      const isDisabled = !hasActivePlans || (tracksInventory && capacity === 0);
+                      const availabilityClass = tracksInventory && capacity === 0
+                        ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
+                        : tracksInventory
+                          ? 'bg-violet-50 text-violet-800 dark:bg-violet-950/50 dark:text-violet-200'
+                          : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+                      return <button
+                        key={service.id}
+                        type="button"
+                        role="option"
+                        aria-selected={false}
+                        aria-label={`Select ${service.name}`}
+                        onMouseDown={event => event.preventDefault()}
+                        onClick={() => { handleServiceChange(service.id); setServiceSearch(''); setIsServiceSearchOpen(false); }}
+                        disabled={isDisabled}
+                        title={!hasActivePlans ? 'No active plans; manage this service to add a plan' : tracksInventory && capacity === 0 ? 'No available inventory for this service' : undefined}
+                        className="group grid min-h-28 min-w-0 grid-cols-[2.75rem_minmax(0,1fr)_1.75rem] items-start gap-3 rounded-xl border border-slate-200 bg-white p-3.5 text-left shadow-sm transition duration-150 hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed disabled:opacity-55 disabled:shadow-none disabled:hover:translate-y-0 disabled:hover:border-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-violet-700 dark:disabled:hover:border-slate-700"
+                      >
+                        <span className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-violet-50 text-sm font-bold text-violet-800 dark:bg-violet-950/50 dark:text-violet-200">
+                          <span aria-hidden="true">{service.name.trim().charAt(0).toUpperCase() || '?'}</span>
+                          {service.logoUrl && <img src={service.logoUrl} alt="" className="absolute inset-0 h-full w-full bg-white object-contain p-1.5 dark:bg-slate-900" onError={event => { event.currentTarget.style.visibility = 'hidden'; }} />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block line-clamp-2 break-words text-sm font-semibold leading-5 text-slate-900 dark:text-white">{service.name}</span>
+                          <span className="mt-1 block line-clamp-2 break-words text-xs leading-4 text-slate-500 dark:text-slate-400">{service.description || service.category}</span>
+                          <span className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+                            <span className="inline-flex max-w-full items-center rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-800 dark:bg-violet-950/50 dark:text-violet-200">{activePlanCount} active {activePlanCount === 1 ? 'plan' : 'plans'}</span>
+                            <span className={`inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-[10px] font-medium leading-4 ${availabilityClass}`}>{availabilityLabel}</span>
+                          </span>
+                        </span>
+                        <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 bg-white text-transparent transition-colors group-hover:border-violet-400 dark:border-slate-600 dark:bg-slate-950">
+                          <Check className="h-4 w-4" />
+                        </span>
+                      </button>;
+                    }) : filteredServices.length > 0 ? <p className="col-span-full rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">All matching services are already selected.</p> : eligibleServices.length > 0 ? <div className="col-span-full rounded-xl border border-slate-200 bg-slate-50 p-5 text-center dark:border-slate-700 dark:bg-slate-800">
+                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">No services found</p>
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Try a different search or clear your filters.</p>
+                        </div> : <div className="col-span-full rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                          <p>There are no active services available for sale.</p>
+                          <button type="button" onClick={onAddService} className="mt-3 inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-amber-700 px-3 text-xs font-semibold text-white hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"><Plus className="h-3.5 w-3.5" />Add Service</button>
+                        </div>}
+                        </div>
+                        {availableMatchingServiceCount > 50 && <p className="text-xs text-slate-500 dark:text-slate-400">Showing the first 50 available services. Refine your search to see others.</p>}
+                      </div>}
+                    </div>
                   </section>
                 )}
 
@@ -1755,55 +2317,44 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                     <div>
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
-                          <h2 id="sale-plan-title" className="text-base font-bold text-slate-900 dark:text-white">Configure each service</h2>
-                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose a plan for each selected service. Each configuration becomes a separate line in this one sale.</p>
+                          <h2 id="sale-plan-title" className="text-base font-bold text-slate-900 dark:text-white">Choose a plan</h2>
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose a plan and set the details below.</p>
                         </div>
                         <button type="button" onClick={() => setStep(1)} className="min-h-9 rounded-lg px-2.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40">Change services</button>
                       </div>
-                      {(itemDrafts.length > 0 || selectedServiceQueue.length > 0) && (
-                        <div className="mt-3 space-y-2 rounded-xl border border-violet-100 bg-violet-50/40 p-3 dark:border-violet-900/50 dark:bg-violet-950/20">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100">Selected items and services</h3>
-                            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{itemDrafts.length} configured · {selectedServiceQueue.length} to configure</span>
-                          </div>
-                          {itemDrafts.map((item, index) => (
-                            <div key={`${item.serviceId}-${item.planId}-${index}`} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
-                              <div className="min-w-0">
-                                <p className="break-words text-xs font-semibold text-slate-900 dark:text-white">{item.serviceNameSnapshot || services.find(service => service.id === item.serviceId)?.name || 'Service'} · {item.plan}</p>
-                                <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{item.quantity} × {formatCurrency(item.unitPrice, item.currency)} · {formatDurationDays(item.durationDays)}</p>
-                              </div>
-                              <button type="button" onClick={() => handleEditSaleItem(index)} className="min-h-9 shrink-0 rounded-md px-2.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40">Edit item</button>
-                            </div>
-                          ))}
-                          {selectedServiceQueue.map(id => {
-                            const queuedService = services.find(service => service.id === id);
-                            const isCurrent = id === serviceId;
-                            return <div key={id} className={`flex min-w-0 items-center justify-between gap-2 rounded-lg border px-3 py-2 ${isCurrent ? 'border-violet-300 bg-white dark:border-violet-800 dark:bg-slate-900' : 'border-slate-200 bg-white/70 dark:border-slate-700 dark:bg-slate-900/70'}`}>
-                              <p className="min-w-0 break-words text-xs font-semibold text-slate-800 dark:text-slate-100">{queuedService?.name || 'Selected service'}</p>
-                              <span className={`shrink-0 text-[10px] font-semibold ${isCurrent ? 'text-violet-700 dark:text-violet-300' : 'text-slate-500 dark:text-slate-400'}`}>{isCurrent ? 'Configure now' : 'Up next'}</span>
-                            </div>;
-                          })}
-                        </div>
-                      )}
                     </div>
-                    {selectedService && <div className="space-y-3">
-                      <div className="flex items-center gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-sm font-bold text-violet-800 dark:bg-violet-900/60 dark:text-violet-200">{selectedService.name.trim().charAt(0).toUpperCase() || '?'}</span>
-                        <div className="min-w-0"><p className="break-words text-sm font-bold text-slate-900 dark:text-white">{selectedService.name}</p><p className="text-[11px] text-slate-500 dark:text-slate-400">Select one active plan for this line</p></div>
+                    {isCurrentItemActive && selectedService && <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                      <div className="flex min-w-0 items-center justify-between gap-3">
+                        <h3 className="min-w-0 break-words text-sm font-bold text-slate-900 dark:text-white">Choose a plan for <span className="inline rounded-md bg-violet-100 px-1.5 py-0.5 text-violet-800 dark:bg-violet-900/60 dark:text-violet-200">{selectedService.name}</span></h3>
+                        <button type="button" onClick={handleRemoveCurrentService} aria-label={`Remove ${selectedService.name} service`} className="min-h-9 shrink-0 rounded-lg border border-rose-200 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-rose-600 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/40">Remove</button>
                       </div>
-                      {selectedService.planDetails?.some(item => item.status === 'active') ? <div className="grid gap-2 sm:grid-cols-2">{selectedService.planDetails.filter(item => item.status === 'active').map(servicePlan => <button key={servicePlan.id} type="button" onClick={() => handlePlanChange(servicePlan)} aria-pressed={planId === servicePlan.id} className={`flex min-h-14 items-center justify-between gap-3 rounded-xl border px-3.5 py-3 text-left text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-violet-600 ${planId === servicePlan.id ? 'border-violet-500 bg-violet-50 text-violet-950 ring-1 ring-violet-500/20 dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-100' : 'border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'}`}><span className="min-w-0"><span className="block break-words font-semibold">{servicePlan.name}</span><span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-slate-400">{formatCurrency(servicePlan.price, servicePlan.currency)} · {formatDurationDays(servicePlan.durationDays)}{servicePlan.profileCapacity ? ` · ${servicePlan.profileCapacity} profiles` : ''}</span></span>{planId === servicePlan.id && <CheckCircle2 className="h-4 w-4 shrink-0 text-violet-700 dark:text-violet-300" />}</button>)}</div> : <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><p>No active plans are available for this service.</p><button type="button" onClick={onAddService} className="mt-2 font-semibold underline">Manage services and plans</button></div>}
-                    </div>}
+                      <div className="space-y-4">
+                        <p className="text-[11px] text-slate-600 dark:text-slate-300">This service has its own plan, dates, quantity, and discount. Duration and price follow the selected active plan.</p>
+                        {selectedService.planDetails?.some(item => item.status === 'active') ? <div className="grid gap-2 sm:grid-cols-2">{selectedService.planDetails.filter(item => item.status === 'active').map(servicePlan => <button key={servicePlan.id} type="button" onClick={() => handlePlanChange(servicePlan)} aria-pressed={planId === servicePlan.id} className={`flex min-h-14 items-center justify-between gap-3 rounded-xl border px-3.5 py-3 text-left text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-violet-600 ${planId === servicePlan.id ? 'border-violet-500 bg-violet-50 text-violet-950 ring-1 ring-violet-500/20 dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-100' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'}`}><span className="min-w-0"><span className="block break-words font-semibold">{servicePlan.name}</span><span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-slate-400">{formatCurrency(servicePlan.price, servicePlan.currency)} · {formatDurationDays(servicePlan.durationDays)}{servicePlan.profileCapacity ? ` · ${servicePlan.profileCapacity} profiles` : ''}</span></span>{planId === servicePlan.id && <CheckCircle2 className="h-4 w-4 shrink-0 text-violet-700 dark:text-violet-300" />}</button>)}</div> : <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><p>No active plans are available for this service.</p><button type="button" onClick={onAddService} className="mt-2 font-semibold underline">Manage services and plans</button></div>}
+                        {!selectedPlan && <p role="alert" className="text-xs font-medium text-rose-700 dark:text-rose-300">Choose an active plan to configure this service.</p>}
+                      </div>
+                    </section>}
                     {selectedPlan && <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 dark:border-slate-700 dark:bg-slate-800/40 sm:grid-cols-3">
                       <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">{t('price')} per unit</span><p className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-mono text-base font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{formatCurrency(selectedPlan.price, selectedPlan.currency)}</p><span className="block text-[11px] font-normal">Set by the selected plan.</span></div>
                       <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">Duration</span><p className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{formatDurationDays(selectedPlan.durationDays)}</p><span className="block text-[11px] font-normal">This line's subscription duration.</span></div>
                       <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Quantity</span><input aria-label={`${selectedService.name} quantity`} type="number" min={1} max={serviceUsesAccounts ? allocationCapacity : undefined} step={1} value={itemQuantity} onChange={event => updateQuantity(Number(event.target.value))} aria-describedby={`sale-quantity-help-${selectedService.id}`} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /><span id={`sale-quantity-help-${selectedService.id}`} className="block text-[11px] font-normal">{serviceUsesAccounts ? `${allocationCapacity} distinct inventory unit${allocationCapacity === 1 ? '' : 's'} available. One account or profile is required per unit.` : 'This service does not require tracked inventory.'}</span></label>
+                    </div>}
+                    {selectedPlan && <div className="grid min-w-0 gap-3 rounded-xl border border-slate-200 p-3.5 dark:border-slate-700 sm:grid-cols-2">
+                      <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Subscription start date</span><input aria-label={`${selectedService.name} start date`} type="date" value={startDate} onChange={event => setStartDate(event.target.value)} aria-invalid={!startDate || !Number.isFinite(Date.parse(`${startDate}T00:00:00`)) || calculatedExpiryDate <= startDate} aria-describedby={`sale-start-date-error-${selectedService.id}`} className="w-full min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />{(!startDate || !Number.isFinite(Date.parse(`${startDate}T00:00:00`)) || calculatedExpiryDate <= startDate) && <span id={`sale-start-date-error-${selectedService.id}`} role="alert" className="block text-[11px] font-medium text-rose-700 dark:text-rose-300">Enter a valid start date.</span>}</label>
+                      <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">Calculated expiry date</span><p className="min-h-11 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">{startDate ? formatAppDate(calculatedExpiryDate, language) : 'Select a valid start date'}</p></div>
+                      <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Item discount</span><input aria-label={`${selectedService.name} item discount`} type="number" min={0} max={currentItemSubtotal} step={currency === 'USD' ? '0.01' : '1'} value={itemDiscountInput} onChange={event => setItemDiscountInput(event.target.value)} aria-invalid={!currentItemDiscountValid} aria-describedby={`sale-discount-error-${selectedService.id}`} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />{!currentItemDiscountValid && <span id={`sale-discount-error-${selectedService.id}`} role="alert" className="block text-[11px] font-medium text-rose-700 dark:text-rose-300">Discount cannot exceed this line subtotal.</span>}</label>
+                      <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg bg-violet-50 px-3 py-2.5 text-xs dark:bg-violet-950/30"><span className="font-semibold text-violet-900 dark:text-violet-200">Line total</span><span className="font-mono text-base font-bold tabular-nums text-violet-800 dark:text-violet-200">{formatCurrency(minorUnitsToAmount(Math.max(0, amountToMinorUnits(currentItemSubtotal) - amountToMinorUnits(currentItemDiscount))), currency)}</span></div>
+                    </div>}
+                    {isCurrentItemActive && selectedPlan && <div className="grid gap-3 rounded-xl border border-violet-200 bg-violet-50/40 p-3.5 dark:border-violet-800 dark:bg-violet-950/20 sm:grid-cols-2">
+                      <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Sale discount</span><div className="flex gap-2"><input aria-label="Discount amount" type="number" min={0} max={discountMode === 'percentage' ? 100 : minorUnitsToAmount(globalDiscountableMinor)} step={currency === 'USD' ? '0.01' : '1'} value={discountValue} onChange={event => setDiscountValue(Number(event.target.value))} aria-invalid={discountValue < 0 || (discountMode === 'fixed' && amountToMinorUnits(discountValue) > globalDiscountableMinor) || (discountMode === 'percentage' && discountValue > 100)} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /><select aria-label="Discount type" value={discountMode} onChange={event => setDiscountMode(event.target.value as 'fixed' | 'percentage')} className="rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="fixed">Fixed</option><option value="percentage">Percent</option></select></div><span className="block text-[11px] font-normal">Applied to the full sale.</span></label>
+                      <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3 text-xs dark:border-slate-700 dark:bg-slate-900"><div className="flex justify-between"><span className="text-slate-500">Order subtotal</span><span>{formatCurrency(subtotal || 0, currency)}</span></div><div className="flex justify-between"><span className="text-slate-500">Sale discount</span><span>−{formatCurrency(discountAmount, currency)}</span></div><div className="flex justify-between border-t border-slate-200 pt-2 font-bold dark:border-slate-700"><span>Grand total</span><span className="text-violet-700 dark:text-violet-300">{formatCurrency(totalAmount, currency)}</span></div></div>
                     </div>}
                   </section>
                 )}
 
                 {step === 3 && (
                   <section aria-labelledby="sale-fulfillment-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
-                    <div><h2 id="sale-fulfillment-title" className="text-base font-bold text-slate-900 dark:text-white">Account and profile</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose active inventory for this service. Account credentials and profile PINs are never displayed.</p></div>
+                    <div><h2 id="sale-fulfillment-title" className="text-base font-bold text-slate-900 dark:text-white">Fulfillment</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{serviceUsesAccounts ? 'Choose active account or profile inventory for this service. Credentials and profile PINs are never displayed.' : 'This service does not need an account or profile. Continue to save this service.'}</p></div>
                     {serviceUsesAccounts && <div className="space-y-3">
                       {allocationRows.map((allocation, unitIndex) => {
                         const unitAccounts = accountsForUnit(unitIndex);
@@ -1824,52 +2375,142 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                       </div>}
                     </div>}
                     {selectedAccount && <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs dark:border-slate-700 dark:bg-slate-800/60"><p className="font-semibold text-slate-900 dark:text-white">{selectedAccount.email}</p><p className="mt-1 text-slate-500 dark:text-slate-400">{selectedProfile ? `${selectedProfile.profileName} · Available${selectedProfile.pin ? ' · PIN protected' : ''}` : selectedAccount.profiles?.length ? 'Select an available profile to continue.' : 'Full account allocation; no profile slots are configured.'}</p></div>}
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Start date</span><input aria-label="Sale start date" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
-                      <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">Expiry date</span><p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">{calculatedExpiryDate}</p></div>
+                  </section>
+                )}
+
+                {step === 4 && (
+                  <section id="sale-quotation-print" aria-labelledby="sale-quotation-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
+                    <style>{`@media print { body * { visibility: hidden !important; } #sale-quotation-print, #sale-quotation-print * { visibility: visible !important; } #sale-quotation-print { position: absolute !important; inset: 0 auto auto 0 !important; width: 100% !important; border: 0 !important; box-shadow: none !important; color: #0f172a !important; background: #fff !important; } #sale-quotation-print .print\\:hidden { display: none !important; } }`}</style>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 id="sale-quotation-title" className="text-base font-bold text-slate-900 dark:text-white">Quotation {orderQuotationId ? orders.find(order => order.id === orderQuotationId)?.reference : 'preview'}</h2>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{settings.storeName} · {formatAppDate(getTodayDateString(settings.businessProfile?.timeZone), language)}</p>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Review this offer with the customer before recording payment.</p>
+                      </div>
+                      <label className="min-w-[10rem] space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                        <span>Order came from</span>
+                        <select value={orderSource} onChange={event => setOrderSource(event.target.value as OrderSource)} className="min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                          <option value="whatsapp">WhatsApp</option>
+                          <option value="phone">Phone</option>
+                          <option value="in_person">In person</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </label>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
-                      <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">{t('price')} · {t('currency')}</span><p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-base font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{selectedPlan ? formatCurrency(selectedPlan.price, selectedPlan.currency) : 'Choose an active plan'}</p><span className="block text-[11px] font-normal">Price and currency are set by the selected plan.</span></div>
-                      <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">Duration</span><p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{selectedPlan ? formatDurationDays(selectedPlan.durationDays) : 'Choose a plan'}</p></div>
+                    <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3 text-xs dark:border-violet-900/60 dark:bg-violet-950/20">
+                      <p className="font-semibold text-violet-900 dark:text-violet-200">Customer: {selectedCustomer?.name || 'Not selected'}</p>
+                      <p className="mt-1 text-violet-800 dark:text-violet-300">{selectedCustomer?.phone || selectedCustomer?.whatsapp || selectedCustomer?.email || 'No contact details saved'}</p>
+                      <p className="mt-1 text-violet-800 dark:text-violet-300">{paymentLineDrafts.length} line item{paymentLineDrafts.length === 1 ? '' : 's'} · {paymentLineDrafts.reduce((sum, item) => sum + item.quantity, 0)} unit{paymentLineDrafts.reduce((sum, item) => sum + item.quantity, 0) === 1 ? '' : 's'}</p>
                     </div>
-                    <label className="block max-w-sm space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Item discount</span><input aria-label="Item discount amount" type="number" min={0} max={currentItemSubtotal} step={currency === 'USD' ? '0.01' : '1'} value={itemDiscountInput} onChange={event => setItemDiscountInput(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /><span className="block text-[11px] font-normal">Applied only to this service line.</span></label>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Sale discount</span><div className="flex gap-2"><input aria-label="Discount amount" type="number" min={0} max={discountMode === 'percentage' ? 100 : minorUnitsToAmount(globalDiscountableMinor)} step={currency === 'USD' ? '0.01' : '1'} value={discountValue} onChange={event => setDiscountValue(Number(event.target.value))} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /><select aria-label="Discount type" value={discountMode} onChange={event => setDiscountMode(event.target.value as 'fixed' | 'percentage')} className="rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="fixed">Fixed</option><option value="percentage">Percent</option></select></div></label>
-                      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800/60"><div className="flex justify-between"><span className="text-slate-500">Order subtotal</span><span>{formatCurrency(subtotal || 0, currency)}</span></div><div className="flex justify-between"><span className="text-slate-500">Sale discount</span><span>−{formatCurrency(discountAmount, currency)}</span></div><div className="flex justify-between border-t border-slate-200 pt-2 font-bold dark:border-slate-700"><span>Grand total</span><span className="text-emerald-700 dark:text-emerald-300">{formatCurrency(totalAmount, currency)}</span></div></div>
+                    <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
+                      {paymentLineDrafts.map(item => {
+                        const lineTotal = minorUnitsToAmount(
+                          amountToMinorUnits(item.unitPrice) * item.quantity - amountToMinorUnits(item.discount || 0)
+                        );
+                        const expiry = calculateExpiryDate(item.startDate, item.durationDays);
+                        return <div key={item.draftId} className="flex min-w-0 items-start justify-between gap-3 p-3">
+                          <div className="min-w-0">
+                            <p className="break-words text-sm font-semibold text-slate-900 dark:text-white">{item.serviceNameSnapshot || 'Service'} · {item.plan}</p>
+                            <p className="mt-1 break-words text-xs text-slate-500 dark:text-slate-400">{formatDurationDays(item.durationDays)} · {formatAppDate(item.startDate, language)} to {formatAppDate(expiry, language)}</p>
+                            <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{item.quantity} × {formatCurrency(item.unitPrice, item.currency)}{item.discount > 0 ? ` · Discount ${formatCurrency(item.discount, item.currency)}` : ''}</p>
+                          </div>
+                          <span className="shrink-0 whitespace-nowrap text-sm font-bold tabular-nums text-slate-900 dark:text-white">{formatCurrency(lineTotal, item.currency)}</span>
+                        </div>;
+                      })}
+                    </div>
+                    <div className="ml-auto max-w-sm space-y-2 rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-800/60">
+                      <div className="flex justify-between gap-3"><span className="text-slate-500">Subtotal</span><span>{formatCurrency(subtotal, currency)}</span></div>
+                      <div className="flex justify-between gap-3"><span className="text-slate-500">Discounts</span><span>−{formatCurrency(discountAmount, currency)}</span></div>
+                      <div className="flex justify-between gap-3 border-t border-slate-200 pt-2 text-sm font-bold dark:border-slate-700"><span>Total</span><span className="text-violet-700 dark:text-violet-300">{formatCurrency(totalAmount, currency)}</span></div>
+                    </div>
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">This is a quotation only. It is not an invoice or payment receipt, and no payment has been recorded.</p>
+                    <div className="flex flex-wrap gap-2 print:hidden">
+                      <button type="button" onClick={handleShareQuotation} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700"><MessageCircle className="h-4 w-4" />Prepare WhatsApp message</button>
+                      <button type="button" onClick={handleCopyQuotation} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><FileText className="h-4 w-4" />Copy quotation text</button>
+                      <button type="button" onClick={() => window.print()} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"><Download className="h-4 w-4" />Print / save PDF</button>
                     </div>
                   </section>
                 )}
 
-                {step === 3 && (
+                {step === 5 && (
+                  <div className="lg:hidden">{orderSummary}</div>
+                )}
+                {step === 5 && (
                   <section aria-labelledby="sale-payment-title" className="space-y-4">
                     <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5"><div><h2 id="sale-payment-title" className="text-base font-bold text-slate-900 dark:text-white">Payment details</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose an enabled method. {settings.paymentPreferences?.requireTransactionId && amountReceived > 0 ? 'A transaction ID is required for received cash.' : 'A transaction ID is optional when no cash is received.'}</p></div>
+                      <div className="space-y-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                        <div>
+                          <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100">Expected payment dates (optional)</h3>
+                          <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">These are customer promises only. They are not payment dates and do not count as money received.</p>
+                        </div>
+                        {paymentLineDrafts.map(item => (
+                          <label key={item.draftId} className="grid min-w-0 gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,0.7fr)] sm:items-center">
+                            <span className="min-w-0 break-words">{item.serviceNameSnapshot || 'Service'} · {item.plan}</span>
+                            <input aria-label={`${item.serviceNameSnapshot || 'Service'} expected payment date`} type="date" value={item.expectedPaymentDate || ''} onChange={event => updateExpectedPaymentDate(item.draftId, event.target.value)} className="min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                          </label>
+                        ))}
+                      </div>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{t('paymentMethod')}</span><select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white">{paymentMethods.length ? paymentMethods.map(method => <option key={method} value={method}>{method === 'Bank' ? 'Bank transfer' : method}</option>) : <option value="">No active payment methods</option>}</select></label>
                         <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Payment date</span><input aria-label="Payment date" type="date" max={getTodayDateString(settings.businessProfile?.timeZone)} value={paymentDate} onChange={event => setPaymentDate(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
-                        <div className="space-y-2 sm:col-span-2">
-                          <label className="block space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>New cash received</span><input aria-label="New cash received" type="number" min={0} step={currency === 'USD' ? '0.01' : '1'} value={amountReceivedInput} onChange={event => setAmountReceivedInput(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-base text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
-                          <div className="flex flex-wrap gap-2">
-                            <button type="button" onClick={() => setAmountReceivedInput(String(totalAmount))} className="min-h-9 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Pay full</button>
-                            <button type="button" onClick={() => setAmountReceivedInput(String(minorUnitsToAmount(Math.floor(amountToMinorUnits(totalAmount) / 2))))} className="min-h-9 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Enter partial</button>
-                            <button type="button" onClick={() => setAmountReceivedInput('0')} className="min-h-9 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Leave unpaid</button>
-                          </div>
+                        <div className="space-y-3 sm:col-span-2">
+                          <fieldset className="space-y-2">
+                            <legend className="text-xs font-semibold text-slate-700 dark:text-slate-200">Payment status</legend>
+                            <div className="grid grid-cols-3 gap-2">
+                              {([
+                                { value: 'paid', label: 'Paid' },
+                                { value: 'partial', label: 'Partial' },
+                                { value: 'due', label: 'Due' },
+                              ] as const).map(option => (
+                                <button key={option.value} type="button" aria-pressed={paymentStatusChoice === option.value} onClick={() => {
+                                  setPaymentStatusChoice(option.value);
+                                  if (option.value === 'paid') {
+                                    setAmountReceivedInput(String(minorUnitsToAmount(Math.max(
+                                      0,
+                                      amountToMinorUnits(totalAmount) - amountToMinorUnits(advanceCreditToApply)
+                                    ))));
+                                  } else if (option.value === 'partial') {
+                                    setAmountReceivedInput('');
+                                  } else {
+                                    setApplyExistingAdvance(false);
+                                    setAdvanceCreditInput('0');
+                                    setAmountReceivedInput('0');
+                                  }
+                                }} className={`min-h-10 rounded-lg border px-3 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-violet-600 ${paymentStatusChoice === option.value ? 'border-violet-500 bg-violet-50 text-violet-800 ring-1 ring-violet-500/20 dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-200' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'}`}>{option.label}</button>
+                              ))}
+                            </div>
+                          </fieldset>
+                          <label className="block space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+                            <span>Amount received</span>
+                            <input aria-label="Total cash received" type="number" min={0} step={currency === 'USD' ? '0.01' : '1'} value={amountReceivedInput} onChange={event => {
+                              const value = event.target.value;
+                              setAmountReceivedInput(value);
+                              const valueMinor = parseAmountToMinorUnits(value);
+                              if (valueMinor === null || value === '') return;
+                              if (valueMinor === 0) setPaymentStatusChoice('due');
+                              else if (valueMinor + amountToMinorUnits(advanceCreditToApply) >= amountToMinorUnits(totalAmount)) setPaymentStatusChoice('paid');
+                              else setPaymentStatusChoice('partial');
+                            }} aria-describedby="sale-combined-payment-help" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-base text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                            <span id="sale-combined-payment-help" className="block text-[11px] font-normal">{paymentStatusChoice === 'paid' ? 'Paid fills in the full amount due.' : paymentStatusChoice === 'partial' ? 'Enter the amount actually received. The rest stays due.' : 'No payment is recorded. The full bill stays due.'} Extra money is saved as an advance payment.</span>
+                          </label>
+                          <p className="rounded-lg border border-violet-200 bg-violet-50/60 p-3 text-xs text-violet-900 dark:border-violet-900/60 dark:bg-violet-950/20 dark:text-violet-200">Payment is applied to services in the order shown. Any extra money is saved as an advance payment.</p>
                         </div>
                         <div className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700 sm:col-span-2">
                           <label className="flex items-start gap-2 text-xs font-semibold text-slate-800 dark:text-slate-100"><input type="checkbox" checked={applyExistingAdvance} disabled={availableCustomerAdvance <= 0 || totalAmount <= 0} onChange={event => {
                             const shouldApply = event.target.checked;
                             setApplyExistingAdvance(shouldApply);
                             setAdvanceCreditInput(shouldApply ? String(maxAdvanceToApply) : '0');
-                          }} className="mt-0.5 h-4 w-4 accent-violet-600" /><span>Apply existing customer advance <span className="block pt-0.5 font-normal text-slate-500 dark:text-slate-400">Available: {formatCurrency(availableCustomerAdvance, currency)} · this is stored credit, not new cash.</span></span></label>
-                          {applyExistingAdvance && <label className="block space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Advance to apply (up to {formatCurrency(maxAdvanceToApply, currency)})</span><input aria-label="Advance credit to apply" type="number" min={0} max={maxAdvanceToApply} step={currency === 'USD' ? '0.01' : '1'} value={advanceCreditInput} onChange={event => setAdvanceCreditInput(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />{!advanceInputValid && <span className="block text-rose-700 dark:text-rose-300">Enter no more than the available balance or sale total.</span>}</label>}
+                          }} className="mt-0.5 h-4 w-4 accent-violet-600" /><span>Use advance payment <span className="block pt-0.5 font-normal text-slate-500 dark:text-slate-400">Available: {formatCurrency(availableCustomerAdvance, currency)} · paid earlier.</span></span></label>
+                          {applyExistingAdvance && <label className="block space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Advance payment to use (up to {formatCurrency(maxAdvanceToApply, currency)})</span><input aria-label="Advance payment to use" type="number" min={0} max={maxAdvanceToApply} step={currency === 'USD' ? '0.01' : '1'} value={advanceCreditInput} onChange={event => setAdvanceCreditInput(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />{!advanceInputValid && <span className="block text-rose-700 dark:text-rose-300">Enter no more than the available balance or sale total.</span>}</label>}
                         </div>
                         <div className="grid gap-2 rounded-xl border border-violet-200 bg-violet-50/60 p-3 text-xs dark:border-violet-900/60 dark:bg-violet-950/20 sm:col-span-2 sm:grid-cols-2">
-                          <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-300">Grand total</span><span className="font-semibold">{formatCurrency(totalAmount, currency)}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-300">Total bill</span><span className="font-semibold">{formatCurrency(totalAmount, currency)}</span></div>
                           <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-300">New cash received</span><span>{formatCurrency(amountReceived, currency)}</span></div>
                           <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-300">Cash allocated to sale</span><span>{formatCurrency(tenderAllocation.cashApplied, currency)}</span></div>
-                          <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-300">Existing advance applied</span><span>{formatCurrency(tenderAllocation.advanceApplied, currency)}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-300">Advance payment used</span><span>{formatCurrency(tenderAllocation.advanceApplied, currency)}</span></div>
                           <div className="flex justify-between font-bold text-rose-700 dark:text-rose-300"><span>Outstanding due</span><span>{formatCurrency(dueAmount, currency)}</span></div>
-                          <div className="flex justify-between font-semibold text-emerald-700 dark:text-emerald-300"><span>New advance credit</span><span>{formatCurrency(tenderAllocation.advanceCreditCreated, currency)}</span></div>
-                          <div className="sm:col-span-2"><span className="inline-flex rounded-full bg-white px-2.5 py-1 font-bold capitalize text-violet-800 dark:bg-slate-900 dark:text-violet-200">{paymentStatus === 'paid' ? 'Fully paid' : paymentStatus === 'partial' ? 'Partially paid' : 'Unpaid'}</span>{tenderAllocation.advanceCreditCreated > 0 && <p className="mt-1.5 text-slate-600 dark:text-slate-300">The amount above the sale balance will be added to this customer’s advance credit.</p>}</div>
+                          <div className="flex justify-between font-semibold text-emerald-700 dark:text-emerald-300"><span>Extra advance payment</span><span>{formatCurrency(tenderAllocation.advanceCreditCreated, currency)}</span></div>
+                          <div className="sm:col-span-2"><span className="inline-flex rounded-full bg-white px-2.5 py-1 font-bold capitalize text-violet-800 dark:bg-slate-900 dark:text-violet-200">{paymentStatus === 'paid' ? 'Fully paid' : paymentStatus === 'partial' ? 'Partially paid' : 'Unpaid'}</span>{tenderAllocation.advanceCreditCreated > 0 && <p className="mt-1.5 text-slate-600 dark:text-slate-300">Extra money is saved as an advance payment for this customer.</p>}</div>
                         </div>
                         <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{t('transactionId')} <span className="font-normal text-slate-400">({amountReceived > 0 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) ? 'required' : 'optional'})</span></span><input aria-label="Transaction ID" required={amountReceived > 0 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId)} type="text" value={transactionId} onChange={e => setTransactionId(e.target.value)} placeholder="Enter transaction ID" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
                         <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{t('senderNumber')} <span className="font-normal text-slate-400">(optional)</span></span><input aria-label="Payment sender number" type="tel" value={senderNumber} onChange={e => setSenderNumber(e.target.value)} placeholder="Enter sender number" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
@@ -1879,17 +2520,18 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                     </div>
                   </section>
                 )}
-                {step === 4 && (
+                {step === 6 && (
                   <section aria-labelledby="sale-review-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
                     <div><h2 id="sale-review-title" className="text-base font-bold text-slate-900 dark:text-white">Review Sale</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Check customer, fulfillment, dates, and payment before creating the sale. Use Edit to return to a step.</p></div>
                     {itemDrafts.length > 0 && <div className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
                       <h3 className="text-xs font-bold text-slate-700 dark:text-slate-200">Items in this sale</h3>
                       {itemDrafts.map((item, index) => index === editingItemIndex ? null : (
-                        <div key={`${item.serviceId}-${item.planId}-${index}`} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/70">
+                        <div key={item.draftId} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/70">
                           <div className="min-w-0">
                             <p className="break-words font-semibold text-slate-900 dark:text-white">{item.serviceNameSnapshot || services.find(candidate => candidate.id === item.serviceId)?.name || 'Service'} · {item.plan}</p>
                             <p className="text-slate-500 dark:text-slate-400">{item.quantity} × {formatCurrency(item.unitPrice, item.currency)} = {formatCurrency(minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity), item.currency)} · {formatAppDate(item.startDate, language)} · {formatDurationDays(item.durationDays)}</p>
                             {(item.discount || 0) > 0 && <p className="text-emerald-700 dark:text-emerald-300">Item discount −{formatCurrency(item.discount || 0, item.currency)} · Line total {formatCurrency(minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity - amountToMinorUnits(item.discount || 0)), item.currency)}</p>}
+                            {paymentLineFinancials.filter(financial => financial.item.draftId === item.draftId).map(financial => <p key={`${item.draftId}-payment`} className="mt-0.5 text-slate-600 dark:text-slate-300">Paid {formatCurrency(financial.paid, item.currency)} · Due {formatCurrency(financial.due, item.currency)} · {financial.status === 'paid' ? 'Paid' : financial.status === 'partial' ? 'Partially paid' : 'Unpaid'}</p>)}
                             {getItemAllocationSummary(item) && <p className="mt-0.5 break-words text-slate-500 dark:text-slate-400">Fulfillment: {getItemAllocationSummary(item)}</p>}
                           </div>
                           <div className="flex shrink-0 gap-1"><button type="button" onClick={() => handleEditSaleItem(index)} className="rounded-md px-2 py-1 font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-slate-700">Edit</button><button type="button" onClick={() => setItemDrafts(current => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remove ${item.plan} item`} className="rounded-md px-2 py-1 font-semibold text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">Remove</button></div>
@@ -1912,7 +2554,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                       {isCurrentItemActive && profileRequired && <div><dt className="text-slate-500">Profile</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{selectedProfile?.profileName || 'Not selected'}</dd></div>}
                       {isCurrentItemActive && <div><dt className="flex items-center justify-between text-slate-500">Start Date <button type="button" onClick={() => setStep(3)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{formatAppDate(startDate, language)}</dd></div>}
                       {isCurrentItemActive && <div><dt className="text-slate-500">End Date</dt><dd className="mt-1 font-semibold text-slate-900 dark:text-white">{formatAppDate(calculatedExpiryDate, language)} · {formatDurationDays(durationDays)}</dd></div>}
-                      <div><dt className="flex items-center justify-between text-slate-500">Payment <button type="button" onClick={() => setStep(3)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold capitalize text-slate-900 dark:text-white">{paymentStatus} · {paymentMethod}</dd></div>
+                      <div><dt className="flex items-center justify-between text-slate-500">Payment <button type="button" onClick={() => setStep(5)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">Edit</button></dt><dd className="mt-1 font-semibold capitalize text-slate-900 dark:text-white">{paymentStatus} · {paymentMethod}</dd></div>
                     </dl>
                     <div className="space-y-2 rounded-xl border border-slate-200 p-4 text-sm dark:border-slate-700">
                       <div className="flex justify-between"><span className="text-slate-500">Items ({itemDrafts.length - (editingItemIndex === null ? 0 : 1) + (isCurrentItemActive ? 1 : 0)} lines · {itemDrafts.reduce((sum, item, index) => sum + (index === editingItemIndex ? 0 : item.quantity), 0) + (isCurrentItemActive ? itemQuantity : 0)} units)</span><span>{formatCurrency(subtotal, currency)}</span></div>
@@ -1921,14 +2563,16 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                       <div className="flex justify-between"><span className="text-slate-500">New cash received</span><span>{formatCurrency(amountReceived, currency)}</span></div>
                       <div className="flex justify-between"><span className="text-slate-500">Existing advance applied</span><span>{formatCurrency(tenderAllocation.advanceApplied, currency)}</span></div>
                       <div className="flex justify-between font-bold text-emerald-700 dark:text-emerald-300"><span>Due</span><span>{formatCurrency(dueAmount, currency)}</span></div>
-                      <div className="flex justify-between"><span className="text-slate-500">New advance credit</span><span>{formatCurrency(tenderAllocation.advanceCreditCreated, currency)}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-500">Extra advance payment</span><span>{formatCurrency(tenderAllocation.advanceCreditCreated, currency)}</span></div>
                     </div>
                   </section>
                 )}
               </div>
-              <aside className="hidden h-fit rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 lg:sticky lg:top-2 lg:block">{orderSummary}</aside>
+              <aside className="hidden h-fit lg:sticky lg:top-2 lg:block">{orderSummary}</aside>
             </div>
-            <details className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-900 lg:hidden"><summary className="cursor-pointer text-sm font-semibold text-slate-900 dark:text-white">Order summary · {formatCurrency(totalAmount, currency)}</summary><div className="pt-3">{orderSummary}</div></details>
+            {step === 1
+              ? <div className="lg:hidden">{orderSummary}</div>
+              : step !== 5 && <details className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-900 lg:hidden"><summary className="cursor-pointer text-sm font-semibold text-slate-900 dark:text-white">Order summary · {formatCurrency(totalAmount, currency)}</summary><div className="pt-3">{orderSummary}</div></details>}
           </form>
         )}
       </Modal>

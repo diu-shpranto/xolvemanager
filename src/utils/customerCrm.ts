@@ -59,6 +59,7 @@ const validSales = (sales: Sale[]): Sale[] => sales.filter(sale =>
   sale && Number.isFinite(Number(sale.amount))
   && sale.paymentStatus !== 'failed'
   && sale.paymentStatus !== 'refunded'
+  && sale.paymentStatus !== 'voided'
 );
 
 function timestampValue(value?: string): number {

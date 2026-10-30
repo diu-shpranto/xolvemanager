@@ -5,8 +5,11 @@ export type DashboardSummaryWidgetId =
   | 'receivedRevenue'
   | 'customers'
   | 'activeSubscriptions'
-  | 'expiringSubscriptions'
-  | 'outstandingPayments';
+  | 'expiringSubscriptions7'
+  | 'expiringSubscriptions30'
+  | 'outstandingPayments'
+  | 'availableAdvanceCredit'
+  | 'overdueInvoices';
 export type DashboardPanelWidgetId =
   | 'attention'
   | 'revenueTrend'
@@ -251,7 +254,7 @@ export interface Account {
 }
 
 export type SubscriptionStatus = 'active' | 'expiring_soon' | 'expired' | 'cancelled';
-export type PaymentStatus = 'paid' | 'pending' | 'partial' | 'failed' | 'refunded';
+export type PaymentStatus = 'paid' | 'pending' | 'partial' | 'failed' | 'refunded' | 'voided';
 
 export interface SubscriptionRenewalRecord {
   id: string;
@@ -594,6 +597,7 @@ export interface Sale {
   amount: number;
   subtotal?: number;
   discount?: number;
+  expectedPaymentDate?: string;
   amountPaid?: number;
   paymentAllocationBaseline?: number;
   actualCostSnapshot?: number;
@@ -603,6 +607,8 @@ export interface Sale {
   currency: AppCurrency;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
+  voidedAt?: string;
+  voidReason?: string;
   date: string; // YYYY-MM-DD
   invoiceNo: string;
   transactionId?: string; // TrxID
@@ -636,7 +642,46 @@ export interface SaleLineItem {
   currency: AppCurrency;
   startDate: string;
   durationDays: number;
+  expectedPaymentDate?: string;
   units: SaleLineItemUnit[];
+}
+
+export type OrderQuotationStatus = 'draft' | 'quotation' | 'confirmed' | 'invoiced' | 'cancelled';
+export type OrderSource = 'whatsapp' | 'phone' | 'in_person' | 'other';
+
+export interface OrderQuotationLine {
+  serviceId: string;
+  serviceNameSnapshot: string;
+  plan: string;
+  planId?: string;
+  quantity: number;
+  unitPrice: number;
+  discount: number;
+  startDate: string;
+  durationDays: number;
+  expectedPaymentDate?: string;
+  units?: { accountId?: string; profileId?: string }[];
+}
+
+export interface OrderQuotation {
+  id: string;
+  businessId?: string;
+  reference: string;
+  customerId: string;
+  source: OrderSource;
+  status: OrderQuotationStatus;
+  currency: AppCurrency;
+  items: OrderQuotationLine[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  createdAt: string;
+  updatedAt: string;
+  quotedAt?: string;
+  confirmedAt?: string;
+  saleId?: string;
+  invoiceId?: string;
+  notes?: string;
 }
 
 export interface Invoice {
@@ -652,6 +697,8 @@ export interface Invoice {
   paidAmount: number;
   dueAmount: number;
   paymentStatus: PaymentStatus;
+  voidedAt?: string;
+  voidReason?: string;
   paymentMethod: PaymentMethod;
   invoiceDate: string;
   dueDate?: string;
@@ -760,7 +807,9 @@ export type ActivityType =
   | 'invoice_paid'
   | 'invoice_due'
   | 'sale_completed'
+  | 'sale_expected_payment_date_updated'
   | 'sale_deleted'
+  | 'sale_voided'
   | 'payment_deleted'
   | 'subscription_deleted'
   | 'customer_note_added'

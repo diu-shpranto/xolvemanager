@@ -61,6 +61,28 @@ export function buildCustomerTimeline({
   ].filter(Boolean).join(' · ')).join('; ');
 
   sales.forEach(sale => {
+    if (sale.paymentStatus === 'voided') {
+      const voidActivity = activities.find(activity =>
+        activity.type === 'sale_voided'
+        && (activity.saleId === sale.id || (activity.entityType === 'sale' && activity.entityId === sale.id))
+      );
+      const voidReason = typeof sale.voidReason === 'string'
+        ? sale.voidReason
+        : typeof voidActivity?.metadata?.reason === 'string'
+          ? voidActivity.metadata.reason
+          : undefined;
+      addEvent({
+        id: `sale-voided:${sale.id}`,
+        type: 'sale',
+        recordId: sale.id,
+        timestamp: sale.voidedAt || voidActivity?.timestamp || sale.createdAt || sale.date,
+        title: 'Sale voided',
+        description: voidReason || sale.invoiceNo || 'Sale voided',
+        currency: sale.currency,
+        status: 'Voided',
+      });
+      return;
+    }
     addEvent({
       id: `sale:${sale.id}`,
       type: 'sale',
@@ -92,6 +114,7 @@ export function buildCustomerTimeline({
   });
 
   payments.forEach(payment => {
+    if (payment.paymentStatus === 'voided') return;
     const isRefund = payment.paymentStatus === 'refunded' && Boolean(payment.refundOfPaymentId);
     const relatedPayment = isRefund
       ? payments.find(item => item.id === payment.refundOfPaymentId)

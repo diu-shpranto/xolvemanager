@@ -7,10 +7,13 @@ import type {
 
 export const dashboardSummaryWidgetIds: DashboardSummaryWidgetId[] = [
   'receivedRevenue',
-  'customers',
-  'activeSubscriptions',
-  'expiringSubscriptions',
   'outstandingPayments',
+  'availableAdvanceCredit',
+  'activeSubscriptions',
+  'expiringSubscriptions7',
+  'expiringSubscriptions30',
+  'overdueInvoices',
+  'customers',
 ];
 
 export const dashboardPanelWidgetIds: DashboardPanelWidgetId[] = [

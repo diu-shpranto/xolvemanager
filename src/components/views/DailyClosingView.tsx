@@ -95,7 +95,7 @@ export const DailyClosingView: React.FC<{ onNavigate: (section: 'cashbook') => v
           <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11"><LockKeyhole className="h-5 w-5" /></div>
           <div className="min-w-0">
             <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em]">Finance operations</p>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Daily Closing</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Daily Totals</h1>
             <p className="mt-0.5 text-sm leading-5 text-slate-600 dark:text-slate-400">Compare expected account balances with the cash counted at day end.</p>
           </div>
         </div>

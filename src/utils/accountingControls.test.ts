@@ -79,6 +79,35 @@ test('a received payment with an account has one derived ledger movement', () =>
   assert.equal(issuesForPayment([payment()]).some(issue => issue.type === 'missing_payment_movement'), false);
 });
 
+test('one received payment can settle multiple selected invoices with one ledger movement', () => {
+  const secondSale: Sale = {
+    ...sale,
+    id: 'sale-2',
+    invoiceNo: 'INV-2',
+    amount: 50,
+  };
+  const multiInvoicePayment = payment({
+    saleId: undefined,
+    allocations: [
+      { saleId: sale.id, invoiceId: 'invoice-1', amount: 15 },
+      { saleId: secondSale.id, invoiceId: 'invoice-2', amount: 10 },
+    ],
+  });
+  const recordSet = records([multiInvoicePayment]);
+  recordSet.sales.push(secondSale);
+  const movements = getFinancialLedger({
+    ...recordSet,
+    expenseCategories: [],
+    incomeCategories: [],
+  }).filter(entry => entry.paymentId === multiInvoicePayment.id);
+
+  assert.equal(movements.length, 1);
+  assert.equal(movements[0].amount, 25);
+  const issues = runFinancialIntegrityCheck(recordSet);
+  assert.equal(issues.some(issue => issue.type === 'orphaned_payment'), false);
+  assert.equal(issues.some(issue => issue.type === 'invalid_payment_allocation'), false);
+});
+
 test('an unmapped received payment is flagged for reconciliation, not as a missing movement', () => {
   const received = payment({ financialAccountId: undefined });
   const issues = issuesForPayment([received], []);
@@ -94,9 +123,32 @@ test('a mapped payment account that no longer exists is reported as a missing ac
   assert.equal(issues.some(issue => issue.type === 'missing_payment_movement'), false);
 });
 
-test('zero, negative, and non-finite payments are invalid and never enter the ledger', () => {
-  for (const amount of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
-    const invalid = payment({ amount });
+test('zero-value payments are valid, do not require account mapping, and never enter the ledger', () => {
+  for (const paymentStatus of ['pending', 'failed', 'voided', 'paid', 'partial', 'refunded'] as const) {
+    const zeroValue = payment({
+      amount: 0,
+      paymentStatus,
+      paymentMethod: 'Unmapped payment method',
+      financialAccountId: undefined,
+    });
+    const recordSet = records([zeroValue]);
+    const movements = getFinancialLedger({
+      ...recordSet,
+      expenseCategories: [],
+      incomeCategories: [],
+    }).filter(entry => entry.paymentId === zeroValue.id);
+    assert.equal(issuesForPayment([zeroValue]).filter(issue => issue.type === 'invalid_amount').length, 0);
+    assert.equal(issuesForPayment([zeroValue]).some(issue => issue.type === 'unmapped_payment_account'), false);
+    assert.equal(movements.length, 0);
+  }
+});
+
+test('negative and non-finite payment amounts remain invalid', () => {
+  for (const invalid of [
+    payment({ amount: -1 }),
+    payment({ amount: Number.NaN }),
+    payment({ amount: Number.POSITIVE_INFINITY }),
+  ]) {
     const recordSet = records([invalid]);
     const movements = getFinancialLedger({
       ...recordSet,

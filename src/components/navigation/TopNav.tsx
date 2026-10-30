@@ -223,8 +223,8 @@ export const TopNav: React.FC<TopNavProps> = ({
           onClick={onOpenMobile}
           className="app-icon-button mobile-sidebar-toggle -ml-1 lg:hidden"
           aria-label={isMobileNavOpen
-            ? (language === 'bn' ? 'নেভিগেশন বন্ধ করুন' : 'Close navigation')
-            : (language === 'bn' ? 'নেভিগেশন খুলুন' : 'Open navigation')}
+            ? (language === 'bn' ? 'নেভিগেশন বন্ধ করুন' : 'Close menu')
+            : (language === 'bn' ? 'নেভিগেশন খুলুন' : 'Open menu')}
           aria-controls="primary-navigation"
           aria-expanded={isMobileNavOpen}
         >
@@ -247,8 +247,8 @@ export const TopNav: React.FC<TopNavProps> = ({
           type="button"
           onClick={() => onNavigate('dashboard')}
           className="app-topbar-brand-link flex items-center gap-2 md:hidden"
-          aria-label={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to dashboard'}
-          title={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to dashboard'}
+          aria-label={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to Dashboard'}
+          title={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to Dashboard'}
         >
           <ProductLogo size="compact" markOnly className="app-topbar-product-mark" />
           <span className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">XolveManager</span>
@@ -256,7 +256,7 @@ export const TopNav: React.FC<TopNavProps> = ({
         <div className="app-topbar-business hidden md:flex">
           <span className="app-topbar-business-divider" aria-hidden="true" />
           <span className="app-topbar-business-copy">
-            <span className="app-topbar-business-label">{language === 'bn' ? 'বর্তমান ব্যবসা' : 'Current business'}</span>
+            <span className="app-topbar-business-label">{language === 'bn' ? 'বর্তমান ব্যবসা' : 'Business'}</span>
             <strong title={activeBusinessName}>{activeBusinessName}</strong>
           </span>
         </div>
@@ -267,8 +267,8 @@ export const TopNav: React.FC<TopNavProps> = ({
         type="button"
         onClick={() => setShowCommandCenter(true)}
         className="app-icon-button global-search-trigger lg:hidden"
-        aria-label={`${language === 'bn' ? 'সার্চ খুলুন' : 'Open search'} (${searchShortcut})`}
-        title={`${language === 'bn' ? 'সার্চ খুলুন' : 'Open search'} (${searchShortcut})`}
+        aria-label={`${language === 'bn' ? 'সার্চ খুলুন' : 'Search'} (${searchShortcut})`}
+        title={`${language === 'bn' ? 'সার্চ খুলুন' : 'Search'} (${searchShortcut})`}
         aria-expanded={showCommandCenter}
         aria-haspopup="dialog"
       >
@@ -280,7 +280,7 @@ export const TopNav: React.FC<TopNavProps> = ({
         <Search className="app-topbar-search-icon pointer-events-none absolute left-2.5 h-3.5 w-3.5" />
         <input
           type="text"
-          placeholder="Search customers, services, sales..."
+          placeholder="Search customers, services, or sales..."
           readOnly
           onClick={() => setShowCommandCenter(true)}
           onKeyDown={event => {
@@ -289,7 +289,7 @@ export const TopNav: React.FC<TopNavProps> = ({
               setShowCommandCenter(true);
             }
           }}
-          aria-label="Open global search"
+          aria-label="Search the app"
           aria-haspopup="dialog"
           className="app-search-input h-10 w-full py-2 pl-10 pr-24 text-sm"
         />
@@ -442,7 +442,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                         <Bell className="h-5 w-5" />
                       </span>
                       <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                        {language === 'bn' ? 'সবকিছু আপ টু ডেট' : "You're all caught up"}
+                        {language === 'bn' ? 'সবকিছু আপ টু ডেট' : 'No new alerts'}
                       </p>
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                         {language === 'bn' ? 'নতুন কোনো নোটিফিকেশন নেই।' : 'No new notifications.'}
@@ -503,7 +503,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                     }}
                     className="min-h-11 w-full rounded-lg px-3 py-2.5 text-center text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-500 dark:text-slate-300 dark:hover:bg-slate-800"
                   >
-                    {language === 'bn' ? 'সব নোটিফিকেশন দেখুন' : 'View all notifications'}
+                    {language === 'bn' ? 'সব নোটিফিকেশন দেখুন' : 'All notifications'}
                   </button>
                 </footer>
               </section>
@@ -567,7 +567,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                     className="app-profile-option w-full text-violet-700 dark:text-violet-300"
                     role="menuitem"
                   >
-                    {language === 'bn' ? 'ডেমো মোড থেকে বের হন' : 'Exit Demo Mode'}
+                    {language === 'bn' ? 'ডেমো মোড থেকে বের হন' : 'Exit demo'}
                   </button>
                 )}
                 <button
@@ -604,8 +604,8 @@ export const TopNav: React.FC<TopNavProps> = ({
       <button
         type="button"
         onClick={() => setIsConnectionNoticeDismissed(true)}
-        aria-label={language === 'bn' ? 'নোটিশ বন্ধ করুন' : 'Dismiss notification'}
-        title={language === 'bn' ? 'নোটিশ বন্ধ করুন' : 'Dismiss notification'}
+        aria-label={language === 'bn' ? 'নোটিশ বন্ধ করুন' : 'Close alert'}
+        title={language === 'bn' ? 'নোটিশ বন্ধ করুন' : 'Close alert'}
         className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-current dark:hover:bg-white/5"
       >
         <X className="h-4 w-4" aria-hidden="true" />

@@ -84,7 +84,7 @@ export interface ProfitabilityTrendPoint {
 }
 
 const isRecognizedSale = (sale: Sale): boolean =>
-  sale.paymentStatus !== 'failed' && sale.paymentStatus !== 'refunded';
+  sale.paymentStatus !== 'failed' && sale.paymentStatus !== 'refunded' && sale.paymentStatus !== 'voided';
 
 const costDate = (cost: ProfitabilityCost | Expense): string => cost.date;
 const isProfitabilityCost = (cost: ProfitabilityCost | Expense): cost is ProfitabilityCost =>

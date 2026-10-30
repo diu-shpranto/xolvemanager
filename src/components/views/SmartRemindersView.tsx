@@ -240,6 +240,8 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
             const subscription = reminder.subscriptionId ? subscriptions.find(item => item.id === reminder.subscriptionId) : undefined;
             const sale = reminder.saleId ? sales.find(item => item.id === reminder.saleId) : undefined;
             const isClosed = reminder.status === 'completed' || reminder.status === 'dismissed';
+            const isPaymentReminder = ['invoice_due', 'invoice_overdue', 'partial_payment', 'payment_overdue', 'unpaid_sale']
+              .includes(reminder.type);
             return <article key={reminder.id} className="rounded-xl border border-slate-200 p-3 dark:border-slate-800 sm:p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -248,7 +250,7 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${priorityClass[reminder.priority]}`}>{reminder.priority} priority</span>
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">{statusLabels[reminder.status]}</span>
                   </div>
-                  <p className="mt-1 text-xs text-slate-500">{typeLabels[reminder.type]} · Due {formatAppDate(reminder.dueDate, language)}{reminder.status === 'snoozed' && reminder.snoozedUntil ? ` · Snoozed until ${formatDateTime(reminder.snoozedUntil)}` : ''}</p>
+                  <p className="mt-1 text-xs text-slate-500">{typeLabels[reminder.type]} · {isPaymentReminder ? 'Expected payment' : 'Due'} {formatAppDate(reminder.dueDate, language)}{reminder.status === 'snoozed' && reminder.snoozedUntil ? ` · Snoozed until ${formatDateTime(reminder.snoozedUntil)}` : ''}</p>
                   {reminder.description && <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{reminder.description}</p>}
                   <p className="mt-1 text-xs text-slate-500">{customer?.name || ''}{service?.name ? ` · ${service.name}` : ''}{reminder.stage ? ` · ${reminder.stage.replaceAll('_', ' ')}` : ''}</p>
                   {reminder.amount !== undefined && <p className="mt-2 text-sm font-bold text-slate-900 dark:text-white">{formatCurrency(reminder.amount, reminder.currency || currency)}</p>}

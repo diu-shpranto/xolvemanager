@@ -406,7 +406,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   const [sortBy, setSortBy] = useState<
     'name_asc' | 'name_desc' | 'popular' | 'accounts' | 'price_low' | 'price_high' | 'newest' | 'recently_updated' | 'revenue' | 'plans'
   >('popular');
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
   const [openServiceActionsId, setOpenServiceActionsId] = useState<string | null>(null);
   const [serviceActionsOpenDirection, setServiceActionsOpenDirection] = useState<'above' | 'below'>('above');
   const serviceActionsRef = useRef<HTMLDivElement | null>(null);
@@ -562,7 +562,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
     if (!formName.trim()) {
       errors.name = language === 'bn' ? 'সার্ভিসের নাম লিখুন।' : 'Please enter the service name.';
     } else if (formName.trim().length < 2) {
-      errors.name = language === 'bn' ? 'নাম কমপক্ষে ২ অক্ষরের হতে হবে' : 'Please enter a service name with at least 2 characters.';
+      errors.name = language === 'bn' ? 'নাম কমপক্ষে ২ অক্ষরের হতে হবে' : 'Service name must have at least 2 characters.';
     } else if (formName.trim().length > 80) {
       errors.name = 'Service name must be 80 characters or fewer.';
     }
@@ -1283,7 +1283,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <input
             type="text"
-            placeholder={language === 'bn' ? 'সার্ভিস খুঁজুন...' : 'Search name, ID, description or code...'}
+            placeholder={language === 'bn' ? 'সার্ভিস খুঁজুন...' : 'Search by name, ID, or details...'}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             aria-label="Search services by name, ID, description, plan or internal code"
@@ -1325,7 +1325,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               className="h-10 shrink-0 px-3 bg-white dark:bg-[#111726] border border-slate-200/90 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
             >
               <option value="popular">
-                {language === 'bn' ? 'জনপ্রিয় (সাবস্ক্রিপশন)' : 'Most Subscriptions'}
+                {language === 'bn' ? 'জনপ্রিয় (সাবস্ক্রিপশন)' : 'Most Plans'}
               </option>
               <option value="accounts">
                 {language === 'bn' ? 'অ্যাকাউন্ট পুল' : 'Most Accounts'}
@@ -1441,8 +1441,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
       <section className="service-catalog-heading flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="service-catalog-eyebrow">{language === 'bn' ? 'আপনার ক্যাটালগ' : 'YOUR CATALOG'}</p>
-          <h2>{language === 'bn' ? 'সার্ভিস ও প্ল্যান' : 'Service catalog'}</h2>
-          <p>{language === 'bn' ? 'দাম, সাবস্ক্রিপশন ও রিসোর্স এক জায়গায় পরিচালনা করুন।' : 'Manage pricing, subscriptions and resources in one place.'}</p>
+          <h2>{language === 'bn' ? 'সার্ভিস ও প্ল্যান' : 'Services and Plans'}</h2>
+          <p>{language === 'bn' ? 'দাম, সাবস্ক্রিপশন ও রিসোর্স এক জায়গায় পরিচালনা করুন।' : 'Manage prices, plans, and accounts in one place.'}</p>
         </div>
         <span className="service-result-count" aria-live="polite">
           {servicesLoading
@@ -1784,8 +1784,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                   <th className="py-3 px-5">{language === 'bn' ? 'সার্ভিস' : 'SERVICE'}</th>
                   <th className="py-3 px-5">{language === 'bn' ? 'ক্যাটাগরি' : 'CATEGORY'}</th>
                   <th className="py-3 px-5">{language === 'bn' ? 'মূল্য ও মেয়াদ' : 'PRICE & DURATION'}</th>
-                  <th className="py-3 px-5">{language === 'bn' ? 'ইনভেন্টরি পুল' : 'ACCOUNTS POOL'}</th>
-                  <th className="py-3 px-5">{language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'ACTIVE SUBS'}</th>
+                  <th className="py-3 px-5">{language === 'bn' ? 'ইনভেন্টরি পুল' : 'ACCOUNTS'}</th>
+                  <th className="py-3 px-5">{language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'ACTIVE PLANS'}</th>
                   <th className="py-3 px-5">{language === 'bn' ? 'স্ট্যাটাস' : 'STATUS'}</th>
                   <th className="py-3 px-5 text-right">{language === 'bn' ? 'অ্যাকশন' : 'ACTIONS'}</th>
                 </tr>
@@ -2861,7 +2861,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                       className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>{language === 'bn' ? 'স্থায়ীভাবে মুছে ফেলুন' : 'Permanently Delete'}</span>
+                      <span>{language === 'bn' ? 'স্থায়ীভাবে মুছে ফেলুন' : 'Delete Forever'}</span>
                     </button>
                   )}
                 </div>

@@ -10,7 +10,7 @@ import {
   getSalePayments,
 } from './saleUtils.ts';
 import type { InvoiceSaleDetails } from './invoiceGenerator';
-import { calculateExpiryDate } from './dateUtils.ts';
+import { calculateExpiryDate, getTodayDateString } from './dateUtils.ts';
 
 export function createInvoiceRecord(
   sale: Sale,
@@ -36,6 +36,10 @@ export function createInvoiceRecord(
     paidAmount: getSalePaidAmount(sale, payments),
     dueAmount: getSaleDueAmount(sale, payments),
     paymentStatus: getSalePaymentStatus(sale, payments),
+    ...(sale.paymentStatus === 'voided' ? {
+      voidedAt: sale.voidedAt || existing?.voidedAt,
+      voidReason: sale.voidReason || existing?.voidReason,
+    } : {}),
     paymentMethod: linkedPayments[0]?.paymentMethod || sale.paymentMethod,
     invoiceDate: existing?.invoiceDate || sale.date,
     createdAt: existing?.createdAt || sale.createdAt || now,
@@ -96,6 +100,7 @@ export function buildInvoiceSaleDetails(
           ? calculateExpiryDate(item.startDate, item.durationDays)
           : undefined),
       durationDays: itemSubscription?.durationDays || item.durationDays || itemPlan?.durationDays,
+      expectedPaymentDate: item.expectedPaymentDate || sale.expectedPaymentDate,
     };
   });
   const receivedPayments = linkedPayments.filter(payment =>
@@ -139,6 +144,7 @@ export function buildInvoiceSaleDetails(
     customerType: getCustomerType(customer),
     customerPhone: customer?.phone || customer?.whatsapp,
     customerEmail: customer?.email,
+    customerAddress: customer?.address,
     serviceName: service?.name || 'Service unavailable',
     lineItems,
     planName: planName || 'Plan information unavailable',
@@ -155,10 +161,13 @@ export function buildInvoiceSaleDetails(
     subtotal: sale.subtotal ?? sale.amount + (sale.discount || 0),
     discount: sale.discount || 0,
     currency: sale.currency,
-    paymentMethod: paymentMethods.join(', ') || 'Not specified',
+    paymentMethod: paymentMethods.join(', ')
+      || (sale.paymentMethod?.trim().toLocaleLowerCase() === 'not specified' ? '' : sale.paymentMethod || ''),
     paymentMethodBreakdown,
     paymentStatus: getSalePaymentStatus(sale, payments),
     paymentDate: receivedPayments[0]?.paymentDate,
+    dueDate: invoice.dueDate,
+    todayDate: getTodayDateString(settings.businessProfile?.timeZone),
     transactionId: receivedPayments[0]?.transactionId || sale.transactionId,
     paymentHistory: receivedPayments.map(payment => ({
       id: payment.id,
@@ -218,11 +227,11 @@ export function getInvoiceForSubscription(invoices: Invoice[], subscriptionId: s
   return invoices.find(invoice => invoice.subscriptionId === subscriptionId);
 }
 
-export type InvoiceDisplayStatus = 'paid' | 'partial' | 'due' | 'pending' | 'refunded';
+export type InvoiceDisplayStatus = 'paid' | 'partial' | 'due' | 'pending' | 'refunded' | 'voided';
 
 export function getInvoiceDisplayStatus(sale: Sale, payments: Payment[]): InvoiceDisplayStatus {
   const status = getSalePaymentStatus(sale, payments);
-  if (status === 'paid' || status === 'partial' || status === 'refunded') return status;
+  if (status === 'paid' || status === 'partial' || status === 'refunded' || status === 'voided') return status;
   const hasPendingAttempt = getSalePayments(sale, payments)
     .some(payment => payment.paymentStatus === 'pending');
   return hasPendingAttempt ? 'pending' : 'due';

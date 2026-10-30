@@ -1,4 +1,4 @@
-import type { AppCurrency, Payment, PaymentStatus, Sale, SaleLineItem } from '../types';
+import type { AppCurrency, Invoice, Payment, PaymentAllocation, PaymentStatus, Sale, SaleLineItem, Subscription } from '../types';
 
 const minorUnitScale = 100;
 
@@ -38,6 +38,7 @@ export function getSaleLineItems(sale: Sale): SaleLineItem[] {
     currency: sale.currency,
     startDate: '',
     durationDays: 0,
+    expectedPaymentDate: sale.expectedPaymentDate,
     units: sale.subscriptionId ? [{
       subscriptionId: sale.subscriptionId,
       ...(sale.accountId ? { accountId: sale.accountId } : {}),
@@ -55,6 +56,63 @@ export function getSaleSubscriptionIds(sale: Sale): string[] {
   return [...new Set(getSaleLineItems(sale).flatMap(item =>
     item.units.map(unit => unit.subscriptionId)
   ))];
+}
+
+export function getSaleVoidBlockedReason(
+  sale: Sale,
+  payments: Payment[],
+  subscriptions: Subscription[],
+  invoices?: Invoice[]
+): string | null {
+  if (sale.paymentStatus !== 'pending') return 'Only unpaid sales can be voided.';
+  if (sale.renewalOfSubscriptionId) return 'Renewal sales cannot be voided here.';
+  if ((sale.amountPaid || 0) > 0 || (sale.paymentAllocationBaseline || 0) > 0) {
+    return 'This sale has a recorded payment or advance.';
+  }
+
+  const subscriptionIds = new Set(getSaleSubscriptionIds(sale));
+  if (subscriptions.some(subscription =>
+    subscription.renewedFromSubscriptionId
+    && subscriptionIds.has(subscription.renewedFromSubscriptionId)
+  )) {
+    return 'A subscription from this sale has already been renewed.';
+  }
+
+  if (sale.accountId || sale.profileId || getSaleLineItems(sale).some(item =>
+    item.units.some(unit => unit.accountId || unit.profileId)
+  )) {
+    return 'This sale has assigned inventory. Resolve its assignment before voiding.';
+  }
+
+  const relatedPayments = payments.filter(payment =>
+    payment.saleId === sale.id
+    || Boolean(payment.subscriptionId && subscriptionIds.has(payment.subscriptionId))
+    || Boolean(payment.allocations?.some(allocation => allocation.saleId === sale.id))
+  );
+  if (relatedPayments.some(payment =>
+    payment.paymentStatus === 'paid'
+    || payment.paymentStatus === 'partial'
+    || payment.paymentStatus === 'refunded'
+    || payment.paymentStatus === 'voided'
+    || (payment.allocations || []).some(allocation => amountToMinorUnits(allocation.amount) > 0)
+    || amountToMinorUnits(payment.advanceCreditAmount || 0) > 0
+  )) {
+    return 'This sale has payment or advance history and needs a payment reversal.';
+  }
+
+  if (invoices) {
+    const linkedInvoices = invoices.filter(invoice => invoice.saleId === sale.id);
+    if (linkedInvoices.length !== 1) return 'A single linked invoice is required. Review this sale before voiding it.';
+    const invoice = linkedInvoices[0];
+    if (invoice.paymentStatus !== 'pending'
+      || amountToMinorUnits(invoice.paidAmount) !== 0
+      || amountToMinorUnits(invoice.totalAmount) !== amountToMinorUnits(sale.amount)
+      || amountToMinorUnits(invoice.dueAmount) !== amountToMinorUnits(sale.amount)) {
+      return 'The invoice has payment history or inconsistent totals. Review it before voiding this sale.';
+    }
+  }
+
+  return null;
 }
 
 export function getSaleLineAllocations(sale: Sale): { item: SaleLineItem; amount: number }[] {
@@ -109,6 +167,42 @@ export function allocateMinorUnitsByWeight(totalMinor: number, weights: number[]
     allocations[remainders[index].index] += 1;
   }
   return allocations;
+}
+
+export function allocateMinorUnitsInOrder(totalMinor: number, balancesMinor: number[]): number[] {
+  if (!Number.isSafeInteger(totalMinor) || totalMinor < 0
+    || balancesMinor.some(balance => !Number.isSafeInteger(balance) || balance < 0)) {
+    throw new Error('Payment allocation amounts must be non-negative minor units.');
+  }
+  const totalBalance = balancesMinor.reduce((sum, balance) => sum + balance, 0);
+  if (!Number.isSafeInteger(totalBalance) || totalMinor > totalBalance) {
+    throw new Error('Payment allocation cannot exceed the selected sale line balances.');
+  }
+
+  let remaining = totalMinor;
+  return balancesMinor.map(balance => {
+    const allocation = Math.min(balance, remaining);
+    remaining -= allocation;
+    return allocation;
+  });
+}
+
+export function isValidPaymentLineAllocation(
+  totalMinor: number,
+  lineTotalsMinor: number[],
+  allocationsMinor: number[]
+): boolean {
+  if (!Number.isSafeInteger(totalMinor) || totalMinor < 0
+    || lineTotalsMinor.length === 0
+    || allocationsMinor.length !== lineTotalsMinor.length
+    || lineTotalsMinor.some(amount => !Number.isSafeInteger(amount) || amount < 0)
+    || allocationsMinor.some((amount, index) =>
+      !Number.isSafeInteger(amount) || amount < 0 || amount > lineTotalsMinor[index]
+    )) {
+    return false;
+  }
+  const allocatedTotal = allocationsMinor.reduce((total, amount) => total + amount, 0);
+  return Number.isSafeInteger(allocatedTotal) && allocatedTotal === totalMinor;
 }
 
 function allocateMinorUnitsWithinCaps(totalMinor: number, weights: number[], caps: number[]): number[] {
@@ -168,6 +262,7 @@ function getAllocatedPaymentStatus(
   amountMinor: number,
   paidMinor: number
 ): PaymentStatus {
+  if (sale.paymentStatus === 'voided') return 'voided';
   if (sale.paymentStatus === 'refunded') return sale.paymentStatus;
   if (amountMinor > 0 && paidMinor >= amountMinor) return 'paid';
   if (paidMinor > 0) return 'partial';
@@ -230,7 +325,9 @@ export function getSaleLineFinancialAllocations(
   return lines.map(({ item }, index) => {
     const amountMinor = amountMinorByLine[index];
     const paidMinor = paidMinorByLine[index];
-    const dueMinor = sale.paymentStatus === 'refunded' ? 0 : Math.max(0, amountMinor - paidMinor);
+    const dueMinor = sale.paymentStatus === 'refunded' || sale.paymentStatus === 'voided'
+      ? 0
+      : Math.max(0, amountMinor - paidMinor);
     return {
       item,
       amount: minorUnitsToAmount(amountMinor),
@@ -239,6 +336,13 @@ export function getSaleLineFinancialAllocations(
       paymentStatus: getAllocatedPaymentStatus(sale, amountMinor, paidMinor),
     };
   });
+}
+
+export function getSaleExpectedPaymentDate(sale: Sale, payments: Payment[]): string | undefined {
+  const expectedDates = getSaleLineFinancialAllocations(sale, payments)
+    .flatMap(line => line.due > 0 && line.item.expectedPaymentDate ? [line.item.expectedPaymentDate] : [])
+    .sort();
+  return expectedDates[0] || sale.expectedPaymentDate;
 }
 
 export function getSaleSubscriptionFinancialAllocations(
@@ -271,7 +375,9 @@ export function getSaleSubscriptionFinancialAllocations(
         item: line.item,
         amount: minorUnitsToAmount(unitAmount),
         paid: minorUnitsToAmount(unitPaid),
-        due: minorUnitsToAmount(sale.paymentStatus === 'refunded' ? 0 : Math.max(0, unitAmount - unitPaid)),
+        due: minorUnitsToAmount(sale.paymentStatus === 'refunded' || sale.paymentStatus === 'voided'
+          ? 0
+          : Math.max(0, unitAmount - unitPaid)),
         paymentStatus: getAllocatedPaymentStatus(sale, unitAmount, unitPaid),
       }];
     });
@@ -302,6 +408,157 @@ export function splitPaymentAllocation(amount: number, outstanding: number): {
   return {
     allocatedAmount: minorUnitsToAmount(allocatedMinor),
     advanceCreditAmount: minorUnitsToAmount(amountMinor - allocatedMinor),
+  };
+}
+
+export interface CustomerPaymentAllocationPlan {
+  selectedOutstanding: number;
+  cashAllocated: number;
+  advanceApplied: number;
+  advanceCreditCreated: number;
+  remainingSelectedDue: number;
+  cashAllocations: PaymentAllocation[];
+  perSale: Record<string, {
+    cashAllocated: number;
+    advanceApplied: number;
+    remainingDue: number;
+  }>;
+  perLine: Record<string, {
+    cashAllocated: number;
+    advanceApplied: number;
+    remainingDue: number;
+  }>;
+}
+
+export function buildCustomerPaymentAllocationPlan(
+  selectedSales: Sale[],
+  payments: Payment[],
+  cashReceived: number,
+  advanceToApply: number,
+  invoiceIds: Record<string, string> = {},
+  selectedLineItemIds: Record<string, string[]> = {}
+): CustomerPaymentAllocationPlan {
+  const cashMinor = parseAmountToMinorUnits(cashReceived);
+  const advanceMinor = parseAmountToMinorUnits(advanceToApply);
+  if (cashMinor === null || cashMinor < 0 || advanceMinor === null || advanceMinor < 0) {
+    throw new Error('Enter a valid payment amount and advance application.');
+  }
+  if (new Set(selectedSales.map(sale => sale.id)).size !== selectedSales.length) {
+    throw new Error('An outstanding sale can only be selected once.');
+  }
+
+  const rows = selectedSales.map(sale => {
+    const lines = getSaleLineFinancialAllocations(sale, payments);
+    const selectedIds = selectedLineItemIds[sale.id];
+    const selectedLineIds = selectedIds ? new Set(selectedIds) : null;
+    return {
+      sale,
+      lines,
+      lineDues: lines.map(line => selectedLineIds && !selectedLineIds.has(line.item.id)
+        ? 0
+        : amountToMinorUnits(line.due)),
+      originalLineDues: lines.map(line => amountToMinorUnits(line.due)),
+      advanceAppliedByLine: lines.map(() => 0),
+      cashAllocatedByLine: lines.map(() => 0),
+      dueMinor: lines.reduce((total, line) =>
+        total + (selectedLineIds && !selectedLineIds.has(line.item.id) ? 0 : amountToMinorUnits(line.due)), 0),
+      advanceAppliedMinor: 0,
+      cashAllocatedMinor: 0,
+    };
+  });
+  const selectedDueMinor = rows.reduce((total, row) => total + row.dueMinor, 0);
+  if (advanceMinor > selectedDueMinor) {
+    throw new Error('Advance application cannot exceed the selected outstanding balance.');
+  }
+
+  let advanceRemaining = advanceMinor;
+  rows.forEach(row => {
+    if (advanceRemaining <= 0) return;
+    const amountMinor = Math.min(advanceRemaining, row.dueMinor);
+    if (amountMinor <= 0) return;
+    const lineAllocations = allocateAmountAcrossSaleLines(
+      row.sale,
+      minorUnitsToAmount(amountMinor),
+      row.lineDues.map(minorUnitsToAmount)
+    );
+    row.lineDues = row.lineDues.map((dueMinor, index) =>
+      dueMinor - amountToMinorUnits(lineAllocations[index].amount)
+    );
+    row.advanceAppliedByLine = lineAllocations.map(line => amountToMinorUnits(line.amount));
+    row.advanceAppliedMinor = amountMinor;
+    advanceRemaining -= amountMinor;
+  });
+
+  let cashRemaining = cashMinor;
+  const cashAllocations: PaymentAllocation[] = [];
+  rows.forEach(row => {
+    if (cashRemaining <= 0) return;
+    const dueMinor = row.lineDues.reduce((total, amount) => total + amount, 0);
+    const amountMinor = Math.min(cashRemaining, dueMinor);
+    if (amountMinor <= 0) return;
+    const lineAllocations = allocateAmountAcrossSaleLines(
+      row.sale,
+      minorUnitsToAmount(amountMinor),
+      row.lineDues.map(minorUnitsToAmount)
+    );
+    lineAllocations.forEach(({ item, amount }) => {
+      if (amount <= 0) return;
+      cashAllocations.push({
+        saleId: row.sale.id,
+        lineItemId: item.id,
+        invoiceId: invoiceIds[row.sale.id],
+        amount,
+      });
+    });
+    row.cashAllocatedByLine = lineAllocations.map(line => amountToMinorUnits(line.amount));
+    row.cashAllocatedMinor = amountMinor;
+    cashRemaining -= amountMinor;
+  });
+
+  const perSale = Object.fromEntries(rows.map(row => {
+    const remainingDueMinor = Math.max(
+      0,
+      row.dueMinor - row.advanceAppliedMinor - row.cashAllocatedMinor
+    );
+    return [row.sale.id, {
+      cashAllocated: minorUnitsToAmount(row.cashAllocatedMinor),
+      advanceApplied: minorUnitsToAmount(row.advanceAppliedMinor),
+      remainingDue: minorUnitsToAmount(remainingDueMinor),
+    }];
+  }));
+  const perLineEntries: Array<[string, {
+    cashAllocated: number;
+    advanceApplied: number;
+    remainingDue: number;
+  }]> = [];
+  rows.forEach(row => row.lines.forEach((line, index) => {
+    const selected = row.lineDues[index] > 0
+      || row.advanceAppliedByLine[index] > 0
+      || row.cashAllocatedByLine[index] > 0;
+    if (selected) perLineEntries.push([`${row.sale.id}:${line.item.id}`, {
+      cashAllocated: minorUnitsToAmount(row.cashAllocatedByLine[index]),
+      advanceApplied: minorUnitsToAmount(row.advanceAppliedByLine[index]),
+      remainingDue: minorUnitsToAmount(Math.max(
+        0,
+        row.originalLineDues[index]
+          - row.advanceAppliedByLine[index]
+          - row.cashAllocatedByLine[index]
+      )),
+    }]);
+  }));
+  const perLine = Object.fromEntries(perLineEntries);
+  return {
+    selectedOutstanding: minorUnitsToAmount(selectedDueMinor),
+    cashAllocated: minorUnitsToAmount(cashMinor - cashRemaining),
+    advanceApplied: minorUnitsToAmount(advanceMinor - advanceRemaining),
+    advanceCreditCreated: minorUnitsToAmount(cashRemaining),
+    remainingSelectedDue: minorUnitsToAmount(rows.reduce(
+      (total, row) => total + Math.max(0, row.dueMinor - row.advanceAppliedMinor - row.cashAllocatedMinor),
+      0
+    )),
+    cashAllocations,
+    perSale,
+    perLine,
   };
 }
 
@@ -445,7 +702,8 @@ export function applyAdvanceCreditToSale(
   amountValue: number,
   applicationId: string,
   createdAt: string,
-  invoiceId?: string
+  invoiceId?: string,
+  selectedLineItemIds?: string[]
 ): { payments: Payment[]; appliedAmount: number; alreadyApplied: boolean } {
   if (!applicationId.trim()) throw new Error('An advance application ID is required.');
   const amountMinor = parseAmountToMinorUnits(amountValue);
@@ -475,10 +733,16 @@ export function applyAdvanceCreditToSale(
     return { payments, appliedAmount: minorUnitsToAmount(existingAmountMinor), alreadyApplied: true };
   }
 
-  if (sale.paymentStatus === 'refunded') throw new Error('Advance credit cannot be applied to a refunded sale.');
-  const dueMinor = amountToMinorUnits(getSaleDueAmount(sale, payments));
+  if (sale.paymentStatus === 'refunded' || sale.paymentStatus === 'voided') {
+    throw new Error('Advance credit cannot be applied to a refunded or voided sale.');
+  }
+  const selectedLineIds = selectedLineItemIds ? new Set(selectedLineItemIds) : null;
+  const lineDueWeights = getSaleLineFinancialAllocations(sale, payments).map(line =>
+    selectedLineIds && !selectedLineIds.has(line.item.id) ? 0 : line.due
+  );
+  const dueMinor = lineDueWeights.reduce((total, due) => total + amountToMinorUnits(due), 0);
   if (amountMinor > dueMinor) {
-    throw new Error('Advance application cannot exceed the selected sale’s outstanding balance.');
+    throw new Error('Advance application cannot exceed the selected outstanding balance.');
   }
   const availableMinor = amountToMinorUnits(
     getCustomerAdvanceCredit(payments, sale.customerId, sale.currency)
@@ -500,7 +764,6 @@ export function applyAdvanceCreditToSale(
       || left.payment.id.localeCompare(right.payment.id)
     );
 
-  const lineDueWeights = getSaleLineFinancialAllocations(sale, payments).map(line => line.due);
   const requestedLineAllocations = allocateAmountAcrossSaleLines(
     sale,
     minorUnitsToAmount(amountMinor),
@@ -567,6 +830,7 @@ export function applyAdvanceCreditToSale(
 
 export const getSalePayments = (sale: Sale, payments: Payment[]): Payment[] =>
   payments.filter(payment => {
+    if (payment.paymentStatus === 'voided') return false;
     if (payment.customerId !== sale.customerId || payment.currency !== sale.currency) return false;
     if (payment.paymentStatus === 'refunded' && payment.refundOfPaymentId) {
       return (payment.refundedSaleAllocations || []).some(allocation => allocation.saleId === sale.id);
@@ -580,7 +844,7 @@ export const getSalePayments = (sale: Sale, payments: Payment[]): Payment[] =>
   });
 
 export const getSalePaidAmount = (sale: Sale, payments: Payment[]): number => {
-  if (sale.paymentStatus === 'refunded') return 0;
+  if (sale.paymentStatus === 'refunded' || sale.paymentStatus === 'voided') return 0;
   const linkedPayments = getSalePayments(sale, payments);
   const postedPayments = linkedPayments.filter(payment => payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial');
   const hasPostedPayment = postedPayments.length > 0;
@@ -599,13 +863,14 @@ export const getSalePaidAmount = (sale: Sale, payments: Payment[]): number => {
 };
 
 export const getSaleDueAmount = (sale: Sale, payments: Payment[]): number =>
-  sale.paymentStatus === 'refunded'
+  sale.paymentStatus === 'refunded' || sale.paymentStatus === 'voided'
     ? 0
     : Math.max(0, minorUnitsToAmount(
       amountToMinorUnits(sale.amount) - amountToMinorUnits(getSalePaidAmount(sale, payments))
     ));
 
 export const getSalePaymentStatus = (sale: Sale, payments: Payment[]): PaymentStatus => {
+  if (sale.paymentStatus === 'voided') return 'voided';
   if (sale.paymentStatus === 'refunded') return 'refunded';
   const paid = getSalePaidAmount(sale, payments);
   if (amountToMinorUnits(paid) >= amountToMinorUnits(sale.amount) && sale.amount > 0) return 'paid';

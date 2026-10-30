@@ -2258,6 +2258,29 @@ button:is(.bg-emerald-600, .bg-emerald-700, .bg-emerald-500, .action-primary):ho
   -webkit-overflow-scrolling: touch;
 }
 
+.sales-table-scroll {
+  scrollbar-color: var(--brand-primary) #ede9f7;
+  scrollbar-width: auto;
+}
+
+.sales-table-scroll::-webkit-scrollbar {
+  height: 10px;
+}
+
+.sales-table-scroll::-webkit-scrollbar-track {
+  background: #ede9f7;
+}
+
+.sales-table-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid #ede9f7;
+  border-radius: 999px;
+  background: var(--brand-primary);
+}
+
+.sales-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--brand-primary-hover);
+}
+
 .data-table-scroll:focus-visible {
   outline: 3px solid var(--brand-focus);
   outline-offset: 2px;
@@ -5686,6 +5709,16 @@ button.dashboard-metric:hover {
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
+.customer-card-list-grid {
+  grid-auto-rows: 1fr;
+}
+
+.customer-card-list-grid > .customer-card {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+}
+
 .customer-card::before {
   position: absolute;
   inset: 0 0 auto;
@@ -5724,6 +5757,7 @@ button.dashboard-metric:hover {
   gap: 0 0.75rem;
   font-size: 0.6875rem;
   line-height: 1rem;
+  min-height: 4rem;
 }
 
 .customer-contact-link {
@@ -5755,9 +5789,20 @@ button.dashboard-metric:hover {
   border: 1px solid rgba(245, 158, 11, 0.12);
 }
 
-.customer-card-actions {
+.customer-card-list-grid > .customer-card .customer-card-actions {
   gap: 0.375rem;
   border-color: #efedf3;
+  margin-top: auto;
+}
+
+.customer-card-renewal-slot {
+  display: flex;
+  min-height: 3.25rem;
+  align-items: center;
+}
+
+.customer-card-renewal-slot .customer-card-renewal {
+  margin-top: 0;
 }
 
 .customer-card-actions > button,
@@ -5913,6 +5958,16 @@ button.dashboard-metric:hover {
   color: #b45309;
 }
 
+.customer-overview-metric--due {
+  border-color: #fdba74;
+  background: linear-gradient(145deg, #fff7ed, #ffedd5);
+  box-shadow: 0 5px 16px -12px rgba(180, 83, 9, 0.55);
+}
+
+.customer-overview-metric--due > span {
+  color: #9a3412;
+}
+
 .customer-detail-information {
   display: grid;
   gap: 0.875rem;
@@ -5930,6 +5985,18 @@ button.dashboard-metric:hover {
   border-color: #e8e4ef;
   border-radius: 0.9rem;
   box-shadow: 0 3px 12px -11px rgba(38, 28, 60, 0.32);
+}
+
+.customer-subscription-row--ending-soon {
+  border-color: #fbbf24;
+  background: linear-gradient(110deg, #fffbeb, #fff7ed);
+  box-shadow: 0 4px 14px -10px rgba(180, 83, 9, 0.38);
+}
+
+.customer-subscription-row--active {
+  border-color: #6ee7b7;
+  background: linear-gradient(110deg, #ecfdf5, #f0fdf4);
+  box-shadow: 0 4px 14px -10px rgba(5, 150, 105, 0.32);
 }
 
 .dark .customer-page-header {
@@ -6017,6 +6084,18 @@ button.dashboard-metric:hover {
   background: #191724;
 }
 
+.dark .customer-subscription-row--ending-soon {
+  border-color: #a16207;
+  background: linear-gradient(110deg, #292313, #261d17);
+  box-shadow: 0 4px 14px -10px rgba(251, 191, 36, 0.24);
+}
+
+.dark .customer-subscription-row--active {
+  border-color: #047857;
+  background: linear-gradient(110deg, #13291f, #17271e);
+  box-shadow: 0 4px 14px -10px rgba(52, 211, 153, 0.2);
+}
+
 .dark .customer-overview-metric > span {
   color: #aaa3b5;
 }
@@ -6031,6 +6110,16 @@ button.dashboard-metric:hover {
 
 .dark .customer-overview-metric--due > strong {
   color: #fbbf24;
+}
+
+.dark .customer-overview-metric--due {
+  border-color: #854d0e;
+  background: linear-gradient(145deg, #302314, #241d16);
+  box-shadow: 0 5px 16px -12px rgba(251, 191, 36, 0.35);
+}
+
+.dark .customer-overview-metric--due > span {
+  color: #fcd34d;
 }
 
 @media (max-width: 639px) {
@@ -6610,6 +6699,19 @@ button.dashboard-metric:hover {
   font-size: 0.6875rem;
   font-weight: 500;
   line-height: 1rem;
+}
+
+.customer-overview-metric > .customer-expected-payment-date {
+  border: 1px solid #fdba74;
+  background: #ffedd5;
+  color: #9a3412;
+  font-weight: 600;
+}
+
+.dark .customer-overview-metric > .customer-expected-payment-date {
+  border-color: #854d0e;
+  background: rgba(120, 53, 15, 0.28);
+  color: #fcd34d;
 }
 
 .customer-overview-metric--paid > strong {

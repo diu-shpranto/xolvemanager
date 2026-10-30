@@ -15,6 +15,7 @@ import { isValidPhoneNumber } from '../../utils/phoneUtils';
 
 interface CommunicationRequest extends WhatsAppMessageContext {
   templateId?: WhatsAppTemplateId;
+  customMessage?: string;
 }
 
 interface WhatsAppCommunicationApi {
@@ -62,8 +63,8 @@ export const WhatsAppCommunicationProvider: React.FC<{ children: React.ReactNode
 
   useEffect(() => {
     if (!generated) return;
-    setMessage(generated.message);
-  }, [generated]);
+    setMessage(request?.customMessage || generated.message);
+  }, [generated, request?.customMessage]);
 
   const openMessage = (nextRequest: CommunicationRequest): boolean => {
     if (!isEnabled || !showButtons) {

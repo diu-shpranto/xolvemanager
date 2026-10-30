@@ -17,7 +17,7 @@ import type {
   FinancialAdjustment,
 } from '../types';
 import { parseCSV } from '../utils/csvParser';
-import { isBusinessNotification } from './localStorageStore';
+import { isBusinessNotification, isValidOrderQuotation } from './localStorageStore';
 import { buildCustomerCrmMetrics } from '../utils/customerCrm';
 import { getAccountCapacity } from '../utils/resourceManagement';
 import { getInvoiceDisplayStatus } from '../utils/invoiceUtils';
@@ -47,7 +47,7 @@ const FINANCIAL_COLLECTIONS = [
   'financialAccounts', 'expenses', 'otherIncome', 'financialTransfers', 'financialAdjustments', 'dailyClosings',
 ] as const;
 type FinancialCollectionName = typeof FINANCIAL_COLLECTIONS[number];
-const OPTIONAL_COLLECTIONS = ['reminders', 'profitabilityCosts', 'financialReconciliations', 'financialPeriods'] as const;
+const OPTIONAL_COLLECTIONS = ['reminders', 'profitabilityCosts', 'financialReconciliations', 'financialPeriods', 'orders'] as const;
 type OptionalCollectionName = typeof OPTIONAL_COLLECTIONS[number];
 export type BackupRecords = Record<CollectionName, unknown[]> & Partial<Record<FinancialCollectionName | OptionalCollectionName, unknown[]>>;
 export type BackupEnvironment = 'demo' | 'production' | 'mixed' | 'unknown';
@@ -285,6 +285,7 @@ export function validateBackup(input: unknown): BackupValidation {
   const optionalArrays = Object.fromEntries(OPTIONAL_COLLECTIONS.map(name =>
     [name, Array.isArray(records[name]) ? records[name] as unknown[] : []]
   )) as Record<OptionalCollectionName, unknown[]>;
+  const customers = getIds(arrays.customers);
   const reminderIds = new Set<string>();
   optionalArrays.reminders.forEach((item, index) => {
     if (!isRecord(item) || typeof item.id !== 'string' || !item.id
@@ -316,6 +317,16 @@ export function validateBackup(input: unknown): BackupValidation {
     }
     if (reconciliationIds.has(item.id)) errors.push(`Financial reconciliations contain duplicate ID "${item.id}".`);
     reconciliationIds.add(item.id);
+  });
+  const orderIds = new Set<string>();
+  optionalArrays.orders.forEach((item, index) => {
+    if (!isValidOrderQuotation(item)) {
+      errors.push(`Order row ${index + 1} is invalid.`);
+      return;
+    }
+    if (orderIds.has(item.id)) errors.push(`Orders contain duplicate ID "${item.id}".`);
+    orderIds.add(item.id);
+    if (!customers.has(String(item.customerId))) errors.push(`Order ${item.reference} references a missing customer.`);
   });
   const periodIds = new Set<string>();
   optionalArrays.financialPeriods.forEach((item, index) => {
@@ -385,6 +396,11 @@ export function validateBackup(input: unknown): BackupValidation {
         errors.push(`${name} record ${String(item.id ?? '')} belongs to a different business.`);
       }
     }));
+    optionalArrays.orders.forEach(item => {
+      if (isRecord(item) && typeof item.businessId === 'string' && item.businessId !== businessId) {
+        errors.push(`Order record ${String(item.id ?? '')} belongs to a different business.`);
+      }
+    });
     FINANCIAL_COLLECTIONS.forEach(name => financialArrays[name].forEach(item => {
       if (isRecord(item) && typeof item.businessId === 'string' && item.businessId !== businessId) {
         errors.push(`${name} record ${String(item.id ?? '')} belongs to a different business.`);
@@ -537,7 +553,6 @@ export function validateBackup(input: unknown): BackupValidation {
     });
   }
 
-  const customers = getIds(arrays.customers);
   arrays.customers.forEach(item => {
     if (!isRecord(item)) return;
     if (typeof item.name !== 'string' || !item.name.trim()) errors.push(`Customer ${String(item.id)} is missing a name.`);
@@ -675,7 +690,10 @@ export function validateBackup(input: unknown): BackupValidation {
     if (typeof item.price !== 'number' || !Number.isFinite(item.price) || item.price < 0) errors.push(`Subscription ${String(item.id)} has an invalid price.`);
     if (!dateIsValid(item.startDate) || !dateIsValid(item.expiryDate)) errors.push(`Subscription ${String(item.id)} has an invalid date.`);
     if (item.status !== undefined && !['active', 'expiring_soon', 'expired', 'cancelled'].includes(String(item.status))) errors.push(`Subscription ${String(item.id)} has an invalid status.`);
-    if (!['paid', 'pending', 'partial', 'failed', 'refunded'].includes(String(item.paymentStatus))) errors.push(`Subscription ${String(item.id)} has an invalid payment status.`);
+    if (!['paid', 'pending', 'partial', 'failed', 'refunded', 'voided'].includes(String(item.paymentStatus))) errors.push(`Subscription ${String(item.id)} has an invalid payment status.`);
+    if (item.paymentStatus === 'voided' && item.status !== 'cancelled') {
+      errors.push(`Voided subscription ${String(item.id)} must be cancelled.`);
+    }
   });
   const profileSubscriptionIds = new Set<string>();
   profilesById.forEach(profile => {
@@ -699,6 +717,12 @@ export function validateBackup(input: unknown): BackupValidation {
     if (!serviceHasPlan(item.serviceId, item.planId, item.plan)) errors.push(`Sale ${String(item.id)} references a missing plan.`);
     if (typeof item.amount !== 'number' || !Number.isFinite(item.amount) || item.amount < 0) errors.push(`Sale ${String(item.id)} has an invalid amount.`);
     if (item.amountPaid !== undefined && (typeof item.amountPaid !== 'number' || !Number.isFinite(item.amountPaid) || item.amountPaid < 0)) errors.push(`Sale ${String(item.id)} has an invalid paid amount.`);
+    if (item.paymentAllocationBaseline !== undefined
+      && (typeof item.paymentAllocationBaseline !== 'number'
+        || !Number.isFinite(item.paymentAllocationBaseline)
+        || item.paymentAllocationBaseline < 0)) {
+      errors.push(`Sale ${String(item.id)} has an invalid payment allocation baseline.`);
+    }
     if (item.actualCostSnapshot !== undefined
       && (typeof item.actualCostSnapshot !== 'number' || !Number.isFinite(item.actualCostSnapshot) || item.actualCostSnapshot < 0)) {
       errors.push(`Sale ${String(item.id)} has an invalid actual cost snapshot.`);
@@ -710,7 +734,19 @@ export function validateBackup(input: unknown): BackupValidation {
       errors.push(`Sale ${String(item.id)} has an invalid actual cost allocation.`);
     }
     if (!dateIsValid(item.date)) errors.push(`Sale ${String(item.id)} has an invalid date.`);
-    if (!['paid', 'pending', 'partial', 'failed', 'refunded'].includes(String(item.paymentStatus))) errors.push(`Sale ${String(item.id)} has an invalid payment status.`);
+    if (item.expectedPaymentDate !== undefined && !dateOnlyIsValid(item.expectedPaymentDate)) {
+      errors.push(`Sale ${String(item.id)} has an invalid expected payment date.`);
+    }
+    if (!['paid', 'pending', 'partial', 'failed', 'refunded', 'voided'].includes(String(item.paymentStatus))) errors.push(`Sale ${String(item.id)} has an invalid payment status.`);
+    if (item.paymentStatus === 'voided'
+      && ((Number(item.amountPaid) || 0) !== 0
+        || (Number(item.paymentAllocationBaseline) || 0) !== 0
+        || !dateIsValid(item.voidedAt)
+        || typeof item.voidReason !== 'string'
+        || !item.voidReason.trim()
+        || item.voidReason.length > 500)) {
+      errors.push(`Voided sale ${String(item.id)} has invalid reversal details.`);
+    }
     if (item.lineItems !== undefined) {
       if (!Array.isArray(item.lineItems) || item.lineItems.length === 0) {
         errors.push(`Sale ${String(item.id)} has an invalid line-item list.`);
@@ -734,6 +770,9 @@ export function validateBackup(input: unknown): BackupValidation {
           if (line.currency !== item.currency) errors.push(`${lineLabel} uses a different currency from its sale.`);
           if (!dateIsValid(line.startDate) || !Number.isSafeInteger(line.durationDays) || Number(line.durationDays) < 1) {
             errors.push(`${lineLabel} has an invalid subscription period.`);
+          }
+          if (line.expectedPaymentDate !== undefined && !dateOnlyIsValid(line.expectedPaymentDate)) {
+            errors.push(`${lineLabel} has an invalid expected payment date.`);
           }
           const expectedSubtotal = Math.round(Number(line.unitPrice) * Number(line.quantity) * 100);
           if (Number.isSafeInteger(expectedSubtotal) && Math.abs(expectedSubtotal - Math.round(Number(line.subtotal) * 100)) > 0) {
@@ -846,7 +885,7 @@ export function validateBackup(input: unknown): BackupValidation {
       errors.push(`Payment ${String(item.id)} references a missing refunded payment.`);
     }
     if (!dateIsValid(item.paymentDate)) errors.push(`Payment ${String(item.id)} has an invalid date.`);
-    if (!['paid', 'pending', 'partial', 'failed', 'refunded'].includes(String(item.paymentStatus))) errors.push(`Payment ${String(item.id)} has an invalid status.`);
+    if (!['paid', 'pending', 'partial', 'failed', 'refunded', 'voided'].includes(String(item.paymentStatus))) errors.push(`Payment ${String(item.id)} has an invalid status.`);
   });
   arrays.invoices.forEach(item => {
     if (!isRecord(item)) return;
@@ -858,10 +897,23 @@ export function validateBackup(input: unknown): BackupValidation {
     if (typeof item.totalAmount !== 'number' || !Number.isFinite(item.totalAmount) || item.totalAmount < 0) errors.push(`Invoice ${String(item.invoiceId)} has an invalid total.`);
     if (typeof item.paidAmount !== 'number' || !Number.isFinite(item.paidAmount) || item.paidAmount < 0 ||
       typeof item.dueAmount !== 'number' || !Number.isFinite(item.dueAmount) || item.dueAmount < 0) errors.push(`Invoice ${String(item.invoiceId)} has invalid payment totals.`);
-    if (typeof item.paidAmount === 'number' && typeof item.dueAmount === 'number' &&
-      Math.abs(item.paidAmount + item.dueAmount - (item.totalAmount as number)) > 0.01) errors.push(`Invoice ${String(item.invoiceId)} has inconsistent payment totals.`);
+    if (item.paymentStatus === 'voided') {
+      if (item.paidAmount !== 0 || item.dueAmount !== 0) {
+        errors.push(`Voided invoice ${String(item.invoiceId)} must not have paid or due balances.`);
+      }
+    } else if (typeof item.paidAmount === 'number' && typeof item.dueAmount === 'number' &&
+      Math.abs(item.paidAmount + item.dueAmount - (item.totalAmount as number)) > 0.01) {
+      errors.push(`Invoice ${String(item.invoiceId)} has inconsistent payment totals.`);
+    }
     if (!dateIsValid(item.invoiceDate)) errors.push(`Invoice ${String(item.invoiceId)} has an invalid date.`);
-    if (!['paid', 'pending', 'partial', 'failed', 'refunded'].includes(String(item.paymentStatus))) errors.push(`Invoice ${String(item.invoiceId)} has an invalid status.`);
+    if (!['paid', 'pending', 'partial', 'failed', 'refunded', 'voided'].includes(String(item.paymentStatus))) errors.push(`Invoice ${String(item.invoiceId)} has an invalid status.`);
+    if (item.paymentStatus === 'voided'
+      && (!dateIsValid(item.voidedAt)
+        || typeof item.voidReason !== 'string'
+        || !item.voidReason.trim()
+        || item.voidReason.length > 500)) {
+      errors.push(`Voided invoice ${String(item.invoiceId)} has invalid reversal details.`);
+    }
   });
   arrays.activityLogs.forEach(item => {
     if (!isRecord(item)) return;
