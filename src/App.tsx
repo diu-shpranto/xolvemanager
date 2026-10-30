@@ -24,6 +24,7 @@ import { RecoveryScreen } from './components/common/RecoveryScreen';
 import { getAppLocation, sectionPaths, type SettingsStartSection } from './utils/appRoutes';
 import { getActivityEntityType } from './services/activityService';
 import { confirmUnsavedChangesBeforeNavigation, hasRegisteredUnsavedChanges } from './services/unsavedChanges';
+import { isChunkLoadError } from './utils/runtimeErrors';
 
 const DashboardView = lazy(() => import('./components/views/DashboardView').then(module => ({ default: module.DashboardView })));
 const CustomersView = lazy(() => import('./components/views/CustomersView').then(module => ({ default: module.CustomersView })));
@@ -50,17 +51,25 @@ const NewSaleModal = lazy(() => import('./components/modals/NewSaleModal').then(
 
 class LazyViewErrorBoundary extends React.Component<
   { children: React.ReactNode; onDashboard: () => void },
-  { hasError: boolean }
+  { hasError: boolean; retryByReload: boolean }
 > {
-  state = { hasError: false };
+  state = { hasError: false, retryByReload: false };
 
-  static getDerivedStateFromError(): { hasError: boolean } {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error): { hasError: boolean; retryByReload: boolean } {
+    return { hasError: true, retryByReload: isChunkLoadError(error) };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo): void {
     console.error('Could not load the selected app page.', error, info);
   }
+
+  private retry = (): void => {
+    if (this.state.retryByReload) {
+      window.location.reload();
+      return;
+    }
+    this.setState({ hasError: false, retryByReload: false });
+  };
 
   render(): React.ReactNode {
     if (this.state.hasError) {
@@ -68,7 +77,7 @@ class LazyViewErrorBoundary extends React.Component<
         <RecoveryScreen
           variant="error"
           onDashboard={this.props.onDashboard}
-          onRetry={() => this.setState({ hasError: false })}
+          onRetry={this.retry}
         />
       );
     }

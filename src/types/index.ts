@@ -566,6 +566,8 @@ export interface Reminder {
   amount?: number;
   currency?: AppCurrency;
   snoozedUntil?: string;
+  dueAt?: string;
+  outcome?: string;
   completedAt?: string;
   dismissedAt?: string;
   createdAt: string;
@@ -770,6 +772,8 @@ export type ActivityType =
   | 'subscription_expired'
   | 'payment_received'
   | 'payment_recorded'
+  | 'advance_credit_created'
+  | 'advance_credit_applied'
   | 'invoice_created'
   | 'invoice_generated'
   | 'profile_assigned'
@@ -884,6 +888,8 @@ export type ActivityAction =
   | 'completed'
   | 'renewed'
   | 'paid'
+  | 'applied'
+  | 'refunded'
   | 'failed'
   | 'assigned'
   | 'unassigned'

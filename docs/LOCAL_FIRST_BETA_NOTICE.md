@@ -6,6 +6,9 @@ not uploaded to a XolveManager backend or synchronized across devices. Clearing
 browser data, losing access to a browser profile, or changing devices can make
 records unavailable.
 
+Activity and audit history is stored in the same local browser storage and is
+not sent to a server. It is view-only in the Activity & Audit Trail page.
+
 Sign-in and session state are also local to the browser. Local sign-in is a
 convenience gate, not server-side authentication, access control, or a security
 boundary. Anyone with access to the browser profile or device may be able to

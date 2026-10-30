@@ -40,6 +40,8 @@ const actions: { value: ActivityAction; label: string }[] = [
   { value: 'completed', label: 'Completed' },
   { value: 'renewed', label: 'Renewed' },
   { value: 'paid', label: 'Paid' },
+  { value: 'applied', label: 'Advance applied' },
+  { value: 'refunded', label: 'Refunded' },
   { value: 'failed', label: 'Failed' },
   { value: 'assigned', label: 'Assigned' },
   { value: 'unassigned', label: 'Unassigned' },
@@ -334,9 +336,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onViewRelated }) => {
         <div>
           <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-purple-200/60 bg-purple-50 text-purple-700 dark:border-purple-800/40 dark:bg-purple-950/50 dark:text-purple-300"><Activity className="h-5 w-5" /></span>
-            Activity
+            Activity &amp; Audit Trail
           </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Track important changes and business activity.</p>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">A chronological record of business changes, stored locally and not editable from this page.</p>
         </div>
         <div className="text-xs text-slate-500">{formatAppNumber(businessLogs.length, language)} total activities</div>
       </header>

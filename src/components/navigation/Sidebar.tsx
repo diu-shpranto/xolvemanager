@@ -169,7 +169,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'history' as NavSection,
-      label: language === 'bn' ? t('nav_history') : 'Activity History',
+      label: language === 'bn' ? t('nav_history') : 'Activity & Audit Trail',
       icon: History,
       badge: null,
     },
@@ -193,7 +193,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'reminders' as NavSection,
-      label: language === 'bn' ? 'স্মার্ট রিমাইন্ডার' : 'Reminders',
+      label: language === 'bn' ? 'স্মার্ট রিমাইন্ডার' : 'Follow-up Center',
       icon: BellRing,
       badge: null,
     },

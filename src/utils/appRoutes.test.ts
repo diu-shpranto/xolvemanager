@@ -13,3 +13,13 @@ test('invoice record routes preserve encoded IDs for direct navigation and reloa
 test('malformed encoded record IDs do not break route parsing', () => {
   assert.equal(getAppLocation('/invoices/%ZZ').recordId, '%ZZ');
 });
+
+test('activity and audit-trail routes open the existing history view', () => {
+  assert.equal(getAppLocation('/activity').section, 'history');
+  assert.equal(getAppLocation('/audit-trail').section, 'history');
+});
+
+test('follow-up center route opens the existing reminder section', () => {
+  assert.equal(getAppLocation('/follow-ups').section, 'reminders');
+  assert.equal(getAppLocation('/reminders').section, 'reminders');
+});

@@ -39,9 +39,12 @@ const recordSections: Record<RecordSection, NavSection> = {
 
 const routeAliases: Record<string, NavSection> = {
   '/': 'dashboard',
+  '/activity': 'history',
+  '/audit-trail': 'history',
   '/transfers': 'cashbook',
   '/communications': 'settings',
   '/audit-log': 'history',
+  '/follow-ups': 'reminders',
   '/backup': 'settings',
 };
 

@@ -178,9 +178,9 @@ import {
   getResolvedReminderSourceKeys,
   getReminderPreferences,
   reconcileReminderCandidates,
-  sanitizeReminderText,
   type ReminderCandidate,
 } from '../services/reminderEngine';
+import { createManualReminderRecord, updateReminderRecord } from '../services/followUpService';
 
 export interface NewSalePayload {
   customerId: string;
@@ -405,7 +405,7 @@ interface AppContextType {
   addFinancialReconciliation: (input: Omit<FinancialReconciliation, 'id' | 'businessId' | 'createdAt' | 'systemBalance' | 'difference' | 'status'>) => FinancialReconciliation;
   closeFinancialPeriod: (startDate: string, endDate: string, note: string) => FinancialPeriod;
   reopenFinancialPeriod: (periodId: string, reason: string) => void;
-  completeReminder: (reminderId: string) => void;
+  completeReminder: (reminderId: string, outcome?: string) => void;
   snoozeReminder: (reminderId: string, until: string) => void;
   dismissReminder: (reminderId: string) => void;
   reopenReminder: (reminderId: string) => void;
@@ -600,16 +600,19 @@ const normalizeSettings = (settings: Partial<AppSettings>): AppSettings => ({
   whatsappReminderTemplateBN: settings.whatsappReminderTemplateBN ?? initialSettings.whatsappReminderTemplateBN,
 });
 
-const normalizeActivityLogs = (
-  logs: ActivityLog[],
-  accounts: Account[] = []
-): ActivityLog[] => {
-  const credentialValues = accounts.flatMap(account => [
+const getAccountCredentialValues = (accounts: Account[]): string[] =>
+  accounts.flatMap(account => [
     account.email,
     account.username || '',
     account.password,
     ...account.profiles.map(profile => profile.pin || ''),
   ]);
+
+const normalizeActivityLogs = (
+  logs: ActivityLog[],
+  accounts: Account[] = []
+): ActivityLog[] => {
+  const credentialValues = getAccountCredentialValues(accounts);
   return logs.map(log => {
     const description = sanitizeActivityDescription(log.description, credentialValues);
     return {
@@ -833,6 +836,18 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() => {
     return normalizeActivityLogs(initialBusinessData.activityLogs, initialBusinessData.accounts);
   });
+  const loggedAdvanceCreditPaymentIds = useRef(new Set(
+    activityLogs
+      .filter(log => log.type === 'advance_credit_created')
+      .map(log => log.paymentId || log.entityId)
+      .filter((id): id is string => Boolean(id))
+  ));
+  const loggedAdvanceCreditApplicationIds = useRef(new Set(
+    activityLogs
+      .filter(log => log.type === 'advance_credit_applied')
+      .map(log => String(log.metadata?.advanceApplicationId || ''))
+      .filter(Boolean)
+  ));
   const [notifications, setNotifications] = useState<BusinessNotification[]>(() => getNotifications());
   const loggedInvoiceEntityIds = useRef(
     new Set(
@@ -1343,8 +1358,83 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       id: createRecordId('activity'),
       businessId: currentBusiness?.businessId,
       createdBy: currentUser?.uid || 'admin',
+      sensitiveValues: getAccountCredentialValues(accounts),
     });
-    setActivityLogs(prev => [newLog, ...prev]);
+    setActivityLogs(prev => prev.some(existing => existing.id === newLog.id)
+      ? prev
+      : [newLog, ...prev]);
+  };
+
+  const logAdvanceCreditCreated = (payment: Payment, amount: number): void => {
+    if (amount <= 0 || loggedAdvanceCreditPaymentIds.current.has(payment.id)) return;
+    loggedAdvanceCreditPaymentIds.current.add(payment.id);
+    const customer = getCustomerById(payment.customerId);
+    logActivity({
+      type: 'advance_credit_created',
+      category: 'payments',
+      action: 'created',
+      title: 'Advance Credit Created',
+      description: `${formatCurrency(amount, payment.currency)} was added to ${getCustomerDisplayName(customer)}’s available advance credit from payment ${payment.id}. This credit comes from cash already recorded as received.`,
+      entityType: 'payment',
+      entityId: payment.id,
+      customerId: payment.customerId,
+      saleId: payment.saleId,
+      paymentId: payment.id,
+      invoiceId: payment.invoiceId,
+      amount,
+      currency: payment.currency,
+      metadata: {
+        advanceCreditCreated: amount,
+        sourcePaymentId: payment.id,
+        cashReceived: payment.amount,
+      },
+    });
+  };
+
+  const logAdvanceCreditApplied = (details: {
+    applicationId: string;
+    customerId: string;
+    amount: number;
+    currency: Payment['currency'];
+    entityType: NonNullable<ActivityLog['entityType']>;
+    entityId: string;
+    saleId?: string;
+    paymentId?: string;
+    invoiceId?: string;
+    invoiceNumber?: string;
+    invoiceNumbers?: string;
+    paidAmount?: number;
+    dueAmount?: number;
+  }): void => {
+    if (details.amount <= 0 || loggedAdvanceCreditApplicationIds.current.has(details.applicationId)) return;
+    loggedAdvanceCreditApplicationIds.current.add(details.applicationId);
+    const customer = getCustomerById(details.customerId);
+    logActivity({
+      type: 'advance_credit_applied',
+      category: 'payments',
+      action: 'applied',
+      title: 'Advance Credit Applied',
+      description: `${formatCurrency(details.amount, details.currency)} from existing customer advance was applied to ${details.entityType === 'sale' ? 'sale' : 'outstanding invoices'}. No new cash was received.`,
+      entityType: details.entityType,
+      entityId: details.entityId,
+      customerName: getCustomerDisplayName(customer),
+      customerId: details.customerId,
+      saleId: details.saleId,
+      paymentId: details.paymentId,
+      invoiceId: details.invoiceId,
+      invoiceNumber: details.invoiceNumber,
+      amount: details.amount,
+      currency: details.currency,
+      metadata: {
+        advanceApplicationId: details.applicationId,
+        amount: details.amount,
+        source: 'advance_credit',
+        cashReceived: 0,
+        ...(details.paidAmount !== undefined ? { paidAmount: details.paidAmount } : {}),
+        ...(details.dueAmount !== undefined ? { dueAmount: details.dueAmount } : {}),
+        ...(details.invoiceNumbers ? { invoiceNumbers: details.invoiceNumbers } : {}),
+      },
+    });
   };
 
   const addNotification = (details: NewNotification): BusinessNotification => {
@@ -1437,26 +1527,27 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
   const updateReminderStatus = (
     reminderId: string,
     status: ReminderStatus,
-    details: { snoozedUntil?: string; completedAt?: string; dismissedAt?: string } = {}
+    details: { snoozedUntil?: string; outcome?: string } = {}
   ) => {
     const reminder = reminders.find(item => item.id === reminderId);
     if (!reminder) throw new Error('Reminder could not be found.');
     const now = new Date().toISOString();
-    setReminders(previous => previous.map(item => item.id === reminderId ? {
-      ...item,
+    setReminders(previous => updateReminderRecord(
+      previous,
+      reminderId,
       status,
-      snoozedUntil: status === 'snoozed' ? details.snoozedUntil : undefined,
-      completedAt: status === 'completed' ? details.completedAt || now : undefined,
-      dismissedAt: status === 'dismissed' ? details.dismissedAt || now : undefined,
-      updatedAt: now,
-    } : item));
+      now,
+      details,
+      currentBusiness?.businessId
+    ));
     const activityType = status === 'completed' ? 'reminder_completed'
       : status === 'snoozed' ? 'reminder_snoozed'
         : status === 'dismissed' ? 'reminder_dismissed' : 'reminder_reopened';
+    const isCustomerFollowUp = reminder.type === 'customer_follow_up';
     logActivity({
       type: activityType,
       category: 'reminders',
-      action: status === 'completed' ? 'completed' : 'updated',
+      action: status === 'completed' ? 'completed' : status === 'dismissed' && isCustomerFollowUp ? 'cancelled' : 'updated',
       entityType: 'reminder',
       entityId: reminder.id,
       customerId: reminder.customerId,
@@ -1464,12 +1555,15 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       subscriptionId: reminder.subscriptionId,
       saleId: reminder.saleId,
       invoiceId: reminder.invoiceId,
-      title: `Reminder ${status}`,
+      title: isCustomerFollowUp && status === 'dismissed' ? 'Follow-up Cancelled'
+        : isCustomerFollowUp && status === 'completed' ? 'Follow-up Completed'
+          : `Reminder ${status}`,
       description: reminder.title,
       metadata: { reminderId: reminder.id, reminderType: reminder.type, sourceEntityId: reminder.sourceEntityId },
     });
   };
-  const completeReminder = (reminderId: string) => updateReminderStatus(reminderId, 'completed');
+  const completeReminder = (reminderId: string, outcome?: string) =>
+    updateReminderStatus(reminderId, 'completed', { outcome });
   const snoozeReminder = (reminderId: string, until: string) => {
     const timestamp = Date.parse(until);
     if (!Number.isFinite(timestamp) || timestamp <= Date.now()) {
@@ -1482,38 +1576,15 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
   const createManualReminder = (
     details: Omit<ReminderCandidate, 'businessId' | 'deterministicKey' | 'systemGenerated'>
   ): Reminder => {
-    if (!details.title.trim()) throw new Error('Enter a reminder title.');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(details.dueDate)
-      || Number.isNaN(Date.parse(`${details.dueDate}T00:00:00`))) {
-      throw new Error('Choose a valid reminder date.');
-    }
     const sourceEntityId = details.sourceEntityId || details.customerId || createRecordId('followup');
-    const deterministicKey = [
-      currentBusiness?.businessId || 'local',
-      details.type,
-      sourceEntityId,
-      details.targetDate || details.dueDate,
-      details.stage || details.title.trim().toLocaleLowerCase(),
-    ].join(':');
-    if (reminders.some(reminder => reminder.deterministicKey === deterministicKey)) {
-      throw new Error('A reminder for this item and date already exists.');
-    }
-    const now = new Date().toISOString();
-    const reminder: Reminder = {
-      ...details,
-      title: sanitizeReminderText(details.title.trim()),
-      description: details.description ? sanitizeReminderText(details.description) : undefined,
-      id: createRecordId('reminder'),
-      reminderId: undefined,
-      businessId: currentBusiness?.businessId,
-      deterministicKey,
-      sourceEntityId,
-      status: 'open',
-      systemGenerated: false,
-      createdAt: now,
-      updatedAt: now,
-    };
-    reminder.reminderId = reminder.id;
+    const reminder = createManualReminderRecord(
+      { ...details, sourceEntityId },
+      reminders,
+      {
+        id: createRecordId('reminder'),
+        businessId: currentBusiness?.businessId,
+      }
+    );
     setReminders(previous => [reminder, ...previous]);
     logActivity({
       type: 'reminder_created',
@@ -1706,6 +1777,14 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
             beforeStatus: previousCustomer.status || 'active',
             afterStatus: updatedCustomer.status || 'active',
           } : {}),
+          ...(previousCustomer.name !== updatedCustomer.name ? {
+            beforeName: previousCustomer.name,
+            afterName: updatedCustomer.name,
+          } : {}),
+          ...(previousCustomer.customerType !== updatedCustomer.customerType ? {
+            beforeCustomerType: previousCustomer.customerType || 'Customer',
+            afterCustomerType: updatedCustomer.customerType || 'Customer',
+          } : {}),
         },
       });
     }
@@ -1830,6 +1909,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       customerName: cust.name,
       customerId: cust.id,
       entityId: cust.id,
+      metadata: { beforeStatus: cust.status || 'active', afterStatus: 'archived' },
     });
   };
 
@@ -1942,6 +2022,18 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         serviceId: id,
         metadata: {
           changedFields: changedFields.join(', '),
+          ...(previousService.name !== updatedService.name ? {
+            beforeName: previousService.name,
+            afterName: updatedService.name,
+          } : {}),
+          ...(previousService.category !== updatedService.category ? {
+            beforeCategory: previousService.category,
+            afterCategory: updatedService.category,
+          } : {}),
+          ...(previousService.status !== updatedService.status ? {
+            beforeStatus: previousService.status,
+            afterStatus: updatedService.status,
+          } : {}),
           ...(previousService.defaultPrice !== updatedService.defaultPrice ? {
             beforeDefaultPrice: previousService.defaultPrice ?? null,
             afterDefaultPrice: updatedService.defaultPrice ?? null,
@@ -4008,6 +4100,29 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         },
       });
     }
+    if (tenderAllocation?.advanceCreditCreated) {
+      logAdvanceCreditCreated(newPayment, tenderAllocation.advanceCreditCreated);
+    }
+    if (advanceResult.appliedAmount > 0) {
+      logAdvanceCreditApplied({
+        applicationId: `${payload.operationId || newSale.id}:initial-advance`,
+        customerId: payload.customerId,
+        amount: advanceResult.appliedAmount,
+        currency: payload.currency,
+        entityType: 'sale',
+        entityId: newSale.id,
+        saleId: newSale.id,
+        paymentId: advanceResult.payments.find(payment =>
+          payment.allocations?.some(allocation =>
+            allocation.advanceApplicationId === `${payload.operationId || newSale.id}:initial-advance`
+          )
+        )?.id,
+        invoiceId: newInvoice.invoiceId,
+        invoiceNumber: invoiceNo,
+        paidAmount: persistedSale.amountPaid,
+        dueAmount: Math.max(0, persistedSale.amount - persistedSale.amountPaid),
+      });
+    }
     if (paymentStatus === 'paid') {
       logActivity({
         type: 'sale_completed',
@@ -4257,6 +4372,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       id: createRecordId('activity'),
       businessId: currentBusiness?.businessId,
       createdBy: currentUser?.uid || 'admin',
+      sensitiveValues: getAccountCredentialValues(accounts),
     });
     const nextActivityLogs = [auditLog, ...activityLogs];
 
@@ -4524,6 +4640,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         status: paymentStatus,
       },
     });
+    logAdvanceCreditCreated(newPayment, newPayment.advanceCreditAmount || 0);
     if (paymentWasReceived) {
       addNotification({
         dedupeKey: `payment-received-${newPayment.id}`,
@@ -5005,6 +5122,20 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         status: 'paid',
       },
     });
+    logAdvanceCreditApplied({
+      applicationId: `${newPayment.operationId || newPayment.id}:collection-advance`,
+      customerId: input.customerId,
+      amount: allocationPlan.advanceApplied,
+      currency: input.currency,
+      entityType: 'payment',
+      entityId: newPayment.id,
+      saleId: singleSale?.id,
+      paymentId: newPayment.id,
+      invoiceId: singleSale ? invoiceBySaleId.get(singleSale.id)?.invoiceId : undefined,
+      invoiceNumber: singleSale ? invoiceBySaleId.get(singleSale.id)?.invoiceNumber : undefined,
+      invoiceNumbers: invoiceNumbers.join(', '),
+    });
+    logAdvanceCreditCreated(newPayment, allocationPlan.advanceCreditCreated);
     addNotification({
       dedupeKey: `payment-received-${newPayment.id}`,
       type: 'payment_received',
@@ -5148,34 +5279,21 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     setInvoices(nextInvoices);
     if (saleSubscriptionIds.size > 0) setSubscriptions(nextSubscriptions);
 
-    const customer = getCustomerById(customerId);
-    logActivity({
-      type: 'payment_recorded',
-      title: 'Advance Credit Applied',
-      description: `${formatCurrency(result.appliedAmount, sale.currency)} from existing customer advance was applied to sale ${sale.invoiceNo}. No new cash was received.`,
-      customerName: getCustomerDisplayName(customer),
+    logAdvanceCreditApplied({
+      applicationId: operationId,
+      customerId,
+      amount: result.appliedAmount,
+      currency: sale.currency,
       entityType: 'sale',
       entityId: sale.id,
-      customerId,
-      serviceId: sale.serviceId,
-      planId: sale.planId,
-      subscriptionId: sale.subscriptionId,
       saleId: sale.id,
       paymentId: result.payments.find(payment =>
         payment.allocations?.some(allocation => allocation.advanceApplicationId === operationId)
       )?.id,
       invoiceId: updatedInvoice.invoiceId,
       invoiceNumber: updatedInvoice.invoiceNumber,
-      amount: result.appliedAmount,
-      currency: sale.currency,
-      metadata: {
-        advanceApplicationId: operationId,
-        amount: result.appliedAmount,
-        paidAmount: recognizedPaid,
-        dueAmount: recognizedDue,
-        source: 'advance_credit',
-        cashReceived: 0,
-      },
+      paidAmount: recognizedPaid,
+      dueAmount: recognizedDue,
     });
     return result.appliedAmount;
   };
@@ -5327,6 +5445,8 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     const customer = getCustomerById(original.customerId);
     logActivity({
       type: 'refund_created',
+      category: 'payments',
+      action: 'refunded',
       title: 'Payment Refunded',
       description: `${formatCurrency(newPayment.amount, newPayment.currency)} refunded to ${getCustomerDisplayName(customer)}.`,
       entityType: 'payment',
@@ -5443,6 +5563,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         status: newPayment.paymentStatus,
       },
     });
+    logAdvanceCreditCreated(newPayment, newPayment.advanceCreditAmount || 0);
     if (newPayment.invoiceId) {
       logActivity({
         type: newPayment.paymentStatus === 'paid' ? 'invoice_paid' : 'invoice_due',

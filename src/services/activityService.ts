@@ -7,8 +7,9 @@ import type {
 
 type ActivityInput = Omit<ActivityLog, 'id' | 'timestamp' | 'createdAt' | 'businessId' | 'createdBy'>;
 
-const sensitiveKeyPattern = /password|passcode|pin|api.?key|secret|credential|token/i;
-const sensitiveTextPattern = /\b(password|passcode|pin|api[\s_-]?key|secret|credential|token)\s*[:=]\s*([^\s,;]+)/gi;
+const sensitiveKeyPattern = /password|passcode|pin|api.?key|secret|credential|token|card.?number|cvv|cvc|security.?code|bank.?account|routing.?number|iban|account.?number|authorization/i;
+const sensitiveTextPattern = /\b(password|passcode|pin|api[\s_-]?key|secret|credential|token|card\s*number|cvv|cvc|security\s*code|bank\s*account|routing\s*number|iban|account\s*number|authorization)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi;
+const bearerAuthorizationPattern = /\b(authorization|auth(?:entication)?\s*token)\s*[:=]\s*bearer\s+[^\s,;]+/gi;
 
 export const normalizeActivitySearch = (value: string): string =>
   value.normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -16,6 +17,7 @@ export const normalizeActivitySearch = (value: string): string =>
 export function sanitizeActivityDescription(description: string, sensitiveValues: string[] = []): string {
   return sensitiveValues.filter(value => value.length >= 3)
     .reduce((safe, value) => safe.split(value).join('[redacted]'), description)
+    .replace(bearerAuthorizationPattern, '$1: [redacted]')
     .replace(sensitiveTextPattern, '$1: [redacted]');
 }
 
@@ -48,6 +50,8 @@ export function getActivityAction(log: Pick<ActivityLog, 'action' | 'type' | 'ti
   if (value.includes('deactivat') || value.includes('archiv')) return 'deactivated';
   if (value.includes('unassign')) return 'unassigned';
   if (value.includes('assign')) return 'assigned';
+  if (value.includes('refund')) return 'refunded';
+  if (value.includes('advance credit applied') || value.includes('credit applied')) return 'applied';
   if (value.includes('renew')) return 'renewed';
   if (value.includes('paid') || value.includes('received')) return 'paid';
   if (value.includes('fail')) return 'failed';
@@ -76,27 +80,46 @@ export function getActivityEntityType(log: Pick<ActivityLog, 'entityType' | 'cat
                         : category === 'data' ? 'data' : 'system';
 }
 
-function safeMetadata(metadata?: ActivityLog['metadata']): ActivityLog['metadata'] {
+function safeMetadata(metadata?: ActivityLog['metadata'], sensitiveValues: string[] = []): ActivityLog['metadata'] {
   if (!metadata) return undefined;
   return Object.fromEntries(Object.entries(metadata)
     .filter(([key]) => !sensitiveKeyPattern.test(key))
-    .map(([key, value]) => [key, typeof value === 'string' ? sanitizeActivityDescription(value) : value]));
+    .map(([key, value]) => [key, typeof value === 'string'
+      ? sanitizeActivityDescription(value, sensitiveValues)
+      : value]));
 }
 
 export function createAuditLog(
   input: ActivityInput,
-  identity: { id: string; timestamp?: string; businessId?: string; createdBy?: string }
+  identity: {
+    id: string;
+    timestamp?: string;
+    businessId?: string;
+    createdBy?: string;
+    sensitiveValues?: string[];
+  }
 ): ActivityLog {
   const timestamp = identity.timestamp || new Date().toISOString();
   return {
     ...input,
     id: identity.id,
+    entityId: input.entityId
+      || input.customerId
+      || input.serviceId
+      || input.subscriptionId
+      || input.saleId
+      || input.paymentId
+      || input.invoiceId
+      || input.accountId
+      || input.profileId
+      || input.financialAccountId
+      || identity.id,
     ...(identity.businessId ? { businessId: identity.businessId } : {}),
     category: getActivityCategory(input),
     action: getActivityAction(input),
     entityType: getActivityEntityType(input),
-    description: sanitizeActivityDescription(input.description),
-    ...(input.metadata ? { metadata: safeMetadata(input.metadata) } : {}),
+    description: sanitizeActivityDescription(input.description, identity.sensitiveValues),
+    ...(input.metadata ? { metadata: safeMetadata(input.metadata, identity.sensitiveValues) } : {}),
     timestamp,
     ...(identity.createdBy ? { createdBy: identity.createdBy } : {}),
     createdAt: timestamp,
