@@ -1727,6 +1727,20 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <h2 className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
             {hasFilters ? 'No results found.' : 'No data available for this period.'}
           </h2>
+          {!hasFilters && (
+            <>
+              <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-slate-500 dark:text-slate-400">
+                Record sales, payments, or expenses to see real activity in your reports.
+              </p>
+              <button
+                type="button"
+                onClick={() => onNavigate('sales')}
+                className="mt-3 inline-flex min-h-9 items-center rounded-lg px-3 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40"
+              >
+                Open sales
+              </button>
+            </>
+          )}
           {hasFilters && <button type="button" onClick={clearFilters} className="mt-3 text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">Clear filters</button>}
         </div>
       )}

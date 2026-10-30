@@ -440,7 +440,25 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center dark:border-slate-700 dark:bg-slate-900">
           <FileText className="mx-auto h-9 w-9 text-slate-300 dark:text-slate-600" />
           <h2 className="mt-3 text-base font-semibold text-slate-800 dark:text-slate-200">{validInvoices.length === 0 ? 'No invoices yet.' : 'No invoices match these filters.'}</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Invoices are linked to sales and can be generated for any existing sale.</p>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            {validInvoices.length === 0
+              ? availableSales.length > 0
+                ? 'Invoices are linked to sales. Create one for an existing sale.'
+                : 'Invoices are created from sales. Record a sale first to generate an invoice.'
+              : 'Try changing your search or filters.'}
+          </p>
+          {validInvoices.length === 0 && (
+            <button
+              type="button"
+              onClick={() => availableSales.length > 0
+                ? setIsCreateOpen(true)
+                : onNavigateSection?.('sales')}
+              className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg bg-violet-700 px-4 text-xs font-semibold text-white transition-colors hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
+            >
+              <FilePlus2 aria-hidden="true" className="h-4 w-4" />
+              {availableSales.length > 0 ? 'Create invoice for sale' : 'Create a sale first'}
+            </button>
+          )}
         </div>
       ) : (
         <>

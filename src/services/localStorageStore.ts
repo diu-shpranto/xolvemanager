@@ -49,6 +49,7 @@ export const STORAGE_KEYS = {
   FINANCIAL_PERIODS: 'sqp_financial_periods_v1',
   REMINDERS: 'sqp_reminders_v1',
   PROFITABILITY_COSTS: 'sqp_profitability_costs_v1',
+  GETTING_STARTED: 'xolvemanager.getting-started.v1',
 } as const;
 
 export const DATA_ENVIRONMENT_SESSION_KEY = 'xolvemanager.data-environment.v1';
@@ -220,6 +221,39 @@ export const readJsonValue = <T>(
 export const writeJsonValue = (key: string, value: unknown): void => {
   writeRawValue(key, JSON.stringify(value));
 };
+
+export interface GettingStartedState {
+  started: boolean;
+  dismissed: boolean;
+}
+
+export const getInitialGettingStartedState = (hasWorkspaceRecords: boolean): GettingStartedState => ({
+  started: !hasWorkspaceRecords,
+  dismissed: false,
+});
+
+const isGettingStartedState = (value: unknown): value is GettingStartedState =>
+  typeof value === 'object'
+  && value !== null
+  && 'started' in value
+  && typeof value.started === 'boolean'
+  && 'dismissed' in value
+  && typeof value.dismissed === 'boolean';
+
+const getGettingStartedStorageKey = (businessId?: string): string =>
+  `${STORAGE_KEYS.GETTING_STARTED}.${encodeURIComponent(businessId || 'default')}`;
+
+export const getGettingStartedState = (businessId?: string): GettingStartedState | null =>
+  readJsonValue<GettingStartedState | null>(
+    getGettingStartedStorageKey(businessId),
+    null,
+    (value): value is GettingStartedState | null => value === null || isGettingStartedState(value)
+  );
+
+export const saveGettingStartedState = (
+  state: GettingStartedState,
+  businessId?: string
+): void => writeJsonValue(getGettingStartedStorageKey(businessId), state);
 
 export const updateJsonValue = <T>(
   key: string,

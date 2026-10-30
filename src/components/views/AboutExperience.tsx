@@ -397,7 +397,7 @@ export const AboutExperience: React.FC<AboutExperienceProps> = ({
       </div>
       <div className="about-page-data__copy">
         <p>
-          <strong>Local-first beta privacy notice:</strong> Business records are stored in this browser’s LocalStorage. They are not uploaded or synchronized across devices. Browser storage can be cleared or affected by browser, profile, or device changes.
+          <strong>Local-first beta:</strong> Business records are stored in this browser’s LocalStorage and are not automatically synchronized across devices. The app still makes network requests for hosting, Google Fonts, and any remote logos or external services you choose to use.
         </p>
         <p>
           Sign-in is local to this browser and is not server-side authentication or a security boundary. Demo and Production records use separate browser storage namespaces, but both remain on this device and profile.
@@ -407,6 +407,10 @@ export const AboutExperience: React.FC<AboutExperienceProps> = ({
         </p>
         <p>
           Data &amp; Storage settings provide a downloadable JSON backup and a validated restore preview. A restore is applied only after confirmation and a safety backup.
+        </p>
+        <p>
+          <a href="/legal/privacy" className="font-semibold text-violet-700 underline underline-offset-2 dark:text-violet-300">Read the Privacy &amp; Data Notice</a> for details about local storage, external requests, backups, and deletion.
+          {' '}<a href="/legal" className="font-semibold text-violet-700 underline underline-offset-2 dark:text-violet-300">Open the Legal &amp; Trust Center</a>.
         </p>
         <div className="about-page-actions">
           <button type="button" onClick={onOpenDataManagement}>
@@ -470,6 +474,11 @@ export const AboutExperience: React.FC<AboutExperienceProps> = ({
       </dl>
       <p className="about-page-caption">
         <FileText aria-hidden="true" /> In-app data and backup guidance is available in Data &amp; Storage settings.
+      </p>
+      <p className="about-page-caption">
+        <a href="/support" className="font-semibold text-violet-700 underline underline-offset-2 dark:text-violet-300">Contact &amp; Support</a>
+        {' '}·{' '}
+        <a href="/legal" className="font-semibold text-violet-700 underline underline-offset-2 dark:text-violet-300">Legal &amp; Trust Center</a>
       </p>
     </footer>
     <XolveKartEcosystemSection />

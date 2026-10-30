@@ -11,12 +11,14 @@ import {
   Eye,
   EyeOff,
   Globe2,
+  Headset,
   KeyRound,
   LoaderCircle,
   LockKeyhole,
   Mail,
   MessageCircleMore,
   RefreshCw,
+  Scale,
   ShieldCheck,
   UserRound,
   UsersRound,
@@ -85,14 +87,14 @@ const copy = {
     copied: 'Copied',
     continue: 'Continue to sign in',
     localTitle: 'Account on this device',
-    localText: 'Your account is saved in this browser. We cannot email you a recovery link or reset your account for you.',
-    storageWarning: localAuthMessages.storageWarning,
+    termsLabel: 'I acknowledge the draft Terms & Conditions and Privacy & Data Notice for this local-only app.',
+    termsLink: 'View draft terms',
     singleOwnerPolicy: localAuthMessages.singleOwnerPolicy,
     brandHeadline: 'Manage your',
     brandHeadlineSecond: 'Business',
     brandHeadlineAccent: 'with ease.',
     brandDescription: 'Manage customers, plans, sales, and payments in one place.',
-    brandFootnote: 'Your business data stays on this device.',
+    brandFootnote: 'Your business records are stored in this browser.',
     featureCustomers: 'Customers',
     featureSubscriptions: 'Plans and Renewals',
     featureSales: 'Sales & Payments',
@@ -116,7 +118,7 @@ const copy = {
     demoLoading: 'Loading demo…',
   },
   bn: {
-    loginTitle: 'আপনার কর্মক্ষেত্রে সাইন ইন করুন',
+    loginTitle: 'সাইন ইন করুন',
     loginIntro: 'XolveManager দিয়ে আপনার ব্যবসা পরিচালনা চালিয়ে যান।',
     signupTitle: 'মালিকের অ্যাকাউন্ট তৈরি করুন',
     signupIntro: 'এই ব্রাউজারের জন্য একটিমাত্র স্থানীয় মালিক অ্যাকাউন্ট তৈরি করুন।',
@@ -152,15 +154,15 @@ const copy = {
     copied: 'কপি হয়েছে',
     continue: 'সাইন ইন করতে এগিয়ে যান',
     localTitle: 'শুধু স্থানীয় অ্যাকাউন্ট',
-    localText: 'অ্যাকাউন্ট ও সেশন এই ব্রাউজারে সংরক্ষিত। ইমেইল বা সার্ভার-ভিত্তিক পুনরুদ্ধার নেই।',
-    storageWarning: 'এই অ্যাকাউন্ট শুধু এই ব্রাউজার প্রোফাইলে থাকে। এটি সার্ভার-ভিত্তিক নিরাপদ পরিচয় ব্যবস্থা নয়; ডিভাইস বা ব্রাউজার প্রোফাইলে প্রবেশাধিকার থাকা কেউ স্থানীয় ডেটা দেখতে বা পরিবর্তন করতে পারে।',
+    termsLabel: 'আমি এই স্থানীয়-শুধু অ্যাপের জন্য ড্রাফ্ট টার্মস ও প্রাইভেসি নোটিশ বুঝে নিশ্চিত করছি।',
+    termsLink: 'ড্রাফ্ট শর্ত দেখুন',
     singleOwnerPolicy: 'এই অ্যাপ প্রতি ব্রাউজার প্রোফাইলে একটি মালিক অ্যাকাউন্ট সমর্থন করে। প্রথম অ্যাকাউন্টটি মালিক হবে; পরবর্তী নিবন্ধন বন্ধ থাকবে।',
     brandEyebrow: 'সহজ হোক আপনার ব্যবসা।',
     brandHeadline: 'আরও বুদ্ধিমত্তার সাথে',
     brandHeadlineSecond: 'ব্যবসা',
     brandHeadlineAccent: 'পরিচালনা করুন।',
     brandDescription: 'গ্রাহক, সাবস্ক্রিপশন, বিক্রয়, পেমেন্ট এবং আরও অনেক কিছু — সব এক শক্তিশালী কর্মক্ষেত্রে।',
-    brandFootnote: 'আপনার কর্মক্ষেত্র, এই ডিভাইসেই সংরক্ষিত।',
+    brandFootnote: 'আপনার ব্যবসার তথ্য এই ব্রাউজারেই সংরক্ষিত।',
     featureCustomers: 'গ্রাহক ব্যবস্থাপনা',
     featureSubscriptions: 'সাবস্ক্রিপশন ও নবায়ন',
     featureSales: 'বিক্রয় ও পেমেন্ট',
@@ -216,6 +218,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   const [recoveryKey, setRecoveryKey] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState(initialError || '');
   const [busy, setBusy] = useState(false);
   const [resultKey, setResultKey] = useState('');
@@ -269,6 +272,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     setError('');
     setResultKey('');
     setCopied(false);
+    setAcceptedTerms(false);
     onNavigate(path);
   };
 
@@ -287,6 +291,10 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     setError('');
     if (!isValidAuthEmail(email)) {
       setError(language === 'bn' ? 'সঠিক ইমেইল ঠিকানা লিখুন।' : 'Enter a valid email address.');
+      return;
+    }
+    if (mode === 'signup' && !acceptedTerms) {
+      setError(language === 'bn' ? 'অ্যাকাউন্ট তৈরি করতে ড্রাফ্ট টার্মস ও প্রাইভেসি নোটিশ মেনে নিতে হবে।' : 'Please acknowledge the draft terms and privacy notice before creating your account.');
       return;
     }
     if (mode !== 'login' && password !== confirmation) {
@@ -351,73 +359,8 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   ];
 
   return (
-    <main className="auth-page" data-auth-language={language}>
+    <main className="auth-page" data-auth-language={language} data-auth-mode={mode}>
       <div className="auth-frame">
-        <aside className="auth-story" aria-label="XolveManager">
-          <ProductLogo size="compact" tone="inverse" showTagline className="auth-story-header" />
-          <div className="auth-story-copy">
-            <h1><span>{text.brandHeadline}</span><span>{text.brandHeadlineSecond}</span><span className="auth-headline-accent">{text.brandHeadlineAccent}</span></h1>
-            <p className="auth-story-description">{text.brandDescription}</p>
-          </div>
-          <ul className="auth-features" aria-label={text.brandHeadline}>
-            {featureItems.map(({ Icon, label }) => (
-              <li key={label}><Icon aria-hidden="true" /><span>{label}</span></li>
-            ))}
-          </ul>
-          <svg className="auth-ribbon" viewBox="0 0 440 580" fill="none" aria-hidden="true">
-            <defs>
-              <linearGradient id="auth-ribbon-gradient" x1="48" y1="48" x2="382" y2="528" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#C49BFF" />
-                <stop offset=".38" stopColor="#793BFF" />
-                <stop offset=".68" stopColor="#5122CC" />
-                <stop offset="1" stopColor="#BD87FF" />
-              </linearGradient>
-              <linearGradient id="auth-ribbon-highlight" x1="60" y1="136" x2="338" y2="416" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#E4CFFF" stopOpacity=".9" />
-                <stop offset=".48" stopColor="#9662FF" stopOpacity=".12" />
-                <stop offset="1" stopColor="#D6B8FF" stopOpacity=".76" />
-              </linearGradient>
-              <filter id="auth-ribbon-shadow" x="0" y="0" width="440" height="580" colorInterpolationFilters="sRGB" filterUnits="userSpaceOnUse">
-                <feGaussianBlur stdDeviation="14" />
-              </filter>
-            </defs>
-            <path d="M89 32C206 68 359 146 342 239C331 299 221 325 113 354C14 381 37 466 153 505C247 537 350 499 412 454" stroke="#7138E8" strokeOpacity=".42" strokeWidth="56" filter="url(#auth-ribbon-shadow)" />
-            <path d="M89 32C206 68 359 146 342 239C331 299 221 325 113 354C14 381 37 466 153 505C247 537 350 499 412 454" stroke="url(#auth-ribbon-gradient)" strokeWidth="43" strokeLinecap="round" />
-            <path d="M89 32C206 68 359 146 342 239C331 299 221 325 113 354C14 381 37 466 153 505C247 537 350 499 412 454" stroke="url(#auth-ribbon-highlight)" strokeOpacity=".7" strokeWidth="2" strokeLinecap="round" />
-            <path d="M342 239C365 302 307 362 229 392C157 419 103 447 153 505" stroke="#D8B8FF" strokeOpacity=".56" strokeWidth="2" />
-          </svg>
-          <div className="auth-preview">
-            <div className="auth-preview-toolbar">
-              <span className="auth-preview-lights" aria-hidden="true"><i /><i /><i /></span>
-              <span>{text.previewIllustration}</span>
-            </div>
-            <div className="auth-preview-window">
-              <div className="auth-preview-rail" aria-hidden="true">
-                <ProductLogo size="compact" markOnly className="auth-preview-symbol" />
-                <i /><i /><i /><i />
-              </div>
-              <div className="auth-preview-content">
-                <div className="auth-preview-heading">
-                  <div><span>{text.previewLabel}</span><strong>{text.previewTitle}</strong></div>
-                  <i aria-hidden="true" />
-                </div>
-                <div className="auth-preview-cards" aria-hidden="true">
-                  <div><span>{text.previewCustomers}</span><i /></div>
-                  <div><span>{text.previewSubscriptions}</span><i /></div>
-                  <div><span>{text.previewPayments}</span><i /></div>
-                </div>
-                <div className="auth-preview-activity">
-                  <span>{text.previewActivity}</span>
-                  <div aria-hidden="true"><i /><b /><em /></div>
-                  <div aria-hidden="true"><i /><b /><em /></div>
-                  <div aria-hidden="true"><i /><b /><em /></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <p className="auth-story-foot"><LockKeyhole aria-hidden="true" />{text.brandFootnote}</p>
-        </aside>
-
         <section className="auth-panel" aria-labelledby="auth-heading">
           <div className="auth-card">
             <div className="auth-panel-header">
@@ -454,7 +397,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                       </label>
                     )}
                     <label className="auth-field">{text.email}
-                      <span className="auth-input-wrap"><Mail aria-hidden="true" /><input type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} className={`${inputClass} auth-input--with-icon`} /></span>
+                      <span className="auth-input-wrap"><Mail aria-hidden="true" /><input type="email" autoComplete={mode === 'login' ? 'off' : 'email'} required value={email} onChange={event => setEmail(event.target.value)} className={`${inputClass} auth-input--with-icon`} /></span>
                     </label>
 
                     {mode === 'forgot-password' && (
@@ -494,6 +437,22 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                       </div>
                     )}
 
+                    {mode === 'signup' && (
+                      <label className="auth-terms">
+                        <input
+                          type="checkbox"
+                          checked={acceptedTerms}
+                          onChange={event => setAcceptedTerms(event.target.checked)}
+                          aria-label="Acknowledge the draft terms and privacy notice"
+                          required
+                        />
+                        <span>
+                          {text.termsLabel}{' '}
+                          <a href="/legal/terms" className="auth-inline-link">{text.termsLink}</a>
+                        </span>
+                      </label>
+                    )}
+
                     <button type="submit" disabled={busy || (mode === 'signup' && hasAccount)} className="auth-primary-button">{busy && <LoaderCircle className="auth-spinner" aria-hidden="true" />}{busy ? text.loading : mode === 'login' ? <>{text.signIn}<ArrowRight aria-hidden="true" /></> : mode === 'signup' ? text.create : text.recover}</button>
                   </form>
 
@@ -519,12 +478,27 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                     </div>
                   )}
 
-                  <div className="auth-security-note">
-                    <span className="auth-security-icon"><ShieldCheck aria-hidden="true" /></span>
-                    <div><p>{text.localTitle}</p><span>{text.localText}</span><span className="auth-security-limit">{text.storageWarning}</span></div>
-                  </div>
                 </>
               )}
+            <footer className="auth-footer" aria-label="XolveManager footer navigation">
+              <nav className="auth-footer-links" aria-label="Quick links">
+                <a href="/legal/privacy" className="auth-footer-link" aria-label="Privacy policy">
+                  <span className="auth-footer-icon"><ShieldCheck aria-hidden="true" /></span>
+                  <span className="auth-footer-label auth-footer-label--full">Privacy</span>
+                  <span className="auth-footer-label auth-footer-label--short">Privacy</span>
+                </a>
+                <a href="/legal" className="auth-footer-link" aria-label="Legal & Trust Center">
+                  <span className="auth-footer-icon"><Scale aria-hidden="true" /></span>
+                  <span className="auth-footer-label auth-footer-label--full">Legal &amp; Trust Center</span>
+                  <span className="auth-footer-label auth-footer-label--short">Legal</span>
+                </a>
+                <a href="/support" className="auth-footer-link" aria-label="Contact & Support">
+                  <span className="auth-footer-icon"><Headset aria-hidden="true" /></span>
+                  <span className="auth-footer-label auth-footer-label--full">Contact &amp; Support</span>
+                  <span className="auth-footer-label auth-footer-label--short">Support</span>
+                </a>
+              </nav>
+            </footer>
           </div>
         </section>
       </div>

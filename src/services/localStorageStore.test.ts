@@ -3,7 +3,10 @@ import test from 'node:test';
 import type { Customer } from '../types/index.ts';
 import {
   getCustomers,
+  getGettingStartedState,
+  getInitialGettingStartedState,
   saveCustomers,
+  saveGettingStartedState,
   setActiveDataEnvironment,
   STORAGE_KEYS,
 } from './localStorageStore.ts';
@@ -109,6 +112,45 @@ test('Demo and Production use separate LocalStorage namespaces', () => {
     assert.notEqual(
       localStorage.getItem(STORAGE_KEYS.CUSTOMERS),
       localStorage.getItem(`xolvemanager.demo.v1.${STORAGE_KEYS.CUSTOMERS}`)
+    );
+  } finally {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
+});
+
+test('getting-started dismissal is scoped by business and data environment', () => {
+  assert.deepEqual(getInitialGettingStartedState(false), { started: true, dismissed: false });
+  assert.deepEqual(getInitialGettingStartedState(true), { started: false, dismissed: false });
+
+  const originalWindow = globalThis.window;
+  const localStorage = new MemoryStorage();
+  const sessionStorage = new MemoryStorage();
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { localStorage, sessionStorage },
+  });
+
+  try {
+    const productionState = { started: true, dismissed: true };
+    const demoState = { started: true, dismissed: false };
+
+    saveGettingStartedState(productionState, 'business-1');
+    assert.deepEqual(getGettingStartedState('business-1'), productionState);
+    assert.equal(getGettingStartedState('business-2'), null);
+
+    setActiveDataEnvironment('demo');
+    assert.equal(getGettingStartedState('business-1'), null);
+    saveGettingStartedState(demoState, 'business-1');
+    assert.deepEqual(getGettingStartedState('business-1'), demoState);
+
+    setActiveDataEnvironment('production');
+    assert.deepEqual(getGettingStartedState('business-1'), productionState);
+    assert.notEqual(
+      localStorage.getItem(`${STORAGE_KEYS.GETTING_STARTED}.business-1`),
+      localStorage.getItem(`xolvemanager.demo.v1.${STORAGE_KEYS.GETTING_STARTED}.business-1`)
     );
   } finally {
     Object.defineProperty(globalThis, 'window', {

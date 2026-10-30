@@ -58,6 +58,11 @@ import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useReducedMotionPreference } from '../../hooks/useReducedMotionPreference';
 import { useToast } from '../common/Toast';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
+import {
+  getGettingStartedState,
+  getInitialGettingStartedState,
+  saveGettingStartedState,
+} from '../../services/localStorageStore';
 import { getExpiryWhatsAppTemplateId } from '../../utils/whatsappService';
 import {
   formatAppDate,
@@ -221,6 +226,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const prefersReducedMotion = useReducedMotionPreference();
   const {
     stats,
+    currentUser,
     subscriptions,
     sales,
     payments,
@@ -267,6 +273,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [dashboardLayoutDraft, setDashboardLayoutDraft] = useState(() =>
     normalizeDashboardLayout(settings.dashboardLayout)
   );
+  const [gettingStartedState, setGettingStartedState] = useState<{
+    businessId: string;
+    started: boolean;
+    dismissed: boolean;
+    open: boolean;
+  } | null>(null);
   useEffect(() => {
     setDashboardLayoutDraft(normalizeDashboardLayout(settings.dashboardLayout));
     setIsCustomizingDashboard(false);
@@ -401,6 +413,79 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const scopedDailyClosings = useMemo(() => dailyClosings.filter(item =>
     item.businessId === currentBusiness?.businessId
   ), [dailyClosings, currentBusiness?.businessId]);
+  const gettingStartedBusinessId = currentBusiness?.businessId || 'default';
+  const hasWorkspaceRecords = [
+    scopedCustomers,
+    scopedServices,
+    scopedAccounts,
+    scopedSubscriptions,
+    scopedSales,
+    scopedPayments,
+    scopedInvoices,
+    scopedOrders,
+    scopedFinancialAccounts,
+    scopedExpenses,
+    scopedOtherIncome,
+    scopedFinancialTransfers,
+    scopedFinancialAdjustments,
+    scopedReconciliations,
+    scopedFinancialPeriods,
+    scopedDailyClosings,
+  ].some(records => records.length > 0);
+  useEffect(() => {
+    if (!currentUser || currentUser.isDemo || dashboardDataLoading
+      || gettingStartedState?.businessId === gettingStartedBusinessId) return;
+
+    const savedState = getGettingStartedState(gettingStartedBusinessId);
+    const nextState = savedState || getInitialGettingStartedState(hasWorkspaceRecords);
+    if (!savedState && nextState.started) {
+      try {
+        saveGettingStartedState(nextState, gettingStartedBusinessId);
+      } catch (error) {
+        console.error('Could not save the getting-started state.', error);
+        showToast(
+          language === 'bn'
+            ? 'শুরুর নির্দেশনা এই ব্রাউজারে সংরক্ষণ করা যায়নি।'
+            : 'Getting-started preferences could not be saved in this browser.',
+          'error'
+        );
+      }
+    }
+
+    setGettingStartedState({
+      businessId: gettingStartedBusinessId,
+      ...nextState,
+      open: nextState.started && !nextState.dismissed,
+    });
+  }, [
+    dashboardDataLoading,
+    gettingStartedBusinessId,
+    gettingStartedState?.businessId,
+    hasWorkspaceRecords,
+    currentUser?.uid,
+    currentUser?.isDemo,
+    language,
+    showToast,
+  ]);
+  const setGettingStartedVisibility = (open: boolean) => {
+    const nextState = { started: true, dismissed: !open };
+    setGettingStartedState({
+      businessId: gettingStartedBusinessId,
+      ...nextState,
+      open,
+    });
+    try {
+      saveGettingStartedState(nextState, gettingStartedBusinessId);
+    } catch (error) {
+      console.error('Could not save the getting-started preference.', error);
+      showToast(
+        language === 'bn'
+          ? 'শুরুর নির্দেশনা পছন্দ সংরক্ষণ করা যায়নি।'
+          : 'Could not save your getting-started preference in this browser.',
+        'error'
+      );
+    }
+  };
   const customerCrmMetrics = useMemo(() => buildCustomerCrmMetrics(
     scopedCustomers,
     scopedSales,
@@ -1847,27 +1932,123 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <button type="button" onClick={() => window.location.reload()} className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold hover:bg-rose-100 dark:border-rose-800 dark:hover:bg-rose-900/40">Try Again</button>
         </div>
       )}
-      {!dashboardDataLoading && scopedSales.length === 0 && scopedCustomers.length === 0 && scopedServices.length === 0 && scopedAccounts.length === 0 && scopedSubscriptions.length === 0 && scopedPayments.length === 0 && scopedExpenses.length === 0 && scopedOtherIncome.length === 0 && scopedFinancialTransfers.length === 0 && scopedFinancialAdjustments.length === 0 && scopedFinancialAccounts.length === 0 && (
-        <section className={`${dashboardPanelClass} flex flex-col items-center gap-3 py-6 text-center`}>
-          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
-            <Sparkles className="h-3.5 w-3.5" /> Quick start
+      {!currentUser?.isDemo && !dashboardDataLoading
+        && gettingStartedState?.businessId === gettingStartedBusinessId
+        && gettingStartedState.open && (
+        <section aria-labelledby="getting-started-title" className={`${dashboardPanelClass} space-y-4 sm:p-5`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300">
+                <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
+                {language === 'bn' ? 'শুরু করুন' : 'Getting started'}
+              </div>
+              <h2 id="getting-started-title" className="mt-2 text-lg font-bold text-slate-900 dark:text-white">
+                {language === 'bn' ? 'XolveManager দিয়ে ব্যবসা গুছিয়ে নিন' : 'Make the most of XolveManager'}
+              </h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                {language === 'bn'
+                  ? 'এক জায়গায় কাস্টমার ও সার্ভিস পরিচালনা করুন, তারপর বিক্রয়, ইনভয়েস ও পেমেন্ট অনুসরণ করুন।'
+                  : 'Manage customers and services in one place, then keep sales, invoices, and payments connected.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setGettingStartedVisibility(false)}
+              className="min-h-9 rounded-lg px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              {language === 'bn' ? 'বন্ধ করুন' : 'Dismiss'}
+            </button>
           </div>
-          <div className="max-w-2xl space-y-2">
-            <p className="text-lg font-bold text-slate-900 dark:text-white">Start your business setup in one click</p>
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              {demoDataStatus === 'Not installed'
-                ? 'No records have been added yet. Load a ready-made demo, or create your first customer, service, and sale.'
-                : 'Your workspace is ready. Add your first customer, service, or sale to begin tracking business activity.'}
-            </p>
-          </div>
-          <div className="flex flex-wrap justify-center gap-2">
-            {demoDataStatus === 'Not installed' && (
-              <button type="button" onClick={handleLoadDemoData} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700">Load demo data</button>
-            )}
-            <button type="button" onClick={() => onNavigate('customers')} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Add Customer</button>
-            <button type="button" onClick={() => onNavigate('services')} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Add Service</button>
-            <button type="button" onClick={() => onOpenNewSale()} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-700">Create First Sale</button>
-          </div>
+
+          <p role="status" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
+            {currentUser?.isDemo
+              ? (language === 'bn'
+                ? 'ডেমো মোড · নমুনা ডেটা প্রোডাকশন মোড থেকে আলাদা।'
+                : 'Demo Mode · sample data is isolated from Production Mode.')
+              : (language === 'bn'
+                ? 'প্রোডাকশন মোড · আপনার ব্যবসার ডেটা ডেমো মোড থেকে আলাদা।'
+                : 'Production Mode · your business data stays separate from Demo Mode.')}
+          </p>
+
+          <ol className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {[
+              {
+                title: language === 'bn' ? 'প্রথম কাস্টমার যোগ করুন' : 'Add your first customer',
+                description: language === 'bn' ? 'কাস্টমারের যোগাযোগের তথ্য ও কার্যকলাপ একসাথে রাখুন।' : 'Keep customer contact details and activity together.',
+                action: language === 'bn' ? 'কাস্টমার যোগ করুন' : 'Add customer',
+                completed: scopedCustomers.length > 0,
+                onClick: () => onRequestCreate('customers'),
+              },
+              {
+                title: language === 'bn' ? 'প্রথম সার্ভিস তৈরি করুন' : 'Create your first service',
+                description: language === 'bn' ? 'আপনার সার্ভিস, প্ল্যান ও সাবস্ক্রিপশন সাজান।' : 'Organize the services, plans, and subscriptions you offer.',
+                action: language === 'bn' ? 'সার্ভিস যোগ করুন' : 'Add service',
+                completed: scopedServices.length > 0,
+                onClick: () => onRequestCreate('services'),
+              },
+              {
+                title: language === 'bn' ? 'প্রথম বিক্রয় রেকর্ড করুন' : 'Record your first sale',
+                description: language === 'bn' ? 'বিক্রয় কাস্টমার, সার্ভিস ও পরবর্তী রেকর্ডের সাথে যুক্ত থাকে।' : 'Sales connect customers and services to the records that follow.',
+                action: language === 'bn' ? 'নতুন বিক্রয়' : 'New sale',
+                completed: scopedSales.length > 0,
+                onClick: () => onOpenNewSale(),
+              },
+              {
+                title: language === 'bn' ? 'প্রথম ইনভয়েস তৈরি করুন' : 'Generate your first invoice',
+                description: language === 'bn' ? 'বিক্রয়ের সাথে ইনভয়েস তৈরি হয়; ইনভয়েস পেজে তা দেখুন।' : 'Invoices are created from sales and can be reviewed in Invoices.',
+                action: language === 'bn' ? 'ইনভয়েস দেখুন' : 'Open invoices',
+                completed: scopedInvoices.length > 0,
+                onClick: () => onNavigate('invoices'),
+              },
+              {
+                title: language === 'bn' ? 'একটি পেমেন্ট রেকর্ড করুন' : 'Record a payment',
+                description: language === 'bn' ? 'বকেয়া বিক্রয়ের জন্য পেমেন্ট সংগ্রহ করুন বা কাস্টমার পেমেন্ট রেকর্ড করুন।' : 'Collect against a sale or record a customer payment.',
+                action: language === 'bn' ? 'পেমেন্ট খুলুন' : 'Open payments',
+                completed: scopedPayments.length > 0,
+                onClick: () => onNavigate('payments'),
+              },
+            ].map((step, index) => (
+              <li key={step.title} className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <span
+                    role="img"
+                    aria-label={step.completed ? (language === 'bn' ? 'সম্পন্ন' : 'Completed') : (language === 'bn' ? 'অসম্পন্ন' : 'Not completed')}
+                    className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${step.completed ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}
+                  >
+                    {step.completed ? <Check aria-hidden="true" className="h-4 w-4" /> : index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{step.title}</h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{step.description}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={step.onClick}
+                  className="mt-3 inline-flex min-h-9 items-center justify-center gap-1 self-start rounded-lg px-2 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40"
+                >
+                  {step.action}<ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            ))}
+          </ol>
+
+          {demoDataStatus === 'Not installed' && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {language === 'bn'
+                  ? 'নমুনা ডেটা যোগ করা ঐচ্ছিক এবং শুধু বর্তমান ওয়ার্কস্পেসে যোগ হবে।'
+                  : 'Sample data is optional and is added only to the current workspace.'}
+              </p>
+              <button
+                type="button"
+                onClick={handleLoadDemoData}
+                className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                {language === 'bn' ? 'নমুনা ডেটা যোগ করুন' : 'Load sample data'}
+              </button>
+            </div>
+          )}
         </section>
       )}
 
@@ -1886,6 +2067,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="dashboard-quick-actions-heading">
           <h2>{dashboardCopy.quickActions}</h2>
           <span>{dashboardCopy.commonTasks}</span>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <p className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300">
+              {currentUser?.isDemo
+                ? (language === 'bn' ? 'ডেমো মোড · নমুনা ডেটা' : 'Demo Mode · sample data')
+                : (language === 'bn' ? 'প্রোডাকশন মোড · ব্যবসার ডেটা' : 'Production Mode · business data')}
+            </p>
+            {!currentUser?.isDemo && (
+              <button
+                type="button"
+                onClick={() => setGettingStartedVisibility(true)}
+                className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40"
+              >
+                <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
+                {language === 'bn' ? 'শুরু করার নির্দেশনা' : 'Getting started'}
+              </button>
+            )}
+          </div>
         </div>
         <div className="dashboard-quick-actions-list">
           <button type="button" onClick={() => onRequestCreate('customers')} className="dashboard-quick-action"><UserPlus aria-hidden="true" /> {dashboardCopy.addCustomer}</button>

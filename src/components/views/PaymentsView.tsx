@@ -1501,7 +1501,13 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               </article>;
             })}
           </div>
-          {pagePayments.length === 0 && <EmptyState title={payments.length ? selectedStatus === 'failed' ? 'No failed payments' : 'No payments found' : 'No payments yet'} description={payments.length ? 'Try changing your search or filters.' : 'Payments will appear here after transactions are recorded.'} />}
+          {pagePayments.length === 0 && <EmptyState
+            title={payments.length ? selectedStatus === 'failed' ? 'No failed payments' : 'No payments found' : 'No payments yet'}
+            description={payments.length ? 'Try changing your search or filters.' : 'Payments appear after transactions are recorded. Open sales to create a sale or record a payment against one.'}
+            action={!payments.length && onNavigateSection
+              ? { label: 'Open sales', onClick: () => onNavigateSection('sales') }
+              : undefined}
+          />}
         </section>
       ) : (
         <section aria-label="Unpaid sales" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
@@ -2167,8 +2173,33 @@ function PaymentStatusBadge({ status, className, icon }: { status: PaymentStatus
   return <span aria-label={`Payment status: ${label}`} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold ${className}`}>{icon}{label}</span>;
 }
 
-function EmptyState({ title, description }: { title: string; description: string }) {
-  return <div className="payment-empty-state px-4 py-8 text-center sm:py-10"><div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"><Wallet className="h-5 w-5" /></div><h3 className="mt-3 text-sm font-bold text-slate-900 dark:text-white">{title}</h3><p className="mt-1 text-xs text-slate-500">{description}</p></div>;
+function EmptyState({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: { label: string; onClick: () => void };
+}) {
+  return (
+    <div className="payment-empty-state px-4 py-8 text-center sm:py-10">
+      <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+        <Wallet className="h-5 w-5" />
+      </div>
+      <h3 className="mt-3 text-sm font-bold text-slate-900 dark:text-white">{title}</h3>
+      <p className="mt-1 text-xs text-slate-500">{description}</p>
+      {action && (
+        <button
+          type="button"
+          onClick={action.onClick}
+          className="mt-3 inline-flex min-h-9 items-center rounded-lg px-3 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40"
+        >
+          {action.label}
+        </button>
+      )}
+    </div>
+  );
 }
 
 function Detail({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {

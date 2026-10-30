@@ -34,6 +34,8 @@ export const ProductLogo: React.FC<ProductLogoProps> = ({
             alt=""
             width={192}
             height={192}
+            unoptimized
+            loading="eager"
           />
         </span>
       ) : (

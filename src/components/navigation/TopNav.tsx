@@ -523,11 +523,12 @@ export const TopNav: React.FC<TopNavProps> = ({
 
         {currentUser?.isDemo && (
           <span
-            className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-200 sm:px-2.5 sm:text-xs"
+            className="app-topbar-demo-badge rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-200 sm:px-2.5 sm:text-xs"
             aria-label="Demo Mode"
             title="Demo Mode — isolated sample data"
           >
-            {language === 'bn' ? 'ডেমো' : 'Demo Mode'}
+            <span className="app-topbar-demo-label">{language === 'bn' ? 'ডেমো' : 'Demo Mode'}</span>
+            <span className="app-topbar-demo-compact">{language === 'bn' ? 'ডেমো' : 'Demo'}</span>
           </span>
         )}
 
