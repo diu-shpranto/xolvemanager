@@ -3,7 +3,7 @@ import { ArrowRight, Search } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { GlobalSearchResult, SearchEntity } from '../../services/globalSearch';
 import {
-  buildSearchIndex, SEARCH_ENTITY_LABELS, SEARCH_ENTITY_ORDER, searchRecords,
+  buildSearchIndex, getSearchEntityLabel, SEARCH_ENTITY_ORDER, searchRecords,
 } from '../../services/globalSearch';
 
 interface SearchResultsViewProps {
@@ -11,14 +11,72 @@ interface SearchResultsViewProps {
   onSelectResult: (result: GlobalSearchResult) => void;
 }
 
+const statusLabelsBn: Record<string, string> = {
+  active: 'সক্রিয়',
+  expiring_soon: 'মেয়াদ শেষ হবে',
+  expired: 'মেয়াদ শেষ',
+  cancelled: 'বাতিল',
+  paid: 'পরিশোধিত',
+  partial: 'আংশিক',
+  pending: 'অপেক্ষমাণ',
+  failed: 'ব্যর্থ',
+  refunded: 'ফেরত দেওয়া',
+  inactive: 'নিষ্ক্রিয়',
+  Available: 'উপলভ্য',
+  Assigned: 'বরাদ্দ',
+  Disabled: 'বন্ধ',
+};
+
 export const SearchResultsView: React.FC<SearchResultsViewProps> = ({ query, onSelectResult }) => {
-  const { customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders, settings } = useApp();
+  const { customers, services, accounts, financialAccounts, subscriptions, sales, payments, invoices, activityLogs, reminders, settings, language } = useApp();
+  const isBangla = language === 'bn';
+  const copy = isBangla ? {
+    title: 'সার্চের ফলাফল',
+    forQuery: 'খোঁজার বিষয়:',
+    total: 'মোট ফলাফল',
+    counts: 'সার্চ ফলাফলের সংখ্যা',
+    filters: 'সার্চ ফিল্টার',
+    all: 'সব',
+    anyStatus: 'যেকোনো অবস্থা',
+    anyService: 'যেকোনো সার্ভিস',
+    date: 'তারিখ',
+    filterEntity: 'ধরন দিয়ে সার্চ ফিল্টার করুন',
+    filterStatus: 'অবস্থা দিয়ে সার্চ ফিল্টার করুন',
+    filterService: 'সার্ভিস দিয়ে সার্চ ফিল্টার করুন',
+    filterDate: 'তারিখ দিয়ে সার্চ ফিল্টার করুন',
+    reset: 'ফিল্টার মুছুন',
+    noMatches: 'মিল থাকা কোনো রেকর্ড পাওয়া যায়নি।',
+    searchBusiness: 'ব্যবসার তথ্য খুঁজুন',
+    tryAnother: 'অন্য নাম, ফোন নম্বর, ইনভয়েস নম্বর বা সার্ভিস দিয়ে খুঁজুন।',
+    findRecords: 'কাস্টমার, সাবস্ক্রিপশন, ইনভয়েস, বিক্রয় ও আরও তথ্য খুঁজুন।',
+    resultCount: 'টি ফলাফল',
+  } : {
+    title: 'Search Results',
+    forQuery: 'Results for:',
+    total: 'Total Results',
+    counts: 'Search result counts',
+    filters: 'Search filters',
+    all: 'All',
+    anyStatus: 'Any status',
+    anyService: 'Any service',
+    date: 'Date',
+    filterEntity: 'Filter search by entity',
+    filterStatus: 'Filter search by status',
+    filterService: 'Filter search by service',
+    filterDate: 'Filter search by date',
+    reset: 'Reset filters',
+    noMatches: 'No matching records found.',
+    searchBusiness: 'Search your business',
+    tryAnother: 'Try a different name, phone number, invoice number or service.',
+    findRecords: 'Find customers, subscriptions, invoices, sales and more.',
+    resultCount: 'results',
+  };
   const [entityFilter, setEntityFilter] = useState<SearchEntity | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('');
-  const index = useMemo(() => buildSearchIndex({ customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders }, settings.businessProfile?.timeZone), [
-    customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders, settings.businessProfile?.timeZone,
+  const index = useMemo(() => buildSearchIndex({ customers, services, accounts, financialAccounts, subscriptions, sales, payments, invoices, activityLogs, reminders }, settings.businessProfile?.timeZone), [
+    customers, services, accounts, financialAccounts, subscriptions, sales, payments, invoices, activityLogs, reminders, settings.businessProfile?.timeZone,
   ]);
   const results = useMemo(() => {
     const source = searchRecords(index, query);
@@ -38,7 +96,8 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({ query, onS
           ? customers.find(item => item.id === result.id)?.status ?? (customers.find(item => item.id === result.id)?.isArchived ? 'archived' : 'active')
           : result.entity === 'services' ? services.find(item => item.id === result.id)?.status
             : result.entity === 'accounts' ? accounts.find(item => item.id === result.id)?.status
-              : result.entity === 'profiles' ? accounts.flatMap(item => item.profiles).find(item => item.id === result.id)?.status
+            : result.entity === 'moneyAccounts' ? financialAccounts.find(item => item.id === result.id)?.enabled ? 'active' : 'inactive'
+            : result.entity === 'profiles' ? accounts.flatMap(item => item.profiles).find(item => item.id === result.id)?.status
                 : result.entity === 'subscriptions' ? subscriptions.find(item => item.id === result.id)?.status ?? subscriptions.find(item => item.id === result.id)?.paymentStatus
                   : result.entity === 'sales' ? sales.find(item => item.id === result.id)?.paymentStatus
                     : result.entity === 'payments' ? payments.find(item => item.id === result.id)?.paymentStatus
@@ -50,6 +109,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({ query, onS
       if (dateFilter) {
         const recordDate = result.entity === 'customers' ? customers.find(item => item.id === result.id)?.createdAt
           : result.entity === 'services' ? services.find(item => item.id === result.id)?.createdAt
+            : result.entity === 'moneyAccounts' ? financialAccounts.find(item => item.id === result.id)?.createdAt
             : result.entity === 'subscriptions' ? subscriptions.find(item => item.id === result.id)?.startDate
               : result.entity === 'sales' ? sales.find(item => item.id === result.id)?.date
                 : result.entity === 'payments' ? payments.find(item => item.id === result.id)?.paymentDate
@@ -61,7 +121,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({ query, onS
       }
       return true;
     });
-  }, [index, query, entityFilter, statusFilter, serviceFilter, dateFilter, customers, services, accounts, subscriptions, sales, payments, invoices, activityLogs, reminders]);
+  }, [index, query, entityFilter, statusFilter, serviceFilter, dateFilter, customers, services, accounts, financialAccounts, subscriptions, sales, payments, invoices, activityLogs, reminders]);
   const counts = useMemo(() => SEARCH_ENTITY_ORDER.reduce((result, entity) => {
     result[entity] = results.filter(item => item.entity === entity).length;
     return result;
@@ -71,40 +131,40 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({ query, onS
   return <div className="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
     <header className="flex items-start gap-3">
       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><Search className="h-5 w-5" /></span>
-      <div><h1 className="text-2xl font-bold text-slate-900 dark:text-white">Search Results</h1><p className="mt-1 text-sm text-slate-500">Results for: <span className="font-semibold text-slate-800 dark:text-slate-200">{query || '—'}</span></p></div>
-      <div className="ml-auto rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"><strong>{results.length}</strong><span className="ml-1 text-slate-500">Total Results</span></div>
+      <div><h1 className="text-2xl font-bold text-slate-900 dark:text-white">{copy.title}</h1><p className="mt-1 text-sm text-slate-500">{copy.forQuery} <span className="font-semibold text-slate-800 dark:text-slate-200">{query || '—'}</span></p></div>
+      <div className="ml-auto rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"><strong>{results.length.toLocaleString(isBangla ? 'bn-BD' : 'en-US')}</strong><span className="ml-1 text-slate-500">{copy.total}</span></div>
     </header>
 
-    <section aria-label="Search result counts" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-      {(['customers', 'services', 'subscriptions', 'sales', 'payments', 'invoices'] as const).map(entity =>
-        <div key={entity} className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"><div className="text-lg font-bold">{counts[entity]}</div><div className="text-xs text-slate-500">{SEARCH_ENTITY_LABELS[entity]}</div></div>
+    <section aria-label={copy.counts} className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
+      {(['customers', 'services', 'moneyAccounts', 'subscriptions', 'sales', 'payments', 'invoices'] as const).map(entity =>
+          <div key={entity} className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"><div className="text-lg font-bold">{counts[entity]}</div><div className="text-xs text-slate-500">{getSearchEntityLabel(entity, language)}</div></div>
       )}
     </section>
 
-    <section className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900" aria-label="Search filters">
-      <select aria-label="Filter search by entity" className={filterClass} value={entityFilter} onChange={event => setEntityFilter(event.target.value as SearchEntity | 'all')}>
-        <option value="all">All</option>{SEARCH_ENTITY_ORDER.map(entity => <option key={entity} value={entity}>{SEARCH_ENTITY_LABELS[entity]}</option>)}
+    <section className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900" aria-label={copy.filters}>
+      <select aria-label={copy.filterEntity} className={filterClass} value={entityFilter} onChange={event => setEntityFilter(event.target.value as SearchEntity | 'all')}>
+        <option value="all">{copy.all}</option>{SEARCH_ENTITY_ORDER.map(entity => <option key={entity} value={entity}>{getSearchEntityLabel(entity, language)}</option>)}
       </select>
-      <select aria-label="Filter search by status" className={filterClass} value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
-        <option value="all">Any status</option>{['active', 'expiring_soon', 'expired', 'cancelled', 'paid', 'partial', 'pending', 'failed', 'refunded', 'inactive', 'Available', 'Assigned', 'Disabled'].map(status => <option key={status} value={status}>{status.replace('_', ' ')}</option>)}
+      <select aria-label={copy.filterStatus} className={filterClass} value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
+        <option value="all">{copy.anyStatus}</option>{['active', 'expiring_soon', 'expired', 'cancelled', 'paid', 'partial', 'pending', 'failed', 'refunded', 'inactive', 'Available', 'Assigned', 'Disabled'].map(status => <option key={status} value={status}>{isBangla ? (statusLabelsBn[status] || status.replace('_', ' ')) : status.replace('_', ' ')}</option>)}
       </select>
-      <select aria-label="Filter search by service" className={filterClass} value={serviceFilter} onChange={event => setServiceFilter(event.target.value)}>
-        <option value="all">Any service</option>{services.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}
+      <select aria-label={copy.filterService} className={filterClass} value={serviceFilter} onChange={event => setServiceFilter(event.target.value)}>
+        <option value="all">{copy.anyService}</option>{services.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}
       </select>
-      <label className="flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs text-slate-500 dark:border-slate-700">Date <input aria-label="Filter search by date" type="date" className="bg-transparent text-sm text-slate-700 dark:text-slate-200" value={dateFilter} onChange={event => setDateFilter(event.target.value)} /></label>
+      <label className="flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs text-slate-500 dark:border-slate-700">{copy.date} <input aria-label={copy.filterDate} type="date" className="bg-transparent text-sm text-slate-700 dark:text-slate-200" value={dateFilter} onChange={event => setDateFilter(event.target.value)} /></label>
       {(entityFilter !== 'all' || statusFilter !== 'all' || serviceFilter !== 'all' || dateFilter) &&
-        <button type="button" onClick={() => { setEntityFilter('all'); setStatusFilter('all'); setServiceFilter('all'); setDateFilter(''); }} className={`${filterClass} text-emerald-700 dark:text-emerald-300`}>Reset filters</button>}
+        <button type="button" onClick={() => { setEntityFilter('all'); setStatusFilter('all'); setServiceFilter('all'); setDateFilter(''); }} className={`${filterClass} text-emerald-700 dark:text-emerald-300`}>{copy.reset}</button>}
     </section>
 
     {results.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-900">
-      <Search className="mx-auto h-8 w-8 text-slate-400" /><h2 className="mt-3 font-semibold">{query ? `No matching ${entityFilter === 'all' ? 'records' : SEARCH_ENTITY_LABELS[entityFilter].toLowerCase()} found.` : 'Search your business'}</h2>
-      <p className="mt-1 text-sm text-slate-500">{query ? 'Try a different name, phone number, invoice number or service.' : 'Find customers, subscriptions, invoices, sales and more.'}</p>
+      <Search className="mx-auto h-8 w-8 text-slate-400" /><h2 className="mt-3 font-semibold">{query ? isBangla ? copy.noMatches : `No matching ${entityFilter === 'all' ? 'records' : getSearchEntityLabel(entityFilter, language).toLowerCase()} found.` : copy.searchBusiness}</h2>
+      <p className="mt-1 text-sm text-slate-500">{query ? copy.tryAnother : copy.findRecords}</p>
     </div> : <div className="space-y-4">
       {SEARCH_ENTITY_ORDER.map(entity => {
         const group = results.filter(result => result.entity === entity);
         if (!group.length) return null;
         return <section key={entity} className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-          <h2 className="flex items-center justify-between border-b border-slate-100 px-4 py-3 text-sm font-bold dark:border-slate-800"><span>{SEARCH_ENTITY_LABELS[entity]}</span><span className="text-xs font-medium text-slate-500">{group.length} results</span></h2>
+          <h2 className="flex items-center justify-between border-b border-slate-100 px-4 py-3 text-sm font-bold dark:border-slate-800"><span>{getSearchEntityLabel(entity, language)}</span><span className="text-xs font-medium text-slate-500">{group.length.toLocaleString(isBangla ? 'bn-BD' : 'en-US')} {copy.resultCount}</span></h2>
           <div className="divide-y divide-slate-100 dark:divide-slate-800">{group.map(result =>
             <button key={`${result.entity}:${result.id}`} type="button" onClick={() => onSelectResult(result)} className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:hover:bg-slate-800/60">
               <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{result.title}</span><span className="block truncate text-xs text-slate-500">{result.subtitle}{result.detail ? ` · ${result.detail}` : ''}</span></span>

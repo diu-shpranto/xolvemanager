@@ -21,6 +21,7 @@ import {
   UserCheck,
   Wifi,
   WifiOff,
+  CircleHelp,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { NavSection } from './Sidebar';
@@ -43,6 +44,7 @@ interface TopNavProps {
   onOpenNewSale: () => void;
   hideNewSaleAction?: boolean;
   onNavigate: (section: NavSection) => void;
+  onOpenHelp: () => void;
   onNavigateToNotification?: (section: NavSection, entityId?: string) => void;
   onSelectSearchResult: (result: GlobalSearchResult) => void;
   onViewAllSearchResults: (query: string) => void;
@@ -58,6 +60,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   onOpenNewSale,
   hideNewSaleAction = false,
   onNavigate,
+  onOpenHelp,
   onNavigateToNotification,
   onSelectSearchResult,
   onViewAllSearchResults,
@@ -262,20 +265,6 @@ export const TopNav: React.FC<TopNavProps> = ({
         </div>
       </div>
 
-      <div className="app-topbar-search-trigger-wrap md:hidden">
-      <button
-        type="button"
-        onClick={() => setShowCommandCenter(true)}
-        className="app-icon-button global-search-trigger lg:hidden"
-        aria-label={`${language === 'bn' ? 'সার্চ খুলুন' : 'Search'} (${searchShortcut})`}
-        title={`${language === 'bn' ? 'সার্চ খুলুন' : 'Search'} (${searchShortcut})`}
-        aria-expanded={showCommandCenter}
-        aria-haspopup="dialog"
-      >
-        <Search className="h-[18px] w-[18px] shrink-0" />
-      </button>
-      </div>
-
       <div className="app-topbar-search relative hidden min-w-0 md:block">
         <Search className="app-topbar-search-icon pointer-events-none absolute left-2.5 h-3.5 w-3.5" />
         <input
@@ -297,6 +286,19 @@ export const TopNav: React.FC<TopNavProps> = ({
       </div>
 
       <div className="app-topbar-tools">
+        <div className="app-topbar-search-trigger-wrap md:hidden">
+          <button
+            type="button"
+            onClick={() => setShowCommandCenter(true)}
+            className="app-icon-button global-search-trigger lg:hidden"
+            aria-label={`${language === 'bn' ? 'সার্চ খুলুন' : 'Search'} (${searchShortcut})`}
+            title={`${language === 'bn' ? 'সার্চ খুলুন' : 'Search'} (${searchShortcut})`}
+            aria-expanded={showCommandCenter}
+            aria-haspopup="dialog"
+          >
+            <Search className="h-[18px] w-[18px] shrink-0" />
+          </button>
+        </div>
         <div className="app-topbar-system-group">
       <span className={`app-connection-status ${pwa.isOnline ? 'is-online' : 'is-offline'}`} role="status" aria-label={pwa.isOnline ? 'Online' : 'Working offline'} title={pwa.isOnline ? 'Online' : 'Working offline'}>
         {pwa.isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
@@ -371,6 +373,15 @@ export const TopNav: React.FC<TopNavProps> = ({
         )}
 
         {/* Notifications */}
+        <button
+          type="button"
+          onClick={onOpenHelp}
+          className="app-icon-button hidden md:inline-flex"
+          aria-label="Open contextual Help Center"
+          title="Help Center"
+        >
+          <CircleHelp className="h-4 w-4" />
+        </button>
         <div ref={notifRef} className="relative">
           <button
             onClick={() => setShowNotifications(!showNotifications)}

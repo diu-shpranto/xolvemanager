@@ -322,6 +322,14 @@ html[lang="bn"] :is(.page-title, .app-main h1),
     transition: color var(--transition-ui), background-color var(--transition-ui), border-color var(--transition-ui), transform var(--transition-ui);
   }
 
+  .action-ghost,
+  .action-danger,
+  .icon-button {
+    min-height: var(--control-height-touch);
+    border-radius: var(--radius-control);
+    transition: color var(--transition-ui), background-color var(--transition-ui), border-color var(--transition-ui), box-shadow var(--transition-ui), transform var(--transition-ui);
+  }
+
   .status-chip {
     min-height: 1.5rem;
     letter-spacing: 0.04em;
@@ -371,13 +379,19 @@ html[lang="bn"] :is(.page-title, .app-main h1),
   }
 
   .action-primary:focus-visible,
-  .action-secondary:focus-visible {
+  .action-secondary:focus-visible,
+  .action-ghost:focus-visible,
+  .action-danger:focus-visible,
+  .icon-button:focus-visible {
     outline: 3px solid var(--brand-focus);
     outline-offset: 2px;
   }
 
   .action-primary:disabled,
-  .action-secondary:disabled {
+  .action-secondary:disabled,
+  .action-ghost:disabled,
+  .action-danger:disabled,
+  .icon-button:disabled {
     cursor: not-allowed;
     opacity: 0.55;
   }
@@ -397,8 +411,49 @@ html[lang="bn"] :is(.page-title, .app-main h1),
     transform: translateY(-1px);
   }
 
+  .action-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+  }
+
+  .action-ghost:hover:not(:disabled) {
+    background: rgba(139, 92, 246, 0.06);
+    color: var(--accent-strong);
+  }
+
+  .action-danger {
+    @apply inline-flex items-center justify-center gap-2 px-3.5 py-2 text-sm font-semibold text-white;
+    border: 1px solid color-mix(in srgb, var(--state-danger) 82%, white);
+    background: var(--state-danger);
+  }
+
+  .action-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--state-danger) 88%, black);
+    transform: translateY(-1px);
+  }
+
+  .icon-button {
+    @apply inline-flex items-center justify-center;
+    width: 2.75rem;
+    padding: 0;
+    border: 1px solid var(--border-subtle);
+    background: var(--panel-bg-strong);
+    color: var(--text-secondary);
+  }
+
+  .icon-button:hover:not(:disabled) {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+  }
+
   .action-primary:active:not(:disabled),
-  .action-secondary:active:not(:disabled) {
+  .action-secondary:active:not(:disabled),
+  .action-ghost:active:not(:disabled),
+  .action-danger:active:not(:disabled),
+  .icon-button:active:not(:disabled) {
     transform: scale(0.985);
   }
 
@@ -1110,10 +1165,15 @@ html[lang="bn"] :is(.page-title, .app-main h1),
   outline-offset: 3px;
 }
 
+.app-topbar-product-mark {
+  flex-shrink: 0;
+}
+
 .app-topbar-product-mark .brand-lockup__mark {
   width: 1.75rem;
   height: 1.75rem;
   border-radius: 0.4rem;
+  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.08);
 }
 
 .app-topbar .app-topbar-collapse {
@@ -1818,28 +1878,15 @@ button:is(.bg-emerald-600, .bg-emerald-700, .bg-emerald-500, .action-primary):ho
 
   .app-topbar {
     gap: 0.25rem;
-    padding-inline: 0.5rem;
-  }
-
-  .app-topbar > div:last-of-type {
-    gap: 0.25rem;
+    padding-inline: max(0.75rem, env(safe-area-inset-left)) max(0.75rem, env(safe-area-inset-right));
   }
 
   .app-topbar-brand-group {
-    gap: 0.25rem;
-  }
-
-  .app-topbar {
-    grid-template-columns: max-content minmax(2.25rem, 1fr) max-content;
+    gap: 0.5rem;
   }
 
   .app-topbar .app-topbar-demo-badge {
     display: none;
-  }
-
-  .app-topbar-brand .brand-lockup__mark {
-    width: 1.75rem;
-    height: 1.75rem;
   }
 
   .app-topbar .app-icon-button,
@@ -1891,12 +1938,11 @@ button:is(.bg-emerald-600, .bg-emerald-700, .bg-emerald-500, .action-primary):ho
 
   .app-topbar {
     position: relative;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    justify-content: stretch;
+    display: flex;
+    justify-content: space-between;
     min-height: var(--app-header-height);
-    gap: 0.375rem;
-    padding-inline: max(0.5rem, env(safe-area-inset-left)) max(0.5rem, env(safe-area-inset-right));
+    gap: 0.5rem;
+    padding-inline: max(0.75rem, env(safe-area-inset-left)) max(0.75rem, env(safe-area-inset-right));
     background: color-mix(in srgb, var(--panel-bg-strong) 94%, var(--accent-soft)) !important;
     border-bottom-color: color-mix(in srgb, var(--accent) 10%, var(--panel-border)) !important;
     box-shadow: 0 5px 16px -14px rgba(35, 25, 72, 0.45) !important;
@@ -1908,9 +1954,8 @@ button:is(.bg-emerald-600, .bg-emerald-700, .bg-emerald-500, .action-primary):ho
   }
 
   .app-topbar-brand-group {
-    grid-column: 1;
-    justify-self: start;
-    gap: 0.25rem;
+    flex: 0 0 auto;
+    gap: 0.5rem;
   }
 
   .app-topbar .mobile-sidebar-toggle {
@@ -1932,54 +1977,63 @@ button:is(.bg-emerald-600, .bg-emerald-700, .bg-emerald-500, .action-primary):ho
     display: none;
   }
 
-  .app-topbar-brand .brand-lockup__mark {
-    width: 2rem;
-    height: 2rem;
+  .app-topbar .app-topbar-product-mark .brand-lockup__mark {
+    width: 2.625rem;
+    height: 2.625rem;
     border-radius: 0.65rem;
     box-shadow: 0 2px 8px rgba(124, 58, 237, 0.2);
   }
 
-  .app-topbar-tools,
+  .app-topbar .app-new-sale {
+    width: 2.625rem;
+    min-width: 2.625rem;
+    height: 2.625rem;
+    flex: 0 0 2.625rem;
+    padding: 0;
+  }
+
+  .app-topbar-tools {
+    flex: 0 0 auto;
+    gap: 0.375rem;
+  }
+
   .app-topbar-action-group {
     gap: 0.25rem;
   }
 
   .app-topbar .app-icon-button,
   .app-topbar .app-profile-button {
-    width: 2.75rem;
-    height: 2.75rem;
+    width: 2.625rem;
+    height: 2.625rem;
   }
 
   .app-topbar .app-icon-button {
-    flex-basis: 2.75rem;
+    flex-basis: 2.625rem;
   }
 
-  .app-topbar-brand-group,
-  .app-topbar-tools,
-  .app-topbar-action-group,
-  .app-topbar-search-trigger-wrap {
-    flex-shrink: 0;
+  .app-topbar-system-group,
+  .app-topbar-divider {
+    display: none;
   }
 
-  .app-topbar-search-trigger-wrap {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 2.75rem;
-    min-width: 0;
-    transform: translate(-50%, -50%);
+  .app-topbar-tools .app-topbar-search-trigger-wrap {
+    position: static;
+    width: 2.625rem;
+    min-width: 2.625rem;
+    flex: 0 0 2.625rem;
+    transform: none;
     justify-content: center;
   }
 
-  .app-topbar .global-search-trigger {
+  .app-topbar-tools .global-search-trigger {
     position: relative;
     isolation: isolate;
     overflow: hidden;
     display: flex;
-    width: 2.75rem;
-    height: 2.75rem;
-    min-width: 2.75rem;
-    flex: 0 0 2.75rem;
+    width: 2.625rem;
+    height: 2.625rem;
+    min-width: 2.625rem;
+    flex: 0 0 2.625rem;
     justify-content: center;
     gap: 0;
     padding: 0;
@@ -2022,14 +2076,12 @@ button:is(.bg-emerald-600, .bg-emerald-700, .bg-emerald-500, .action-primary):ho
   }
 
   .app-topbar-tools {
-    grid-column: 2;
     min-width: 0;
-    justify-self: end;
-    gap: 0.125rem;
+    gap: 0.375rem;
   }
 
   .app-topbar-action-group {
-    gap: 0.125rem;
+    gap: 0.25rem;
   }
 
   .app-topbar-action-group > div.relative {
@@ -2046,6 +2098,12 @@ button:is(.bg-emerald-600, .bg-emerald-700, .bg-emerald-500, .action-primary):ho
 
   .app-topbar-demo-compact {
     display: inline;
+  }
+
+  @container app-topbar (max-width: 479px) {
+    .app-topbar-demo-badge {
+      display: none;
+    }
   }
 
   .app-topbar .app-topbar-brand-link > span:last-child {
@@ -2100,33 +2158,7 @@ button:is(.bg-emerald-600, .bg-emerald-700, .bg-emerald-500, .action-primary):ho
 }
 
 @media (max-width: 767px) {
-  @container app-topbar (min-width: 500px) {
-    .app-topbar {
-      grid-template-columns: max-content minmax(0, 1fr) max-content;
-    }
-
-    .app-topbar-brand-group {
-      grid-column: 1;
-    }
-
-    .app-topbar-search {
-      display: block !important;
-      grid-column: 2;
-      width: auto;
-      min-width: 0;
-      flex: 1 1 auto;
-    }
-
-    .app-topbar-search-trigger-wrap {
-      display: none !important;
-    }
-
-    .app-topbar-tools {
-      grid-column: 3;
-    }
-  }
-
-  @container app-topbar (min-width: 560px) {
+  @container app-topbar (min-width: 420px) {
     .app-topbar .app-topbar-brand-link > span:last-child {
       display: inline;
     }
@@ -3891,7 +3923,19 @@ button.dashboard-metric:hover {
   display: block;
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
+  background: transparent;
+  border-radius: inherit;
+}
+
+.brand-lockup__mark > img,
+.brand-lockup__mark > picture,
+.brand-lockup__mark > span {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .brand-lockup__wordmark {
@@ -11461,6 +11505,24 @@ button.dashboard-metric:hover {
   box-shadow: 0 -8px 18px -20px rgba(30, 25, 62, 0.35);
 }
 
+.payment-collection-form .payment-collection-fields > *,
+.payment-allocation-summary > * {
+  min-width: 0;
+}
+
+.payment-collection-action-footer {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+.app-modal-body:has(.payment-collection-form) {
+  scroll-behavior: smooth;
+  scroll-padding-block: 1.25rem;
+}
+
+.payment-collection-form :is(input, select) {
+  scroll-margin-block: 1.25rem;
+}
+
 .app-modal :is(button, a) {
   transition:
     color var(--motion-standard) var(--motion-ease),
@@ -11500,6 +11562,10 @@ button.dashboard-metric:hover {
     scrollbar-gutter: auto;
   }
 
+  .payment-collection-form .payment-collection-fields :is(input, select) {
+    font-size: 16px;
+  }
+
   .app-modal-footer > :is(div, nav) {
     flex-wrap: wrap;
   }
@@ -11509,6 +11575,10 @@ button.dashboard-metric:hover {
   .app-main :is(input, select, textarea),
   .app-modal :is(input, select, textarea, button, a) {
     transition: none !important;
+  }
+
+  .app-modal-body:has(.payment-collection-form) {
+    scroll-behavior: auto;
   }
 }
 

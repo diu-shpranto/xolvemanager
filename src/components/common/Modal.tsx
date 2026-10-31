@@ -287,9 +287,9 @@ export const Modal: React.FC<ModalProps> = ({
             onClick={requestClose}
             ref={closeButtonRef}
             aria-label="Close dialog"
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-2 focus-visible:outline-violet-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            className="icon-button shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
@@ -325,7 +325,7 @@ export const Modal: React.FC<ModalProps> = ({
                     setShowDiscardConfirmation(false);
                     onCloseRef.current();
                   }}
-                  className="min-h-11 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600"
+                  className="action-danger"
                 >
                   Discard Changes
                 </button>
@@ -333,7 +333,7 @@ export const Modal: React.FC<ModalProps> = ({
                   ref={continueEditingRef}
                   type="button"
                   onClick={() => setShowDiscardConfirmation(false)}
-                  className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                  className="action-secondary"
                 >
                   Continue Editing
                 </button>

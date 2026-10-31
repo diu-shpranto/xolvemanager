@@ -34,6 +34,8 @@ export const ProductLogo: React.FC<ProductLogoProps> = ({
             alt=""
             width={192}
             height={192}
+            sizes="(max-width: 768px) 32px, 48px"
+            priority
             unoptimized
             loading="eager"
           />

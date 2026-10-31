@@ -11,8 +11,9 @@ import { ToastProvider } from './components/common/Toast';
 import { Sidebar, NavSection } from './components/navigation/Sidebar';
 import { TopNav } from './components/navigation/TopNav';
 import type { CashbookAction } from './components/views/CashbookView';
-import type { Subscription } from './types';
+import type { AppCurrency, Subscription } from './types';
 import type { CustomerCrmQuickFilter } from './utils/customerCrm';
+import { getContextualHelpArticle } from './data/helpCenter';
 import { recordRecentSearchItem } from './services/globalSearch';
 import type { GlobalSearchResult } from './services/globalSearch';
 import type { QuickAction } from './components/navigation/CommandCenter';
@@ -47,6 +48,7 @@ const SettingsView = lazy(() => import('./components/views/SettingsView').then(m
 const NotificationsView = lazy(() => import('./components/views/NotificationsView').then(module => ({ default: module.NotificationsView })));
 const SmartRemindersView = lazy(() => import('./components/views/SmartRemindersView').then(module => ({ default: module.SmartRemindersView })));
 const SearchResultsView = lazy(() => import('./components/views/SearchResultsView').then(module => ({ default: module.SearchResultsView })));
+const HelpCenterView = lazy(() => import('./components/views/HelpCenterView').then(module => ({ default: module.HelpCenterView })));
 const NewSaleModal = lazy(() => import('./components/modals/NewSaleModal').then(module => ({ default: module.NewSaleModal })));
 
 class LazyViewErrorBoundary extends React.Component<
@@ -93,20 +95,37 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     : getAppLocation(window.location.pathname);
   // Navigation State
   const [currentSection, setCurrentSectionState] = useState<NavSection>(initialLocation.section);
+  const [helpArticleId, setHelpArticleId] = useState<string | null>(initialLocation.helpArticleId ?? null);
   const currentSectionRef = useRef(currentSection);
   currentSectionRef.current = currentSection;
   const ignoreNextPopStateRef = useRef(false);
   const [isNotFound, setIsNotFound] = useState(Boolean(initialLocation.isNotFound));
-  const setCurrentSection = (section: NavSection, invoiceId?: string) => {
-    if (section !== currentSectionRef.current && !confirmUnsavedChangesBeforeNavigation()) return;
+  const setCurrentSection = (section: NavSection, invoiceId?: string, skipUnsavedCheck = false) => {
+    if (section !== currentSectionRef.current && !skipUnsavedCheck && !confirmUnsavedChangesBeforeNavigation()) return;
     setCurrentSectionState(section);
     currentSectionRef.current = section;
+    setHelpArticleId(null);
     setIsNotFound(false);
     const nextPath = section === 'invoices' && invoiceId
       ? `/invoices/${encodeURIComponent(invoiceId)}`
       : sectionPaths[section];
     if (typeof window !== 'undefined' && window.location.pathname !== nextPath) {
       window.history.pushState({ section, ...(invoiceId && section === 'invoices' ? { recordId: invoiceId } : {}) }, '', nextPath);
+    }
+  };
+  const openHelp = (articleId: string | null, replaceCurrentHelpRoute = false) => {
+    const wasInHelp = currentSectionRef.current === 'help';
+    if (!wasInHelp) {
+      setCurrentSection('help');
+      if (currentSectionRef.current !== 'help') return;
+    }
+    setHelpArticleId(articleId);
+    const nextPath = articleId ? `/help/${encodeURIComponent(articleId)}` : sectionPaths.help;
+    if (window.location.pathname !== nextPath) {
+      const replace = replaceCurrentHelpRoute || !wasInHelp;
+      const state = { section: 'help', helpArticleId: articleId || undefined };
+      if (replace) window.history.replaceState(state, '', nextPath);
+      else window.history.pushState(state, '', nextPath);
     }
   };
   const [settingsStartSection, setSettingsStartSection] = useState<SettingsStartSection | undefined>(initialLocation.settingsStartSection);
@@ -159,11 +178,17 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const [focusedPaymentId, setFocusedPaymentId] = useState<string | undefined>(() =>
     initialLocation.recordSection === 'payments' ? initialLocation.recordId : undefined
   );
-  const [cashbookTarget, setCashbookTarget] = useState<{ accountId?: string; action?: CashbookAction }>({});
+  const [cashbookTarget, setCashbookTarget] = useState<{ accountId?: string; action?: CashbookAction; currency?: AppCurrency }>({});
   const [expenseCreateRequest, setExpenseCreateRequest] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [hasVisitedPayments, setHasVisitedPayments] = useState(false);
+  const [paymentCollectionResumeRequest, setPaymentCollectionResumeRequest] = useState(0);
   const [createRequests, setCreateRequests] = useState({ customer: 0, service: 0, account: 0, payment: 0 });
   const lastRecentView = useRef('');
+
+  useEffect(() => {
+    if (currentSection === 'payments') setHasVisitedPayments(true);
+  }, [currentSection]);
 
   useEffect(() => {
     if (currentSection !== 'sales' && currentSection !== 'profitability') {
@@ -185,6 +210,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       const location = getAppLocation(window.location.pathname);
       setCurrentSectionState(location.section);
       currentSectionRef.current = location.section;
+      setHelpArticleId(location.helpArticleId ?? null);
       setIsNotFound(Boolean(location.isNotFound));
       setSettingsStartSection(location.settingsStartSection);
       setSelectedCustomerId(location.recordSection === 'customers' ? location.recordId ?? null : null);
@@ -289,6 +315,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     if (result.entity === 'customers') setSelectedCustomerId(result.id);
     if (result.entity === 'services' || result.entity === 'plans') setFocusedServiceId(result.parentId ?? result.id);
     if (result.entity === 'accounts' || result.entity === 'profiles') setFocusedAccountId(result.parentId ?? result.id);
+    if (result.entity === 'moneyAccounts') setCashbookTarget({ accountId: result.id });
     if (result.entity === 'subscriptions') setFocusedSubscriptionId(result.id);
     if (result.entity === 'sales') setFocusedSaleId(result.id);
     if (result.entity === 'payments') setFocusedPaymentId(result.id);
@@ -302,6 +329,10 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   };
 
   const handleSearchQuickAction = (action: QuickAction) => {
+    if (action === 'invoices' || action === 'reports') {
+      setCurrentSection(action);
+      return;
+    }
     if (action === 'subscriptions') {
       setCurrentSection('subscriptions');
       return;
@@ -337,6 +368,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           onOpenNewSale={() => handleOpenNewSale()}
           hideNewSaleAction={currentSection === 'sales'}
           onNavigate={setCurrentSection}
+          onOpenHelp={() => openHelp(getContextualHelpArticle(currentSection))}
           onSelectSearchResult={selectSearchResult}
           onViewAllSearchResults={handleViewAllSearchResults}
           onQuickAction={handleSearchQuickAction}
@@ -360,7 +392,8 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         currentSection={currentSection}
         onSelectSection={section => {
           if (section === 'settings') setSettingsStartSection(undefined);
-          setCurrentSection(section);
+          if (section === 'help') openHelp(getContextualHelpArticle(currentSection));
+          else setCurrentSection(section);
         }}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={closeMobileSidebar}
@@ -416,6 +449,10 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                   : section === 'services' ? 'service'
                     : section === 'accounts' ? 'account' : 'payment';
                 setCreateRequests(previous => ({ ...previous, [request]: previous[request] + 1 }));
+              }}
+              onCreateReceivingAccount={requestedCurrency => {
+                setCashbookTarget({ action: 'account', currency: requestedCurrency });
+                setCurrentSection('cashbook');
               }}
               onOpenNewSale={handleOpenNewSale}
               onSelectCustomer={handleSelectCustomer}
@@ -572,31 +609,10 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             />
           )}
 
-          {currentSection === 'payments' && (
-            <PaymentsView
-              focusPaymentId={focusedPaymentId}
-              createRequest={createRequests.payment}
-              preselectedCustomerId={paymentPreselectedCustomerId}
-              preselectedSaleId={paymentPreselectedSaleId}
-              onCreateRequestHandled={() => {
-                markCreateRequestHandled('payment');
-                setPaymentPreselectedCustomerId(undefined);
-                setPaymentPreselectedSaleId(undefined);
-              }}
-              onFocusedPaymentHandled={() => setFocusedPaymentId(undefined)}
-              onNavigateSection={(section, targetId) => {
-                if (section === 'customers' && targetId) setSelectedCustomerId(targetId);
-                if (section === 'sales' && targetId) setFocusedSaleId(targetId);
-                if (section === 'subscriptions' && targetId) setFocusedSubscriptionId(targetId);
-                if (section === 'invoices' && targetId) setFocusedInvoiceId(targetId);
-                setCurrentSection(section as NavSection, section === 'invoices' ? targetId : undefined);
-              }}
-            />
-          )}
-
           {currentSection === 'cashbook' && <CashbookView
             focusAccountId={cashbookTarget.accountId}
             initialAction={cashbookTarget.action}
+            initialCurrency={cashbookTarget.currency}
             onTargetHandled={() => setCashbookTarget({})}
           />}
           {currentSection === 'financial-control' && <FinancialControlView />}
@@ -731,9 +747,70 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             onOpenIntegrity={() => setCurrentSection('data-integrity')}
             onNavigate={setCurrentSection}
           />}
+          {currentSection === 'help' && <HelpCenterView
+            articleId={helpArticleId}
+            onSelectArticle={articleId => openHelp(articleId, articleId === null)}
+            onNavigate={(section, articleId) => {
+              if (section === 'settings') {
+                setSettingsStartSection(articleId === 'backup-restore' || articleId === 'trouble-restore' ? 'data' : undefined);
+              }
+              setCurrentSection(section);
+            }}
+          />}
           {currentSection === 'search' && <SearchResultsView query={searchQuery} onSelectResult={selectSearchResult} />}
           </Suspense>
           </LazyViewErrorBoundary>
+          )}
+
+          {!isNotFound && (currentSection === 'payments' || hasVisitedPayments) && (
+            <div className={currentSection === 'payments' ? 'contents' : 'hidden'} aria-hidden={currentSection !== 'payments'}>
+              <LazyViewErrorBoundary onDashboard={() => setCurrentSection('dashboard')}>
+                <Suspense fallback={
+                  <div className="page-container" role="status" aria-live="polite">
+                    <div className="surface-card flex min-h-32 items-center justify-center gap-3 p-5 text-sm text-slate-500">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-600 border-t-transparent motion-reduce:animate-none" aria-hidden="true" />
+                      Loading payments…
+                    </div>
+                  </div>
+                }>
+                  <PaymentsView
+                    isActive={currentSection === 'payments'}
+                    resumeCollectionRequest={paymentCollectionResumeRequest}
+                    focusPaymentId={focusedPaymentId}
+                    createRequest={createRequests.payment}
+                    preselectedCustomerId={paymentPreselectedCustomerId}
+                    preselectedSaleId={paymentPreselectedSaleId}
+                    onCreateRequestHandled={() => {
+                      markCreateRequestHandled('payment');
+                      setPaymentPreselectedCustomerId(undefined);
+                      setPaymentPreselectedSaleId(undefined);
+                    }}
+                    onFocusedPaymentHandled={() => setFocusedPaymentId(undefined)}
+                    onNavigateSection={(section, targetId) => {
+                      if (section === 'customers' && targetId) setSelectedCustomerId(targetId);
+                      if (section === 'sales' && targetId) setFocusedSaleId(targetId);
+                      if (section === 'subscriptions' && targetId) setFocusedSubscriptionId(targetId);
+                      if (section === 'invoices' && targetId) setFocusedInvoiceId(targetId);
+                      if (section === 'cashbook' && targetId?.startsWith('action:account:')) {
+                        const requestedCurrency = targetId.slice('action:account:'.length);
+                        setCashbookTarget({
+                          action: 'account',
+                          currency: requestedCurrency === 'USD' ? 'USD' : 'BDT',
+                        });
+                        setPaymentCollectionResumeRequest(request => request + 1);
+                      }
+                      const isPreservedAccountCreation = section === 'cashbook' && targetId?.startsWith('action:account:');
+                      if (isPreservedAccountCreation) setHasVisitedPayments(true);
+                      setCurrentSection(
+                        section as NavSection,
+                        section === 'invoices' ? targetId : undefined,
+                        Boolean(isPreservedAccountCreation)
+                      );
+                    }}
+                  />
+                </Suspense>
+              </LazyViewErrorBoundary>
+            </div>
           )}
 
           {currentSection === 'notifications' && (

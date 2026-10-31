@@ -1,8 +1,6 @@
 import Link from 'next/link';
 import {
   BookText,
-  ChevronDown,
-  Database,
   ExternalLink,
   FileText,
   Mail,
@@ -14,51 +12,6 @@ import {
 import { ProductLogo } from '../common/BrandLockup';
 import { productBrand } from '../../config/brand';
 import { supportConfig } from '../../config/supportConfig';
-
-const documentationLinks = [
-  { title: 'Getting Started', description: 'Review the main workflows and business modules.', href: '/dashboard' },
-  { title: 'Customer Management', description: 'Search and maintain customer records.', href: '/customers' },
-  { title: 'Service Management', description: 'Review services and pricing plans.', href: '/services' },
-  { title: 'Sales & Invoices', description: 'Open sales and invoice workflows.', href: '/invoices' },
-  { title: 'Payments & Due Collection', description: 'Track payment status and due activity.', href: '/payments' },
-  { title: 'Backup & Restore', description: 'Use Data & Storage settings to backup and restore data.', href: '/settings' },
-  { title: 'Privacy & Data Storage', description: 'Review the Local-First privacy details.', href: '/legal/privacy' },
-] as const;
-
-const faqItems = [
-  {
-    question: 'What is XolveManager?',
-    answer: 'XolveManager is a Local-First subscription business management app for organizing customers, services, accounts, sales, subscriptions, payments, invoices, and business activity in one place.',
-  },
-  {
-    question: 'Where is my business data stored?',
-    answer: 'In the inspected application, business records are stored in the browser LocalStorage for the active browser profile and are not automatically synchronized to a cloud database or remote server.',
-  },
-  {
-    question: 'Does XolveManager support cloud synchronization?',
-    answer: 'No. The current Local-First implementation does not include automatic cloud synchronization or app-managed server-side data storage.',
-  },
-  {
-    question: 'How do I back up my data?',
-    answer: 'Open Settings and use the Data & Storage area to create a downloadable JSON backup and selected CSV exports. Keep the backup file separate from the device.',
-  },
-  {
-    question: 'How do I restore my data?',
-    answer: 'Use the restore flow in Settings > Data & Storage. The app validates the backup and requires confirmation before applying it, and it creates a safety backup before restore.',
-  },
-  {
-    question: 'What happens if I clear my browser data?',
-    answer: 'Browser clearing or loss of the browser profile can remove the locally stored records. For important business data, keep regular backups and avoid relying on a single browser profile as the only copy.',
-  },
-  {
-    question: 'Is local authentication the same as server-side authentication?',
-    answer: 'No. Local sign-in is browser-local and is not server-side identity verification. Protect the device and browser profile because local access can grant access to the app and stored business records.',
-  },
-  {
-    question: 'How can I contact support?',
-    answer: 'Use this support page to review the currently available channels. Email and Messenger support are not configured yet in the verified project setup, so they remain disabled until an official destination is provided and approved.',
-  },
-] as const;
 
 const supportEmailSubject = encodeURIComponent('XolveManager support request');
 const supportEmailBody = encodeURIComponent('Please describe the issue, the relevant module, and any steps already taken.\n\nPlease remove or redact sensitive business data before sharing screenshots.');
@@ -170,18 +123,16 @@ export function SupportExperience() {
                 <BookText aria-hidden="true" className="h-5 w-5" />
               </span>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-700 dark:text-violet-300">Resources</p>
-                <h2 className="mt-1 text-2xl font-bold text-slate-950 dark:text-white">Knowledge base</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-700 dark:text-violet-300">In-app resources</p>
+                <h2 className="mt-1 text-2xl font-bold text-slate-950 dark:text-white">Help Center</h2>
               </div>
             </div>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              {documentationLinks.map(({ title, description, href }) => (
-                <Link key={title} href={href} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-left transition hover:border-violet-200 hover:bg-violet-50/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950/60 dark:hover:border-violet-800 dark:hover:bg-violet-950/20">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white">{title}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">{description}</p>
-                </Link>
-              ))}
-            </div>
+            <p className="mt-4 max-w-xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+              Browse searchable, step-by-step guidance for customers, services, sales, payments, accounts, reports, backups, settings, and common problems.
+            </p>
+            <Link href="/help" className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white transition hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
+              Explore Help Center <ExternalLink aria-hidden="true" className="h-4 w-4" />
+            </Link>
           </div>
 
           <div className="rounded-[28px] border border-slate-200 bg-white/90 p-6 shadow-[0_20px_60px_-38px_rgba(15,23,42,0.3)] dark:border-slate-800 dark:bg-slate-900/90 sm:p-7">
@@ -222,22 +173,16 @@ export function SupportExperience() {
               <FileText aria-hidden="true" className="h-5 w-5" />
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-700 dark:text-violet-300">FAQ</p>
-              <h2 className="mt-1 text-2xl font-bold text-slate-950 dark:text-white">Common questions</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-700 dark:text-violet-300">Common questions</p>
+              <h2 className="mt-1 text-2xl font-bold text-slate-950 dark:text-white">Find a verified answer</h2>
             </div>
           </div>
-
-          <div className="mt-6 space-y-3">
-            {faqItems.map(({ question, answer }) => (
-              <details key={question} className="group rounded-2xl border border-slate-200 bg-slate-50/80 p-4 transition hover:border-violet-200 dark:border-slate-700 dark:bg-slate-950/60 dark:hover:border-violet-800">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left text-sm font-semibold text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:text-white [&::-webkit-details-marker]:hidden">
-                  <span>{question}</span>
-                  <ChevronDown aria-hidden="true" className="h-[18px] w-[18px] shrink-0 text-violet-700 transition-transform duration-200 group-open:rotate-180 dark:text-violet-300" strokeWidth={2} />
-                </summary>
-                <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{answer}</p>
-              </details>
-            ))}
-          </div>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+            The former Support FAQ content has been consolidated into searchable Help Center articles so instructions stay in one place.
+          </p>
+          <Link href="/help" className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl border border-violet-200 px-4 text-sm font-semibold text-violet-800 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-violet-800 dark:text-violet-200 dark:hover:bg-violet-950/30">
+            Search help articles <ExternalLink aria-hidden="true" className="h-4 w-4" />
+          </Link>
         </section>
 
         <footer className="mt-12 border-t border-slate-200/80 pt-7 dark:border-slate-800">

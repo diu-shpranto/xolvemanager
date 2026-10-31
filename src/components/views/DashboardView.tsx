@@ -82,6 +82,7 @@ import type {
   Sale,
   Subscription,
   PaymentMethod,
+  AppCurrency,
 } from '../../types';
 import {
   dashboardPanelWidgetIds,
@@ -126,6 +127,7 @@ import { runFinancialIntegrityCheck } from '../../utils/accountingControls';
 interface DashboardViewProps {
   onNavigate: (section: NavSection, targetId?: string) => void;
   onRequestCreate: (section: 'customers' | 'services' | 'accounts' | 'payments') => void;
+  onCreateReceivingAccount: (currency: AppCurrency) => void;
   onOpenNewSale: (customerId?: string, serviceId?: string) => void;
   onSelectCustomer: (customerId: string) => void;
   onRenewSubscription: (sub: Subscription) => void;
@@ -215,6 +217,7 @@ function PaymentStatusBadge({ status }: { status: string }) {
 export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigate,
   onRequestCreate,
+  onCreateReceivingAccount,
   onOpenNewSale,
   onSelectCustomer,
   onRenewSubscription,
@@ -277,6 +280,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     businessId: string;
     started: boolean;
     dismissed: boolean;
+    completed?: boolean;
     open: boolean;
   } | null>(null);
   useEffect(() => {
@@ -414,31 +418,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     item.businessId === currentBusiness?.businessId
   ), [dailyClosings, currentBusiness?.businessId]);
   const gettingStartedBusinessId = currentBusiness?.businessId || 'default';
-  const hasWorkspaceRecords = [
-    scopedCustomers,
-    scopedServices,
-    scopedAccounts,
-    scopedSubscriptions,
-    scopedSales,
-    scopedPayments,
-    scopedInvoices,
-    scopedOrders,
-    scopedFinancialAccounts,
-    scopedExpenses,
-    scopedOtherIncome,
-    scopedFinancialTransfers,
-    scopedFinancialAdjustments,
-    scopedReconciliations,
-    scopedFinancialPeriods,
-    scopedDailyClosings,
-  ].some(records => records.length > 0);
+  const hasEssentialSetup = scopedCustomers.length > 0
+    && scopedServices.length > 0
+    && scopedSales.length > 0;
+  const essentialStepsCompleted = [
+    scopedCustomers.length > 0,
+    scopedServices.length > 0,
+    scopedSales.length > 0,
+  ].filter(Boolean).length;
   useEffect(() => {
-    if (!currentUser || currentUser.isDemo || dashboardDataLoading
+    if (!currentUser || dashboardDataLoading
       || gettingStartedState?.businessId === gettingStartedBusinessId) return;
 
     const savedState = getGettingStartedState(gettingStartedBusinessId);
-    const nextState = savedState || getInitialGettingStartedState(hasWorkspaceRecords);
-    if (!savedState && nextState.started) {
+    let nextState = savedState || getInitialGettingStartedState(hasEssentialSetup);
+    if (hasEssentialSetup && !nextState.completed) {
+      nextState = { ...nextState, started: false, dismissed: false, completed: true };
+    } else if (!hasEssentialSetup && !nextState.completed) {
+      nextState = { ...nextState, started: true, dismissed: false };
+    }
+    if (!savedState || nextState !== savedState) {
       try {
         saveGettingStartedState(nextState, gettingStartedBusinessId);
       } catch (error) {
@@ -461,14 +460,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     dashboardDataLoading,
     gettingStartedBusinessId,
     gettingStartedState?.businessId,
-    hasWorkspaceRecords,
+    hasEssentialSetup,
     currentUser?.uid,
     currentUser?.isDemo,
     language,
     showToast,
   ]);
   const setGettingStartedVisibility = (open: boolean) => {
-    const nextState = { started: true, dismissed: !open };
+    const nextState = {
+      started: true,
+      dismissed: !open,
+      completed: gettingStartedState?.completed ?? hasEssentialSetup,
+    };
     setGettingStartedState({
       businessId: gettingStartedBusinessId,
       ...nextState,
@@ -1932,7 +1935,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <button type="button" onClick={() => window.location.reload()} className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold hover:bg-rose-100 dark:border-rose-800 dark:hover:bg-rose-900/40">Try Again</button>
         </div>
       )}
-      {!currentUser?.isDemo && !dashboardDataLoading
+      {!dashboardDataLoading
         && gettingStartedState?.businessId === gettingStartedBusinessId
         && gettingStartedState.open && (
         <section aria-labelledby="getting-started-title" className={`${dashboardPanelClass} space-y-4 sm:p-5`}>
@@ -1947,8 +1950,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
                 {language === 'bn'
-                  ? 'এক জায়গায় কাস্টমার ও সার্ভিস পরিচালনা করুন, তারপর বিক্রয়, ইনভয়েস ও পেমেন্ট অনুসরণ করুন।'
-                  : 'Manage customers and services in one place, then keep sales, invoices, and payments connected.'}
+                  ? 'প্রোফাইল, কাস্টমার ও সার্ভিস সাজিয়ে বিক্রয় রেকর্ড করুন। বিক্রয়ের সাথে ইনভয়েস তৈরি হয়; পেমেন্ট নিতে সক্রিয় রিসিভিং অ্যাকাউন্ট যোগ করুন।'
+                  : 'Set up your profile, customers, and services before recording sales. Invoices are created from sales; add an active receiving account when you are ready to collect payments.'}
               </p>
             </div>
             <button
@@ -1970,13 +1973,50 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 : 'Production Mode · your business data stays separate from Demo Mode.')}
           </p>
 
+          <div className="space-y-2" aria-label="Getting started progress">
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                {language === 'bn' ? 'প্রয়োজনীয় ধাপ' : 'Essential setup'}
+              </span>
+              <span className="text-slate-500 dark:text-slate-400">
+                {language === 'bn'
+                  ? `${essentialStepsCompleted} / 3 সম্পন্ন`
+                  : `${essentialStepsCompleted} of 3 complete`}
+              </span>
+            </div>
+            <div
+              role="progressbar"
+              aria-label={language === 'bn' ? 'প্রয়োজনীয় সেটআপের অগ্রগতি' : 'Essential setup progress'}
+              aria-valuemin={0}
+              aria-valuemax={3}
+              aria-valuenow={essentialStepsCompleted}
+              className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
+            >
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-[width]"
+                style={{ width: `${(essentialStepsCompleted / 3) * 100}%` }}
+              />
+            </div>
+          </div>
+
           <ol className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {[
+              {
+                title: language === 'bn' ? 'ব্যবসার প্রোফাইল পর্যালোচনা করুন' : 'Review your business profile',
+                description: language === 'bn' ? 'ইনভয়েসে ব্যবহারের জন্য ব্যবসার ঠিকানা ও পরিচিতি যোগ করুন।' : 'Add business details that customers can see on invoices.',
+                action: language === 'bn' ? 'প্রোফাইল খুলুন' : 'Review profile',
+                completed: Boolean(settings.businessProfile?.description?.trim()
+                  || settings.businessProfile?.address?.trim()
+                  || settings.businessProfile?.website?.trim()),
+                optional: true,
+                onClick: () => onNavigate('settings'),
+              },
               {
                 title: language === 'bn' ? 'প্রথম কাস্টমার যোগ করুন' : 'Add your first customer',
                 description: language === 'bn' ? 'কাস্টমারের যোগাযোগের তথ্য ও কার্যকলাপ একসাথে রাখুন।' : 'Keep customer contact details and activity together.',
                 action: language === 'bn' ? 'কাস্টমার যোগ করুন' : 'Add customer',
                 completed: scopedCustomers.length > 0,
+                optional: false,
                 onClick: () => onRequestCreate('customers'),
               },
               {
@@ -1984,28 +2024,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 description: language === 'bn' ? 'আপনার সার্ভিস, প্ল্যান ও সাবস্ক্রিপশন সাজান।' : 'Organize the services, plans, and subscriptions you offer.',
                 action: language === 'bn' ? 'সার্ভিস যোগ করুন' : 'Add service',
                 completed: scopedServices.length > 0,
+                optional: false,
                 onClick: () => onRequestCreate('services'),
               },
               {
+                title: language === 'bn' ? 'রিসিভিং অ্যাকাউন্ট যোগ করুন' : 'Add a receiving account',
+                description: language === 'bn'
+                  ? 'পেমেন্ট নেওয়ার সময় একটি সক্রিয় আর্থিক অ্যাকাউন্ট প্রয়োজন।'
+                  : 'An active financial account is needed when recording a payment.',
+                action: language === 'bn' ? 'রিসিভিং অ্যাকাউন্ট তৈরি করুন' : 'Create receiving account',
+                completed: scopedFinancialAccounts.some(account =>
+                  account.enabled && account.currency === currency
+                ),
+                optional: true,
+                onClick: () => onCreateReceivingAccount(currency),
+              },
+              {
                 title: language === 'bn' ? 'প্রথম বিক্রয় রেকর্ড করুন' : 'Record your first sale',
-                description: language === 'bn' ? 'বিক্রয় কাস্টমার, সার্ভিস ও পরবর্তী রেকর্ডের সাথে যুক্ত থাকে।' : 'Sales connect customers and services to the records that follow.',
+                description: language === 'bn' ? 'বিক্রয় ইনভয়েস তৈরি করে; পেমেন্ট পরে সংগ্রহ করা যায়।' : 'A sale creates its invoice; you can collect payment later.',
                 action: language === 'bn' ? 'নতুন বিক্রয়' : 'New sale',
                 completed: scopedSales.length > 0,
+                optional: false,
                 onClick: () => onOpenNewSale(),
-              },
-              {
-                title: language === 'bn' ? 'প্রথম ইনভয়েস তৈরি করুন' : 'Generate your first invoice',
-                description: language === 'bn' ? 'বিক্রয়ের সাথে ইনভয়েস তৈরি হয়; ইনভয়েস পেজে তা দেখুন।' : 'Invoices are created from sales and can be reviewed in Invoices.',
-                action: language === 'bn' ? 'ইনভয়েস দেখুন' : 'Open invoices',
-                completed: scopedInvoices.length > 0,
-                onClick: () => onNavigate('invoices'),
-              },
-              {
-                title: language === 'bn' ? 'একটি পেমেন্ট রেকর্ড করুন' : 'Record a payment',
-                description: language === 'bn' ? 'বকেয়া বিক্রয়ের জন্য পেমেন্ট সংগ্রহ করুন বা কাস্টমার পেমেন্ট রেকর্ড করুন।' : 'Collect against a sale or record a customer payment.',
-                action: language === 'bn' ? 'পেমেন্ট খুলুন' : 'Open payments',
-                completed: scopedPayments.length > 0,
-                onClick: () => onNavigate('payments'),
               },
             ].map((step, index) => (
               <li key={step.title} className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
@@ -2018,7 +2058,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {step.completed ? <Check aria-hidden="true" className="h-4 w-4" /> : index + 1}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{step.title}</h3>
+                    <h3 className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-white">
+                      {step.title}
+                      {step.optional && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span>}
+                    </h3>
                     <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{step.description}</p>
                   </div>
                 </div>
@@ -2073,16 +2116,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 ? (language === 'bn' ? 'ডেমো মোড · নমুনা ডেটা' : 'Demo Mode · sample data')
                 : (language === 'bn' ? 'প্রোডাকশন মোড · ব্যবসার ডেটা' : 'Production Mode · business data')}
             </p>
-            {!currentUser?.isDemo && (
-              <button
-                type="button"
-                onClick={() => setGettingStartedVisibility(true)}
-                className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40"
-              >
-                <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
-                {language === 'bn' ? 'শুরু করার নির্দেশনা' : 'Getting started'}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setGettingStartedVisibility(true)}
+              className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40"
+            >
+              <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
+              {language === 'bn' ? 'শুরু করার নির্দেশনা' : 'Getting started'}
+            </button>
           </div>
         </div>
         <div className="dashboard-quick-actions-list">

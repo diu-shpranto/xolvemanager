@@ -1,14 +1,15 @@
 import type {
-  Account, ActivityLog, Customer, Invoice, Payment, Reminder, Sale, Service,
+  Account, ActivityLog, Customer, FinancialAccount, Invoice, Payment, Reminder, Sale, Service,
   Subscription,
 } from '../types';
+import type { Language } from '../types';
 import type { NavSection } from '../components/navigation/Sidebar';
 import { getSubscriptionStatus } from '../utils/dateUtils';
 import { getSaleLineItems } from '../utils/saleUtils';
 import { getStorageKey } from './localStorageStore';
 
 export type SearchEntity =
-  | 'customers' | 'services' | 'plans' | 'accounts' | 'profiles'
+  | 'customers' | 'services' | 'plans' | 'accounts' | 'moneyAccounts' | 'profiles'
   | 'subscriptions' | 'sales' | 'payments' | 'invoices' | 'history' | 'reminders';
 
 export interface GlobalSearchResult {
@@ -27,6 +28,7 @@ export interface SearchData {
   customers: Customer[];
   services: Service[];
   accounts: Account[];
+  financialAccounts: FinancialAccount[];
   subscriptions: Subscription[];
   sales: Sale[];
   payments: Payment[];
@@ -111,7 +113,7 @@ export function buildSearchIndex(data: SearchData, timeZone?: string): GlobalSea
 
   data.customers.forEach(item => push({
     entity: 'customers', id: item.id, section: 'customers', title: item.name,
-    subtitle: item.phone, detail: item.email, fields: [
+    subtitle: item.phone, detail: '', fields: [
       item.id, item.name, item.phone, item.whatsapp ?? '', item.email,
       item.facebookId ?? '', item.facebookUrl ?? '',
     ],
@@ -135,19 +137,28 @@ export function buildSearchIndex(data: SearchData, timeZone?: string): GlobalSea
     const service = services.get(item.serviceId);
     const related = [service?.name ?? '', item.plan];
     push({
-      entity: 'accounts', id: item.id, section: 'accounts', title: item.name || item.email,
+      entity: 'accounts', id: item.id, section: 'accounts', title: item.name || service?.name || 'Service account',
       subtitle: `${service?.name ?? 'Service'} · ${item.plan}`, detail: item.status,
-      fields: [item.id, item.name ?? '', item.email, item.username ?? '', item.planId ?? '', service?.name ?? '', item.plan],
+      fields: [item.id, item.name ?? '', item.planId ?? '', service?.name ?? '', item.plan],
     });
     item.profiles.forEach(profile => {
       const customer = profile.assignedCustomerId ? customers.get(profile.assignedCustomerId) : undefined;
       push({
         entity: 'profiles', id: profile.id, parentId: item.id, section: 'accounts',
-        title: profile.profileName, subtitle: customer?.name ?? item.email,
-        detail: profile.status, fields: [profile.id, profile.profileName, item.id, item.name ?? '', item.email, item.username ?? '', service?.name ?? '', customer?.id ?? '', customer?.name ?? '', customer?.phone ?? '', customer?.whatsapp ?? '', customer?.email ?? ''],
-      }, undefined, [...related, item.name ?? '', item.email, item.username ?? '', customer?.name ?? '', customer?.phone ?? '', customer?.whatsapp ?? '', customer?.email ?? '']);
+        title: profile.profileName, subtitle: customer?.name ?? item.name ?? service?.name ?? 'Service profile',
+        detail: profile.status, fields: [profile.id, profile.profileName, item.id, item.name ?? '', service?.name ?? '', customer?.name ?? ''],
+      }, undefined, [...related, item.name ?? '', customer?.name ?? '']);
     });
   });
+  data.financialAccounts.forEach(item => push({
+    entity: 'moneyAccounts',
+    id: item.id,
+    section: 'cashbook',
+    title: item.name,
+    subtitle: item.type.replaceAll('_', ' '),
+    detail: `${item.currency} · ${item.enabled ? 'Enabled' : 'Disabled'}`,
+    fields: [item.id, item.name, item.type, item.currency, item.enabled ? 'enabled' : 'disabled'],
+  }));
   data.subscriptions.forEach(item => {
     const customer = customers.get(item.customerId);
     const service = services.get(item.serviceId);
@@ -162,7 +173,7 @@ export function buildSearchIndex(data: SearchData, timeZone?: string): GlobalSea
       fields: [
         item.id, item.plan, item.startDate, item.expiryDate, status, item.paymentStatus,
         customer?.name ?? '', customer?.phone ?? '', customer?.whatsapp ?? '', customer?.email ?? '',
-        service?.name ?? '', account?.name ?? '', account?.email ?? '', account?.username ?? '', profile?.profileName ?? '',
+        service?.name ?? '', account?.name ?? '', profile?.profileName ?? '',
       ],
     });
   });
@@ -200,9 +211,9 @@ export function buildSearchIndex(data: SearchData, timeZone?: string): GlobalSea
     push({
       entity: 'payments', id: item.id, section: 'payments',
       title: item.id, subtitle: customer?.name ?? 'Unknown customer',
-      detail: `${itemSummary || service?.name || 'Payment'} · ${relatedInvoice?.invoiceNumber ?? sale?.invoiceNo ?? 'No invoice'} · ${item.paymentDate} · ${item.paymentStatus}`,
+      detail: `${itemSummary || service?.name || 'Payment'} · ${relatedInvoice?.invoiceNumber ?? sale?.invoiceNo ?? 'No invoice'} · ${item.transactionId ? `${item.transactionId} · ` : ''}${item.paymentDate} · ${item.amount} ${item.currency} · ${item.paymentStatus}`,
       fields: [
-        item.id, item.transactionId ?? '', item.paymentDate, item.paymentStatus,
+        item.id, item.transactionId ?? '', item.paymentDate, safe(item.amount), item.currency, item.paymentStatus,
         item.paymentMethod, item.saleId ?? '', item.invoiceId ?? '',
         customer?.name ?? '', customer?.phone ?? '', customer?.whatsapp ?? '', customer?.email ?? '',
         relatedInvoice?.invoiceNumber ?? '', sale?.id ?? '', sale?.invoiceNo ?? '',
@@ -312,7 +323,7 @@ export function getRecentSearchItems(businessId?: string): RecentSearchItem[] {
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((item): item is RecentSearchItem =>
       typeof item === 'object' && item !== null &&
-      ['customers', 'services', 'plans', 'accounts', 'profiles', 'subscriptions', 'sales', 'payments', 'invoices', 'history', 'reminders'].includes((item as RecentSearchItem).entity) &&
+      ['customers', 'services', 'plans', 'accounts', 'moneyAccounts', 'profiles', 'subscriptions', 'sales', 'payments', 'invoices', 'history', 'reminders'].includes((item as RecentSearchItem).entity) &&
       typeof (item as RecentSearchItem).id === 'string' &&
       typeof (item as RecentSearchItem).viewedAt === 'string'
     ).slice(0, 20);
@@ -347,12 +358,31 @@ export function resolveRecentSearchItems(index: GlobalSearchResult[], recents: R
 
 export const SEARCH_ENTITY_LABELS: Record<SearchEntity, string> = {
   customers: 'Customers', services: 'Services', plans: 'Plans', accounts: 'Accounts',
+  moneyAccounts: 'Money accounts',
   profiles: 'Profiles', subscriptions: 'Subscriptions', sales: 'Sales',
   payments: 'Payments', invoices: 'Invoices', history: 'History',
   reminders: 'Reminders',
 };
 
+const SEARCH_ENTITY_LABELS_BN: Record<SearchEntity, string> = {
+  customers: 'কাস্টমার',
+  services: 'সার্ভিস',
+  plans: 'প্ল্যান',
+  accounts: 'সার্ভিস অ্যাকাউন্ট',
+  moneyAccounts: 'মানি অ্যাকাউন্ট',
+  profiles: 'প্রোফাইল',
+  subscriptions: 'সাবস্ক্রিপশন',
+  sales: 'বিক্রয়',
+  payments: 'পেমেন্ট',
+  invoices: 'ইনভয়েস',
+  history: 'ইতিহাস',
+  reminders: 'রিমাইন্ডার',
+};
+
+export const getSearchEntityLabel = (entity: SearchEntity, language: Language = 'en'): string =>
+  language === 'bn' ? SEARCH_ENTITY_LABELS_BN[entity] : SEARCH_ENTITY_LABELS[entity];
+
 export const SEARCH_ENTITY_ORDER: SearchEntity[] = [
-  'customers', 'services', 'plans', 'accounts', 'profiles',
+  'customers', 'services', 'plans', 'accounts', 'moneyAccounts', 'profiles',
   'subscriptions', 'sales', 'payments', 'invoices', 'history', 'reminders',
 ];

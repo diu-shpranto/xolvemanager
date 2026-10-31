@@ -225,10 +225,11 @@ export const writeJsonValue = (key: string, value: unknown): void => {
 export interface GettingStartedState {
   started: boolean;
   dismissed: boolean;
+  completed?: boolean;
 }
 
-export const getInitialGettingStartedState = (hasWorkspaceRecords: boolean): GettingStartedState => ({
-  started: !hasWorkspaceRecords,
+export const getInitialGettingStartedState = (hasCompletedSetup: boolean): GettingStartedState => ({
+  started: !hasCompletedSetup,
   dismissed: false,
 });
 
@@ -238,7 +239,8 @@ const isGettingStartedState = (value: unknown): value is GettingStartedState =>
   && 'started' in value
   && typeof value.started === 'boolean'
   && 'dismissed' in value
-  && typeof value.dismissed === 'boolean';
+  && typeof value.dismissed === 'boolean'
+  && (!('completed' in value) || typeof value.completed === 'boolean');
 
 const getGettingStartedStorageKey = (businessId?: string): string =>
   `${STORAGE_KEYS.GETTING_STARTED}.${encodeURIComponent(businessId || 'default')}`;

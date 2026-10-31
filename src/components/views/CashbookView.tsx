@@ -9,15 +9,16 @@ import { formatAppDate, formatCurrency, getTodayDateString } from '../../utils/d
 import { getAccountBalance, getAccountLedger, getCashFlowSummary, getFinancialLedger } from '../../utils/financialLedger';
 import { normalizePaymentMethods } from '../../utils/paymentMethods';
 import { downloadCSV } from '../../utils/csvParser';
-import type { FinancialAccount, FinancialAccountType } from '../../types';
+import type { AppCurrency, FinancialAccount, FinancialAccountType } from '../../types';
 
 type EntryKind = 'expense' | 'income' | 'transfer' | 'adjustment';
 type ModalKind = EntryKind | 'account' | 'edit-account' | null;
-export type CashbookAction = 'expense' | 'income' | 'transfer';
+export type CashbookAction = 'expense' | 'income' | 'transfer' | 'account';
 
 interface CashbookViewProps {
   focusAccountId?: string;
   initialAction?: CashbookAction;
+  initialCurrency?: AppCurrency;
   onTargetHandled?: () => void;
 }
 
@@ -30,7 +31,7 @@ const csvCell = (value: string | number) => {
   return `"${safe.replace(/"/g, '""')}"`;
 };
 
-export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, initialAction, onTargetHandled }) => {
+export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, initialAction, initialCurrency, onTargetHandled }) => {
   const { formatCurrency, formatDate: formatAppDate } = useAppFormatting();
   const {
     financialAccounts, payments, expenses, otherIncome, financialTransfers, financialAdjustments,
@@ -136,9 +137,10 @@ export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, init
 
   useEffect(() => {
     if (!initialAction) return;
+    if (initialAction === 'account' && initialCurrency) setAccountCurrency(initialCurrency);
     openModal(initialAction);
     onTargetHandled?.();
-  }, [initialAction]);
+  }, [initialAction, initialCurrency]);
 
   const openEditAccount = (account: FinancialAccount) => {
     setEditingAccountId(account.id);

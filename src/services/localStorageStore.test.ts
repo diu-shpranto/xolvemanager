@@ -140,6 +140,10 @@ test('getting-started dismissal is scoped by business and data environment', () 
     saveGettingStartedState(productionState, 'business-1');
     assert.deepEqual(getGettingStartedState('business-1'), productionState);
     assert.equal(getGettingStartedState('business-2'), null);
+    const completedState = { started: false, dismissed: false, completed: true };
+    saveGettingStartedState(completedState, 'business-1');
+    assert.deepEqual(getGettingStartedState('business-1'), completedState);
+    saveGettingStartedState(productionState, 'business-1');
 
     setActiveDataEnvironment('demo');
     assert.equal(getGettingStartedState('business-1'), null);

@@ -25,6 +25,7 @@ export const sectionPaths: Record<NavSection, string> = {
   notifications: '/notifications',
   reminders: '/reminders',
   search: '/search',
+  help: '/help',
 };
 
 const recordSections: Record<RecordSection, NavSection> = {
@@ -54,6 +55,7 @@ export interface AppLocation {
   section: NavSection;
   recordSection?: RecordSection;
   recordId?: string;
+  helpArticleId?: string;
   settingsStartSection?: SettingsStartSection;
   isNotFound?: boolean;
 }
@@ -69,6 +71,10 @@ const decodeRouteSegment = (segment: string): string => {
 export const getAppLocation = (pathname: string): AppLocation => {
   const normalizedPath = pathname.replace(/\/+$/, '') || '/';
   const segments = normalizedPath.split('/').filter(Boolean);
+
+  if (segments.length === 2 && segments[0] === 'help' && segments[1]) {
+    return { section: 'help', helpArticleId: decodeRouteSegment(segments[1]) };
+  }
 
   if (segments.length === 2 && Object.hasOwn(recordSections, segments[0]) && segments[1]) {
     const recordSection = segments[0] as RecordSection;
