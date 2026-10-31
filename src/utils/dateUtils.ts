@@ -3,6 +3,19 @@ import type { AppCurrency, Language, Service, Subscription, SubscriptionStatus }
 const getFormattingLocale = (language: Language): string => language === 'bn' ? 'bn-BD' : 'en-GB';
 const dateOnlyPattern = /^(\d{4})-(\d{2})-(\d{2})$/;
 
+export function isValidDateOnlyString(value: string): boolean {
+  const match = dateOnlyPattern.exec(value);
+  if (!match) return false;
+  const [, yearValue, monthValue, dayValue] = match;
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
 function formatDateValue(date: Date, language: Language, options: Intl.DateTimeFormatOptions): string {
   try {
     return new Intl.DateTimeFormat(getFormattingLocale(language), options).format(date);

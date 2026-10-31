@@ -144,6 +144,43 @@ test('line allocations preserve the combined discounted total without multiplyin
   assert.equal(lines.reduce((total, line) => total + line.amount, 0), sale.amount);
 });
 
+test('explicit per-service cash allocations are reflected in each line balance', () => {
+  const unpaidSale = { ...sale, amountPaid: 0, paymentStatus: 'pending' };
+  const oneServicePaidPayment = {
+    ...payment,
+    amount: 92.31,
+    paymentStatus: 'partial',
+    allocations: [
+      { saleId: unpaidSale.id, lineItemId: 'item-a', amount: 92.31 },
+    ],
+  };
+  const independentlyPaidLines = getSaleLineFinancialAllocations(unpaidSale, [oneServicePaidPayment]);
+  assert.deepEqual(independentlyPaidLines.map(({ paid, due, paymentStatus }) =>
+    [paid, due, paymentStatus]
+  ), [
+    [92.31, 0, 'paid'],
+    [0, 147.69, 'pending'],
+  ]);
+
+  const manuallyAllocatedPayment = {
+    ...payment,
+    amount: 75,
+    paymentStatus: 'partial',
+    allocations: [
+      { saleId: unpaidSale.id, lineItemId: 'item-a', amount: 40 },
+      { saleId: unpaidSale.id, lineItemId: 'item-b', amount: 35 },
+    ],
+  };
+  const lineFinancials = getSaleLineFinancialAllocations(unpaidSale, [manuallyAllocatedPayment]);
+
+  assert.deepEqual(lineFinancials.map(({ amount, paid, due, paymentStatus }) =>
+    [amount, paid, due, paymentStatus]
+  ), [
+    [92.31, 40, 52.31, 'partial'],
+    [147.69, 35, 112.69, 'partial'],
+  ]);
+});
+
 test('multi-service payment allocations reconcile to one parent invoice without repeating its balance per item', () => {
   const consolidatedSale = {
     ...sale,

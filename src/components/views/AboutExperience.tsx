@@ -235,11 +235,15 @@ const questions: {
   },
   {
     question: 'Are Demo and Production records separated?',
-    answer: 'No. Demo records share the same browser business store as other records in this build. Installing demo records does not create an isolated Demo environment.',
+    answer: 'Yes. Demo and Production records use separate browser storage namespaces. Both remain on this device and browser profile; Demo is not a separate cloud account or server-side security boundary.',
   },
   {
     question: 'Do records remain after refreshing the page?',
     answer: 'Business records are saved to browser LocalStorage and normally remain available in the same browser profile after a refresh. They are not cloud-synced, and browser or device changes can affect local data, so keep a separate backup.',
+  },
+  {
+    question: 'Is local sign-in server-side security?',
+    answer: 'No. Sign-in is stored in this browser and is not server-side authentication or a security boundary. Protect access to your device and browser profile.',
   },
 ];
 
@@ -393,10 +397,20 @@ export const AboutExperience: React.FC<AboutExperienceProps> = ({
       </div>
       <div className="about-page-data__copy">
         <p>
-          Business records use this browser’s LocalStorage. They are not cloud-synced or automatically available on another device. Browser storage can be cleared or affected by browser and device changes, so keep a separate backup.
+          <strong>Local-first beta:</strong> Business records are stored in this browser’s LocalStorage and are not automatically synchronized across devices. The app still makes network requests for hosting, Google Fonts, and any remote logos or external services you choose to use.
         </p>
         <p>
-          Data &amp; Storage settings provide a downloadable JSON backup and a validated restore preview. A restore is applied only after confirmation and a safety backup. Demo records share the business store; this app does not provide isolated Demo and Production environments.
+          Sign-in is local to this browser and is not server-side authentication or a security boundary. Demo and Production records use separate browser storage namespaces, but both remain on this device and profile.
+        </p>
+        <p>
+          Keep regular downloadable backups in a secure place. Avoid storing highly sensitive information such as payment-card numbers or government identifiers, and protect this device and browser profile from other users.
+        </p>
+        <p>
+          Data &amp; Storage settings provide a downloadable JSON backup and a validated restore preview. A restore is applied only after confirmation and a safety backup.
+        </p>
+        <p>
+          <a href="/legal/privacy" className="font-semibold text-violet-700 underline underline-offset-2 dark:text-violet-300">Read the Privacy &amp; Data Notice</a> for details about local storage, external requests, backups, and deletion.
+          {' '}<a href="/legal" className="font-semibold text-violet-700 underline underline-offset-2 dark:text-violet-300">Open the Legal &amp; Trust Center</a>.
         </p>
         <div className="about-page-actions">
           <button type="button" onClick={onOpenDataManagement}>
@@ -460,6 +474,11 @@ export const AboutExperience: React.FC<AboutExperienceProps> = ({
       </dl>
       <p className="about-page-caption">
         <FileText aria-hidden="true" /> In-app data and backup guidance is available in Data &amp; Storage settings.
+      </p>
+      <p className="about-page-caption">
+        <a href="/support" className="font-semibold text-violet-700 underline underline-offset-2 dark:text-violet-300">Contact &amp; Support</a>
+        {' '}·{' '}
+        <a href="/legal" className="font-semibold text-violet-700 underline underline-offset-2 dark:text-violet-300">Legal &amp; Trust Center</a>
       </p>
     </footer>
     <XolveKartEcosystemSection />

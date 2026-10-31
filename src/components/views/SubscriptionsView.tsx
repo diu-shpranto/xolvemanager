@@ -826,7 +826,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     });
 
     showToast(
-      language === 'bn' ? 'সাবস্ক্রিপশন সফলভাবে আপডেট হয়েছে।' : 'Subscription details updated successfully.',
+      language === 'bn' ? 'সাবস্ক্রিপশন সফলভাবে আপডেট হয়েছে।' : 'Subscription updated.',
       'success'
     );
     setIsEditDrawerOpen(false);
@@ -860,7 +860,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     }
 
     showToast(
-      language === 'bn' ? 'সাবস্ক্রিপশন বাতিল হিসেবে চিহ্নিত হয়েছে।' : 'Subscription marked as cancelled.',
+      language === 'bn' ? 'সাবস্ক্রিপশন বাতিল হিসেবে চিহ্নিত হয়েছে।' : 'Subscription cancelled.',
       'info'
     );
     setIsCancelDialogOpen(false);
@@ -997,7 +997,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     });
 
     showToast(
-      language === 'bn' ? 'নতুন সাবস্ক্রিপশন সফলভাবে তৈরি হয়েছে!' : 'New subscription created successfully!',
+      language === 'bn' ? 'নতুন সাবস্ক্রিপশন সফলভাবে তৈরি হয়েছে!' : 'Subscription created.',
       'success'
     );
     setIsNewSubDrawerOpen(false);
@@ -1069,7 +1069,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
           </div>
           <div className="min-w-0">
             <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">
-              {language === 'bn' ? 'সাবস্ক্রিপশন ব্যবস্থাপনা' : 'SUBSCRIPTION MANAGEMENT'}
+              {language === 'bn' ? 'সাবস্ক্রিপশন ব্যবস্থাপনা' : 'SUBSCRIPTIONS'}
             </p>
             <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">
               {language === 'bn' ? 'সাবস্ক্রিপশন' : 'Subscriptions'}
@@ -1143,13 +1143,13 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             {language === 'bn' ? 'দ্রুত ফলো-আপ' : 'Quick follow-up'}
           </p>
           <p className="mt-0.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
-            {language === 'bn' ? 'নবায়নের জন্য প্রয়োজনীয় সাবস্ক্রিপশন খুঁজুন' : 'Jump to subscriptions that need attention'}
+            {language === 'bn' ? 'নবায়নের জন্য প্রয়োজনীয় সাবস্ক্রিপশন খুঁজুন' : 'Find subscriptions that need attention.'}
           </p>
         </div>
         <div className="subscription-quick-actions flex flex-wrap items-center gap-1.5">
           {[
             {
-              label: language === 'bn' ? 'আজ শেষ' : 'Due today',
+              label: language === 'bn' ? 'আজ শেষ' : 'Ends today',
               active: quickExpiry === 'today',
               action: () => { setQuickExpiry('today'); setStatusFilter('expiring_soon'); setResourceFilter('all'); },
             },
@@ -1164,7 +1164,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               action: () => { setQuickExpiry('expired'); setStatusFilter('expired'); setResourceFilter('all'); },
             },
             {
-              label: language === 'bn' ? 'রিসোর্স বরাদ্দ নেই' : 'Unassigned',
+              label: language === 'bn' ? 'রিসোর্স বরাদ্দ নেই' : 'No account assigned',
               active: resourceFilter === 'unassigned',
               action: () => { setResourceFilter('unassigned'); setStatusFilter('all'); setQuickExpiry('all'); },
             },
@@ -2182,7 +2182,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                 </div>
                 <span className="mt-5 text-[10px] font-bold uppercase tracking-[0.16em] text-violet-700 dark:text-violet-300">
                   {subscriptions.length
-                    ? (language === 'bn' ? 'সাবস্ক্রিপশন ওয়ার্কস্পেস' : 'Subscription workspace')
+                    ? (language === 'bn' ? 'সাবস্ক্রিপশন ওয়ার্কস্পেস' : 'Subscriptions')
                     : (language === 'bn' ? 'শুরু করুন' : 'Get started')}
                 </span>
                 <h3 className="mt-2 text-xl font-bold tracking-tight text-slate-900 dark:text-white">
@@ -2420,7 +2420,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       <Modal
         isOpen={isEditDrawerOpen}
         onClose={() => setIsEditDrawerOpen(false)}
-        title={language === 'bn' ? 'সাবস্ক্রিপশন সম্পাদনা' : 'Edit Subscription Details'}
+        title={language === 'bn' ? 'সাবস্ক্রিপশন সম্পাদনা' : 'Edit Subscription'}
         maxWidth="md"
       >
         <form onSubmit={handleSaveEdit} className="space-y-3.5 text-xs">
@@ -2654,7 +2654,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       <Modal
         isOpen={isNewSubDrawerOpen}
         onClose={() => setIsNewSubDrawerOpen(false)}
-        title={language === 'bn' ? '+ নতুন সাবস্ক্রিপশন তৈরি করুন' : '+ New Subscription Workspace'}
+        title={language === 'bn' ? '+ নতুন সাবস্ক্রিপশন তৈরি করুন' : '+ New Subscription'}
         maxWidth="xl"
       >
         <form onSubmit={handleCreateNewSubscription} className="space-y-4 text-xs">

@@ -73,6 +73,8 @@ export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, init
   const enabledAccounts = financialAccounts.filter(account => account.enabled);
   const unresolvedPayments = useMemo(() => payments.filter(payment =>
     (payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial' || payment.paymentStatus === 'refunded')
+    && Number.isFinite(Number(payment.amount))
+    && Number(payment.amount) > 0
     && !ledger.some(entry => entry.paymentId === payment.id)
   ), [payments, ledger]);
   const activeAccount = financialAccounts.find(account => account.id === selectedAccountId);
@@ -224,8 +226,8 @@ export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, init
             <Wallet className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">Finance operations</p>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Cashbook</h1>
+            <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">Money records</p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Money Accounts</h1>
             <p className="mt-0.5 max-w-[28rem] text-sm leading-5 text-slate-600 dark:text-slate-400">Track account balances, money in &amp; out.</p>
           </div>
         </div>
@@ -244,13 +246,13 @@ export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, init
 
       <section className="cashbook-summary-grid grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4" aria-label="Cashbook summary">
         <div className="cashbook-summary-card cashbook-summary-card--primary min-w-0 rounded-xl border border-violet-200 bg-violet-50/70 p-3 dark:border-violet-900/60 dark:bg-violet-950/25 sm:p-4">
-          <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300"><Wallet size={15} className="text-violet-700 dark:text-violet-300" /> Business balance</div>
+          <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300"><Wallet size={15} className="text-violet-700 dark:text-violet-300" /> Total balance</div>
           <div className="mt-2 text-xl font-bold tabular-nums tracking-tight text-slate-950 dark:text-white sm:text-2xl">{formatCurrency(totalBalance, currency)}</div>
-          <div className="mt-0.5 text-[10px] text-slate-500">Converted to {currency}</div>
+          <div className="mt-0.5 text-[10px] text-slate-500">Shown in {currency}</div>
         </div>
         <div className={`${cardClass} cashbook-summary-card`}><div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300"><ArrowDownLeft size={15} className="text-emerald-600" /> Money in</div><div className="mt-2 text-xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300 sm:text-2xl">{formatCurrency(flow.moneyIn, currency)}</div></div>
         <div className={`${cardClass} cashbook-summary-card`}><div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300"><ArrowDownRight size={15} className="text-rose-600" /> Money out</div><div className="mt-2 text-xl font-bold tabular-nums text-rose-700 dark:text-rose-300 sm:text-2xl">{formatCurrency(flow.moneyOut, currency)}</div></div>
-        <div className={`${cardClass} cashbook-summary-card`}><div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300"><ArrowLeftRight size={15} className="text-violet-600" /> Net cash flow</div><div className={`mt-2 text-xl font-bold tabular-nums sm:text-2xl ${flow.netCashFlow >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>{formatCurrency(flow.netCashFlow, currency)}</div></div>
+        <div className={`${cardClass} cashbook-summary-card`}><div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300"><ArrowLeftRight size={15} className="text-violet-600" /> Money in minus out</div><div className={`mt-2 text-xl font-bold tabular-nums sm:text-2xl ${flow.netCashFlow >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>{formatCurrency(flow.netCashFlow, currency)}</div></div>
       </section>
 
       <section className="cashbook-account-grid grid gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4" aria-label="Financial accounts">

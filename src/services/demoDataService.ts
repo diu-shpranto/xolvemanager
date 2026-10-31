@@ -16,6 +16,7 @@ import type {
   FinancialTransfer,
   Invoice,
   OtherIncome,
+  OrderQuotation,
   Payment,
   PaymentMethod,
   PaymentStatus,
@@ -47,6 +48,7 @@ export interface DemoDataSnapshot {
   accounts: Account[];
   subscriptions: Subscription[];
   sales: Sale[];
+  orders: OrderQuotation[];
   payments: Payment[];
   invoices: Invoice[];
   financialAccounts: FinancialAccount[];
@@ -221,6 +223,7 @@ const emptyIds = (): Record<string, string[]> => ({
   profiles: [],
   subscriptions: [],
   sales: [],
+  orders: [],
   payments: [],
   invoices: [],
   financialAccounts: [],
@@ -248,6 +251,7 @@ export const getDemoDataPreview = (): DemoDataPreview => ({
     accounts: 8,
     profiles: 24,
     sales: 40,
+    orders: 0,
     payments: 40,
     subscriptions: 40,
     invoices: 40,
@@ -279,6 +283,7 @@ export const getDemoDataCounts = (snapshot: DemoDataSnapshot): DemoDataCounts =>
     profiles: profileCount,
     subscriptions: snapshot.subscriptions.filter(item => isDemoId(item.id)).length,
     sales: snapshot.sales.filter(item => isDemoId(item.id)).length,
+    orders: snapshot.orders.filter(item => isDemoId(item.id)).length,
     payments: snapshot.payments.filter(item => isDemoId(item.id)).length,
     invoices: snapshot.invoices.filter(item => isDemoId(item.invoiceId)).length,
     financialAccounts: snapshot.financialAccounts.filter(item => isDemoId(item.id)).length,
@@ -947,6 +952,7 @@ export const buildDemoData = (
     accounts: [...current.accounts, ...finalAccounts],
     subscriptions: [...current.subscriptions, ...subscriptions],
     sales: [...current.sales, ...sales],
+    orders: current.orders,
     payments: [...current.payments, ...payments],
     invoices: [...current.invoices, ...invoices],
     financialAccounts: [...current.financialAccounts, ...financialAccounts],
@@ -1073,6 +1079,7 @@ export const discoverDemoDataManifest = (
   snapshot.accounts.flatMap(item => item.profiles).filter(item => isDemoId(item.id)).forEach(item => records.profiles.push(item.id));
   snapshot.subscriptions.filter(item => isDemoId(item.id)).forEach(item => records.subscriptions.push(item.id));
   snapshot.sales.filter(item => isDemoId(item.id)).forEach(item => records.sales.push(item.id));
+  snapshot.orders.filter(item => isDemoId(item.id)).forEach(item => records.orders.push(item.id));
   snapshot.payments.filter(item => isDemoId(item.id)).forEach(item => records.payments.push(item.id));
   snapshot.invoices.filter(item => isDemoId(item.invoiceId)).forEach(item => records.invoices.push(item.invoiceId));
   snapshot.financialAccounts.filter(item => isDemoId(item.id)).forEach(item => records.financialAccounts.push(item.id));
@@ -1113,6 +1120,10 @@ export const findExternalDemoReferences = (
   const demoProfiles = ids('profiles');
   const demoSubscriptions = ids('subscriptions');
   const demoSales = ids('sales');
+  const demoOrders = new Set([
+    ...ids('orders'),
+    ...snapshot.orders.filter(item => isDemoId(item.id)).map(item => item.id),
+  ]);
   const demoPayments = ids('payments');
   const demoInvoices = ids('invoices');
   const demoFinancialAccounts = ids('financialAccounts');
@@ -1150,6 +1161,13 @@ export const findExternalDemoReferences = (
     mark(Boolean(item.paymentId && demoPayments.has(item.paymentId)), 'payment');
     mark(Boolean(item.planId && demoPlans.has(item.planId)), 'plan');
     mark(Boolean(item.renewalOfSubscriptionId && demoSubscriptions.has(item.renewalOfSubscriptionId)), 'subscription');
+  });
+  snapshot.orders.filter(item => !demoOrders.has(item.id)).forEach(item => {
+    mark(demoCustomers.has(item.customerId), 'customer');
+    item.items.forEach(line => {
+      mark(demoServices.has(line.serviceId), 'service');
+      mark(Boolean(line.planId && demoPlans.has(line.planId)), 'plan');
+    });
   });
   snapshot.payments.filter(item => !demoPayments.has(item.id)).forEach(item => {
     mark(demoCustomers.has(item.customerId), 'customer');
@@ -1283,6 +1301,10 @@ export const removeDemoDataFromSnapshot = (
   const profiles = ids('profiles');
   const subscriptions = ids('subscriptions');
   const sales = ids('sales');
+  const demoOrders = new Set([
+    ...ids('orders'),
+    ...snapshot.orders.filter(item => isDemoId(item.id)).map(item => item.id),
+  ]);
   const payments = ids('payments');
   const invoices = ids('invoices');
   const financialAccounts = ids('financialAccounts');
@@ -1391,6 +1413,7 @@ export const removeDemoDataFromSnapshot = (
     accounts: nextAccounts,
     subscriptions: snapshot.subscriptions.filter(item => !subscriptions.has(item.id)),
     sales: snapshot.sales.filter(item => !sales.has(item.id)),
+    orders: snapshot.orders.filter(item => !demoOrders.has(item.id)),
     payments: snapshot.payments.filter(item => !payments.has(item.id)),
     invoices: snapshot.invoices.filter(item => !invoices.has(item.invoiceId)),
     financialAccounts: snapshot.financialAccounts.filter(item => !financialAccounts.has(item.id) || referencedFinancialAccounts.has(item.id)),

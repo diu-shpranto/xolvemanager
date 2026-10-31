@@ -196,13 +196,13 @@ export const FinancialControlView: React.FC = () => {
           </div>
           <div className="min-w-0">
             <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em]">Finance operations</p>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Financial Control</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Money Records</h1>
             <p className="mt-0.5 text-sm leading-5 text-slate-600 dark:text-slate-400">Monitor balances, reconciliation, and accounting integrity.</p>
           </div>
         </div>
       </header>
 
-      <section aria-label="Financial overview" className="space-y-2">
+      <section aria-label="Money summary" className="space-y-2">
         <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
           <Metric label="Business balance" value={formatCurrency(totalBalance, currency)} icon={Wallet} />
           <Metric label="Money in · MTD" value={formatCurrency(periodLedger.moneyIn, currency)} icon={ArrowDownLeft} tone="good" />
@@ -325,7 +325,7 @@ export const FinancialControlView: React.FC = () => {
       </section>
 
       <section className={`${cardClass} space-y-3`} aria-labelledby="ledger-heading">
-        <div className="flex flex-wrap items-end justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 id="ledger-heading" className="section-title">Account Ledger</h2>{selectedAccount && <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-violet-800 dark:bg-violet-950/50 dark:text-violet-200">{accountLedger.length} entries</span>}</div><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Chronological balance includes opening funds and posted movements.</p></div><div className="flex w-full flex-wrap items-end gap-2 sm:w-auto sm:gap-3"><label className="min-w-0 flex-1 text-xs font-semibold text-slate-600 dark:text-slate-300 sm:min-w-56 sm:flex-none">Financial account<select aria-label="Financial account ledger" value={selectedAccountId} onChange={event => setSelectedAccountId(event.target.value)} className={`${inputClass} mt-1 min-h-11`}><option value="">Select account</option>{financialAccounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>{selectedAccount && <button type="button" onClick={() => {
+        <div className="flex flex-wrap items-end justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 id="ledger-heading" className="section-title">Account Records</h2>{selectedAccount && <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-violet-800 dark:bg-violet-950/50 dark:text-violet-200">{accountLedger.length} entries</span>}</div><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Shows the opening balance and each recorded change over time.</p></div><div className="flex w-full flex-wrap items-end gap-2 sm:w-auto sm:gap-3"><label className="min-w-0 flex-1 text-xs font-semibold text-slate-600 dark:text-slate-300 sm:min-w-56 sm:flex-none">Money account<select aria-label="Money account records" value={selectedAccountId} onChange={event => setSelectedAccountId(event.target.value)} className={`${inputClass} mt-1 min-h-11`}><option value="">Select account</option>{financialAccounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>{selectedAccount && <button type="button" onClick={() => {
           const rows = [
             ['Date', 'Type', 'Reference', 'Description', 'Money In', 'Money Out', 'Balance'],
             ...accountLedger.map(entry => [

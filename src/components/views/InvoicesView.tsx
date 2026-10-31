@@ -8,10 +8,10 @@ import { Modal } from '../common/Modal';
 import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
 import {
-  canShareInvoiceJpg,
-  downloadInvoiceJpg,
-  generateInvoiceJpg,
-  shareInvoiceJpg,
+  canShareInvoiceFile,
+  downloadInvoiceImage,
+  generateInvoiceImage,
+  shareInvoiceFile,
   InvoiceSaleDetails,
 } from '../../utils/invoiceGenerator';
 import {
@@ -47,6 +47,7 @@ const statusLabel: Record<InvoiceDisplayStatus, string> = {
   due: 'Due',
   pending: 'Pending',
   refunded: 'Refunded',
+  voided: 'Voided',
 };
 const statusClass: Record<InvoiceDisplayStatus, string> = {
   paid: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
@@ -54,6 +55,7 @@ const statusClass: Record<InvoiceDisplayStatus, string> = {
   due: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300',
   pending: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
   refunded: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300',
+  voided: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
 };
 
 function invoiceDateRange(filter: DateFilter, start: string, end: string, timeZone?: string): [string, string] | null {
@@ -259,8 +261,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     if (imageTask.current) return;
     imageTask.current = true;
     try {
-      const result = await generateInvoiceJpg(invoiceData(invoice, sale), language);
-      downloadInvoiceJpg(result.blob, result.fileName);
+      const result = await generateInvoiceImage(invoiceData(invoice, sale), language);
+      downloadInvoiceImage(result.blob, result.fileName);
       showToast(`Download requested · ${result.fileName}`, 'info');
     } catch (error) {
       console.error('Invoice download failed:', error);
@@ -274,15 +276,15 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     if (imageTask.current) return;
     imageTask.current = true;
     try {
-      const result = await generateInvoiceJpg(invoiceData(invoice, sale), language);
-      const shareResult = canShareInvoiceJpg()
-        ? await shareInvoiceJpg(result.blob, result.fileName, `${settings.storeName} Invoice ${invoice.invoiceNumber}`, `Invoice for ${invoice.invoiceNumber}`)
+      const result = await generateInvoiceImage(invoiceData(invoice, sale), language);
+      const shareResult = canShareInvoiceFile()
+        ? await shareInvoiceFile(result.blob, result.fileName, `${settings.storeName} Invoice ${invoice.invoiceNumber}`, `Invoice for ${invoice.invoiceNumber}`)
         : 'unsupported';
-      if (shareResult === 'shared') showToast('Invoice shared successfully!', 'success');
+      if (shareResult === 'shared') showToast('Share sheet opened. Check your selected app to complete sharing; delivery is not confirmed.', 'info');
       else if (shareResult === 'cancelled') showToast('Invoice sharing was cancelled.', 'info');
       else {
-        downloadInvoiceJpg(result.blob, result.fileName);
-        showToast('File sharing is unavailable here. A JPG download was requested.', 'info');
+        downloadInvoiceImage(result.blob, result.fileName);
+        showToast('File sharing is unavailable here. A PNG download was requested.', 'info');
       }
     } catch (error) {
       console.error('Invoice sharing failed:', error);
@@ -438,7 +440,25 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center dark:border-slate-700 dark:bg-slate-900">
           <FileText className="mx-auto h-9 w-9 text-slate-300 dark:text-slate-600" />
           <h2 className="mt-3 text-base font-semibold text-slate-800 dark:text-slate-200">{validInvoices.length === 0 ? 'No invoices yet.' : 'No invoices match these filters.'}</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Invoices are linked to sales and can be generated for any existing sale.</p>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            {validInvoices.length === 0
+              ? availableSales.length > 0
+                ? 'Invoices are linked to sales. Create one for an existing sale.'
+                : 'Invoices are created from sales. Record a sale first to generate an invoice.'
+              : 'Try changing your search or filters.'}
+          </p>
+          {validInvoices.length === 0 && (
+            <button
+              type="button"
+              onClick={() => availableSales.length > 0
+                ? setIsCreateOpen(true)
+                : onNavigateSection?.('sales')}
+              className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg bg-violet-700 px-4 text-xs font-semibold text-white transition-colors hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
+            >
+              <FilePlus2 aria-hidden="true" className="h-4 w-4" />
+              {availableSales.length > 0 ? 'Create invoice for sale' : 'Create a sale first'}
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -467,7 +487,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                       <td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${statusClass[status]}`}>{statusLabel[status]}</span></td>
                       <td className="px-3 py-3"><div className="flex items-center gap-1">
                         <button type="button" title="View invoice" aria-label={`View ${invoice.invoiceNumber}`} onClick={() => handleView(invoice, sale)} className="rounded-md p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Eye className="h-4 w-4" /></button>
-                        <button type="button" title="Download JPG" aria-label={`Download ${invoice.invoiceNumber}`} onClick={() => void handleDownload(invoice, sale)} className="rounded-md p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Download className="h-4 w-4" /></button>
+                        <button type="button" title="Download PNG" aria-label={`Download ${invoice.invoiceNumber} PNG`} onClick={() => void handleDownload(invoice, sale)} className="rounded-md p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Download className="h-4 w-4" /></button>
                         <button type="button" title="Share" aria-label={`Share ${invoice.invoiceNumber}`} onClick={() => void handleShare(invoice, sale)} className="rounded-md p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Share2 className="h-4 w-4" /></button>
                         {customer && canContact(customer.id) && <button type="button" title="WhatsApp invoice" aria-label={`Compose WhatsApp message for invoice ${invoice.invoiceNumber}`} onClick={() => openMessage({ customerId: customer.id, invoiceId: invoice.invoiceId, saleId: sale.id, templateId: 'invoice_ready' })} className="rounded-md p-2 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30"><MessageCircle className="h-4 w-4" /></button>}
                         {countActiveInvoiceReminders(reminders, invoice.invoiceId, sale.id) > 0 && <button type="button" onClick={() => onNavigateSection?.('reminders')} className="whitespace-nowrap rounded-md px-2 py-1.5 font-semibold text-amber-700 hover:bg-amber-50 dark:text-amber-300">Reminders ({countActiveInvoiceReminders(reminders, invoice.invoiceId, sale.id)})</button>}
@@ -506,7 +526,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                 <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                   <div className="grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => handleView(invoice, sale)} className="customer-primary-action inline-flex min-h-10 min-w-0 items-center justify-center gap-1 rounded-lg bg-violet-700 px-2 py-2 text-xs font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"><Eye className="h-3.5 w-3.5 shrink-0" />View Invoice</button>
-                    <button type="button" onClick={() => void handleDownload(invoice, sale)} className="inline-flex min-h-10 min-w-0 items-center justify-center gap-1 rounded-lg border border-slate-200 px-2 py-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-700"><Download className="h-3.5 w-3.5 shrink-0" />Download JPG</button>
+                    <button type="button" onClick={() => void handleDownload(invoice, sale)} className="inline-flex min-h-10 min-w-0 items-center justify-center gap-1 rounded-lg border border-slate-200 px-2 py-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-700"><Download className="h-3.5 w-3.5 shrink-0" />Download PNG</button>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => void handleShare(invoice, sale)} className="inline-flex min-h-10 flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700"><Share2 className="h-3.5 w-3.5" />Share</button>

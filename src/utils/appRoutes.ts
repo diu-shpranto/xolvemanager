@@ -39,9 +39,12 @@ const recordSections: Record<RecordSection, NavSection> = {
 
 const routeAliases: Record<string, NavSection> = {
   '/': 'dashboard',
+  '/activity': 'history',
+  '/audit-trail': 'history',
   '/transfers': 'cashbook',
   '/communications': 'settings',
   '/audit-log': 'history',
+  '/follow-ups': 'reminders',
   '/backup': 'settings',
 };
 
@@ -55,6 +58,14 @@ export interface AppLocation {
   isNotFound?: boolean;
 }
 
+const decodeRouteSegment = (segment: string): string => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+};
+
 export const getAppLocation = (pathname: string): AppLocation => {
   const normalizedPath = pathname.replace(/\/+$/, '') || '/';
   const segments = normalizedPath.split('/').filter(Boolean);
@@ -64,7 +75,7 @@ export const getAppLocation = (pathname: string): AppLocation => {
     return {
       section: recordSections[recordSection],
       recordSection,
-      recordId: segments[1],
+      recordId: decodeRouteSegment(segments[1]),
     };
   }
 

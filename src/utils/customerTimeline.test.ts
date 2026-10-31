@@ -188,3 +188,29 @@ test('timeline uses linked records for payments, refunds, renewals, cancellation
   assert.equal(events.find(event => event.id === 'payment:payment-without-links')?.description, 'Cash');
   assert.deepEqual(events.map(event => Date.parse(event.timestamp)), [...events].map(event => Date.parse(event.timestamp)).sort((a, b) => b - a));
 });
+
+test('voided sales appear as voided history without a payment or sale amount', () => {
+  const voidedSale = sale('sale-voided', {
+    paymentStatus: 'voided',
+    voidedAt: '2026-09-10T10:00:00.000Z',
+    voidReason: 'Created by mistake',
+  });
+  const events = buildCustomerTimeline({
+    sales: [voidedSale],
+    payments: [payment('payment-voided', {
+      saleId: voidedSale.id,
+      amount: 0,
+      paymentStatus: 'voided',
+    })],
+    subscriptions: [],
+    invoices: [],
+    activities: [],
+    services: [service],
+  });
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].title, 'Sale voided');
+  assert.equal(events[0].description, 'Created by mistake');
+  assert.equal(events[0].status, 'Voided');
+  assert.equal(events[0].amount, undefined);
+});

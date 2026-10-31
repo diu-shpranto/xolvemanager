@@ -36,6 +36,7 @@ import {
   Download,
   Copy,
   MoreVertical,
+  Printer,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
@@ -45,13 +46,20 @@ import type { Customer, CustomerType, Subscription } from '../../types';
 import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import { getCustomerType } from '../../utils/relationships';
 import { buildCustomerTimeline } from '../../utils/customerTimeline';
+import {
+  buildCustomerStatement,
+  getCustomerStatementPeriod,
+  renderCustomerStatementHtml,
+  type CustomerStatementFilter,
+} from '../../utils/customerStatement';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
-import { InvoiceSaleDetails, downloadInvoiceJpg, generateInvoiceJpg } from '../../utils/invoiceGenerator';
+import { InvoiceSaleDetails, downloadInvoiceImage, generateInvoiceImage } from '../../utils/invoiceGenerator';
 import { resolvePaymentCustomer, resolveSaleCustomer } from '../../utils/relationships';
 import {
   getCustomerAdvanceCredit,
   getPaymentRecognizedAmount,
   getSaleDueAmount,
+  getSaleLineFinancialAllocations,
   getSaleLineItems,
   getSalePaidAmount,
   getSalePaymentStatus,
@@ -76,6 +84,7 @@ import { convertReportCurrency } from '../../utils/reportMetrics';
 import {
   formatAppDate,
   formatCurrency,
+  getDateInTimeZone,
   getExpiryBadgeInfo,
   getDaysDifferenceForTimeZone,
   getSubscriptionStatusForTimeZone,
@@ -155,6 +164,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 }) => {
   const { formatCurrency, formatDate: formatAppDate, formatEventDateTime: formatAppEventDateTime, formatNumber } = useAppFormatting();
   const {
+    currentBusiness,
+    currentBusinessName,
     customers,
     customersLoading,
     customersError,
@@ -164,6 +175,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     invoices,
     payments,
     accounts,
+    financialAccounts,
     activityLogs,
     reminders,
     completeReminder,
@@ -258,6 +270,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [duplicateOfCustomerId, setDuplicateOfCustomerId] = useState<string | undefined>();
   const [selectedInvoiceData, setSelectedInvoiceData] = useState<InvoiceSaleDetails | null>(null);
   const [timelineFilter, setTimelineFilter] = useState<'all' | 'sales' | 'payments' | 'subscriptions' | 'refunds'>('all');
+  const [statementFilter, setStatementFilter] = useState<CustomerStatementFilter>('all');
+  const [statementSearch, setStatementSearch] = useState('');
+  const [statementFrom, setStatementFrom] = useState('');
+  const [statementTo, setStatementTo] = useState('');
 
   // Form State
   const [name, setName] = useState('');
@@ -350,7 +366,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     if (!name.trim()) {
       errors.name = language === 'bn' ? 'কাস্টমারের পূর্ণ নাম আবশ্যক' : 'Full name is required';
     } else if (name.trim().length < 2) {
-      errors.name = language === 'bn' ? 'নাম কমপক্ষে ২ অক্ষরের হতে হবে' : 'Name must be at least 2 characters';
+      errors.name = language === 'bn' ? 'নাম কমপক্ষে ২ অক্ষরের হতে হবে' : 'Name must have at least 2 characters.';
     }
 
     if (!phone.trim()) {
@@ -358,21 +374,21 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     } else {
       const cleanPhoneDigits = phone.replace(/[^0-9]/g, '');
       if (cleanPhoneDigits.length < 6) {
-        errors.phone = language === 'bn' ? 'সঠিক ফোন নম্বর প্রদান করুন' : 'Please provide a valid phone number';
+        errors.phone = language === 'bn' ? 'সঠিক ফোন নম্বর প্রদান করুন' : 'Enter a valid phone number.';
       }
     }
 
     if (email.trim()) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email.trim())) {
-        errors.email = language === 'bn' ? 'সঠিক ইমেইল ঠিকানা প্রদান করুন' : 'Please enter a valid email address';
+        errors.email = language === 'bn' ? 'সঠিক ইমেইল ঠিকানা প্রদান করুন' : 'Enter a valid email address.';
       }
     }
 
     if (facebookUrl.trim()) {
       const url = facebookUrl.trim().toLowerCase();
       if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('facebook.com') && !url.startsWith('fb.com')) {
-        errors.facebookUrl = language === 'bn' ? 'সঠিক ফেসবুক প্রোফাইল লিংক দিন' : 'Must be a valid Facebook URL';
+        errors.facebookUrl = language === 'bn' ? 'সঠিক ফেসবুক প্রোফাইল লিংক দিন' : 'Enter a valid Facebook link.';
       }
     }
 
@@ -486,8 +502,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
   const handleDownloadInvoice = async (sale: (typeof sales)[number]) => {
     try {
-      const result = await generateInvoiceJpg(invoiceDetailsForSale(sale), language);
-      downloadInvoiceJpg(result.blob, result.fileName);
+      const result = await generateInvoiceImage(invoiceDetailsForSale(sale), language);
+      downloadInvoiceImage(result.blob, result.fileName);
       showToast(`Download requested · ${result.fileName}`, 'info');
     } catch (error) {
       console.error('Customer invoice download failed:', error);
@@ -562,8 +578,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       await deleteCustomer(customerToDelete.id, forcePermanent);
       showToast(
         forcePermanent
-          ? (language === 'bn' ? 'কাস্টমার স্থায়ীভাবে মুছে ফেলা হয়েছে।' : 'Customer permanently deleted.')
-          : (language === 'bn' ? 'কাস্টমার সফলভাবে আর্কাইভে পাঠানো হয়েছে।' : 'Customer safely archived.'),
+          ? (language === 'bn' ? 'কাস্টমার স্থায়ীভাবে মুছে ফেলা হয়েছে।' : 'Customer deleted.')
+          : (language === 'bn' ? 'কাস্টমার সফলভাবে আর্কাইভে পাঠানো হয়েছে।' : 'Customer archived.'),
         'info'
       );
       if (detailedCustomerId === customerToDelete.id) {
@@ -810,23 +826,23 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       : null,
     filterSubscription !== 'all'
       ? ({
-          active: language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Has active subscription',
+          active: language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Has an active plan',
           none: language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন নেই' : 'No active subscription',
-          expiring: language === 'bn' ? 'মেয়াদ শেষ হচ্ছে' : 'Expiring soon',
-          expired: language === 'bn' ? 'মেয়াদোত্তীর্ণ সাবস্ক্রিপশন' : 'Expired subscription',
+          expiring: language === 'bn' ? 'মেয়াদ শেষ হচ্ছে' : 'Plan ending soon',
+          expired: language === 'bn' ? 'মেয়াদোত্তীর্ণ সাবস্ক্রিপশন' : 'Plan ended',
         } as const)[filterSubscription]
       : null,
     filterPayment !== 'all'
       ? ({
           paid: language === 'bn' ? 'সম্পূর্ণ পরিশোধিত' : 'Fully paid',
-          due: language === 'bn' ? 'বকেয়া আছে' : 'Has due',
+          due: language === 'bn' ? 'বকেয়া আছে' : 'Has money due',
           failed: language === 'bn' ? 'পেমেন্ট ব্যর্থ' : 'Failed payment',
         } as const)[filterPayment]
       : null,
     filterActivity !== 'all'
       ? ({
           new: language === 'bn' ? 'নতুন গ্রাহক' : 'New customers',
-          recent: language === 'bn' ? 'সাম্প্রতিক কার্যক্রম' : 'Recently active',
+          recent: language === 'bn' ? 'সাম্প্রতিক কার্যক্রম' : 'Active recently',
           inactive: language === 'bn' ? 'নিষ্ক্রিয় কার্যক্রম' : 'Inactive activity',
         } as const)[filterActivity]
       : null,
@@ -859,6 +875,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const detailedSales = detailedCustomer
     ? sales.filter(sale => resolveSaleCustomer(sale, customers, subscriptions)?.id === detailedCustomer.id)
     : [];
+  const detailedExpectedPaymentDates = [...new Set(detailedSales.flatMap(sale =>
+    getSaleLineFinancialAllocations(sale, payments)
+      .flatMap(line => line.due > 0 && line.item.expectedPaymentDate ? [line.item.expectedPaymentDate] : [])
+  ))].sort();
   const detailedPayments = detailedCustomer
     ? payments.filter(payment => resolvePaymentCustomer(payment, customers, sales, subscriptions)?.id === detailedCustomer.id)
     : [];
@@ -875,6 +895,56 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const detailedInvoices = detailedCustomer
     ? getInvoicesForCustomer(invoices, detailedCustomer.id)
     : [];
+  const customerStatement = detailedCustomer
+    ? buildCustomerStatement({
+      customerId: detailedCustomer.id,
+      currency,
+      sales: detailedSales,
+      invoices: detailedInvoices,
+      payments: detailedPayments,
+      subscriptions: detailedSubs,
+      services,
+      accounts: financialAccounts,
+      today: getDateInTimeZone(settings.businessProfile?.timeZone),
+      timeZone: settings.businessProfile?.timeZone,
+      reminderNoticeDays: settings.reminderNoticeDays,
+      businessId: currentBusiness?.businessId,
+    })
+    : null;
+  const statementRangeValid = !statementFrom || !statementTo || statementFrom <= statementTo;
+  const statementPeriod = customerStatement
+    ? getCustomerStatementPeriod(
+      customerStatement.entries,
+      statementFrom,
+      statementTo
+    )
+    : null;
+  const statementTypeLabel = ({
+    all: 'Everything',
+    payments: 'Payments received',
+    invoices: 'Invoices and discounts',
+    advances: 'Advance payments',
+    refunds: 'Refunds',
+  } satisfies Record<CustomerStatementFilter, string>)[statementFilter];
+  const statementVisibleEntries = (statementPeriod?.entries || [])
+    .filter(entry => {
+      if (statementFilter === 'payments') return entry.type === 'payment';
+      if (statementFilter === 'invoices') return entry.type === 'invoice' || entry.type === 'discount';
+      if (statementFilter === 'advances') return entry.type === 'advance_created' || entry.type === 'advance_applied';
+      if (statementFilter === 'refunds') return entry.type === 'refund';
+      return true;
+    })
+    .filter(entry => {
+      const query = statementSearch.trim().toLocaleLowerCase();
+      return !query || [
+        entry.reference,
+        entry.invoiceNumber,
+        entry.description,
+        entry.notes,
+      ].some(value => value?.toLocaleLowerCase().includes(query));
+    })
+    .slice()
+    .reverse();
   const detailedEntityIds = new Set([
     ...(detailedCustomer ? [detailedCustomer.id] : []),
     ...detailedSubs.map(subscription => subscription.id),
@@ -958,6 +1028,38 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const renewalTemplate = nearestRenewalService?.renewalMessage?.enabled
     ? nearestRenewalService.renewalMessage.template?.trim()
     : '';
+  const printCustomerStatement = () => {
+    if (!detailedCustomer || !customerStatement || !statementPeriod || !statementRangeValid) {
+      showToast('Choose a valid statement date range before printing.', 'error');
+      return;
+    }
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      showToast('The statement could not open. Check your browser pop-up settings.', 'error');
+      return;
+    }
+    const filterLabel = [
+      statementFilter === 'all' ? '' : statementTypeLabel,
+      statementSearch.trim() ? `Search: ${statementSearch.trim()}` : '',
+    ].filter(Boolean).join(' · ');
+    printWindow.document.open();
+    printWindow.document.write(renderCustomerStatementHtml({
+      customer: detailedCustomer,
+      businessName: currentBusinessName || settings.storeName,
+      currency,
+      generatedAt: formatAppEventDateTime(new Date().toISOString()),
+      dateRange: `${statementFrom ? formatAppDate(statementFrom, language) : 'First transaction'} – ${statementTo ? formatAppDate(statementTo, language) : 'Latest transaction'}`,
+      openingBalance: formatCurrency(statementPeriod.openingBalance, currency),
+      debitTotal: formatCurrency(statementPeriod.debitTotal, currency),
+      creditTotal: formatCurrency(statementPeriod.creditTotal, currency),
+      closingBalance: formatCurrency(statementPeriod.closingBalance, currency),
+      outstandingDue: formatCurrency(customerStatement.summary.totalDue, currency),
+      availableAdvance: formatCurrency(customerStatement.summary.availableAdvance, currency),
+      entries: statementVisibleEntries,
+      filterLabel: filterLabel || undefined,
+    }));
+    printWindow.document.close();
+  };
   const copyRenewalMessage = async () => {
     if (!detailedCustomer || !nearestRenewalSubscription || !nearestRenewalService || !renewalTemplate) return;
     const message = buildSubscriptionRenewalMessage(
@@ -984,7 +1086,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           </div>
           <div className="min-w-0">
             <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">
-              {language === 'bn' ? 'গ্রাহক সম্পর্ক' : 'Customer relationship management'}
+              {language === 'bn' ? 'গ্রাহক সম্পর্ক' : 'Customer summary'}
             </p>
             <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">
               {language === 'bn' ? 'কাস্টমার' : 'Customers'}
@@ -1339,7 +1441,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         </div>
       )}
 
-      {/* 4. CUSTOMER TABLE & CARD LIST CONTAINER */}
+      {/* 4. CUSTOMER DIRECTORY */}
       <div className="customer-directory-heading">
         <div>
           <p>{language === 'bn' ? 'গ্রাহক তালিকা' : 'Customer directory'}</p>
@@ -1350,8 +1452,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         </span>
       </div>
       <div className="customer-list-section space-y-3">
-        {/* Desktop Table View */}
-        <div className="data-table-scroll customer-desktop-table hidden overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#151C28] xl:block" role="region" aria-label="Customer records table; scroll horizontally to view all columns" tabIndex={0}>
+        {/* Customer cards are used at every screen size. */}
+        <div className="data-table-scroll customer-desktop-table hidden overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#151C28]" aria-hidden="true">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -1609,8 +1711,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           </table>
         </div>
 
-        {/* Mobile Card List View */}
-        <div className="customer-card-grid grid gap-3 sm:grid-cols-2 xl:hidden">
+        <div className="customer-card-grid customer-card-list-grid grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {customersLoading && customers.length === 0 ? (
             <div className="contents" aria-label="Loading customers">
               {Array.from({ length: 4 }).map((_, index) => (
@@ -1694,7 +1795,25 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               return (
                 <article
                   key={cust.id}
-                  className="customer-card group min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:shadow-sm dark:border-slate-800 dark:bg-[#151C28]"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View customer details for ${cust.name}`}
+                  onClick={event => {
+                    const target = event.target;
+                    const interactiveTarget = target instanceof Element
+                      ? target.closest('button, a, input, select, textarea, [role="button"]')
+                      : null;
+                    if (interactiveTarget && interactiveTarget !== event.currentTarget) return;
+                    openCustomerDetails(cust.id);
+                  }}
+                  onKeyDown={event => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      openCustomerDetails(cust.id);
+                    }
+                  }}
+                  className="customer-card group min-w-0 cursor-pointer rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-800 dark:bg-[#151C28]"
                   style={{ '--customer-card-accent': cardAccent } as React.CSSProperties & { '--customer-card-accent': string }}
                 >
                   <div className="customer-card-header flex min-w-0 items-start justify-between gap-3">
@@ -1736,13 +1855,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     <div className="customer-card-metric min-w-0"><p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Last Activity</p><p className="mt-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">{metrics?.lastActivity ? formatAppEventDateTime(metrics.lastActivity) : '—'}</p></div>
                   </div>
 
-                  {renewalSubscription && (
-                    <div className="customer-card-renewal mt-3">
+                  <div className="customer-card-renewal-slot">
+                    {renewalSubscription && (
+                      <div className="customer-card-renewal mt-3">
                       <button type="button" onClick={() => onViewSubscription(renewalSubscription.id)} className="inline-flex min-h-10 items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-amber-600 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950/70">
                         {renewalDays === 0 ? 'Renewal due today' : `Renewal due in ${renewalDays} day${renewalDays === 1 ? '' : 's'}`}
                       </button>
-                    </div>
-                  )}
+                      </div>
+                    )}
+                  </div>
 
                   <div className="customer-card-actions mt-3 flex flex-wrap items-center justify-end gap-1.5 border-t border-slate-100 pt-3 dark:border-slate-800">
                       {!cust.isArchived && <button type="button" onClick={() => onOpenNewSaleForCustomer(cust.id)} aria-label={`New sale for ${cust.name}`} className="customer-new-sale inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-violet-700 px-3 text-xs font-semibold text-white hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"><Plus className="h-3.5 w-3.5" />New Sale</button>}
@@ -2038,6 +2159,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
             <nav aria-label="Customer sections" className="customer-detail-nav flex min-w-0 gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-[#171622]">
               <a href="#customer-overview" className="customer-detail-nav-link">{language === 'bn' ? 'সারসংক্ষেপ' : 'Overview'}</a>
+              <a href="#customer-financial-statement" className="customer-detail-nav-link">Financial statement</a>
               <a href="#customer-subscriptions" className="customer-detail-nav-link">{language === 'bn' ? 'সাবস্ক্রিপশন' : 'Subscriptions'} <span>{detailedSubs.length}</span></a>
               <a href="#customer-purchases" className="customer-detail-nav-link">{language === 'bn' ? 'পেমেন্ট ও কেনাকাটা' : 'Payments & Purchases'}</a>
               <a href="#customer-activity" className="customer-detail-nav-link">{language === 'bn' ? 'লেনদেন' : 'Transactions'} <span>{detailedTimeline.length}</span></a>
@@ -2045,42 +2167,235 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
             <section id="customer-overview" aria-label="Customer overview" className="customer-overview-grid grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
               <div className="customer-overview-metric">
-                <span>{language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Active subscriptions'}</span>
+                <span>{language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Active plans'}</span>
                 <strong>{currentActiveSubsForDetailed.length}</strong>
                 <small>{language === 'bn'
                   ? `${formatNumber(detailedSubs.length)}টি মোট সাবস্ক্রিপশন`
-                  : `${detailedSubs.length} total subscriptions`}</small>
+                  : `${detailedSubs.length} plans total`}</small>
               </div>
               <div className={`customer-overview-metric ${detailedTotalDue > 0 ? 'customer-overview-metric--due' : ''}`}>
-                <span>{language === 'bn' ? `মোট বকেয়া · ${currency}` : `Total outstanding · ${currency}`}</span>
+                <span>{language === 'bn' ? `মোট বকেয়া · ${currency}` : `Amount due · ${currency}`}</span>
                 <strong>{formatCurrency(detailedTotalDue, currency)}</strong>
-                <small>{language === 'bn' ? 'নির্বাচিত মুদ্রা' : 'Selected currency'}</small>
+                <small>{language === 'bn' ? 'গ্রাহকের মোট বকেয়া' : 'Money the customer still owes'}</small>
+                {detailedTotalDue > 0 && (
+                  <small className="customer-expected-payment-date inline-flex w-fit flex-wrap items-center gap-x-1 rounded-md px-2 py-1">
+                    {language === 'bn' ? 'প্রত্যাশিত পেমেন্টের তারিখ' : 'Expected payment date'}:{' '}
+                    {detailedExpectedPaymentDates.length > 0
+                      ? <>
+                        {formatAppDate(detailedExpectedPaymentDates[0], language)}
+                        {detailedExpectedPaymentDates.length > 1 && ` + ${detailedExpectedPaymentDates.length - 1} ${language === 'bn' ? 'টি তারিখ' : 'more date(s)'}`}
+                      </>
+                      : (language === 'bn' ? 'সেট করা হয়নি' : 'Not set')}
+                  </small>
+                )}
               </div>
               <div className="customer-overview-metric customer-overview-metric--paid">
-                <span>{language === 'bn' ? `মোট পরিশোধ · ${currency}` : `Total paid · ${currency}`}</span>
-                <strong>{formatCurrency(detailedCrmMetrics?.totalPaid || 0, currency)}</strong>
-                <small>{language === 'bn' ? 'স্বীকৃত পেমেন্ট' : 'Recognized payments'}</small>
+                <span>{`Payments received · ${currency}`}</span>
+                <strong>{formatCurrency(customerStatement?.summary.amountReceived || 0, currency)}</strong>
+                <small>Total payments received</small>
               </div>
               <div className="customer-overview-metric">
-                <span>{language === 'bn' ? `উপলভ্য অগ্রিম ক্রেডিট · ${currency}` : `Available advance credit · ${currency}`}</span>
-                <strong>{formatCurrency(detailedAdvanceBalances[currency], currency)}</strong>
-                <small>{language === 'bn' ? 'নির্বাচিত মুদ্রা' : 'Selected currency'}</small>
+                <span>{language === 'bn' ? `অগ্রিম পেমেন্ট · ${currency}` : `Advance payment · ${currency}`}</span>
+                <strong>{formatCurrency(customerStatement?.summary.availableAdvance || detailedAdvanceBalances[currency], currency)}</strong>
+                <small>{language === 'bn' ? 'পরের কেনাকাটায় ব্যবহার করা যাবে' : 'Available for the next sale'}</small>
               </div>
               <div className="customer-overview-metric">
-                <span>{language === 'bn' ? `মোট ব্যয় · ${currency}` : `Total spent · ${currency}`}</span>
+                <span>{`Total sales · ${currency}`}</span>
                 <strong>{formatCurrency(detailedTotalSales, currency)}</strong>
                 <small>{language === 'bn'
                   ? `${formatNumber(detailedCrmMetrics?.salesCount || 0)}টি বিক্রয়`
                   : `${detailedCrmMetrics?.salesCount || 0} sales`}</small>
               </div>
               <div className="customer-overview-metric">
-                <span>{language === 'bn' ? 'পরবর্তী সাবস্ক্রিপশনের মেয়াদ' : 'Next subscription expiry'}</span>
+                <span>{`Discounts · ${currency}`}</span>
+                <strong>{formatCurrency(customerStatement?.summary.totalDiscounts || 0, currency)}</strong>
+                <small>Total discount given</small>
+              </div>
+              <div className={`customer-overview-metric ${(customerStatement?.summary.overdueInvoices || 0) > 0 ? 'customer-overview-metric--due' : ''}`}>
+                <span>Late invoices</span>
+                <strong>{customerStatement?.summary.overdueInvoices || 0}</strong>
+                <small>Unpaid invoices past their due date</small>
+              </div>
+              <div className="customer-overview-metric">
+                <span>{language === 'bn' ? 'পরবর্তী সাবস্ক্রিপশনের মেয়াদ' : 'Next plan ends'}</span>
                 <strong>
                   {customerMetrics.get(detailedCustomer.id)?.nextRenewal
                     ? formatAppDate(customerMetrics.get(detailedCustomer.id)?.nextRenewal || '', language)
-                    : (language === 'bn' ? 'আসন্ন মেয়াদ শেষ হওয়ার তারিখ নেই' : 'No upcoming expiry')}
+                    : (language === 'bn' ? 'আসন্ন মেয়াদ শেষ হওয়ার তারিখ নেই' : 'No plan ending soon')}
                 </strong>
               </div>
+            </section>
+
+            <section id="customer-financial-statement" aria-label="Customer financial statement" className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40">
+              <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                <div className="min-w-0">
+                  <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
+                    <History className="h-4 w-4 text-violet-600 dark:text-violet-300" aria-hidden="true" />
+                    Account statement
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Invoices, payments, refunds, and credit · {currency}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={printCustomerStatement}
+                  disabled={!statementRangeValid || !statementPeriod}
+                  className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
+                >
+                  <Printer className="h-4 w-4" aria-hidden="true" />
+                  Print or save PDF
+                </button>
+              </div>
+
+              {customerStatement && statementPeriod && (
+                <>
+                  <div className="grid grid-cols-2 gap-2 border-b border-slate-100 p-3 dark:border-slate-800 sm:grid-cols-3 xl:grid-cols-6">
+                    {[
+                      ['Balance before dates', statementPeriod.openingBalance],
+                      ['Added to amount due', statementPeriod.debitTotal],
+                      ['Reduced from amount due', statementPeriod.creditTotal],
+                      ['Balance at end', statementPeriod.closingBalance],
+                      ['Amount still due', customerStatement.summary.totalDue],
+                      ['Advance payment', customerStatement.summary.availableAdvance],
+                    ].map(([label, value]) => (
+                      <div key={label} className="min-w-0 rounded-lg bg-slate-50 p-2.5 dark:bg-slate-800/60">
+                        <span className="block truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">{label}</span>
+                        <strong className={`mt-1 block truncate text-xs tabular-nums ${
+                          label === 'Amount still due' && Number(value) > 0
+                            ? 'text-amber-700 dark:text-amber-300'
+                            : label === 'Advance payment' && Number(value) > 0
+                              ? 'text-emerald-700 dark:text-emerald-300'
+                              : 'text-slate-900 dark:text-white'
+                        }`}>{formatCurrency(Number(value), currency)}</strong>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid min-w-0 gap-2 border-b border-slate-100 p-3 dark:border-slate-800 sm:grid-cols-2 xl:grid-cols-4">
+                    <label className="min-w-0 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                      Search the list
+                      <span className="mt-1 flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 dark:border-slate-700 dark:bg-slate-900">
+                        <Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+                        <input
+                          type="search"
+                          value={statementSearch}
+                          onChange={event => setStatementSearch(event.target.value)}
+                          placeholder="Invoice number or details"
+                          className="min-w-0 flex-1 bg-transparent text-xs font-normal outline-none"
+                        />
+                        {statementSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setStatementSearch('')}
+                            aria-label="Clear search"
+                            className="rounded p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </span>
+                    </label>
+                    <label className="min-w-0 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                      Show
+                      <select aria-label="Show" value={statementFilter} onChange={event => setStatementFilter(event.target.value as CustomerStatementFilter)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium dark:border-slate-700 dark:bg-slate-900">
+                        <option value="all">Everything</option>
+                        <option value="payments">Payments received</option>
+                        <option value="invoices">Invoices and discounts</option>
+                        <option value="advances">Advance payments</option>
+                        <option value="refunds">Refunds</option>
+                      </select>
+                    </label>
+                    <label className="min-w-0 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                      Start date
+                      <input type="date" value={statementFrom} onChange={event => setStatementFrom(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium dark:border-slate-700 dark:bg-slate-900" />
+                    </label>
+                    <label className="min-w-0 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                      End date
+                      <input type="date" value={statementTo} onChange={event => setStatementTo(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium dark:border-slate-700 dark:bg-slate-900" />
+                    </label>
+                    {!statementRangeValid && (
+                      <p role="alert" className="text-xs font-medium text-rose-700 dark:text-rose-300 sm:col-span-2 xl:col-span-4">
+                        Start date must be on or before end date.
+                      </p>
+                    )}
+                  </div>
+
+                  {customerStatement.entries.some(entry => !entry.verified || !entry.hasExactTime) && (
+                    <p className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                      Some saved records are missing an invoice link or exact time. We mark them as unverified and do not guess the missing details.
+                    </p>
+                  )}
+                  <p className="px-4 pt-3 text-[11px] text-slate-500 dark:text-slate-400">
+                    A positive balance means the customer owes money. A negative balance means the customer has credit. Payments received are shown before refunds. Using credit is not a new payment.
+                    {statementFilter !== 'all' || statementSearch.trim() ? ` Totals include all activity in these dates. The list shows only ${statementTypeLabel.toLowerCase()}${statementSearch.trim() ? ` matching “${statementSearch.trim()}”` : ''}.` : ''}
+                  </p>
+
+                  {detailsLoadError && (
+                    <p role="alert" className="mx-4 mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200">
+                      We could not check all saved data. Please review these records before using this statement.
+                    </p>
+                  )}
+                  {statementVisibleEntries.length === 0 ? (
+                    <p className="px-4 py-9 text-center text-sm text-slate-500 dark:text-slate-400">
+                      {customerStatement.entries.length === 0
+                        ? 'No payments or invoices yet.'
+                        : 'No results. Try changing your search or filters.'}
+                    </p>
+                  ) : (
+                    <div className="max-w-full overflow-x-auto p-3">
+                      <table className="w-full min-w-[1000px] border-collapse text-left text-[11px]">
+                        <thead>
+                          <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                            <th className="px-2 py-2 font-semibold">Date and time</th>
+                            <th className="px-2 py-2 font-semibold">Reference</th>
+                            <th className="px-2 py-2 font-semibold">Type</th>
+                            <th className="px-2 py-2 font-semibold">Details</th>
+                            <th className="px-2 py-2 text-right font-semibold">Added to due</th>
+                            <th className="px-2 py-2 text-right font-semibold">Paid or reduced</th>
+                            <th className="px-2 py-2 text-right font-semibold">Balance</th>
+                            <th className="px-2 py-2 font-semibold">Payment / account</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {statementVisibleEntries.map(entry => (
+                            <tr key={entry.id} className="align-top text-slate-700 dark:text-slate-200">
+                              <td className="whitespace-nowrap px-2 py-2">
+                                <span className="block">{entry.hasExactTime ? formatAppEventDateTime(entry.timestamp) : formatAppDate(entry.date, language)}</span>
+                                {!entry.hasExactTime && <span className="text-[10px] text-amber-700 dark:text-amber-300">Time not recorded</span>}
+                              </td>
+                              <td className="max-w-40 break-all px-2 py-2 font-mono">
+                                {entry.reference}
+                                <span className={`mt-1 block w-fit rounded px-1.5 py-0.5 font-sans text-[9px] font-semibold ${entry.verified ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'}`}>
+                                  {entry.verified ? 'Verified' : 'Unverified'}
+                                </span>
+                              </td>
+                              <td className="whitespace-nowrap px-2 py-2 font-medium">{entry.type.replace(/_/g, ' ')}</td>
+                              <td className="max-w-60 break-words px-2 py-2">
+                                <span className="block font-medium">{entry.description}</span>
+                                {entry.invoiceNumber && <span className="mt-0.5 block text-slate-500 dark:text-slate-400">Invoice {entry.invoiceNumber}</span>}
+                                {entry.memoAmount !== undefined && <span className="mt-0.5 block text-violet-700 dark:text-violet-300">Advance: {formatCurrency(entry.memoAmount, currency)}</span>}
+                                <span className="mt-1 flex flex-wrap gap-1">
+                                  {entry.saleId && <button type="button" onClick={() => onViewSale(entry.saleId!)} className="font-semibold text-violet-700 hover:underline dark:text-violet-300">Sale</button>}
+                                  {entry.invoiceId && onViewInvoice && <button type="button" onClick={() => onViewInvoice(entry.invoiceId!)} className="font-semibold text-violet-700 hover:underline dark:text-violet-300">Invoice</button>}
+                                  {entry.paymentIds?.map(paymentId => onViewPayment && <button key={paymentId} type="button" onClick={() => onViewPayment(paymentId)} className="font-semibold text-violet-700 hover:underline dark:text-violet-300">Payment</button>)}
+                                </span>
+                              </td>
+                              <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">{formatCurrency(entry.debit, currency)}</td>
+                              <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">{formatCurrency(entry.credit, currency)}</td>
+                              <td className={`whitespace-nowrap px-2 py-2 text-right font-semibold tabular-nums ${entry.runningBalance < 0 ? 'text-emerald-700 dark:text-emerald-300' : entry.runningBalance > 0 ? 'text-amber-700 dark:text-amber-300' : ''}`}>
+                                {formatCurrency(entry.runningBalance, currency)}
+                                {entry.runningBalance < 0 && <span className="ml-1 text-[9px]">credit</span>}
+                              </td>
+                              <td className="max-w-36 break-words px-2 py-2">{entry.paymentMethod || '—'}<span className="block text-slate-500 dark:text-slate-400">{entry.account || '—'}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
             </section>
 
             {canContact(detailedCustomer.id) && <details className="customer-message-templates rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#171622]">
@@ -2103,13 +2418,22 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             <section aria-label="Customer reminders" className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
               <h3 className="mb-2 text-xs font-bold text-slate-800 dark:text-slate-100">Reminders ({detailedReminders.length})</h3>
               {detailedReminders.length === 0 ? <p className="text-xs text-slate-500">No open reminders for this customer.</p> : <div className="space-y-2">
-                {detailedReminders.slice(0, 4).map(reminder => <div key={reminder.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/60">
-                  <div className="min-w-0"><p className="truncate font-semibold">{reminder.title}</p><p className="text-slate-500">{formatAppDate(reminder.dueDate, language)} · {reminder.priority}</p></div>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => completeReminder(reminder.id)} className="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">Complete</button>
-                    <button type="button" onClick={() => snoozeReminder(reminder.id, new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString())} className="font-semibold text-slate-600 hover:underline dark:text-slate-300">Snooze</button>
-                  </div>
-                </div>)}
+                {detailedReminders.slice(0, 4).map(reminder => {
+                  const isPaymentReminder = ['invoice_due', 'invoice_overdue', 'partial_payment', 'payment_overdue', 'unpaid_sale']
+                    .includes(reminder.type);
+                  return (
+                    <div key={reminder.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/60">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold">{reminder.title}</p>
+                        <p className="text-slate-500">{isPaymentReminder ? 'Expected payment' : 'Due'} {formatAppDate(reminder.dueDate, language)} · {reminder.priority}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => completeReminder(reminder.id)} className="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">Complete</button>
+                        <button type="button" onClick={() => snoozeReminder(reminder.id, new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString())} className="font-semibold text-slate-600 hover:underline dark:text-slate-300">Snooze</button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>}
             </section>
 
@@ -2206,6 +2530,30 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     </li>
                   ))}
                 </ol>
+                {detailedPaymentHistory.some(payment => payment.notes?.trim()) && (
+                  <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-700">
+                    <h5 className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                      Payment notes ({detailedPaymentHistory.filter(payment => payment.notes?.trim()).length})
+                    </h5>
+                    <ol className="mt-2 max-h-48 space-y-2 overflow-y-auto">
+                      {detailedPaymentHistory.filter(payment => payment.notes?.trim()).map(payment => (
+                        <li key={payment.id} className="rounded-lg border border-slate-100 p-2.5 dark:border-slate-700">
+                          <p className="whitespace-pre-wrap text-xs text-slate-800 dark:text-slate-200">{safeCustomerNote(payment.notes)}</p>
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[10px] text-slate-500">
+                              {formatAppEventDateTime(payment.createdAt || payment.paymentDate)} · {payment.transactionId?.trim() || payment.id}
+                            </span>
+                            {onViewPayment && (
+                              <button type="button" onClick={() => onViewPayment(payment.id)} className="text-[10px] font-semibold text-violet-700 hover:underline dark:text-violet-300">
+                                View payment
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
               </div>
             </section>
 
@@ -2247,7 +2595,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     return (
                       <div
                         key={sub.id}
-                        className="customer-subscription-row p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between"
+                        className={`customer-subscription-row p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between ${
+                          badge.status === 'expiring_soon'
+                            ? 'customer-subscription-row--ending-soon'
+                            : badge.status === 'active' ? 'customer-subscription-row--active' : ''
+                        }`}
                       >
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-semibold text-sm text-slate-900 dark:text-white">
@@ -2392,7 +2744,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               <section aria-label="Customer payment history" className="mb-5 rounded-xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-800">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">Payment history ({detailedPaymentHistory.length})</h3>
-                  <span className="text-[10px] text-slate-500">Received amounts include any advance credit.</span>
+                  <span className="text-[10px] text-slate-500">Received amounts include any advance payment.</span>
                 </div>
                 {detailedPaymentHistory.length === 0 ? (
                   <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-900/50">No payment history yet.</p>
@@ -2406,9 +2758,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                             {payment.allocations?.length
                               ? `Allocated to sale${payment.allocations.length === 1 ? '' : 's'}: ${formatCurrency(getPaymentRecognizedAmount(payment), payment.currency)}`
                               : payment.advanceCreditAmount
-                                ? 'Customer advance credit'
+                                ? 'Advance payment'
                                 : payment.saleId ? 'Sale payment' : 'Unallocated historical payment'}
-                            {Number(payment.advanceCreditAmount) > 0 ? ` · Advance ${formatCurrency(payment.advanceCreditAmount || 0, payment.currency)}` : ''}
+                            {Number(payment.advanceCreditAmount) > 0 ? ` · Advance payment ${formatCurrency(payment.advanceCreditAmount || 0, payment.currency)}` : ''}
                           </p>
                         </div>
                         <strong className="font-mono">{formatCurrency(payment.amount, payment.currency)}</strong>
@@ -2433,9 +2785,19 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     .map(sale => (
                       <div key={sale.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-800">
                         <div className="min-w-0 flex-1">
-                          <div className="truncate font-semibold text-slate-800 dark:text-slate-100">
-                            {formatAppEventDateTime(sale.createdAt || sale.date)} · {getSaleLineItems(sale).map(item => `${services.find(service => service.id === item.serviceId)?.name || '—'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`).join('; ')}
+                          <div className="font-semibold text-slate-800 dark:text-slate-100">
+                            {formatAppEventDateTime(sale.createdAt || sale.date)}
                           </div>
+                          {getSaleLineFinancialAllocations(sale, payments).map(({ item }) => (
+                            <div key={item.id} className="mt-0.5 text-slate-500 dark:text-slate-400">
+                              <span>{services.find(service => service.id === item.serviceId)?.name || '—'} · {item.plan}{item.quantity > 1 ? ` × ${item.quantity}` : ''}</span>
+                              {item.expectedPaymentDate && (
+                                <span className="ml-2 font-medium text-amber-700 dark:text-amber-300">
+                                  Expected payment · {formatAppDate(item.expectedPaymentDate, language)}
+                                </span>
+                              )}
+                            </div>
+                          ))}
                           <div className="mt-0.5 text-slate-500 dark:text-slate-400">{sale.invoiceNo}</div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -2512,7 +2874,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                             className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1.5 font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
                           >
                             <Download className="h-3.5 w-3.5" />
-                            Download JPG
+                            Download PNG
                           </button>
                         </div>
                       </div>

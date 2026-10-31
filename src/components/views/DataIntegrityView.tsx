@@ -130,7 +130,7 @@ export const DataIntegrityView: React.FC<DataIntegrityViewProps> = ({ onOpenBack
     <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">Business safeguards</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-3xl">Data Integrity & Recovery</h1>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-3xl">Check and Fix Data</h1>
         <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-400">Inspect business records, financial relationships, local storage warnings, and recovery options without changing your data.</p>
       </div>
       <button type="button" onClick={() => void check()} disabled={isChecking} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60">
@@ -142,7 +142,7 @@ export const DataIntegrityView: React.FC<DataIntegrityViewProps> = ({ onOpenBack
     {checkError && <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200">{checkError}</div>}
 
     {result ? <>
-      <section className={`${sectionClass} ${result.status === 'ERROR' ? 'border-rose-300 dark:border-rose-900' : result.status === 'WARNING' ? 'border-amber-300 dark:border-amber-900' : 'border-emerald-300 dark:border-emerald-900'}`} aria-label="Integrity check summary">
+      <section className={`${sectionClass} ${result.status === 'ERROR' ? 'border-rose-300 dark:border-rose-900' : result.status === 'WARNING' ? 'border-amber-300 dark:border-amber-900' : 'border-emerald-300 dark:border-emerald-900'}`} aria-label="Data check summary">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             {result.status === 'ERROR'

@@ -16,6 +16,7 @@ import type {
   Payment,
   ProfitabilityCost,
   Reminder,
+  OrderQuotation,
   Sale,
   Service,
   Subscription,
@@ -28,6 +29,7 @@ export const STORAGE_KEYS = {
   ACCOUNTS: 'sqp_accounts_v2',
   SUBSCRIPTIONS: 'sqp_subscriptions_v2',
   SALES: 'sqp_sales_v2',
+  ORDERS: 'sqp_orders_v1',
   INVOICES: 'sqp_invoices_v1',
   PAYMENTS: 'sqp_payments_v2',
   LOGS: 'sqp_logs_v2',
@@ -47,6 +49,7 @@ export const STORAGE_KEYS = {
   FINANCIAL_PERIODS: 'sqp_financial_periods_v1',
   REMINDERS: 'sqp_reminders_v1',
   PROFITABILITY_COSTS: 'sqp_profitability_costs_v1',
+  GETTING_STARTED: 'xolvemanager.getting-started.v1',
 } as const;
 
 export const DATA_ENVIRONMENT_SESSION_KEY = 'xolvemanager.data-environment.v1';
@@ -219,6 +222,39 @@ export const writeJsonValue = (key: string, value: unknown): void => {
   writeRawValue(key, JSON.stringify(value));
 };
 
+export interface GettingStartedState {
+  started: boolean;
+  dismissed: boolean;
+}
+
+export const getInitialGettingStartedState = (hasWorkspaceRecords: boolean): GettingStartedState => ({
+  started: !hasWorkspaceRecords,
+  dismissed: false,
+});
+
+const isGettingStartedState = (value: unknown): value is GettingStartedState =>
+  typeof value === 'object'
+  && value !== null
+  && 'started' in value
+  && typeof value.started === 'boolean'
+  && 'dismissed' in value
+  && typeof value.dismissed === 'boolean';
+
+const getGettingStartedStorageKey = (businessId?: string): string =>
+  `${STORAGE_KEYS.GETTING_STARTED}.${encodeURIComponent(businessId || 'default')}`;
+
+export const getGettingStartedState = (businessId?: string): GettingStartedState | null =>
+  readJsonValue<GettingStartedState | null>(
+    getGettingStartedStorageKey(businessId),
+    null,
+    (value): value is GettingStartedState | null => value === null || isGettingStartedState(value)
+  );
+
+export const saveGettingStartedState = (
+  state: GettingStartedState,
+  businessId?: string
+): void => writeJsonValue(getGettingStartedStorageKey(businessId), state);
+
 export const updateJsonValue = <T>(
   key: string,
   fallback: T,
@@ -240,6 +276,60 @@ const isDateOnly = (value: unknown): value is string => {
   const [year, month, day] = value.split('-').map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+};
+
+export const isValidOrderQuotation = (value: unknown): value is OrderQuotation => {
+  if (!isObjectRecord(value)
+    || !isString(value.id) || !value.id
+    || !isString(value.reference) || !value.reference
+    || !isString(value.customerId) || !value.customerId
+    || !['whatsapp', 'phone', 'in_person', 'other'].includes(String(value.source))
+    || !['draft', 'quotation', 'confirmed', 'invoiced', 'cancelled'].includes(String(value.status))
+    || !['BDT', 'USD'].includes(String(value.currency))
+    || !isString(value.createdAt) || !Number.isFinite(Date.parse(value.createdAt))
+    || !isString(value.updatedAt) || !Number.isFinite(Date.parse(value.updatedAt))
+    || (value.businessId !== undefined && !isString(value.businessId))
+    || (value.quotedAt !== undefined && (!isString(value.quotedAt) || !Number.isFinite(Date.parse(value.quotedAt))))
+    || (value.confirmedAt !== undefined && (!isString(value.confirmedAt) || !Number.isFinite(Date.parse(value.confirmedAt))))
+    || (value.saleId !== undefined && !isString(value.saleId))
+    || (value.invoiceId !== undefined && !isString(value.invoiceId))
+    || !Array.isArray(value.items) || value.items.length === 0
+    || !isNumber(value.subtotal) || value.subtotal <= 0
+    || !isNumber(value.discount) || value.discount < 0
+    || !isNumber(value.total) || value.total <= 0
+    || Math.abs(value.subtotal - value.discount - value.total) > 0.01) return false;
+
+  let lineSubtotalMinor = 0;
+  let lineDiscountMinor = 0;
+  for (const line of value.items) {
+    if (!isObjectRecord(line)
+      || !isString(line.serviceId) || !line.serviceId
+      || !isString(line.serviceNameSnapshot) || !line.serviceNameSnapshot
+      || !isString(line.plan) || !line.plan
+      || (line.planId !== undefined && !isString(line.planId))
+      || !Number.isSafeInteger(line.quantity) || Number(line.quantity) < 1
+      || !isNumber(line.unitPrice) || line.unitPrice < 0
+      || !isNumber(line.discount) || line.discount < 0
+      || !isDateOnly(line.startDate)
+      || !Number.isSafeInteger(line.durationDays) || Number(line.durationDays) < 1
+      || (line.expectedPaymentDate !== undefined && !isDateOnly(line.expectedPaymentDate))
+      || (line.units !== undefined && (!Array.isArray(line.units) || !line.units.every(unit =>
+        isObjectRecord(unit)
+        && (unit.accountId === undefined || isString(unit.accountId))
+        && (unit.profileId === undefined || isString(unit.profileId))
+      )))) return false;
+    const gross = Math.round(line.unitPrice * 100) * Number(line.quantity);
+    const discount = Math.round(line.discount * 100);
+    if (discount > gross) return false;
+    lineSubtotalMinor += gross;
+    lineDiscountMinor += discount;
+  }
+  const subtotalMinor = Math.round(value.subtotal * 100);
+  const discountMinor = Math.round(value.discount * 100);
+  const totalMinor = Math.round(value.total * 100);
+  return Math.abs(lineSubtotalMinor - subtotalMinor) <= 1
+    && discountMinor >= lineDiscountMinor
+    && subtotalMinor - discountMinor === totalMinor;
 };
 const isCustomerCrmDataValid = (record: Record<string, unknown>): boolean => {
   if (record.tags !== undefined && (!Array.isArray(record.tags) || !record.tags.every(isString))) return false;
@@ -298,6 +388,7 @@ const collectionValidators: Record<string, (record: Record<string, unknown>) => 
     isString(record.date) &&
     isString(record.invoiceNo) &&
     isNumber(record.amount),
+  [STORAGE_KEYS.ORDERS]: record => isValidOrderQuotation(record),
   [STORAGE_KEYS.INVOICES]: record =>
     isString(record.invoiceId) &&
     isString(record.invoiceNumber) &&
@@ -412,6 +503,8 @@ export const getSubscriptions = (): Subscription[] => readCollection<Subscriptio
 export const saveSubscriptions = (records: Subscription[]): void => saveCollection(STORAGE_KEYS.SUBSCRIPTIONS, records);
 export const getSales = (): Sale[] => readCollection<Sale>(STORAGE_KEYS.SALES);
 export const saveSales = (records: Sale[]): void => saveCollection(STORAGE_KEYS.SALES, records);
+export const getOrders = (): OrderQuotation[] => readCollection<OrderQuotation>(STORAGE_KEYS.ORDERS);
+export const saveOrders = (records: OrderQuotation[]): void => saveCollection(STORAGE_KEYS.ORDERS, records);
 export const getInvoices = (): Invoice[] => readCollection<Invoice>(STORAGE_KEYS.INVOICES);
 export const saveInvoices = (records: Invoice[]): void => saveCollection(STORAGE_KEYS.INVOICES, records);
 export const getPayments = (): Payment[] => readCollection<Payment>(STORAGE_KEYS.PAYMENTS);

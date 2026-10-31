@@ -15,6 +15,7 @@ import {
   UserRound,
   Share2,
   MessageCircle,
+  FileText,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
@@ -24,15 +25,15 @@ import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
 import {
   InvoiceSaleDetails,
-  downloadInvoiceJpg,
-  generateInvoiceJpg,
-  shareInvoiceJpg,
+  downloadInvoiceImage,
+  generateInvoiceImage,
+  shareInvoiceFile,
 } from '../../utils/invoiceGenerator';
 import type { Sale, PaymentMethod, PaymentStatus } from '../../types';
 import { formatAppDate, formatCurrency, getTodayDateString, getSubscriptionStatusForTimeZone } from '../../utils/dateUtils';
 import { getCustomerDisplayName, getCustomerOptionLabel, resolveSaleCustomer } from '../../utils/relationships';
 import { createRecordId } from '../../services/localStorageStore';
-import { getSaleDueAmount, getSaleLineItems, getSalePaidAmount, getSalePaymentStatus, getSalePayments } from '../../utils/saleUtils';
+import { getSaleDueAmount, getSaleLineItems, getSalePaidAmount, getSalePaymentStatus, getSalePayments, getSaleSubscriptionIds, getSaleVoidBlockedReason } from '../../utils/saleUtils';
 import { getDefaultPaymentMethod, getPaymentBreakdownForSale, normalizePaymentMethods, paymentMethodRequiresTransactionId } from '../../utils/paymentMethods';
 import { buildInvoiceSaleDetails } from '../../utils/invoiceUtils';
 import { convertReportCurrency, getReportDateBounds, isWithinDateBounds } from '../../utils/reportMetrics';
@@ -44,6 +45,7 @@ import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
 
 interface SalesViewProps {
   onOpenNewSale: (customerId?: string) => void;
+  onResumeOrder: (orderId: string) => void;
   onViewCustomer: (customerId: string) => void;
   onViewSubscription: (subscriptionId: string) => void;
   onViewAccount: (accountId: string) => void;
@@ -86,6 +88,7 @@ function indexFirstById<T extends { id: string }>(records: T[]): Map<string, T> 
 
 export const SalesView: React.FC<SalesViewProps> = ({
   onOpenNewSale,
+  onResumeOrder,
   onViewCustomer,
   onViewSubscription,
   onViewAccount,
@@ -100,6 +103,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const { formatCurrency, formatDate: formatAppDate, formatEventDateTime: formatAppEventDateTime } = useAppFormatting();
   const {
     sales,
+    orders,
     invoices,
     subscriptions,
     payments,
@@ -111,6 +115,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
     settings,
     currentBusiness,
     recordSalePayment,
+    voidUnpaidSale,
+    updateOrderQuotation,
     ensureInvoiceForSale,
     currency,
     t,
@@ -127,6 +133,14 @@ export const SalesView: React.FC<SalesViewProps> = ({
       ? sales.filter(sale => sale.businessId === currentBusiness.businessId)
       : sales,
     [sales, currentBusiness?.businessId]
+  );
+  const activeOrders = useMemo(
+    () => orders
+      .filter(order => (!currentBusiness?.businessId || order.businessId === currentBusiness.businessId)
+        && order.status !== 'invoiced'
+        && order.status !== 'cancelled')
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+    [orders, currentBusiness?.businessId]
   );
   const businessPayments = useMemo(
     () => currentBusiness?.businessId
@@ -160,6 +174,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [page, setPage] = useState(1);
   const [receiptSale, setReceiptSale] = useState<Sale | null>(null);
+  const [saleToVoid, setSaleToVoid] = useState<Sale | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+  const [isVoidingSale, setIsVoidingSale] = useState(false);
   const receiptSaleReminders = receiptSale
     ? reminders.filter(reminder =>
       (reminder.saleId === receiptSale.id
@@ -219,7 +236,14 @@ export const SalesView: React.FC<SalesViewProps> = ({
   );
   const receiptInvoice = receiptSale ? invoices.find(invoice => invoice.saleId === receiptSale.id) : undefined;
   const receiptPayments = receiptSale
-    ? getSalePayments(receiptSale, businessPayments).sort((a, b) => b.paymentDate.localeCompare(a.paymentDate))
+    ? [...new Map([
+      ...getSalePayments(receiptSale, businessPayments),
+      ...businessPayments.filter(payment => payment.paymentStatus === 'voided'
+        && (payment.saleId === receiptSale.id
+          || Boolean(payment.subscriptionId && getSaleSubscriptionIds(receiptSale).includes(payment.subscriptionId))
+          || Boolean(payment.allocations?.some(allocation => allocation.saleId === receiptSale.id)))),
+    ].map(payment => [payment.id, payment])).values()]
+      .sort((a, b) => b.paymentDate.localeCompare(a.paymentDate))
     : [];
   const receiptPaymentBreakdown = receiptSale ? getPaymentBreakdownForSale(receiptSale, businessPayments) : [];
   const receiptActivities = receiptSale
@@ -291,6 +315,23 @@ export const SalesView: React.FC<SalesViewProps> = ({
     }
   };
 
+  const saveSaleVoid = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!saleToVoid || isVoidingSale) return;
+    setIsVoidingSale(true);
+    try {
+      voidUnpaidSale(saleToVoid.id, voidReason);
+      showToast('Sale and invoice voided. They remain in history.', 'success');
+      setSaleToVoid(null);
+      setVoidReason('');
+    } catch (error) {
+      console.error('Unpaid sale could not be voided:', error);
+      showToast(error instanceof Error ? error.message : 'Sale could not be voided. Please try again.', 'error');
+    } finally {
+      setIsVoidingSale(false);
+    }
+  };
+
   const invoiceDetailsForSale = (sale: Sale) => {
     const srv = services.find(s => s.id === sale.serviceId);
     const saleCustomer = resolveSaleCustomer(sale, customers, subscriptions);
@@ -308,18 +349,18 @@ export const SalesView: React.FC<SalesViewProps> = ({
     );
   };
 
-  const handleOpenInvoiceJpg = (sale: Sale) => {
+  const handleOpenInvoice = (sale: Sale) => {
     const payload = invoiceDetailsForSale(sale);
     setSelectedInvoiceData(payload);
     setIsInvoiceModalOpen(true);
   };
 
-  const handleDownloadInvoiceJpg = async (sale: Sale) => {
+  const handleDownloadInvoicePng = async (sale: Sale) => {
     if (isInvoiceActionBusy) return;
     setIsInvoiceActionBusy(true);
     try {
-      const result = await generateInvoiceJpg(invoiceDetailsForSale(sale), language);
-      downloadInvoiceJpg(result.blob, result.fileName);
+      const result = await generateInvoiceImage(invoiceDetailsForSale(sale), language);
+      downloadInvoiceImage(result.blob, result.fileName);
       showToast(`Download requested · ${result.fileName}`, 'info');
     } catch (error) {
       console.error('Sale invoice download failed:', error);
@@ -329,25 +370,25 @@ export const SalesView: React.FC<SalesViewProps> = ({
     }
   };
 
-  const handleShareInvoiceJpg = async (sale: Sale) => {
+  const handleShareInvoiceFile = async (sale: Sale) => {
     if (isInvoiceActionBusy) return;
     setIsInvoiceActionBusy(true);
     try {
       const details = invoiceDetailsForSale(sale);
-      const result = await generateInvoiceJpg(details, language);
-      const shared = await shareInvoiceJpg(
+      const result = await generateInvoiceImage(details, language);
+      const shared = await shareInvoiceFile(
         result.blob,
         result.fileName,
         `${details.storeName || 'My Business'} Invoice ${details.invoiceNo}`,
         `Receipt for ${details.serviceName} · ${details.planName}`
       );
       if (shared === 'shared') {
-        showToast('Invoice shared successfully.', 'success');
+        showToast('Share sheet opened. Check your selected app to complete sharing; delivery is not confirmed.', 'info');
       } else if (shared === 'cancelled') {
         showToast('Invoice sharing was cancelled.', 'info');
       } else {
-        downloadInvoiceJpg(result.blob, result.fileName);
-        showToast('File sharing is unavailable here. A JPG download was requested.', 'info');
+        downloadInvoiceImage(result.blob, result.fileName);
+        showToast('File sharing is unavailable here. A PNG download was requested.', 'info');
       }
     } catch (error) {
       console.error('Sale invoice sharing failed:', error);
@@ -367,35 +408,34 @@ export const SalesView: React.FC<SalesViewProps> = ({
     [businessSales, dateBounds]
   );
   const salesStats = useMemo(() => {
+    const reportableDateSales = dateSales.filter(sale => sale.paymentStatus !== 'voided');
     const statusFor = (sale: Sale) => getSalePaymentStatus(sale, businessPayments);
     const refundedPayments = Array.from(new Map(businessSales.flatMap(sale =>
       getSalePayments(sale, businessPayments).filter(payment =>
         payment.paymentStatus === 'refunded' && isWithinDateBounds(payment.paymentDate, dateBounds)
       )
     ).map(payment => [payment.id, payment])).values());
-    const sumSalesByCurrency = (targetCurrency: Sale['currency'], amount: (sale: Sale) => number) =>
-      dateSales
-        .filter(sale => sale.currency === targetCurrency)
-        .reduce((total, sale) => total + amount(sale), 0);
     const sumRefundsByCurrency = (targetCurrency: Sale['currency']) =>
       refundedPayments
         .filter(payment => payment.currency === targetCurrency)
         .reduce((total, payment) => total + (Number(payment.amount) || 0), 0);
 
     return {
-      totalSales: dateSales.length,
-      paid: dateSales.filter(sale => statusFor(sale) === 'paid').length,
-      partial: dateSales.filter(sale => statusFor(sale) === 'partial').length,
-      pending: dateSales.filter(sale => statusFor(sale) === 'pending').length,
+      totalSales: reportableDateSales.length,
+      paid: reportableDateSales.filter(sale => statusFor(sale) === 'paid').length,
+      partial: reportableDateSales.filter(sale => statusFor(sale) === 'partial').length,
+      pending: reportableDateSales.filter(sale => statusFor(sale) === 'pending').length,
       paidSalesAmount: {
-        BDT: dateSales.filter(sale => sale.currency === 'BDT' && statusFor(sale) === 'paid')
+        BDT: reportableDateSales.filter(sale => sale.currency === 'BDT' && statusFor(sale) === 'paid')
           .reduce((total, sale) => total + (Number(sale.amount) || 0), 0),
-        USD: dateSales.filter(sale => sale.currency === 'USD' && statusFor(sale) === 'paid')
+        USD: reportableDateSales.filter(sale => sale.currency === 'USD' && statusFor(sale) === 'paid')
           .reduce((total, sale) => total + (Number(sale.amount) || 0), 0),
       },
       due: {
-        BDT: sumSalesByCurrency('BDT', sale => getSaleDueAmount(sale, businessPayments)),
-        USD: sumSalesByCurrency('USD', sale => getSaleDueAmount(sale, businessPayments)),
+        BDT: reportableDateSales.filter(sale => sale.currency === 'BDT')
+          .reduce((total, sale) => total + getSaleDueAmount(sale, businessPayments), 0),
+        USD: reportableDateSales.filter(sale => sale.currency === 'USD')
+          .reduce((total, sale) => total + getSaleDueAmount(sale, businessPayments), 0),
       },
       refunded: {
         BDT: sumRefundsByCurrency('BDT'),
@@ -567,7 +607,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
           </div>
           <div className="min-w-0">
             <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">
-              {language === 'bn' ? 'রাজস্ব পরিচালনা' : 'Revenue operations'}
+              {language === 'bn' ? 'রাজস্ব পরিচালনা' : 'Sales and payments'}
             </p>
             <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">
               {language === 'bn' ? 'বিক্রয়' : 'Sales'}
@@ -643,6 +683,46 @@ export const SalesView: React.FC<SalesViewProps> = ({
         ))}
       </section>
 
+      {activeOrders.length > 0 && (
+        <section aria-labelledby="open-orders-title" className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 p-3 dark:border-violet-900/60 dark:bg-violet-950/10 sm:p-4">
+          <div className="flex items-start gap-2">
+            <FileText className="mt-0.5 h-4 w-4 shrink-0 text-violet-700 dark:text-violet-300" />
+            <div>
+              <h2 id="open-orders-title" className="text-sm font-bold text-slate-900 dark:text-white">Open quotations and orders</h2>
+              <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">Saved separately from sales, payments, and invoices.</p>
+            </div>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {activeOrders.map(order => (
+              <article key={order.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                <div className="min-w-0">
+                  <p className="break-words text-xs font-semibold text-slate-900 dark:text-white">{order.reference} · {customersById.get(order.customerId)?.name || 'Customer unavailable'}</p>
+                  <p className="mt-1 break-words text-[11px] text-slate-500 dark:text-slate-400">{order.items.map(item => `${item.serviceNameSnapshot} · ${item.plan}`).join(', ')}</p>
+                  <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">{order.status === 'confirmed' ? 'Customer confirmed' : 'Quotation'} · {formatCurrency(order.total, order.currency)}</p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button type="button" onClick={() => onResumeOrder(order.id)} className="min-h-10 rounded-lg bg-violet-700 px-3 text-xs font-semibold text-white hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
+                    {order.status === 'confirmed' ? 'Continue sale' : 'Open quotation'}
+                  </button>
+                  <button type="button" onClick={() => {
+                    if (!window.confirm(`Cancel ${order.reference}? This will not create a sale or invoice.`)) return;
+                    try {
+                      updateOrderQuotation(order.id, { status: 'cancelled' });
+                      showToast('Quotation cancelled.', 'success');
+                    } catch (error) {
+                      console.error('Could not cancel the quotation.', error);
+                      showToast(error instanceof Error ? error.message : 'Could not cancel the quotation.', 'error');
+                    }
+                  }} className="min-h-10 rounded-lg border border-slate-300 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+                    Cancel
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="sales-quick-followup rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-[#151C28]">
         <div className="mb-2 flex items-center justify-between gap-3">
           <div>
@@ -712,6 +792,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
             <option value="pending">Pending</option>
             <option value="failed">Failed</option>
             <option value="refunded">Refunded</option>
+            <option value="voided">Voided</option>
           </select>
 
           <select
@@ -849,22 +930,26 @@ export const SalesView: React.FC<SalesViewProps> = ({
           const paid = getSalePaidAmount(sale, businessPayments);
           const due = getSaleDueAmount(sale, businessPayments);
           const status = getSalePaymentStatus(sale, businessPayments);
+          const canVoid = !getSaleVoidBlockedReason(sale, businessPayments, subscriptions, invoices);
           return (
             <article key={sale.id} className="sales-order-card min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs transition-colors hover:border-violet-200 dark:border-slate-800 dark:bg-[#151C28] dark:hover:border-violet-900 sm:p-4">
               <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5">
                 <div className="min-w-0">
                   {saleItems.map((item, index) => (
-                    <p key={`${item.id}-${index}`} className="break-words text-sm font-bold leading-5 text-slate-900 dark:text-white">
-                      {servicesById.get(item.serviceId)?.name || 'Service unavailable'} · {item.plan}{item.quantity > 1 ? ` × ${item.quantity}` : ''}
-                    </p>
+                    <div key={`${item.id}-${index}`}>
+                      <p className="break-words text-sm font-bold leading-5 text-slate-900 dark:text-white">
+                        {servicesById.get(item.serviceId)?.name || 'Service unavailable'} · {item.plan}{item.quantity > 1 ? ` × ${item.quantity}` : ''}
+                      </p>
+                      {item.expectedPaymentDate && <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-300">Expected payment · {formatAppDate(item.expectedPaymentDate, language)}</p>}
+                    </div>
                   ))}
                   <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Sale date · {formatAppEventDateTime(sale.createdAt || sale.date)}</p>
                 </div>
-                <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold capitalize ${status === 'paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : status === 'partial' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' : status === 'pending' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'}`}>{status === 'refunded' ? 'Refunded' : status}</span>
+                <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold capitalize ${status === 'paid' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : status === 'partial' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' : status === 'pending' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' : status === 'voided' ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' : status === 'refunded' ? 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'}`}>{status === 'refunded' ? 'Refunded' : status}</span>
               </div>
               <div className="mt-2 flex min-w-0 items-center gap-1.5 border-t border-slate-100 pt-2 dark:border-slate-800">
                 <span className="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">Invoice</span>
-                <button type="button" title={invoiceNumber} aria-label={`View invoice ${invoiceNumber}`} onClick={() => handleOpenInvoiceJpg(sale)} className="min-w-0 truncate whitespace-nowrap font-mono text-xs font-semibold text-violet-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:text-violet-300">
+                <button type="button" title={invoiceNumber} aria-label={`View invoice ${invoiceNumber}`} onClick={() => handleOpenInvoice(sale)} className="min-w-0 truncate whitespace-nowrap font-mono text-xs font-semibold text-violet-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:text-violet-300">
                   {invoiceNumber}
                 </button>
                 {sale.renewalOfSubscriptionId && <span className="ml-auto shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">Renewal</span>}
@@ -895,8 +980,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
               </div>}
               <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                 <button type="button" onClick={() => setReceiptSale(sale)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-slate-100 px-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"><Eye className="h-3.5 w-3.5 shrink-0" />View Sale</button>
-                <button type="button" onClick={() => handleOpenInvoiceJpg(sale)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-violet-200 px-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950/40"><Receipt className="h-3.5 w-3.5 shrink-0" />View Invoice</button>
+                <button type="button" onClick={() => handleOpenInvoice(sale)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-violet-200 px-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950/40"><Receipt className="h-3.5 w-3.5 shrink-0" />View Invoice</button>
               </div>
+              {canVoid && <button type="button" onClick={() => { setSaleToVoid(sale); setVoidReason(''); }} className="mt-2 min-h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Void unpaid sale</button>}
               <div className="mt-2 flex flex-wrap gap-2">
                 {due > 0 && <button type="button" onClick={() => openPaymentDialog(sale)} className="min-h-10 flex-1 rounded-lg border border-violet-200 px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950/40">Add Payment</button>}
                 {customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: due > 0 ? 'payment_reminder' : 'custom_message' })} aria-label={`Compose WhatsApp message for ${customer.name}`} className="inline-flex min-h-10 flex-1 items-center justify-center gap-1 rounded-lg border border-emerald-200 px-3 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</button>}
@@ -908,16 +994,14 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
       {/* Sales Table */}
       <div className="hidden xl:block bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
-        <div className="data-table-scroll overflow-x-auto" role="region" aria-label="Sales table; scroll horizontally to view all columns" tabIndex={0}>
-          <table className="w-full min-w-[1240px] text-left border-collapse text-xs">
+        <div className="data-table-scroll sales-table-scroll overflow-x-auto" role="region" aria-label="Sales table; scroll horizontally to view all columns" tabIndex={0}>
+          <table className="w-full min-w-[1120px] whitespace-nowrap text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 <th className="py-3 px-4">Sale</th>
                 <th className="py-3 px-4">{t('date')}</th>
                 <th className="py-3 px-4">{t('customerName')}</th>
                 <th className="py-3 px-4">{t('serviceName')}</th>
-                <th className="py-3 px-4">Plan</th>
-                <th className="py-3 px-4">Subscription</th>
                 <th className="py-3 px-4">Amount</th>
                 <th className="py-3 px-4">Paid</th>
                 <th className="py-3 px-4">Due</th>
@@ -928,7 +1012,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filteredSales.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400">
+                  <td colSpan={9} className="py-12 text-center text-slate-400">
                     No sales found. Try a different search or filter.
                   {(activeFilterCount > 0 || searchInput) && <button type="button" onClick={clearFilters} className="ml-2 font-semibold text-violet-700 hover:underline dark:text-violet-300">Clear filters</button>}
                   </td>
@@ -936,12 +1020,14 @@ export const SalesView: React.FC<SalesViewProps> = ({
               ) : (
                 pageSales.map(sale => {
                   const cust = resolveSaleCustomer(sale, customers, subscriptions);
-                  const srv = services.find(sv => sv.id === sale.serviceId);
-                  const subscription = subscriptions.find(item => item.id === sale.subscriptionId);
                   const saleInvoice = invoices.find(item => item.saleId === sale.id);
+                  const serviceNames = [...new Set(
+                    getSaleLineItems(sale).map(item => servicesById.get(item.serviceId)?.name || 'Service')
+                  )];
                   const paid = getSalePaidAmount(sale, businessPayments);
                   const due = getSaleDueAmount(sale, businessPayments);
                   const status = getSalePaymentStatus(sale, businessPayments);
+                  const canVoid = !getSaleVoidBlockedReason(sale, businessPayments, subscriptions, invoices);
 
                   return (
                     <tr
@@ -955,8 +1041,6 @@ export const SalesView: React.FC<SalesViewProps> = ({
                         >
                           {saleInvoice?.invoiceNumber || sale.invoiceNo}
                         </button>
-                        <span className="block max-w-[120px] truncate text-[10px] font-normal text-slate-400" title={sale.id}>{sale.id}</span>
-                        {sale.renewalOfSubscriptionId && <span className="mt-1 block text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">Renewal Sale</span>}
                       </td>
 
                       <td className="py-3 px-4 font-mono text-slate-500 whitespace-nowrap">
@@ -964,38 +1048,16 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       </td>
 
                       <td className="py-3 px-4">
-                        <div className="font-bold text-slate-900 dark:text-white">
-                          <CustomerNameWithType customer={cust} />
-                        </div>
-                        {(cust?.whatsapp || cust?.email) && (
-                          <div className="text-[11px] text-slate-400 font-mono">
-                            {cust.whatsapp || cust.phone || cust.email}
-                          </div>
-                        )}
+                        <div className="font-bold text-slate-900 dark:text-white">{cust?.name || '—'}</div>
                       </td>
 
                       <td className="py-3 px-4">
-                        <span className="font-semibold text-slate-900 dark:text-white block">
-                          {getSaleLineItems(sale).map((item, index) => (
-                            <span key={`${item.id}-${index}`} className="block max-w-[210px] truncate" title={`${servicesById.get(item.serviceId)?.name || 'Service'} · ${item.plan} × ${item.quantity}`}>
-                              {servicesById.get(item.serviceId)?.name || 'Service'} · {item.plan}{item.quantity > 1 ? ` × ${item.quantity}` : ''}
-                            </span>
-                          ))}
+                        <span
+                          className="inline-block max-w-[260px] truncate align-bottom font-semibold text-slate-900 dark:text-white"
+                          title={serviceNames.join(' · ')}
+                        >
+                          {serviceNames.join(' · ')}
                         </span>
-                      </td>
-
-                      <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
-                        {getSaleLineItems(sale).map((item, index) => (
-                          <span key={`${item.id}-${index}`} className="block">{item.plan}{item.quantity > 1 ? ` × ${item.quantity}` : ''}</span>
-                        ))}
-                      </td>
-                      <td className="py-3 px-4">
-                        {subscription ? (
-                          <button type="button" onClick={() => onViewSubscription(subscription.id)} className="text-left font-semibold text-emerald-700 hover:underline dark:text-emerald-300">
-                            <span className="block max-w-[150px] truncate">{subscription.id}</span>
-                            <span className="mt-1 block text-[10px] font-normal capitalize text-slate-400">{getSubscriptionStatus(subscription, srv, settings.reminderNoticeDays).replace('_', ' ')}</span>
-                          </button>
-                        ) : <span className="text-slate-400">—</span>}
                       </td>
                       <td className="py-3 px-4 font-mono font-bold tabular-nums text-slate-900 dark:text-white whitespace-nowrap">
                         {formatCurrency(sale.amount, sale.currency)}
@@ -1011,6 +1073,10 @@ export const SalesView: React.FC<SalesViewProps> = ({
                             ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300'
                             : status === 'partial'
                             ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300'
+                            : status === 'voided'
+                            ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                            : status === 'refunded'
+                            ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/80 dark:text-violet-300'
                             : 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300'
                         }`}>
                           {status === 'paid' && <CheckCircle2 className="w-3 h-3" />}
@@ -1028,7 +1094,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
                           </button>
                           {due > 0 && <button onClick={() => openPaymentDialog(sale)} className="rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/50">Add Payment</button>}
                           {cust && canContact(cust.id) && <button type="button" onClick={() => openMessage({ customerId: cust.id, saleId: sale.id, templateId: due > 0 ? 'payment_reminder' : 'custom_message' })} aria-label={`Compose WhatsApp message for ${cust.name}`} className="rounded-lg p-2 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/50"><MessageCircle className="h-4 w-4" /></button>}
-                          <button onClick={() => handleOpenInvoiceJpg(sale)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/50"><Receipt className="h-3.5 w-3.5" />Invoice</button>
+                          <button onClick={() => handleOpenInvoice(sale)} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/50"><Receipt className="h-3.5 w-3.5" />Invoice</button>
+                          {canVoid && <button type="button" onClick={() => { setSaleToVoid(sale); setVoidReason(''); }} className="rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Void</button>}
                         </div>
                       </td>
                     </tr>
@@ -1212,9 +1279,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
               <dl className="grid gap-2 text-slate-600 dark:text-slate-300 sm:grid-cols-2">
                 <div><dt className="text-slate-400">Subtotal</dt><dd className="mt-0.5">{formatCurrency(receiptSale.subtotal ?? receiptSale.amount, receiptSale.currency)}</dd></div>
                 <div><dt className="text-slate-400">Discount</dt><dd className="mt-0.5">{formatCurrency(receiptSale.discount || 0, receiptSale.currency)}</dd></div>
-                <div><dt className="text-slate-400">Payment Method Breakdown</dt><dd className="mt-0.5">{receiptPaymentBreakdown.length ? receiptPaymentBreakdown.map(item => `${item.methodName}: ${formatCurrency(item.amount, receiptSale.currency)}`).join(' · ') : receiptSale.paymentMethod}</dd></div>
-                <div className="min-w-0"><dt className="text-slate-400">Transaction Number</dt><dd className="mt-0.5 break-all font-mono">{receiptPayments[0]?.transactionId || receiptSale.transactionId || '—'}</dd></div>
-                <div><dt className="text-slate-400">Payment Date</dt><dd className="mt-0.5">{formatAppEventDateTime(receiptPayments[0]?.createdAt || receiptPayments[0]?.paymentDate || receiptSale.date)}</dd></div>
+                <div><dt className="text-slate-400">Payment Method Breakdown</dt><dd className="mt-0.5">{receiptSale.paymentStatus === 'voided' ? 'Not applicable' : receiptPaymentBreakdown.length ? receiptPaymentBreakdown.map(item => `${item.methodName}: ${formatCurrency(item.amount, receiptSale.currency)}`).join(' · ') : receiptSale.paymentMethod}</dd></div>
+                <div className="min-w-0"><dt className="text-slate-400">Transaction Number</dt><dd className="mt-0.5 break-all font-mono">{receiptSale.paymentStatus === 'voided' ? '—' : receiptPayments[0]?.transactionId || receiptSale.transactionId || '—'}</dd></div>
+                <div><dt className="text-slate-400">Payment Date</dt><dd className="mt-0.5">{receiptSale.paymentStatus === 'voided' ? '—' : formatAppEventDateTime(receiptPayments[0]?.createdAt || receiptPayments[0]?.paymentDate || receiptSale.date)}</dd></div>
               </dl>
               {getSaleDueAmount(receiptSale, businessPayments) > 0 && (
                 <button type="button" onClick={() => {
@@ -1270,22 +1337,22 @@ export const SalesView: React.FC<SalesViewProps> = ({
               <button type="button" onClick={() => {
                 const saleToGenerate = receiptSale;
                 setReceiptSale(null);
-                handleOpenInvoiceJpg(saleToGenerate);
+                handleOpenInvoice(saleToGenerate);
               }} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 font-bold text-white shadow-xs hover:bg-emerald-500">
                 <Receipt className="h-3.5 w-3.5" /> View Invoice
               </button>
               <button
                 type="button"
                 disabled={isInvoiceActionBusy}
-                onClick={() => void handleDownloadInvoiceJpg(receiptSale)}
+                onClick={() => void handleDownloadInvoicePng(receiptSale)}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
-                <Download className="h-3.5 w-3.5" /> Download JPG
+                <Download className="h-3.5 w-3.5" /> Download PNG
               </button>
               <button
                 type="button"
                 disabled={isInvoiceActionBusy}
-                onClick={() => void handleShareInvoiceJpg(receiptSale)}
+                onClick={() => void handleShareInvoiceFile(receiptSale)}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 <Share2 className="h-3.5 w-3.5" /> Share
@@ -1362,6 +1429,43 @@ export const SalesView: React.FC<SalesViewProps> = ({
               <button type="submit" disabled={isSavingPayment || !activePaymentMethods.length} className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
                 {isSavingPayment ? 'Saving...' : 'Save Payment'}
               </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {saleToVoid && (
+        <Modal
+          isOpen
+          onClose={() => {
+            if (isVoidingSale) return;
+            setSaleToVoid(null);
+            setVoidReason('');
+          }}
+          title="Void unpaid sale"
+          subtitle={invoices.find(invoice => invoice.saleId === saleToVoid.id)?.invoiceNumber || saleToVoid.invoiceNo}
+          maxWidth="md"
+        >
+          <form onSubmit={saveSaleVoid} className="space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              This will mark the sale, invoice, and subscription as void. It will keep them in history and will not delete financial records.
+            </div>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+              Reason
+              <textarea
+                autoFocus
+                required
+                minLength={1}
+                maxLength={500}
+                value={voidReason}
+                onChange={event => setVoidReason(event.target.value)}
+                rows={3}
+                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                placeholder="Why is this sale being voided?"
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" disabled={isVoidingSale} onClick={() => { setSaleToVoid(null); setVoidReason(''); }} className="min-h-10 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Keep sale</button>
+              <button type="submit" disabled={isVoidingSale || !voidReason.trim()} className="min-h-10 rounded-lg bg-slate-700 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-600 dark:hover:bg-slate-500">{isVoidingSale ? 'Voiding...' : 'Void sale'}</button>
             </div>
           </form>
         </Modal>

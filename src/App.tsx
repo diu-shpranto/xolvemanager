@@ -24,6 +24,7 @@ import { RecoveryScreen } from './components/common/RecoveryScreen';
 import { getAppLocation, sectionPaths, type SettingsStartSection } from './utils/appRoutes';
 import { getActivityEntityType } from './services/activityService';
 import { confirmUnsavedChangesBeforeNavigation, hasRegisteredUnsavedChanges } from './services/unsavedChanges';
+import { isChunkLoadError } from './utils/runtimeErrors';
 
 const DashboardView = lazy(() => import('./components/views/DashboardView').then(module => ({ default: module.DashboardView })));
 const CustomersView = lazy(() => import('./components/views/CustomersView').then(module => ({ default: module.CustomersView })));
@@ -50,17 +51,25 @@ const NewSaleModal = lazy(() => import('./components/modals/NewSaleModal').then(
 
 class LazyViewErrorBoundary extends React.Component<
   { children: React.ReactNode; onDashboard: () => void },
-  { hasError: boolean }
+  { hasError: boolean; retryByReload: boolean }
 > {
-  state = { hasError: false };
+  state = { hasError: false, retryByReload: false };
 
-  static getDerivedStateFromError(): { hasError: boolean } {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error): { hasError: boolean; retryByReload: boolean } {
+    return { hasError: true, retryByReload: isChunkLoadError(error) };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo): void {
     console.error('Could not load the selected app page.', error, info);
   }
+
+  private retry = (): void => {
+    if (this.state.retryByReload) {
+      window.location.reload();
+      return;
+    }
+    this.setState({ hasError: false, retryByReload: false });
+  };
 
   render(): React.ReactNode {
     if (this.state.hasError) {
@@ -68,7 +77,7 @@ class LazyViewErrorBoundary extends React.Component<
         <RecoveryScreen
           variant="error"
           onDashboard={this.props.onDashboard}
-          onRetry={() => this.setState({ hasError: false })}
+          onRetry={this.retry}
         />
       );
     }
@@ -88,14 +97,16 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   currentSectionRef.current = currentSection;
   const ignoreNextPopStateRef = useRef(false);
   const [isNotFound, setIsNotFound] = useState(Boolean(initialLocation.isNotFound));
-  const setCurrentSection = (section: NavSection) => {
+  const setCurrentSection = (section: NavSection, invoiceId?: string) => {
     if (section !== currentSectionRef.current && !confirmUnsavedChangesBeforeNavigation()) return;
     setCurrentSectionState(section);
     currentSectionRef.current = section;
     setIsNotFound(false);
-    const nextPath = sectionPaths[section];
+    const nextPath = section === 'invoices' && invoiceId
+      ? `/invoices/${encodeURIComponent(invoiceId)}`
+      : sectionPaths[section];
     if (typeof window !== 'undefined' && window.location.pathname !== nextPath) {
-      window.history.pushState({ section }, '', nextPath);
+      window.history.pushState({ section, ...(invoiceId && section === 'invoices' ? { recordId: invoiceId } : {}) }, '', nextPath);
     }
   };
   const [settingsStartSection, setSettingsStartSection] = useState<SettingsStartSection | undefined>(initialLocation.settingsStartSection);
@@ -115,6 +126,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const [isNewSaleOpen, setIsNewSaleOpen] = useState(false);
   const [newSalePreselectedCustomer, setNewSalePreselectedCustomer] = useState<string | undefined>(undefined);
   const [newSalePreselectedService, setNewSalePreselectedService] = useState<string | undefined>(undefined);
+  const [newSalePreselectedOrder, setNewSalePreselectedOrder] = useState<string | undefined>(undefined);
   const [newSaleResourcePreset, setNewSaleResourcePreset] = useState<{ accountId: string; profileId?: string; planId?: string }>();
   const [paymentPreselectedCustomerId, setPaymentPreselectedCustomerId] = useState<string | undefined>();
   const [paymentPreselectedSaleId, setPaymentPreselectedSaleId] = useState<string | undefined>();
@@ -195,9 +207,18 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     serviceId?: string,
     resourcePreset?: { accountId: string; profileId?: string; planId?: string }
   ) => {
+    setNewSalePreselectedOrder(undefined);
     setNewSalePreselectedCustomer(customerId);
     setNewSalePreselectedService(serviceId);
     setNewSaleResourcePreset(resourcePreset);
+    setIsNewSaleOpen(true);
+  };
+
+  const handleResumeOrder = (orderId: string) => {
+    setNewSalePreselectedOrder(orderId);
+    setNewSalePreselectedCustomer(undefined);
+    setNewSalePreselectedService(undefined);
+    setNewSaleResourcePreset(undefined);
     setIsNewSaleOpen(true);
   };
 
@@ -406,7 +427,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
               onRenewSubscription={handleRenewFromDashboard}
               onViewInvoice={invoiceId => {
                 setFocusedInvoiceId(invoiceId);
-                setCurrentSection('invoices');
+                setCurrentSection('invoices', invoiceId);
               }}
               onViewSale={saleId => {
                 setFocusedSaleId(saleId);
@@ -439,7 +460,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
               }}
               onViewInvoice={invoiceId => {
                 setFocusedInvoiceId(invoiceId);
-                setCurrentSection('invoices');
+                setCurrentSection('invoices', invoiceId);
               }}
               initialCustomerFilter={customerQuickFilter}
               initialServiceFilterId={customerServiceFilterId}
@@ -522,6 +543,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           {currentSection === 'sales' && (
             <SalesView
               onOpenNewSale={customerId => handleOpenNewSale(customerId)}
+              onResumeOrder={handleResumeOrder}
               onViewCustomer={customerId => {
                 setSelectedCustomerId(customerId);
                 setCurrentSection('customers');
@@ -567,7 +589,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 if (section === 'sales' && targetId) setFocusedSaleId(targetId);
                 if (section === 'subscriptions' && targetId) setFocusedSubscriptionId(targetId);
                 if (section === 'invoices' && targetId) setFocusedInvoiceId(targetId);
-                setCurrentSection(section as NavSection);
+                setCurrentSection(section as NavSection, section === 'invoices' ? targetId : undefined);
               }}
             />
           )}
@@ -626,8 +648,9 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             <HistoryView onViewRelated={activity => {
               const entityType = activity.entityType || getActivityEntityType(activity);
               if (entityType === 'invoice' && (activity.invoiceId || activity.entityId)) {
-                setFocusedInvoiceId(activity.invoiceId || activity.entityId);
-                setCurrentSection('invoices');
+                const invoiceId = activity.invoiceId || activity.entityId;
+                setFocusedInvoiceId(invoiceId);
+                setCurrentSection('invoices', invoiceId);
               } else if (entityType === 'payment' && (activity.paymentId || activity.entityId)) {
                 setFocusedPaymentId(activity.paymentId || activity.entityId);
                 setCurrentSection('payments');
@@ -683,7 +706,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
               onRenewSubscription={handleRenewFromDashboard}
               onViewInvoice={invoiceId => {
                 setFocusedInvoiceId(invoiceId);
-                setCurrentSection('invoices');
+                setCurrentSection('invoices', invoiceId);
               }}
             />
           )}
@@ -739,6 +762,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             setIsNewSaleOpen(false);
             setNewSalePreselectedCustomer(undefined);
             setNewSalePreselectedService(undefined);
+            setNewSalePreselectedOrder(undefined);
             setNewSaleResourcePreset(undefined);
           }}
           preselectedCustomerId={newSalePreselectedCustomer}
@@ -746,6 +770,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           preselectedAccountId={newSaleResourcePreset?.accountId}
           preselectedProfileId={newSaleResourcePreset?.profileId}
           preselectedPlanId={newSaleResourcePreset?.planId}
+          preselectedOrderId={newSalePreselectedOrder}
           onViewSubscription={subscriptionId => {
             setFocusedSubscriptionId(subscriptionId);
             setCurrentSection('subscriptions');

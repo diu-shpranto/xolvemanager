@@ -22,6 +22,7 @@ import {
   getSaleDueAmount,
   getSalePaidAmount,
   getSalePaymentStatus,
+  parseAmountToMinorUnits,
   parsePositivePaymentAmountToMinorUnits,
 } from './saleUtils';
 import {
@@ -115,7 +116,7 @@ export function getReceivableAging(
   const invoiceBySaleId = new Map(records.invoices.map(invoice => [invoice.saleId, invoice]));
   const asOfPayments = records.payments.filter(payment => payment.paymentDate <= asOfDate);
   const rows: ReceivableRow[] = records.sales.filter(sale => sale.date <= asOfDate).flatMap(sale => {
-    if (sale.paymentStatus === 'failed' || sale.paymentStatus === 'refunded') return [];
+    if (sale.paymentStatus === 'failed' || sale.paymentStatus === 'refunded' || sale.paymentStatus === 'voided') return [];
     const due = getSaleDueAmount(sale, asOfPayments);
     if (due <= 0) return [];
     const invoice = invoiceBySaleId.get(sale.id);
@@ -179,12 +180,16 @@ export function runFinancialIntegrityCheck(records: AccountingRecords): Financia
   const paymentMovementIds = new Set(ledger.flatMap(entry => entry.paymentId ? [entry.paymentId] : []));
   const expenseMovementIds = new Set(ledger.flatMap(entry => entry.expenseId ? [entry.expenseId] : []));
   records.payments.forEach(payment => {
-    const saleId = payment.saleId || invoiceToSaleId.get(payment.invoiceId || '');
-    if (saleId) {
+    const saleIds = new Set([
+      payment.saleId,
+      invoiceToSaleId.get(payment.invoiceId || ''),
+      ...(payment.allocations || []).map(allocation => allocation.saleId),
+    ].filter((saleId): saleId is string => Boolean(saleId)));
+    saleIds.forEach(saleId => {
       const linked = paymentsBySaleId.get(saleId) || [];
       linked.push(payment);
       paymentsBySaleId.set(saleId, linked);
-    }
+    });
     if (payment.subscriptionId) {
       const linked = paymentsBySubscriptionId.get(payment.subscriptionId) || [];
       linked.push(payment);
@@ -226,18 +231,41 @@ export function runFinancialIntegrityCheck(records: AccountingRecords): Financia
   });
 
   records.payments.forEach(payment => {
-    const linkedSaleId = payment.saleId && sales.has(payment.saleId)
-      ? payment.saleId : invoiceToSaleId.get(payment.invoiceId || '');
+    const allocatedSaleIds = (payment.allocations || []).map(allocation => allocation.saleId);
+    const linkedSaleIds = new Set([
+      payment.saleId,
+      invoiceToSaleId.get(payment.invoiceId || ''),
+      ...allocatedSaleIds,
+    ].filter((saleId): saleId is string => Boolean(saleId)));
+    const hasValidLinkedSale = [...linkedSaleIds].some(saleId => sales.has(saleId));
     const isStandaloneAdvance = payment.paymentStatus === 'paid' && Number(payment.advanceCreditAmount) > 0;
-    if ((!linkedSaleId || !sales.has(linkedSaleId)) && !isStandaloneAdvance) {
+    if (!hasValidLinkedSale && !isStandaloneAdvance) {
       issues.push({ severity: 'ERROR', type: 'orphaned_payment', entityType: 'payment', entityId: payment.id, message: 'Payment is not linked to an existing sale.', suggestedFix: 'Review the payment and attach it to the correct sale or void it.' });
     }
+    allocatedSaleIds.forEach(saleId => {
+      const allocatedSale = records.sales.find(sale => sale.id === saleId);
+      if (!allocatedSale || allocatedSale.customerId !== payment.customerId || allocatedSale.currency !== payment.currency) {
+        issues.push({
+          severity: 'ERROR',
+          type: 'invalid_payment_allocation',
+          entityType: 'payment',
+          entityId: payment.id,
+          message: 'A payment allocation does not match an existing sale for the same customer and currency.',
+        });
+      }
+    });
     if (!customers.has(payment.customerId)) {
       issues.push({ severity: 'ERROR', type: 'missing_customer', entityType: 'payment', entityId: payment.id, message: 'Payment customer does not exist.' });
     }
-    const amountMinor = parsePositivePaymentAmountToMinorUnits(payment.amount);
+    const amountMinor = parseAmountToMinorUnits(payment.amount);
     if (amountMinor === null) {
-      issues.push({ severity: 'ERROR', type: 'invalid_amount', entityType: 'payment', entityId: payment.id, message: 'Payment amount must be greater than zero.' });
+      issues.push({
+        severity: 'ERROR',
+        type: 'invalid_amount',
+        entityType: 'payment',
+        entityId: payment.id,
+        message: 'Payment amount must be a finite non-negative amount.',
+      });
     }
     if (!isValidDateOnly(payment.paymentDate)) issues.push({ severity: 'ERROR', type: 'invalid_date', entityType: 'payment', entityId: payment.id, message: 'Payment date is invalid.' });
     const method = records.paymentMethods.find(item => item.id === payment.paymentMethodId);
@@ -251,7 +279,7 @@ export function runFinancialIntegrityCheck(records: AccountingRecords): Financia
     if (!payment.paymentMethod && !payment.paymentMethodId) {
       issues.push({ severity: 'ERROR', type: 'missing_payment_method', entityType: 'payment', entityId: payment.id, message: 'Payment is missing its payment method.' });
     }
-    if ((payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial') && amountMinor !== null) {
+    if ((payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial') && amountMinor !== null && amountMinor > 0) {
       if (!paymentAccountId) {
         issues.push({
           severity: 'WARNING',

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { BellRing, CalendarClock, Check, Clock3, Plus, Search, X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
@@ -7,11 +7,11 @@ import { Modal } from '../common/Modal';
 import { useToast } from '../common/Toast';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
 import type { Reminder, ReminderPriority, ReminderStatus, ReminderType } from '../../types';
-import { formatAppDate, formatCurrency, getDateInTimeZone } from '../../utils/dateUtils';
+import { formatAppDate, formatCurrency, getDateInTimeZone, getDateStringInTimeZone } from '../../utils/dateUtils';
 import { getReminderPriorityOrder } from '../../services/reminderEngine';
 import type { NavSection } from '../navigation/Sidebar';
 
-type ReminderFilter = 'all' | 'today' | 'upcoming' | 'overdue' | 'snoozed' | 'completed';
+type ReminderFilter = 'all' | 'pending' | 'today' | 'upcoming' | 'overdue' | 'snoozed' | 'completed' | 'cancelled';
 
 interface SmartRemindersViewProps {
   onNavigate: (section: NavSection, entityId?: string) => void;
@@ -20,11 +20,13 @@ interface SmartRemindersViewProps {
 }
 
 const filters: Array<{ id: ReminderFilter; label: string }> = [
+  { id: 'pending', label: 'Pending' },
   { id: 'today', label: 'Today' },
   { id: 'upcoming', label: 'Upcoming' },
   { id: 'overdue', label: 'Overdue' },
-  { id: 'snoozed', label: 'Snoozed' },
   { id: 'completed', label: 'Completed' },
+  { id: 'cancelled', label: 'Cancelled' },
+  { id: 'snoozed', label: 'Snoozed' },
   { id: 'all', label: 'All' },
 ];
 
@@ -36,10 +38,10 @@ const priorityClass: Record<ReminderPriority, string> = {
 };
 
 const statusLabels: Record<ReminderStatus, string> = {
-  open: 'Open',
+  open: 'Pending',
   snoozed: 'Snoozed',
   completed: 'Completed',
-  dismissed: 'Dismissed',
+  dismissed: 'Cancelled',
 };
 
 const typeLabels: Record<ReminderType, string> = {
@@ -54,6 +56,11 @@ const typeLabels: Record<ReminderType, string> = {
   unpaid_sale: 'Unpaid sale',
   customer_follow_up: 'Customer follow-up',
   daily_closing: 'Daily closing',
+};
+
+const getLocalDateTimeValue = (date: Date): string => {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
 };
 
 export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
@@ -77,18 +84,29 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [customerId, setCustomerId] = useState('');
-  const [dueDate, setDueDate] = useState(today);
+  const [dueAt, setDueAt] = useState(() => getLocalDateTimeValue(new Date()));
   const [priority, setPriority] = useState<ReminderPriority>('medium');
+  const [completionTarget, setCompletionTarget] = useState<Reminder | null>(null);
+  const [outcome, setOutcome] = useState('');
+  const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowTimestamp(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const customerById = useMemo(() => new Map(customers.map(customer => [customer.id, customer])), [customers]);
   const serviceById = useMemo(() => new Map(services.map(service => [service.id, service])), [services]);
-  const activeReminders = reminders.filter(reminder => reminder.status === 'open' || reminder.status === 'snoozed');
+  const activeReminders = reminders.filter(reminder => reminder.status === 'open');
   const countFor = (key: ReminderFilter) => {
     if (key === 'all') return reminders.length;
     if (key === 'completed') return reminders.filter(reminder => reminder.status === 'completed').length;
+    if (key === 'cancelled') return reminders.filter(reminder => reminder.status === 'dismissed').length;
     if (key === 'snoozed') return reminders.filter(reminder => reminder.status === 'snoozed').length;
+    if (key === 'pending') return reminders.filter(reminder => reminder.status === 'open').length;
     return activeReminders.filter(reminder => key === 'today' ? reminder.dueDate === today
-      : key === 'overdue' ? reminder.dueDate < today : reminder.dueDate > today).length;
+      : key === 'overdue' ? reminder.dueDate < today
+        || (reminder.dueDate === today && Boolean(reminder.dueAt) && Date.parse(reminder.dueAt!) < nowTimestamp)
+        : reminder.dueDate > today).length;
   };
   const dueTodayCount = countFor('today');
   const overdueCount = countFor('overdue');
@@ -96,11 +114,15 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
   const highPriorityCount = activeReminders.filter(reminder => reminder.priority === 'high' || reminder.priority === 'critical').length;
 
   const visibleReminders = useMemo(() => reminders.filter(reminder => {
+    if (filter === 'pending' && reminder.status !== 'open') return false;
     if (filter === 'today' && (reminder.status === 'completed' || reminder.status === 'dismissed' || reminder.status === 'snoozed' || reminder.dueDate !== today)) return false;
     if (filter === 'upcoming' && (reminder.status === 'completed' || reminder.status === 'dismissed' || reminder.status === 'snoozed' || reminder.dueDate <= today)) return false;
-    if (filter === 'overdue' && (reminder.status === 'completed' || reminder.status === 'dismissed' || reminder.status === 'snoozed' || reminder.dueDate >= today)) return false;
+    if (filter === 'overdue' && (reminder.status === 'completed' || reminder.status === 'dismissed' || reminder.status === 'snoozed'
+      || (reminder.dueDate > today)
+      || (reminder.dueDate === today && (!reminder.dueAt || Date.parse(reminder.dueAt) >= nowTimestamp)))) return false;
     if (filter === 'snoozed' && reminder.status !== 'snoozed') return false;
     if (filter === 'completed' && reminder.status !== 'completed') return false;
+    if (filter === 'cancelled' && reminder.status !== 'dismissed') return false;
     if (typeFilter !== 'all' && reminder.type !== typeFilter) return false;
     if (priorityFilter !== 'all' && reminder.priority !== priorityFilter) return false;
     const customer = reminder.customerId ? customerById.get(reminder.customerId) : undefined;
@@ -113,13 +135,16 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
     const leftInactive = left.status === 'completed' || left.status === 'dismissed';
     const rightInactive = right.status === 'completed' || right.status === 'dismissed';
     if (leftInactive !== rightInactive) return leftInactive ? 1 : -1;
-    const leftOverdue = left.dueDate < today;
-    const rightOverdue = right.dueDate < today;
+    const leftOverdue = left.dueDate < today
+      || (left.dueDate === today && Boolean(left.dueAt) && Date.parse(left.dueAt!) < nowTimestamp);
+    const rightOverdue = right.dueDate < today
+      || (right.dueDate === today && Boolean(right.dueAt) && Date.parse(right.dueAt!) < nowTimestamp);
     if (leftOverdue !== rightOverdue) return leftOverdue ? -1 : 1;
     const priorityOrder = getReminderPriorityOrder(left.priority) - getReminderPriorityOrder(right.priority);
     if (priorityOrder !== 0) return priorityOrder;
-    return left.dueDate.localeCompare(right.dueDate) || left.createdAt.localeCompare(right.createdAt);
-  }), [reminders, filter, today, typeFilter, priorityFilter, query, customerById, serviceById, invoices]);
+    return (left.dueAt || left.dueDate).localeCompare(right.dueAt || right.dueDate)
+      || left.createdAt.localeCompare(right.createdAt);
+  }), [reminders, filter, today, nowTimestamp, typeFilter, priorityFilter, query, customerById, serviceById, invoices]);
 
   const perform = (action: () => void, success: string) => {
     try {
@@ -142,29 +167,45 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
   const submitReminder = (event: React.FormEvent) => {
     event.preventDefault();
     const customer = customerId ? customerById.get(customerId) : undefined;
-    if (customerId && !customer) {
+    if (!customer) {
       showToast('Select an existing customer.', 'error');
       return;
     }
+    const scheduledAt = new Date(dueAt);
+    if (!Number.isFinite(scheduledAt.getTime())) {
+      showToast('Choose a valid follow-up date and time.', 'error');
+      return;
+    }
+    const dueDate = getDateStringInTimeZone(scheduledAt.toISOString(), settings.businessProfile?.timeZone);
     perform(() => {
       createManualReminder({
         type: 'customer_follow_up',
         priority,
         title: title.trim(),
         description: description.trim() || undefined,
-        customerId: customer?.id,
-        sourceEntityType: customer ? 'customer' : 'other',
-        sourceEntityId: customer?.id || `followup-${dueDate}-${title.trim().toLocaleLowerCase()}`,
+        customerId: customer.id,
+        sourceEntityType: 'customer',
+        sourceEntityId: customer.id,
         dueDate,
         targetDate: dueDate,
+        dueAt: scheduledAt.toISOString(),
         stage: `FOLLOW_UP:${title.trim().toLocaleLowerCase()}`,
       });
       setShowCreate(false);
       setTitle('');
       setDescription('');
       setCustomerId('');
-      setDueDate(today);
+      setDueAt(getLocalDateTimeValue(new Date()));
     }, 'Follow-up reminder created.');
+  };
+
+  const openCreate = (nextCustomerId = '') => {
+    setCustomerId(nextCustomerId);
+    setTitle('');
+    setDescription('');
+    setDueAt(getLocalDateTimeValue(new Date()));
+    setPriority('medium');
+    setShowCreate(true);
   };
 
   const goToSource = (reminder: Reminder) => {
@@ -194,11 +235,10 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
     <div className="mx-auto max-w-[1500px] space-y-5 px-4 py-6 sm:px-6 lg:px-8">
       <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <div className="flex items-center gap-2"><BellRing className="h-6 w-6 text-emerald-600" /><h1 className="text-2xl font-bold text-slate-900 dark:text-white">Smart Reminders</h1></div>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Stay on top of renewals, payments, invoices, and important business tasks.</p>
+          <div className="flex items-center gap-2"><BellRing className="h-6 w-6 text-violet-600" /><h1 className="text-2xl font-bold text-slate-900 dark:text-white">Follow-up Center</h1></div>
         </div>
-        <button type="button" onClick={() => setShowCreate(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600">
-          <Plus className="h-4 w-4" /> New Reminder
+        <button type="button" onClick={() => openCreate()} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
+          <Plus className="h-4 w-4" /> New Follow-up
         </button>
       </header>
 
@@ -216,13 +256,13 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
       </section>
 
       <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-        <div role="group" aria-label="Filter reminders" className="flex gap-2 overflow-x-auto pb-1">
-          {filters.map(item => <button key={item.id} type="button" aria-pressed={filter === item.id} onClick={() => setFilter(item.id)} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 ${filter === item.id ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'}`}>
+        <div role="group" aria-label="Filter follow-ups" className="flex gap-2 overflow-x-auto pb-1">
+          {filters.map(item => <button key={item.id} type="button" aria-pressed={filter === item.id} onClick={() => setFilter(item.id)} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 ${filter === item.id ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'}`}>
             {item.label} <span className="ml-1 opacity-75">{countFor(item.id)}</span>
           </button>)}
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="relative"><span className="sr-only">Search reminders</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search title, customer, service, invoice..." className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-800" /></label>
+          <label className="relative"><span className="sr-only">Search follow-ups</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search reason, customer, service, invoice..." className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-violet-500 dark:border-slate-700 dark:bg-slate-800" /></label>
           <div className="flex gap-2">
             <label className="min-w-0 flex-1"><span className="sr-only">Filter by reminder type</span><select aria-label="Filter by reminder type" value={typeFilter} onChange={event => setTypeFilter(event.target.value as ReminderType | 'all')} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="all">All types</option>{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label className="min-w-0 flex-1"><span className="sr-only">Filter by priority</span><select aria-label="Filter by priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value as ReminderPriority | 'all')} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="all">All priorities</option>{(['critical', 'high', 'medium', 'low'] as const).map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>
@@ -232,7 +272,7 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
         {visibleReminders.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 px-4 py-12 text-center dark:border-slate-700">
           <CalendarClock className="mx-auto h-8 w-8 text-slate-400" />
           <p className="mt-3 font-semibold text-slate-800 dark:text-slate-100">{filter === 'overdue' ? 'No overdue reminders.' : filter === 'upcoming' ? 'No upcoming reminders.' : filter === 'today' ? "You're all caught up." : 'No reminders found.'}</p>
-          <p className="mt-1 text-xs text-slate-500">{query ? 'Try another search or filter.' : 'Reminders are generated from your business records when the app is open.'}</p>
+          <p className="mt-1 text-xs text-slate-500">{query ? 'Try another search or filter.' : 'Automatic suggestions refresh while the app is open. Manual follow-ups are saved locally.'}</p>
         </div> : <div className="space-y-2" aria-live="polite">
           {visibleReminders.map(reminder => {
             const customer = reminder.customerId ? customerById.get(reminder.customerId) : undefined;
@@ -240,16 +280,22 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
             const subscription = reminder.subscriptionId ? subscriptions.find(item => item.id === reminder.subscriptionId) : undefined;
             const sale = reminder.saleId ? sales.find(item => item.id === reminder.saleId) : undefined;
             const isClosed = reminder.status === 'completed' || reminder.status === 'dismissed';
-            return <article key={reminder.id} className="rounded-xl border border-slate-200 p-3 dark:border-slate-800 sm:p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
+            const isPaymentReminder = ['invoice_due', 'invoice_overdue', 'partial_payment', 'payment_overdue', 'unpaid_sale']
+              .includes(reminder.type);
+            const isOverdue = !isClosed && reminder.status !== 'snoozed'
+              && (reminder.dueDate < today
+                || (reminder.dueDate === today && Boolean(reminder.dueAt) && Date.parse(reminder.dueAt!) < nowTimestamp));
+            return <article key={reminder.id} className={`rounded-xl border p-3 sm:p-4 ${isOverdue ? 'border-rose-300 bg-rose-50/60 dark:border-rose-900 dark:bg-rose-950/20' : 'border-slate-200 dark:border-slate-800'}`}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="w-full min-w-0 sm:flex-1">
+                  <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                     <h2 className="font-semibold text-slate-900 dark:text-white">{reminder.title}</h2>
                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${priorityClass[reminder.priority]}`}>{reminder.priority} priority</span>
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">{statusLabels[reminder.status]}</span>
                   </div>
-                  <p className="mt-1 text-xs text-slate-500">{typeLabels[reminder.type]} · Due {formatAppDate(reminder.dueDate, language)}{reminder.status === 'snoozed' && reminder.snoozedUntil ? ` · Snoozed until ${formatDateTime(reminder.snoozedUntil)}` : ''}</p>
+                  <p className={`mt-1 text-xs ${isOverdue ? 'font-semibold text-rose-700 dark:text-rose-300' : 'text-slate-500'}`}>{typeLabels[reminder.type]} · {isPaymentReminder ? 'Expected payment' : 'Due'} {reminder.dueAt ? formatDateTime(reminder.dueAt) : formatAppDate(reminder.dueDate, language)}{reminder.status === 'snoozed' && reminder.snoozedUntil ? ` · Snoozed until ${formatDateTime(reminder.snoozedUntil)}` : ''}</p>
                   {reminder.description && <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{reminder.description}</p>}
+                  {reminder.outcome && <p className="mt-2 rounded-lg bg-white/80 px-3 py-2 text-sm text-slate-700 dark:bg-slate-900/80 dark:text-slate-300"><span className="font-semibold">Outcome:</span> {reminder.outcome}</p>}
                   <p className="mt-1 text-xs text-slate-500">{customer?.name || ''}{service?.name ? ` · ${service.name}` : ''}{reminder.stage ? ` · ${reminder.stage.replaceAll('_', ' ')}` : ''}</p>
                   {reminder.amount !== undefined && <p className="mt-2 text-sm font-bold text-slate-900 dark:text-white">{formatCurrency(reminder.amount, reminder.currency || currency)}</p>}
                 </div>
@@ -259,9 +305,10 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
                   {reminder.saleId && !isClosed && <button type="button" onClick={() => onAddPayment(reminder.saleId!)} className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300">Payment</button>}
                   {reminder.customerId && canContact(reminder.customerId) && !isClosed && <button type="button" onClick={() => whatsapp(reminder)} className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300">WhatsApp</button>}
                   {!isClosed && reminder.status !== 'snoozed' && <label className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 dark:border-slate-700"><Clock3 className="h-3.5 w-3.5 text-slate-500" /><span className="sr-only">Snooze reminder</span><select aria-label={`Snooze ${reminder.title}`} defaultValue="" onChange={event => { if (event.target.value) snooze(reminder, event.target.value); event.target.value = ''; }} className="max-w-24 bg-transparent py-2 text-xs"><option value="" disabled>Snooze</option><option value="1h">1 hour</option><option value="today">Today</option><option value="1">Tomorrow</option><option value="3">{formatDurationDays(3)}</option><option value="7">{formatDurationDays(7)}</option></select></label>}
-                  {!isClosed && <button type="button" onClick={() => perform(() => completeReminder(reminder.id), 'Reminder completed.')} aria-label={`Complete ${reminder.title}`} className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900"><Check className="h-3.5 w-3.5" /><span className="hidden sm:inline">Complete</span></button>}
+                  {!isClosed && <button type="button" onClick={() => { setCompletionTarget(reminder); setOutcome(''); }} aria-label={`Complete ${reminder.title}`} className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900"><Check className="h-3.5 w-3.5" /><span className="hidden sm:inline">Complete</span></button>}
                   {isClosed && <button type="button" onClick={() => perform(() => reopenReminder(reminder.id), 'Reminder reopened.')} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Reopen</button>}
-                  {!isClosed && <button type="button" onClick={() => perform(() => dismissReminder(reminder.id), 'Reminder dismissed.')} aria-label={`Dismiss ${reminder.title}`} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"><X className="h-4 w-4" /></button>}
+                  {reminder.status === 'completed' && reminder.customerId && <button type="button" onClick={() => openCreate(reminder.customerId)} className="rounded-lg border border-violet-200 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-900 dark:text-violet-300">Schedule next</button>}
+                  {!isClosed && <button type="button" onClick={() => perform(() => dismissReminder(reminder.id), 'Follow-up cancelled.')} aria-label={`Cancel ${reminder.title}`} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"><X className="h-4 w-4" /></button>}
                 </div>
               </div>
             </article>;
@@ -272,18 +319,36 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
       <Modal
         isOpen={showCreate}
         onClose={() => setShowCreate(false)}
-        title="New follow-up reminder"
+        title="Schedule customer follow-up"
         maxWidth="lg"
       >
         <form onSubmit={submitReminder} className="space-y-4">
-          <label className="block text-xs font-semibold">Title *<input required maxLength={120} value={title} onChange={event => setTitle(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
-          <label className="block text-xs font-semibold">Note<textarea maxLength={1000} value={description} onChange={event => setDescription(event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
-          <label className="block text-xs font-semibold">Customer (optional)<select value={customerId} onChange={event => setCustomerId(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="">No customer</option>{customers.filter(customer => !customer.isArchived && customer.status !== 'archived').map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}</select></label>
+          <label className="block text-xs font-semibold">Follow-up reason *<input required maxLength={120} value={title} onChange={event => setTitle(event.target.value)} placeholder="e.g. Discuss renewal options" className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
+          <label className="block text-xs font-semibold">Customer *<select required value={customerId} onChange={event => setCustomerId(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="">Select a customer</option>{customers.filter(customer => !customer.isArchived && customer.status !== 'archived').map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}</select></label>
+          <label className="block text-xs font-semibold">Notes<textarea maxLength={1000} value={description} onChange={event => setDescription(event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-xs font-semibold">Due date *<input type="date" required value={dueDate} onChange={event => setDueDate(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
+            <label className="block text-xs font-semibold">Due date &amp; time *<input type="datetime-local" required value={dueAt} onChange={event => setDueAt(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
             <label className="block text-xs font-semibold">Priority<select value={priority} onChange={event => setPriority(event.target.value as ReminderPriority)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800">{(['low', 'medium', 'high', 'critical'] as const).map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>
           </div>
-          <footer className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setShowCreate(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold dark:border-slate-700">Cancel</button><button type="submit" disabled={!title.trim() || !dueDate} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Save Reminder</button></footer>
+          <footer className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setShowCreate(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold dark:border-slate-700">Cancel</button><button type="submit" disabled={!title.trim() || !customerId || !dueAt} className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Save Follow-up</button></footer>
+        </form>
+      </Modal>
+      <Modal
+        isOpen={Boolean(completionTarget)}
+        onClose={() => setCompletionTarget(null)}
+        title="Record follow-up outcome"
+        maxWidth="md"
+      >
+        <form onSubmit={event => {
+          event.preventDefault();
+          if (!completionTarget) return;
+          perform(() => completeReminder(completionTarget.id, outcome), 'Follow-up completed.');
+          setCompletionTarget(null);
+          setOutcome('');
+        }} className="space-y-4">
+          <p className="text-sm text-slate-600 dark:text-slate-300">{completionTarget?.title}</p>
+          <label className="block text-xs font-semibold">Outcome / notes<textarea maxLength={1000} value={outcome} onChange={event => setOutcome(event.target.value)} rows={4} placeholder="What happened? Note any agreed next steps." className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
+          <footer className="flex justify-end gap-2"><button type="button" onClick={() => setCompletionTarget(null)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold dark:border-slate-700">Back</button><button type="submit" className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white">Complete follow-up</button></footer>
         </form>
       </Modal>
     </div>

@@ -149,6 +149,7 @@ export function buildActualProfitAnalytics({
       && sale.date <= bounds.end
       && sale.paymentStatus !== 'failed'
       && sale.paymentStatus !== 'refunded'
+      && sale.paymentStatus !== 'voided'
       && Number.isFinite(Number(sale.amount))
       && Number(sale.amount) > 0
     )

@@ -58,6 +58,11 @@ import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useReducedMotionPreference } from '../../hooks/useReducedMotionPreference';
 import { useToast } from '../common/Toast';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
+import {
+  getGettingStartedState,
+  getInitialGettingStartedState,
+  saveGettingStartedState,
+} from '../../services/localStorageStore';
 import { getExpiryWhatsAppTemplateId } from '../../utils/whatsappService';
 import {
   formatAppDate,
@@ -85,7 +90,7 @@ import {
   normalizeDashboardLayout,
 } from '../../utils/dashboardLayout';
 import { getCustomerDisplayName, resolveSaleCustomer } from '../../utils/relationships';
-import { getSaleLineItems, getSalePaidAmount, getSalePaymentStatus } from '../../utils/saleUtils';
+import { getPaymentAvailableAdvanceCredit, getSaleExpectedPaymentDate, getSaleLineItems, getSalePaidAmount, getSalePaymentStatus } from '../../utils/saleUtils';
 import { getPaymentMethodSummary, normalizePaymentMethods } from '../../utils/paymentMethods';
 import {
   calculateActiveSubscriptions,
@@ -104,7 +109,7 @@ import {
   ReportDatePreset,
 } from '../../utils/reportMetrics';
 import { buildInvoiceSaleDetails } from '../../utils/invoiceUtils';
-import { downloadInvoiceJpg, generateInvoiceJpg } from '../../utils/invoiceGenerator';
+import { downloadInvoiceImage, generateInvoiceImage } from '../../utils/invoiceGenerator';
 import { buildCustomerCrmMetrics, CUSTOMER_CRM_THRESHOLDS, isCustomerNew, type CustomerCrmQuickFilter } from '../../utils/customerCrm';
 import { getAccountCapacity, isAccountOperational, RESOURCE_CAPACITY_THRESHOLDS } from '../../utils/resourceManagement';
 import {
@@ -221,9 +226,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const prefersReducedMotion = useReducedMotionPreference();
   const {
     stats,
+    currentUser,
     subscriptions,
     sales,
     payments,
+    orders,
     financialAccounts,
     expenses,
     otherIncome,
@@ -266,6 +273,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [dashboardLayoutDraft, setDashboardLayoutDraft] = useState(() =>
     normalizeDashboardLayout(settings.dashboardLayout)
   );
+  const [gettingStartedState, setGettingStartedState] = useState<{
+    businessId: string;
+    started: boolean;
+    dismissed: boolean;
+    open: boolean;
+  } | null>(null);
   useEffect(() => {
     setDashboardLayoutDraft(normalizeDashboardLayout(settings.dashboardLayout));
     setIsCustomizingDashboard(false);
@@ -276,15 +289,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       receivedRevenue: 'প্রাপ্ত আয়',
       customers: 'গ্রাহক',
       activeSubscriptions: 'সক্রিয় সাবস্ক্রিপশন',
-      expiringSubscriptions: 'শিগগির মেয়াদ শেষ',
+      expiringSubscriptions7: '৭ দিনের মধ্যে মেয়াদ শেষ',
+      expiringSubscriptions30: '৩০ দিনের মধ্যে মেয়াদ শেষ',
       outstandingPayments: 'বকেয়া পেমেন্ট',
+      availableAdvanceCredit: 'অগ্রিম ক্রেডিট',
+      overdueInvoices: 'মেয়াদোত্তীর্ণ ইনভয়েস',
     }
     : {
-      receivedRevenue: 'Received revenue',
+      receivedRevenue: 'Money received',
       customers: 'Customers',
-      activeSubscriptions: 'Active subscriptions',
-      expiringSubscriptions: 'Expiring soon',
-      outstandingPayments: 'Outstanding payments',
+      activeSubscriptions: 'Active plans',
+      expiringSubscriptions7: 'Expiring in 7 days',
+      expiringSubscriptions30: 'Expiring in 30 days',
+      outstandingPayments: 'Money due',
+      availableAdvanceCredit: 'Available advance',
+      overdueInvoices: 'Overdue invoices',
     };
   const panelWidgetNames: Record<DashboardPanelWidgetId, string> = language === 'bn'
     ? {
@@ -294,9 +313,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       recentSales: 'সাম্প্রতিক বিক্রয়',
     }
     : {
-      attention: 'Action required',
-      revenueTrend: 'Revenue trend chart',
-      subscriptionHealth: 'Subscription health chart',
+      attention: 'Things to do',
+      revenueTrend: 'Payments over time',
+      subscriptionHealth: 'Plan status',
       recentSales: 'Recent sales',
     };
   const moveWidget = (group: 'summaryOrder' | 'panelOrder', id: DashboardWidgetId, offset: -1 | 1) => {
@@ -378,6 +397,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const scopedServices = useMemo(() => inBusiness(services), [services, currentBusiness?.businessId]);
   const scopedAccounts = useMemo(() => inBusiness(accounts), [accounts, currentBusiness?.businessId]);
   const scopedInvoices = useMemo(() => inBusiness(invoices), [invoices, currentBusiness?.businessId]);
+  const scopedOrders = useMemo(() => inBusiness(orders), [orders, currentBusiness?.businessId]);
   const scopedActivity = useMemo(() => inBusiness(activityLogs), [activityLogs, currentBusiness?.businessId]);
   const scopedFinancialAccounts = useMemo(() => inBusiness(financialAccounts), [financialAccounts, currentBusiness?.businessId]);
   const scopedExpenses = useMemo(() => inBusiness(expenses), [expenses, currentBusiness?.businessId]);
@@ -393,6 +413,79 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const scopedDailyClosings = useMemo(() => dailyClosings.filter(item =>
     item.businessId === currentBusiness?.businessId
   ), [dailyClosings, currentBusiness?.businessId]);
+  const gettingStartedBusinessId = currentBusiness?.businessId || 'default';
+  const hasWorkspaceRecords = [
+    scopedCustomers,
+    scopedServices,
+    scopedAccounts,
+    scopedSubscriptions,
+    scopedSales,
+    scopedPayments,
+    scopedInvoices,
+    scopedOrders,
+    scopedFinancialAccounts,
+    scopedExpenses,
+    scopedOtherIncome,
+    scopedFinancialTransfers,
+    scopedFinancialAdjustments,
+    scopedReconciliations,
+    scopedFinancialPeriods,
+    scopedDailyClosings,
+  ].some(records => records.length > 0);
+  useEffect(() => {
+    if (!currentUser || currentUser.isDemo || dashboardDataLoading
+      || gettingStartedState?.businessId === gettingStartedBusinessId) return;
+
+    const savedState = getGettingStartedState(gettingStartedBusinessId);
+    const nextState = savedState || getInitialGettingStartedState(hasWorkspaceRecords);
+    if (!savedState && nextState.started) {
+      try {
+        saveGettingStartedState(nextState, gettingStartedBusinessId);
+      } catch (error) {
+        console.error('Could not save the getting-started state.', error);
+        showToast(
+          language === 'bn'
+            ? 'শুরুর নির্দেশনা এই ব্রাউজারে সংরক্ষণ করা যায়নি।'
+            : 'Getting-started preferences could not be saved in this browser.',
+          'error'
+        );
+      }
+    }
+
+    setGettingStartedState({
+      businessId: gettingStartedBusinessId,
+      ...nextState,
+      open: nextState.started && !nextState.dismissed,
+    });
+  }, [
+    dashboardDataLoading,
+    gettingStartedBusinessId,
+    gettingStartedState?.businessId,
+    hasWorkspaceRecords,
+    currentUser?.uid,
+    currentUser?.isDemo,
+    language,
+    showToast,
+  ]);
+  const setGettingStartedVisibility = (open: boolean) => {
+    const nextState = { started: true, dismissed: !open };
+    setGettingStartedState({
+      businessId: gettingStartedBusinessId,
+      ...nextState,
+      open,
+    });
+    try {
+      saveGettingStartedState(nextState, gettingStartedBusinessId);
+    } catch (error) {
+      console.error('Could not save the getting-started preference.', error);
+      showToast(
+        language === 'bn'
+          ? 'শুরুর নির্দেশনা পছন্দ সংরক্ষণ করা যায়নি।'
+          : 'Could not save your getting-started preference in this browser.',
+        'error'
+      );
+    }
+  };
   const customerCrmMetrics = useMemo(() => buildCustomerCrmMetrics(
     scopedCustomers,
     scopedSales,
@@ -417,6 +510,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const filteredSales = useMemo(() => validReportRange
     ? scopedSales.filter(sale =>
       sale.paymentStatus !== 'refunded'
+      && sale.paymentStatus !== 'voided'
+      && sale.paymentStatus !== 'failed'
       && Number.isFinite(Number(sale.amount))
       && isWithinDateBounds(sale.date, reportBounds)
     )
@@ -425,6 +520,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     () => calculateSalesFinancialSummary(filteredSales, scopedPayments, currency),
     [filteredSales, scopedPayments, currency]
   );
+  const currentSalesSummary = useMemo(
+    () => calculateSalesFinancialSummary(scopedSales, scopedPayments, currency),
+    [scopedSales, scopedPayments, currency]
+  );
+  const advanceCreditByCustomer = useMemo(
+    () => scopedPayments.reduce((balances, payment) => {
+      const available = getPaymentAvailableAdvanceCredit(payment, scopedPayments);
+      if (available <= 0) return balances;
+      const converted = convertReportCurrency(available, payment.currency, currency);
+      balances.set(payment.customerId, (balances.get(payment.customerId) || 0) + converted);
+      return balances;
+    }, new Map<string, number>()),
+    [scopedPayments, currency]
+  );
+  const availableAdvanceCredit = [...advanceCreditByCustomer.values()].reduce((total, amount) => total + amount, 0);
   const cashbookRecords = useMemo(() => ({
     accounts: scopedFinancialAccounts,
     payments: scopedPayments,
@@ -549,25 +659,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     [activeBusinessSubscriptions]
   );
   const customerSales = useMemo(
-    () => calculateCustomerPerformance(filteredSales, filteredSubscriptions, scopedPayments, scopedCustomers, currency, isSubscriptionActiveNow)
+    () => calculateCustomerPerformance(filteredSales, scopedSubscriptions, scopedPayments, scopedCustomers, currency, isSubscriptionActiveNow)
       .sort((left, right) => right.spent - left.spent),
-    [filteredSales, filteredSubscriptions, scopedPayments, scopedCustomers, currency, serviceById, settings.reminderNoticeDays, settings.businessProfile?.timeZone]
+    [filteredSales, scopedSubscriptions, scopedPayments, scopedCustomers, currency, serviceById, settings.reminderNoticeDays, settings.businessProfile?.timeZone]
   );
   const servicePerformance = useMemo(
-    () => calculateServicePerformance(filteredSales, filteredSubscriptions, scopedPayments, scopedServices, currency, isSubscriptionActiveNow)
-      .sort((left, right) => right.revenue - left.revenue),
-    [filteredSales, filteredSubscriptions, scopedPayments, scopedServices, currency, serviceById, settings.reminderNoticeDays, settings.businessProfile?.timeZone]
+    () => calculateServicePerformance(filteredSales, scopedSubscriptions, scopedPayments, scopedServices, currency, isSubscriptionActiveNow)
+      .sort((left, right) => right.salesCount - left.salesCount || right.revenue - left.revenue),
+    [filteredSales, scopedSubscriptions, scopedPayments, scopedServices, currency, serviceById, settings.reminderNoticeDays, settings.businessProfile?.timeZone]
   );
   const serviceCustomerCounts = useMemo(() => {
     const customerIdsByService = new Map<string, Set<string>>();
-    [...filteredSales, ...filteredSubscriptions].forEach(record => {
+    [...filteredSales, ...scopedSubscriptions].forEach(record => {
       if (!record.customerId) return;
       const customerIds = customerIdsByService.get(record.serviceId) || new Set<string>();
       customerIds.add(record.customerId);
       customerIdsByService.set(record.serviceId, customerIds);
     });
     return new Map([...customerIdsByService].map(([serviceId, customerIds]) => [serviceId, customerIds.size]));
-  }, [filteredSales, filteredSubscriptions]);
+  }, [filteredSales, scopedSubscriptions]);
   const planPerformance = useMemo(
     () => calculatePlanPerformance(filteredSales, filteredSubscriptions, scopedPayments, scopedServices, currency, isSubscriptionActiveNow)
       .sort((left, right) => right.revenue - left.revenue),
@@ -617,16 +727,35 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     ? left.sale.date.localeCompare(right.sale.date)
     : right.financial.due - left.financial.due), [filteredSales, scopedPayments, currency, invoiceBySaleId, outstandingSort]);
   const allDashboardAttentionSales = useMemo(() => scopedSales
-    .filter(sale => sale.paymentStatus !== 'refunded' && Number.isFinite(Number(sale.amount)))
+    .filter(sale => sale.paymentStatus !== 'refunded'
+      && sale.paymentStatus !== 'voided'
+      && sale.paymentStatus !== 'failed'
+      && Number.isFinite(Number(sale.amount)))
     .map(sale => ({
       sale,
       due: getSalePaymentSummary(sale, scopedPayments, sale.currency).due,
-      dueDate: invoiceBySaleId.get(sale.id)?.dueDate || sale.date,
+      dueDate: invoiceBySaleId.get(sale.id)?.dueDate || getSaleExpectedPaymentDate(sale, scopedPayments),
     }))
     .filter(item => item.due > 0)
-    .sort((left, right) => getDaysDifference(left.dueDate) - getDaysDifference(right.dueDate) || right.due - left.due),
-  [scopedSales, scopedPayments, invoiceBySaleId]);
+    .sort((left, right) =>
+      getDaysDifference(left.dueDate || todayString) - getDaysDifference(right.dueDate || todayString)
+      || right.due - left.due
+    ),
+  [scopedSales, scopedPayments, invoiceBySaleId, todayString, settings.businessProfile?.timeZone]);
   const dashboardAttentionSales = allDashboardAttentionSales.slice(0, 2);
+  const customerInsights = useMemo(() => {
+    const activeCustomers = scopedCustomers.filter(customer => !customer.isArchived && customer.status !== 'archived');
+    const saleCounts = new Map<string, number>();
+    filteredSales.forEach(sale => saleCounts.set(sale.customerId, (saleCounts.get(sale.customerId) || 0) + 1));
+    const customersWithDue = new Set(allDashboardAttentionSales.map(item => item.sale.customerId));
+    return {
+      total: activeCustomers.length,
+      newInPeriod: filteredCustomers.filter(customer => !customer.isArchived && customer.status !== 'archived').length,
+      repeatInPeriod: [...saleCounts.values()].filter(count => count > 1).length,
+      withDue: customersWithDue.size,
+      withAdvanceCredit: [...advanceCreditByCustomer.values()].filter(amount => amount > 0).length,
+    };
+  }, [scopedCustomers, filteredCustomers, filteredSales, allDashboardAttentionSales, advanceCreditByCustomer]);
   const filteredInvoices = useMemo(() => validReportRange
     ? scopedInvoices.filter(invoice => isWithinDateBounds(invoice.invoiceDate, reportBounds) && saleById.has(invoice.saleId))
     : [], [scopedInvoices, validReportRange, reportBounds, saleById]);
@@ -646,6 +775,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }, { total: 0, paid: 0, pending: 0, withDue: 0, dueAmount: 0 }), [
     filteredInvoices, saleById, scopedPayments, currency,
   ]);
+  const overdueInvoiceCount = useMemo(() => scopedInvoices.filter(invoice => {
+    const sale = saleById.get(invoice.saleId);
+    return Boolean(
+      sale
+      && !invoice.voidedAt
+      && invoice.dueDate
+      && invoice.dueDate < todayString
+      && sale.paymentStatus !== 'voided'
+      && sale.paymentStatus !== 'refunded'
+      && sale.paymentStatus !== 'failed'
+      && getSalePaymentSummary(sale, scopedPayments, sale.currency).due > 0
+    );
+  }).length, [scopedInvoices, saleById, todayString, scopedPayments]);
+  const pendingQuotationCount = scopedOrders.filter(order => order.status === 'quotation').length;
   const recentInvoices = [...filteredInvoices].sort((left, right) => right.invoiceDate.localeCompare(left.invoiceDate)).slice(0, 8);
   const recentActivities = [...scopedActivity].sort((left, right) =>
     (right.timestamp || '').localeCompare(left.timestamp || '')
@@ -662,16 +805,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     renewed: filteredSales.filter(sale => Boolean(sale.renewalOfSubscriptionId)).length,
   };
   const daysUntilExpiry = (subscription: Subscription) => getDaysDifference(subscription.expiryDate);
+  const expiringWithinDays = (days: number) => scopedSubscriptions.filter(subscription => {
+    const remainingDays = daysUntilExpiry(subscription);
+    return currentStatus(subscription) !== 'cancelled'
+      && remainingDays >= 0
+      && remainingDays <= days;
+  });
+  const expiringWithin7Days = expiringWithinDays(7).length;
+  const expiringWithin30Days = expiringWithinDays(30).length;
   const renewalOpportunitySubscriptions = useMemo(() => [
-    ...endingSoonSubscriptions,
     ...scopedSubscriptions.filter(subscription => {
       const days = daysUntilExpiry(subscription);
-      return currentStatus(subscription) === 'expired'
-        && days < 0
-        && days >= -CUSTOMER_CRM_THRESHOLDS.recentlyExpiredDays;
+      const status = currentStatus(subscription);
+      return status !== 'cancelled'
+        && ((days >= 0 && days <= 30)
+          || (status === 'expired' && days >= -CUSTOMER_CRM_THRESHOLDS.recentlyExpiredDays));
     }),
   ].sort((left, right) => left.expiryDate.localeCompare(right.expiryDate)),
-  [endingSoonSubscriptions, scopedSubscriptions, serviceById, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
+  [scopedSubscriptions, serviceById, settings.reminderNoticeDays, settings.businessProfile?.timeZone]);
   const renewalsDueToday = scopedSubscriptions.filter(subscription =>
     subscription.status !== 'cancelled' && !subscription.cancelledAt && daysUntilExpiry(subscription) === 0
   );
@@ -687,7 +838,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       && expiry >= todayString;
   });
   const trendData = useMemo(() => {
-    const groups = new Map<string, { key: string; sales: number; revenue: number; paid: number; due: number }>();
+    const groups = new Map<string, { key: string; sales: number; cashReceived: number }>();
     const keyFor = (dateValue: string) => {
       const date = new Date(`${dateValue}T00:00:00`);
       if (!Number.isFinite(date.getTime())) return '';
@@ -698,22 +849,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       }
       return dateValue;
     };
-    filteredSales.filter(sale => sale.currency === currency).forEach(sale => {
+    filteredSales.forEach(sale => {
       const key = keyFor(sale.date);
       if (!key) return;
-      const group = groups.get(key) || { key, sales: 0, revenue: 0, paid: 0, due: 0 };
+      const group = groups.get(key) || { key, sales: 0, cashReceived: 0 };
       const summary = getSalePaymentSummary(sale, scopedPayments, currency);
-      group.sales += 1;
-      group.revenue += summary.revenue;
-      group.due += summary.due;
+      group.sales += summary.revenue;
       groups.set(key, group);
     });
     filteredPayments.forEach(payment => {
-      if ((payment.paymentStatus !== 'paid' && payment.paymentStatus !== 'partial') || payment.currency !== currency) return;
+      if (payment.paymentStatus !== 'paid' && payment.paymentStatus !== 'partial') return;
       const key = keyFor(payment.paymentDate);
       if (!key) return;
-      const group = groups.get(key) || { key, sales: 0, revenue: 0, paid: 0, due: 0 };
-      group.paid += convertReportCurrency(Number(payment.amount) || 0, payment.currency, currency);
+      const group = groups.get(key) || { key, sales: 0, cashReceived: 0 };
+      group.cashReceived += convertReportCurrency(Number(payment.amount) || 0, payment.currency, currency);
       groups.set(key, group);
     });
     return [...groups.values()].sort((left, right) => left.key.localeCompare(right.key)).map(group => ({
@@ -1396,6 +1545,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   ].filter(item => item.value > 0);
   const attentionCount = allDashboardAttentionSales.length
     + endingSoonSubscriptions.length
+    + pendingQuotationCount
     + (resourceMetrics.expiringAssignments > 0 ? 1 : 0)
     + (financialIntegrityErrors > 0 || storageWarning ? 1 : 0);
   const dashboardCopy = language === 'bn' ? {
@@ -1407,12 +1557,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     receivedContext: 'নির্বাচিত সময়ে আদায়',
     customers: 'গ্রাহক',
     activeSubscriptions: 'সক্রিয় সাবস্ক্রিপশন',
-    expiringSoon: 'শিগগির মেয়াদ শেষ',
     outstanding: 'বকেয়া',
+    currentDueContext: 'সব বিক্রয়ের বর্তমান বকেয়া',
+    advanceCreditContext: 'গ্রাহকদের অব্যবহৃত অগ্রিম ক্রেডিট',
+    overdueInvoices: 'মেয়াদোত্তীর্ণ ইনভয়েস',
+    overdueInvoicesContext: 'নির্ধারিত তারিখ পেরিয়েছে, এখনো বকেয়া',
     activeRecords: 'সক্রিয় রেকর্ড',
     currentStatus: 'বর্তমান অবস্থা',
     withinDays: (days: number) => `${formatNumber(days)} দিনের মধ্যে`,
-    dueSelected: 'নির্বাচিত বিক্রয়ের বকেয়া',
     quickActions: 'দ্রুত কাজ',
     commonTasks: 'নিয়মিত কাজ',
     addCustomer: 'গ্রাহক যোগ',
@@ -1432,10 +1584,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     renew: 'নবায়ন',
     profileExpiry: (count: number, days: number) => `${formatNumber(count)}টি বরাদ্দ প্রোফাইল ${formatNumber(days)} দিনের মধ্যে মেয়াদ শেষ হবে`,
     integrityIssues: (count: number) => `${count}টি আর্থিক তথ্যের সমস্যা পর্যালোচনা করুন`,
+    pendingQuotations: (count: number) => `${formatNumber(count)}টি পেন্ডিং কোটেশন পর্যালোচনা করুন`,
     storageWarning: 'স্টোরেজ সতর্কতা পর্যালোচনা করুন',
-    revenueTrend: 'আয়ের প্রবণতা',
-    revenueLegend: 'আয় · আদায় · বকেয়া',
-    noRevenue: 'এই সময়ে আয়ের তথ্য নেই।',
+    revenueTrend: 'বিক্রয় ও আদায়',
+    revenueLegend: 'বিক্রয়মূল্য · প্রকৃত আদায়',
+    noRevenue: 'এই সময়ে কোনো বিক্রয় বা পেমেন্ট নেই।',
     subscriptionHealth: 'সাবস্ক্রিপশনের অবস্থা',
     subscriptionHealthDescription: 'সব সাবস্ক্রিপশনের বর্তমান অবস্থা।',
     noSubscriptions: 'সারাংশ দেখানোর মতো সাবস্ক্রিপশন নেই।',
@@ -1451,46 +1604,49 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     advancedReports: 'পুনরাবৃত্ত আয় ও নবায়ন বিশ্লেষণ',
     advancedReportsDescription: 'MRR, সাবস্ক্রিপশন বণ্টন ও আয়ের পূর্বাভাস',
   } : {
-    overview: 'BUSINESS OVERVIEW',
+    overview: 'YOUR BUSINESS',
     title: 'Dashboard',
     dateRange: 'Date range',
     addSale: 'Add Sale',
-    receivedRevenue: 'Received revenue',
-    receivedContext: 'Payments received',
+    receivedRevenue: 'Money received',
+    receivedContext: 'Payments received in this period',
     customers: 'Customers',
-    activeSubscriptions: 'Active subscriptions',
-    expiringSoon: 'Expiring soon',
-    outstanding: 'Outstanding',
-    activeRecords: 'Active records',
-    currentStatus: 'Current status',
-    withinDays: (days: number) => `Within ${formatNumber(days)} days`,
-    dueSelected: 'Due across selected sales',
+    activeSubscriptions: 'Active plans',
+    outstanding: 'Money due',
+    currentDueContext: 'Current due across all sales',
+    advanceCreditContext: 'Unused customer advance credit',
+    overdueInvoices: 'Overdue invoices',
+    overdueInvoicesContext: 'Past due date and still unpaid',
+    activeRecords: 'Active customers',
+    currentStatus: 'Active now',
+    withinDays: (days: number) => `In the next ${formatNumber(days)} days`,
     quickActions: 'Quick actions',
     commonTasks: 'Common tasks',
     addCustomer: 'Add Customer',
     receivePayment: 'Receive Payment',
     renewSubscription: 'Renew Subscription',
-    actionRequired: 'Action required',
-    actionDescription: 'Payments and subscriptions that may need attention.',
-    allClear: 'Everything is up to date. No urgent actions right now.',
+    actionRequired: 'Things to do',
+    actionDescription: 'Payments and plans that may need your attention.',
+    allClear: 'You are all caught up. Nothing needs attention right now.',
     paymentDue: 'Payment due',
     daysOverdue: (days: number) => `${formatNumber(days)}d overdue`,
     dueDate: 'Due',
-    morePayments: (count: number) => `${formatNumber(count)} more outstanding payments`,
+    morePayments: (count: number) => `${formatNumber(count)} more payments are due`,
     expiresToday: 'Expires today',
     daysRemaining: (days: number) => `${formatNumber(days)}d remaining`,
-    moreSubscriptions: (count: number) => `${formatNumber(count)} more subscriptions ending soon`,
+    moreSubscriptions: (count: number) => `${formatNumber(count)} more plans end soon`,
     viewSale: 'View sale',
     renew: 'Renew',
-    profileExpiry: (count: number, days: number) => `${formatNumber(count)} assigned ${count === 1 ? 'profile expires' : 'profiles expire'} within ${formatNumber(days)} days`,
-    integrityIssues: (count: number) => `${count} financial integrity issue${count === 1 ? '' : 's'} to review`,
-    storageWarning: 'Storage warning to review',
-    revenueTrend: 'Revenue trend',
-    revenueLegend: 'Revenue · received · outstanding',
-    noRevenue: 'No revenue data for this period.',
-    subscriptionHealth: 'Subscription health',
-    subscriptionHealthDescription: 'Current status across all subscriptions.',
-    noSubscriptions: 'No subscriptions to summarize.',
+    profileExpiry: (count: number, days: number) => `${formatNumber(count)} assigned ${count === 1 ? 'profile ends' : 'profiles end'} in the next ${formatNumber(days)} days`,
+    integrityIssues: (count: number) => `${count} money record${count === 1 ? '' : 's'} need${count === 1 ? 's' : ''} review`,
+    pendingQuotations: (count: number) => `${count} pending quotation${count === 1 ? '' : 's'} to review`,
+    storageWarning: 'Check your saved data',
+    revenueTrend: 'Sales and cash collected',
+    revenueLegend: 'Sales value · actual cash collected',
+    noRevenue: 'No sales or payments in this period.',
+    subscriptionHealth: 'Plan status',
+    subscriptionHealthDescription: 'The current status of all plans.',
+    noSubscriptions: 'No plans to show.',
     active: 'Active',
     ending: 'Ending soon',
     expired: 'Expired',
@@ -1498,10 +1654,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     recentSales: 'Recent sales',
     viewAllSales: 'View all sales',
     noSales: 'No sales in the selected date range.',
-    moreReports: 'More business reports',
-    moreReportsDescription: 'Financial accounts, cash flow, payments, and customer performance',
-    advancedReports: 'Recurring revenue and renewal analytics',
-    advancedReportsDescription: 'MRR, subscription distribution, and revenue forecasts',
+    moreReports: 'More reports',
+    moreReportsDescription: 'See accounts, money in and out, payments, and customers',
+    advancedReports: 'Recurring income and renewals',
+    advancedReportsDescription: 'See monthly income, plans, and expected payments',
   };
   const reportRangeLabel = validReportRange
     ? `${formatAppDate(reportBounds.start, language)} – ${formatAppDate(reportBounds.end, language)}`
@@ -1528,8 +1684,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         scopedServices,
         scopedSubscriptions
       );
-      const generated = await generateInvoiceJpg(details, language);
-      downloadInvoiceJpg(generated.blob, generated.fileName);
+      const generated = await generateInvoiceImage(details, language);
+      downloadInvoiceImage(generated.blob, generated.fileName);
       showToast(`Download requested · ${generated.fileName}`, 'info');
     } catch (error) {
       console.error('Dashboard invoice download failed:', error);
@@ -1610,33 +1766,54 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <button type="button" style={{ order }} onClick={() => onNavigate('subscriptions')} className="dashboard-kpi dashboard-kpi--subscriptions">
         <span className="dashboard-kpi-label"><CreditCard aria-hidden="true" /> {dashboardCopy.activeSubscriptions}</span>
         <strong>{activeBusinessSubscriptions.length}</strong>
-        <span className="dashboard-kpi-note">{dashboardCopy.currentStatus}</span>
+        <span className="dashboard-kpi-note">{dashboardCopy.overdueInvoicesContext}</span>
       </button>
     ),
-    expiringSubscriptions: order => (
-      <button type="button" style={{ order }} onClick={() => onNavigate('subscriptions')} className={`dashboard-kpi dashboard-kpi--ending${endingSoonSubscriptions.length ? ' is-attention' : ''}`}>
-        <span className="dashboard-kpi-label"><Calendar aria-hidden="true" /> {dashboardCopy.expiringSoon}</span>
-        <strong>{endingSoonSubscriptions.length}</strong>
-        <span className="dashboard-kpi-note">{dashboardCopy.withinDays(settings.reminderNoticeDays)}</span>
+    expiringSubscriptions7: order => (
+      <button type="button" style={{ order }} onClick={() => onNavigate('subscriptions')} className={`dashboard-kpi dashboard-kpi--ending${expiringWithin7Days ? ' is-attention' : ''}`}>
+        <span className="dashboard-kpi-label"><Calendar aria-hidden="true" /> {summaryWidgetNames.expiringSubscriptions7}</span>
+        <strong>{expiringWithin7Days}</strong>
+        <span className="dashboard-kpi-note">{dashboardCopy.withinDays(7)}</span>
+      </button>
+    ),
+    expiringSubscriptions30: order => (
+      <button type="button" style={{ order }} onClick={() => onNavigate('subscriptions')} className={`dashboard-kpi dashboard-kpi--ending${expiringWithin30Days ? ' is-attention' : ''}`}>
+        <span className="dashboard-kpi-label"><Calendar aria-hidden="true" /> {summaryWidgetNames.expiringSubscriptions30}</span>
+        <strong>{expiringWithin30Days}</strong>
+        <span className="dashboard-kpi-note">{dashboardCopy.withinDays(30)}</span>
       </button>
     ),
     outstandingPayments: order => (
-      <button type="button" style={{ order }} onClick={() => onNavigate('payments')} className={`dashboard-kpi dashboard-kpi--outstanding${financialSummary.due > 0 ? ' is-attention' : ''}`}>
+      <button type="button" style={{ order }} onClick={() => onNavigate('payments')} className={`dashboard-kpi dashboard-kpi--outstanding${currentSalesSummary.due > 0 ? ' is-attention' : ''}`}>
         <span className="dashboard-kpi-label"><Wallet aria-hidden="true" /> {dashboardCopy.outstanding}</span>
         <span className="dashboard-kpi-currencies">
-          <span><small>{currency}</small><strong>{formatCurrency(financialSummary.due, currency)}</strong></span>
+          <span><small>{currency}</small><strong>{formatCurrency(currentSalesSummary.due, currency)}</strong></span>
         </span>
-        <span className="dashboard-kpi-note">{dashboardCopy.dueSelected}</span>
+        <span className="dashboard-kpi-note">{dashboardCopy.currentDueContext}</span>
+      </button>
+    ),
+    availableAdvanceCredit: order => (
+      <button type="button" style={{ order }} onClick={() => onNavigate('customers')} className="dashboard-kpi dashboard-kpi--customers">
+        <span className="dashboard-kpi-label"><Wallet aria-hidden="true" /> {summaryWidgetNames.availableAdvanceCredit}</span>
+        <strong>{formatCurrency(availableAdvanceCredit, currency)}</strong>
+        <span className="dashboard-kpi-note">{dashboardCopy.advanceCreditContext}</span>
+      </button>
+    ),
+    overdueInvoices: order => (
+      <button type="button" style={{ order }} onClick={() => onNavigate('invoices')} className={`dashboard-kpi dashboard-kpi--ending${overdueInvoiceCount ? ' is-attention' : ''}`}>
+        <span className="dashboard-kpi-label"><AlertTriangle aria-hidden="true" /> {summaryWidgetNames.overdueInvoices}</span>
+        <strong>{overdueInvoiceCount}</strong>
+        <span className="dashboard-kpi-note">{dashboardCopy.currentStatus}</span>
       </button>
     ),
   };
 
   return (
     <div className="dashboard-view mx-auto flex max-w-[1600px] flex-col gap-5 px-4 py-5 sm:gap-6 sm:px-6 sm:py-6 xl:px-8">
-      <header className="dashboard-page-header flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <header className="dashboard-page-header flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <p className="text-sm font-bold tracking-wide text-violet-700 dark:text-violet-300">{dashboardCopy.overview}</p>
-          <h1 className="mt-1 break-words text-3xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-4xl">
+          <h1 className="mt-1 whitespace-nowrap text-3xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-4xl">
             {dashboardCopy.title}
           </h1>
         </div>
@@ -1650,7 +1827,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               className={`${dashboardSelectClass} mt-0.5 w-full`}
             >
               <option value="today">Today</option>
-              <option value="yesterday">Yesterday</option>
+              <option value="last_7_days">Last 7 Days</option>
+              <option value="last_30_days">Last 30 Days</option>
               <option value="week">This Week</option>
               <option value="last_week">Last Week</option>
               <option value="month">This Month</option>
@@ -1754,27 +1932,123 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <button type="button" onClick={() => window.location.reload()} className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold hover:bg-rose-100 dark:border-rose-800 dark:hover:bg-rose-900/40">Try Again</button>
         </div>
       )}
-      {!dashboardDataLoading && scopedSales.length === 0 && scopedCustomers.length === 0 && scopedServices.length === 0 && scopedAccounts.length === 0 && scopedSubscriptions.length === 0 && scopedPayments.length === 0 && scopedExpenses.length === 0 && scopedOtherIncome.length === 0 && scopedFinancialTransfers.length === 0 && scopedFinancialAdjustments.length === 0 && scopedFinancialAccounts.length === 0 && (
-        <section className={`${dashboardPanelClass} flex flex-col items-center gap-3 py-6 text-center`}>
-          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
-            <Sparkles className="h-3.5 w-3.5" /> Quick start
+      {!currentUser?.isDemo && !dashboardDataLoading
+        && gettingStartedState?.businessId === gettingStartedBusinessId
+        && gettingStartedState.open && (
+        <section aria-labelledby="getting-started-title" className={`${dashboardPanelClass} space-y-4 sm:p-5`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300">
+                <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
+                {language === 'bn' ? 'শুরু করুন' : 'Getting started'}
+              </div>
+              <h2 id="getting-started-title" className="mt-2 text-lg font-bold text-slate-900 dark:text-white">
+                {language === 'bn' ? 'XolveManager দিয়ে ব্যবসা গুছিয়ে নিন' : 'Make the most of XolveManager'}
+              </h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                {language === 'bn'
+                  ? 'এক জায়গায় কাস্টমার ও সার্ভিস পরিচালনা করুন, তারপর বিক্রয়, ইনভয়েস ও পেমেন্ট অনুসরণ করুন।'
+                  : 'Manage customers and services in one place, then keep sales, invoices, and payments connected.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setGettingStartedVisibility(false)}
+              className="min-h-9 rounded-lg px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              {language === 'bn' ? 'বন্ধ করুন' : 'Dismiss'}
+            </button>
           </div>
-          <div className="max-w-2xl space-y-2">
-            <p className="text-lg font-bold text-slate-900 dark:text-white">Start your business setup in one click</p>
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              {demoDataStatus === 'Not installed'
-                ? 'No records have been added yet. Load a ready-made demo, or create your first customer, service, and sale.'
-                : 'Your workspace is ready. Add your first customer, service, or sale to begin tracking business activity.'}
-            </p>
-          </div>
-          <div className="flex flex-wrap justify-center gap-2">
-            {demoDataStatus === 'Not installed' && (
-              <button type="button" onClick={handleLoadDemoData} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700">Load demo data</button>
-            )}
-            <button type="button" onClick={() => onNavigate('customers')} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Add Customer</button>
-            <button type="button" onClick={() => onNavigate('services')} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Add Service</button>
-            <button type="button" onClick={() => onOpenNewSale()} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-700">Create First Sale</button>
-          </div>
+
+          <p role="status" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
+            {currentUser?.isDemo
+              ? (language === 'bn'
+                ? 'ডেমো মোড · নমুনা ডেটা প্রোডাকশন মোড থেকে আলাদা।'
+                : 'Demo Mode · sample data is isolated from Production Mode.')
+              : (language === 'bn'
+                ? 'প্রোডাকশন মোড · আপনার ব্যবসার ডেটা ডেমো মোড থেকে আলাদা।'
+                : 'Production Mode · your business data stays separate from Demo Mode.')}
+          </p>
+
+          <ol className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {[
+              {
+                title: language === 'bn' ? 'প্রথম কাস্টমার যোগ করুন' : 'Add your first customer',
+                description: language === 'bn' ? 'কাস্টমারের যোগাযোগের তথ্য ও কার্যকলাপ একসাথে রাখুন।' : 'Keep customer contact details and activity together.',
+                action: language === 'bn' ? 'কাস্টমার যোগ করুন' : 'Add customer',
+                completed: scopedCustomers.length > 0,
+                onClick: () => onRequestCreate('customers'),
+              },
+              {
+                title: language === 'bn' ? 'প্রথম সার্ভিস তৈরি করুন' : 'Create your first service',
+                description: language === 'bn' ? 'আপনার সার্ভিস, প্ল্যান ও সাবস্ক্রিপশন সাজান।' : 'Organize the services, plans, and subscriptions you offer.',
+                action: language === 'bn' ? 'সার্ভিস যোগ করুন' : 'Add service',
+                completed: scopedServices.length > 0,
+                onClick: () => onRequestCreate('services'),
+              },
+              {
+                title: language === 'bn' ? 'প্রথম বিক্রয় রেকর্ড করুন' : 'Record your first sale',
+                description: language === 'bn' ? 'বিক্রয় কাস্টমার, সার্ভিস ও পরবর্তী রেকর্ডের সাথে যুক্ত থাকে।' : 'Sales connect customers and services to the records that follow.',
+                action: language === 'bn' ? 'নতুন বিক্রয়' : 'New sale',
+                completed: scopedSales.length > 0,
+                onClick: () => onOpenNewSale(),
+              },
+              {
+                title: language === 'bn' ? 'প্রথম ইনভয়েস তৈরি করুন' : 'Generate your first invoice',
+                description: language === 'bn' ? 'বিক্রয়ের সাথে ইনভয়েস তৈরি হয়; ইনভয়েস পেজে তা দেখুন।' : 'Invoices are created from sales and can be reviewed in Invoices.',
+                action: language === 'bn' ? 'ইনভয়েস দেখুন' : 'Open invoices',
+                completed: scopedInvoices.length > 0,
+                onClick: () => onNavigate('invoices'),
+              },
+              {
+                title: language === 'bn' ? 'একটি পেমেন্ট রেকর্ড করুন' : 'Record a payment',
+                description: language === 'bn' ? 'বকেয়া বিক্রয়ের জন্য পেমেন্ট সংগ্রহ করুন বা কাস্টমার পেমেন্ট রেকর্ড করুন।' : 'Collect against a sale or record a customer payment.',
+                action: language === 'bn' ? 'পেমেন্ট খুলুন' : 'Open payments',
+                completed: scopedPayments.length > 0,
+                onClick: () => onNavigate('payments'),
+              },
+            ].map((step, index) => (
+              <li key={step.title} className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <span
+                    role="img"
+                    aria-label={step.completed ? (language === 'bn' ? 'সম্পন্ন' : 'Completed') : (language === 'bn' ? 'অসম্পন্ন' : 'Not completed')}
+                    className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${step.completed ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}
+                  >
+                    {step.completed ? <Check aria-hidden="true" className="h-4 w-4" /> : index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{step.title}</h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{step.description}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={step.onClick}
+                  className="mt-3 inline-flex min-h-9 items-center justify-center gap-1 self-start rounded-lg px-2 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40"
+                >
+                  {step.action}<ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            ))}
+          </ol>
+
+          {demoDataStatus === 'Not installed' && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {language === 'bn'
+                  ? 'নমুনা ডেটা যোগ করা ঐচ্ছিক এবং শুধু বর্তমান ওয়ার্কস্পেসে যোগ হবে।'
+                  : 'Sample data is optional and is added only to the current workspace.'}
+              </p>
+              <button
+                type="button"
+                onClick={handleLoadDemoData}
+                className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                {language === 'bn' ? 'নমুনা ডেটা যোগ করুন' : 'Load sample data'}
+              </button>
+            </div>
+          )}
         </section>
       )}
 
@@ -1793,6 +2067,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="dashboard-quick-actions-heading">
           <h2>{dashboardCopy.quickActions}</h2>
           <span>{dashboardCopy.commonTasks}</span>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <p className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300">
+              {currentUser?.isDemo
+                ? (language === 'bn' ? 'ডেমো মোড · নমুনা ডেটা' : 'Demo Mode · sample data')
+                : (language === 'bn' ? 'প্রোডাকশন মোড · ব্যবসার ডেটা' : 'Production Mode · business data')}
+            </p>
+            {!currentUser?.isDemo && (
+              <button
+                type="button"
+                onClick={() => setGettingStartedVisibility(true)}
+                className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40"
+              >
+                <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
+                {language === 'bn' ? 'শুরু করার নির্দেশনা' : 'Getting started'}
+              </button>
+            )}
+          </div>
         </div>
         <div className="dashboard-quick-actions-list">
           <button type="button" onClick={() => onRequestCreate('customers')} className="dashboard-quick-action"><UserPlus aria-hidden="true" /> {dashboardCopy.addCustomer}</button>
@@ -1816,7 +2107,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               const itemSummary = getSaleLineItems(sale).map(item =>
                 `${serviceById.get(item.serviceId)?.name || 'Service unavailable'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`
               ).join('; ');
-              const daysLate = Math.max(0, -getDaysDifference(dueDate));
+              const daysLate = dueDate ? Math.max(0, -getDaysDifference(dueDate)) : 0;
               return <article key={`payment-${sale.id}`} className="dashboard-attention-item">
                 <span className="dashboard-attention-icon dashboard-attention-icon--payment"><Wallet aria-hidden="true" /></span>
                 <div className="dashboard-attention-copy">
@@ -1828,7 +2119,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <span className={`dashboard-attention-status ${daysLate > 0 ? 'dashboard-attention-status--overdue' : 'dashboard-attention-status--upcoming'}`}>
                     {daysLate > 0 ? dashboardCopy.daysOverdue(daysLate) : dashboardCopy.paymentDue}
                   </span>
-                  <span>{dashboardCopy.dueDate} {formatAppDate(dueDate, language)}</span>
+                  {dueDate && <span>{dashboardCopy.dueDate} {formatAppDate(dueDate, language)}</span>}
                 </div>
                 <button type="button" onClick={() => onViewSale(sale.id)} className="dashboard-attention-action">{dashboardCopy.viewSale}</button>
               </article>;
@@ -1878,6 +2169,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <ArrowUpRight aria-hidden="true" />
               </button>
             )}
+            {pendingQuotationCount > 0 && (
+              <button type="button" onClick={() => onNavigate('sales')} className="dashboard-attention-summary">
+                <PackagePlus aria-hidden="true" />
+                <span>{dashboardCopy.pendingQuotations(pendingQuotationCount)}</span>
+                <ArrowUpRight aria-hidden="true" />
+              </button>
+            )}
           </div>}
         </DashboardPanel>}
 
@@ -1889,7 +2187,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </select>
           </div>
           {trendData.length === 0 ? <p className="dashboard-empty-state">{dashboardCopy.noRevenue}</p> : (
-            <div className="dashboard-revenue-chart" role="img" aria-label="Revenue, paid, and due trend chart">
+            <div className="dashboard-revenue-chart" role="img" aria-label="Sales value and actual cash collected by date">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={trendData} margin={{ top: 12, right: 12, left: 0, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e8e5ef'} vertical={false} />
@@ -1897,9 +2195,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <YAxis tick={{ fontSize: 11, fill: isDark ? '#a1a1aa' : '#64748b' }} axisLine={false} tickLine={false} width={62} />
                   <Tooltip formatter={(value, name) => [formatCurrency(Number(value), currency), String(name)]} />
                   <Legend />
-                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#7c3aed" strokeWidth={2.5} fill="#7c3aed" fillOpacity={0.12} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
-                  <Area type="monotone" dataKey="paid" name="Paid" stroke="#059669" strokeWidth={2} fill="#059669" fillOpacity={0.08} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
-                  <Area type="monotone" dataKey="due" name="Due" stroke="#d97706" strokeWidth={2} fill="#d97706" fillOpacity={0.07} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                  <Area type="monotone" dataKey="sales" name="Sales value (sale date)" stroke="#7c3aed" strokeWidth={2.5} fill="#7c3aed" fillOpacity={0.12} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                  <Area type="monotone" dataKey="cashReceived" name="Actual cash collected (payment date)" stroke="#059669" strokeWidth={2} fill="#059669" fillOpacity={0.08} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -1975,11 +2272,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>}
       </DashboardPanel>
 
-      <DashboardPanel title="Financial Overview" description={`Current recorded balances · Cash flow ${reportBounds.start} – ${reportBounds.end}`} action={{ label: 'Financial Control', onClick: () => onNavigate('financial-control') }}>
+      <DashboardPanel title="Money Summary" description={`Current balances · Money in and out ${reportBounds.start} – ${reportBounds.end}`} action={{ label: 'Money Records', onClick: () => onNavigate('financial-control') }}>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <DashboardMetric label="Total Recorded Balance" value={formatCurrency(cashbookBalance, currency)} hint="Current account balances" />
-          <DashboardMetric label="Money In" value={formatCurrency(cashbookFlow.moneyIn, currency)} tone="green" hint="Received payments + other income" />
-          <DashboardMetric label="Money Out" value={formatCurrency(cashbookFlow.moneyOut, currency)} tone="amber" hint="Expenses + refunds" />
+          <DashboardMetric label="Total Balance" value={formatCurrency(cashbookBalance, currency)} hint="Money in all accounts" />
+          <DashboardMetric label="Money In" value={formatCurrency(cashbookFlow.moneyIn, currency)} tone="green" hint="Payments and other income" />
+          <DashboardMetric label="Money Out" value={formatCurrency(cashbookFlow.moneyOut, currency)} tone="amber" hint="Expenses and refunds" />
         </div>
         {accountSummaries.length > 0 ? <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {accountSummaries.map(({ account, balance, todayChange, monthChange }) => <button key={account.id} type="button" onClick={() => onNavigate('cashbook', account.id)} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50/60 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30">
@@ -2022,16 +2319,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <DashboardPanel title="Revenue Overview" description={`${reportBounds.start} – ${reportBounds.end}`} action={{ label: 'View Reports', onClick: () => onNavigate('reports') }}>
+        <DashboardPanel title="Sales and Payments Overview" description={`${reportBounds.start} – ${reportBounds.end}`} action={{ label: 'View Reports', onClick: () => onNavigate('reports') }}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-slate-500">Revenue and due by sale date; paid by payment date · {currency} only.</p>
+            <p className="text-xs text-slate-500">Sales value by sale date; actual cash collected by payment date · converted to {currency}.</p>
             <label className="sr-only" htmlFor="dashboard-trend-grouping">Trend grouping</label>
             <select id="dashboard-trend-grouping" value={trendGrouping} onChange={event => setTrendGrouping(event.target.value as 'daily' | 'weekly' | 'monthly')} className={dashboardSelectClass}>
               <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
             </select>
           </div>
-          {trendData.length === 0 ? <p className="py-12 text-center text-xs text-slate-500">No revenue data for this period.</p> : (
-            <div className="h-52 w-full min-w-0 sm:h-60" role="img" aria-label="Revenue, paid, and due trend chart">
+          {trendData.length === 0 ? <p className="py-12 text-center text-xs text-slate-500">No sales or payments in this period.</p> : (
+            <div className="h-52 w-full min-w-0 sm:h-60" role="img" aria-label="Sales value and actual cash collected by date">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={trendData} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -2039,9 +2336,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <YAxis tick={{ fontSize: 10 }} width={58} />
                   <Tooltip formatter={(value, name) => [formatCurrency(Number(value), currency), String(name)]} />
                   <Legend />
-                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#7c3aed" fill="#ede9fe" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
-                  <Area type="monotone" dataKey="paid" name="Paid" stroke="#2563eb" fill="#dbeafe" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
-                  <Area type="monotone" dataKey="due" name="Due" stroke="#d97706" fill="#fef3c7" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                  <Area type="monotone" dataKey="sales" name="Sales value (sale date)" stroke="#7c3aed" fill="#ede9fe" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                  <Area type="monotone" dataKey="cashReceived" name="Actual cash collected (payment date)" stroke="#059669" fill="#d1fae5" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -2164,13 +2460,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             })}</div>
           )}
         </DashboardPanel>
-        <DashboardPanel title="Renewal Opportunities" description={`Ending soon or expired within ${CUSTOMER_CRM_THRESHOLDS.recentlyExpiredDays} days.`} action={{ label: 'View All Subscriptions', onClick: () => onNavigate('subscriptions') }}>
+        <DashboardPanel title="Plans to Renew" description={`Ending within 30 days or expired in the last ${CUSTOMER_CRM_THRESHOLDS.recentlyExpiredDays} days.`} action={{ label: 'View All Plans', onClick: () => onNavigate('subscriptions') }}>
           <div className="grid grid-cols-3 gap-2">
             <DashboardMetric label="Due Today" value={renewalsDueToday.length} />
             <DashboardMetric label="This Week" value={renewalsDueThisWeek.length} />
             <DashboardMetric label="This Month" value={renewalsDueThisMonth.length} />
           </div>
-          {renewalOpportunitySubscriptions.length === 0 ? <p className="text-center text-xs text-slate-500">No current renewal opportunities.</p> : <div className="space-y-2">{renewalOpportunitySubscriptions.slice(0, 5).map(subscription => <div key={subscription.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-2.5 text-xs dark:bg-slate-800/60"><div><button type="button" onClick={() => onSelectCustomer(subscription.customerId)} className="text-left font-semibold">{getCustomerDisplayName(customerById.get(subscription.customerId))}</button><p className="text-slate-500">{serviceById.get(subscription.serviceId)?.name || 'Service unavailable'} · {subscription.plan}</p></div><div className="flex items-center gap-2"><span className="text-slate-500">{formatAppDate(subscription.expiryDate, language)}</span><button type="button" onClick={() => onRenewSubscription(subscription)} className="font-semibold text-emerald-700 dark:text-emerald-300">Renew</button></div></div>)}</div>}
+          {renewalOpportunitySubscriptions.length === 0 ? <p className="text-center text-xs text-slate-500">No current renewal opportunities.</p> : <div className="space-y-2">{renewalOpportunitySubscriptions.slice(0, 5).map(subscription => {
+            const remainingDays = daysUntilExpiry(subscription);
+            const status = currentStatus(subscription);
+            return <div key={subscription.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-2.5 text-xs dark:bg-slate-800/60">
+              <div><button type="button" onClick={() => onSelectCustomer(subscription.customerId)} className="text-left font-semibold">{getCustomerDisplayName(customerById.get(subscription.customerId))}</button><p className="text-slate-500">{serviceById.get(subscription.serviceId)?.name || 'Service unavailable'} · {subscription.plan} · {status.replace('_', ' ')}</p></div>
+              <div className="flex items-center gap-2"><span className="text-right text-slate-500">{formatAppDate(subscription.expiryDate, language)}<span className="block text-[10px]">{remainingDays < 0 ? `${Math.abs(remainingDays)}d expired` : remainingDays === 0 ? 'Expires today' : `${remainingDays}d remaining`}</span></span><button type="button" onClick={() => onRenewSubscription(subscription)} className="font-semibold text-emerald-700 dark:text-emerald-300">Renew</button></div>
+            </div>;
+          })}</div>}
         </DashboardPanel>
       </div>
 
@@ -2179,24 +2482,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {servicePerformance.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No service performance data.</p> : <div className="space-y-2">{servicePerformance.slice(0, 6).map(item => <div key={item.serviceId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 text-xs dark:border-slate-800"><div><button type="button" onClick={() => onNavigate('services', item.serviceId)} className="font-semibold text-slate-800 hover:text-emerald-700 dark:text-slate-100">{item.serviceName}</button><p className="mt-0.5 text-slate-500">{item.salesCount} sales · {item.activeSubscriptions} active · {serviceCustomerCounts.get(item.serviceId) || 0} customers</p><p className="mt-0.5 text-[10px] text-slate-500">Received {formatCurrency(item.paid, currency)}</p></div><span className="font-mono font-bold">{formatCurrency(item.revenue, currency)}<span className="block text-right font-sans text-[10px] font-normal text-slate-500">sales value</span></span></div>)}</div>}
         </DashboardPanel>
         <DashboardPanel title="Top Customers" action={{ label: 'View Customers', onClick: () => onNavigate('customers') }}>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+            <DashboardMetric label="Total customers" value={customerInsights.total} onClick={() => onNavigate('customers')} />
+            <DashboardMetric label="New in period" value={customerInsights.newInPeriod} hint={reportRangeLabel} onClick={() => onNavigate('customers')} />
+            <DashboardMetric label="Repeat in period" value={customerInsights.repeatInPeriod} hint="Customers with 2+ sales" onClick={() => onNavigate('customers')} />
+            <DashboardMetric label="With outstanding due" value={customerInsights.withDue} onClick={() => onNavigate('payments')} />
+            <DashboardMetric label="With advance credit" value={customerInsights.withAdvanceCredit} onClick={() => onNavigate('customers')} />
+          </div>
           {customerSales.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No customer sales in this period.</p> : <div className="space-y-2">{customerSales.slice(0, 6).map(item => <div key={item.customerId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 text-xs dark:border-slate-800"><button type="button" onClick={() => onSelectCustomer(item.customerId)} className="text-left font-semibold text-slate-800 hover:text-emerald-700 dark:text-slate-100">{item.customerName}<span className="block font-normal text-slate-500">{item.salesCount} sales · {item.activeSubscriptions} active</span></button><div className="text-right"><p className="font-mono font-bold">{formatCurrency(item.spent, currency)} spent</p><p className="text-slate-500">{formatCurrency(item.paid, currency)} paid · {formatCurrency(item.due, currency)} due</p></div></div>)}</div>}
         </DashboardPanel>
       </div>
 
-      <DashboardPanel title="Invoice Overview" action={{ label: 'View All Invoices', onClick: () => onNavigate('invoices') }}>
+      <DashboardPanel title="Invoices" action={{ label: 'View All Invoices', onClick: () => onNavigate('invoices') }}>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
           <DashboardMetric label="Total Invoices" value={invoiceSummary.total} />
           <DashboardMetric label="Paid" value={invoiceSummary.paid} tone="green" />
           <DashboardMetric label="Pending" value={invoiceSummary.pending} tone="amber" />
-          <DashboardMetric label="Invoices with Due" value={invoiceSummary.withDue} />
-          <DashboardMetric label="Outstanding Amount" value={formatCurrency(invoiceSummary.dueAmount, currency)} tone="amber" />
+          <DashboardMetric label="Invoices with Money Due" value={invoiceSummary.withDue} />
+          <DashboardMetric label="Total Money Due" value={formatCurrency(invoiceSummary.dueAmount, currency)} tone="amber" />
         </div>
         {recentInvoices.length === 0 ? <p className="py-5 text-center text-xs text-slate-500">No invoices for this period.</p> : <div className="space-y-2">{recentInvoices.map(invoice => {
           const sale = saleById.get(invoice.saleId);
           const customer = customerById.get(invoice.customerId);
           const service = serviceById.get(invoice.serviceId);
           const status = sale ? getSalePaymentStatus(sale, scopedPayments) : invoice.paymentStatus;
-          return <article key={invoice.invoiceId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 text-xs dark:border-slate-800"><div className="min-w-40"><p className="font-semibold">{invoice.invoiceNumber} · {formatAppEventDateTime(invoice.createdAt || invoice.invoiceDate)}</p><p className="mt-1 text-slate-500">{getCustomerDisplayName(customer)} · {service?.name || 'Service unavailable'} · {sale?.plan || 'Plan unavailable'}</p></div><p className="font-mono font-bold">{formatCurrency(sale?.amount ?? invoice.totalAmount, sale?.currency || currency)}</p><PaymentStatusBadge status={status} /><div className="flex gap-2"><button type="button" onClick={() => onViewInvoice(invoice.invoiceId)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">View</button><button type="button" disabled={isDownloadingInvoice} onClick={() => void handleDownloadInvoice(invoice)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"><Download className="h-3 w-3" /> JPG</button></div></article>;
+          return <article key={invoice.invoiceId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 text-xs dark:border-slate-800"><div className="min-w-40"><p className="font-semibold">{invoice.invoiceNumber} · {formatAppEventDateTime(invoice.createdAt || invoice.invoiceDate)}</p><p className="mt-1 text-slate-500">{getCustomerDisplayName(customer)} · {service?.name || 'Service unavailable'} · {sale?.plan || 'Plan unavailable'}</p></div><p className="font-mono font-bold">{formatCurrency(sale?.amount ?? invoice.totalAmount, sale?.currency || currency)}</p><PaymentStatusBadge status={status} /><div className="flex gap-2"><button type="button" onClick={() => onViewInvoice(invoice.invoiceId)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">View</button><button type="button" disabled={isDownloadingInvoice} onClick={() => void handleDownloadInvoice(invoice)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"><Download className="h-3 w-3" /> PNG</button></div></article>;
         })}</div>}
       </DashboardPanel>
 

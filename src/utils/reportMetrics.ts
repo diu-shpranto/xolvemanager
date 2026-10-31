@@ -19,6 +19,8 @@ import {
 export type ReportDatePreset =
   | 'today'
   | 'yesterday'
+  | 'last_7_days'
+  | 'last_30_days'
   | 'week'
   | 'last_week'
   | 'month'
@@ -102,7 +104,8 @@ export interface SalesFinancialSummary {
 const isValidRevenueSale = (sale: Sale): boolean =>
   Boolean(sale && typeof sale.id === 'string' && Number.isFinite(Number(sale.amount)))
   && sale.paymentStatus !== 'failed'
-  && sale.paymentStatus !== 'refunded';
+  && sale.paymentStatus !== 'refunded'
+  && sale.paymentStatus !== 'voided';
 
 export const getLocalDateString = (date: Date): string => {
   const year = date.getFullYear();
@@ -125,6 +128,14 @@ export function getReportDateBounds(
       start = new Date(today);
       start.setDate(start.getDate() - 1);
       end = new Date(start);
+      break;
+    case 'last_7_days':
+      start = new Date(today);
+      start.setDate(start.getDate() - 6);
+      break;
+    case 'last_30_days':
+      start = new Date(today);
+      start.setDate(start.getDate() - 29);
       break;
     case 'week':
       start = new Date(today);

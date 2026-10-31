@@ -548,7 +548,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
         return;
       }
       showToast(
-        language === 'bn' ? 'অ্যাকাউন্ট সফলভাবে আপডেট হয়েছে।' : 'Account updated successfully.',
+        language === 'bn' ? 'অ্যাকাউন্ট সফলভাবে আপডেট হয়েছে।' : 'Account updated.',
         'success'
       );
       setEditingAccount(null);
@@ -770,7 +770,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
           </div>
           <div className="min-w-0">
             <p className="account-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em]">
-              {language === 'bn' ? 'অ্যাকাউন্ট ব্যবস্থাপনা' : 'Account management'}
+              {language === 'bn' ? 'অ্যাকাউন্ট ব্যবস্থাপনা' : 'Accounts'}
             </p>
             <h1 className="text-2xl font-bold tracking-tight sm:text-[30px]">
               Accounts
@@ -1017,9 +1017,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
         <div className="account-list-heading flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-              {language === 'bn' ? 'অ্যাকাউন্ট তালিকা' : 'Account directory'}
+              {language === 'bn' ? 'অ্যাকাউন্ট তালিকা' : 'Account list'}
             </h2>
-            <p>{language === 'bn' ? 'আপনার সার্ভিস অ্যাকাউন্ট এক জায়গায় পরিচালনা করুন' : 'Manage service accounts and profile assignments in one place'}</p>
+            <p>{language === 'bn' ? 'আপনার সার্ভিস অ্যাকাউন্ট এক জায়গায় পরিচালনা করুন' : 'Manage service accounts and profiles in one place.'}</p>
           </div>
           <span role="status" className="account-result-count text-xs font-medium tabular-nums text-slate-500 dark:text-slate-400">
             {language === 'bn'
@@ -1418,7 +1418,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                               ) : (
                                 <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-2 rounded-lg border border-emerald-100 dark:border-emerald-900/40 text-[11px] text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5 font-medium">
                                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                                  <span>{language === 'bn' ? 'বরাদ্দের জন্য প্রস্তুত' : 'Ready to allocate'}</span>
+                                  <span>{language === 'bn' ? 'বরাদ্দের জন্য প্রস্তুত' : 'Ready to assign'}</span>
                                 </div>
                               )}
 
@@ -1921,7 +1921,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
             setSelectedCustomerIdForSlot('');
             setSelectedSubscriptionIdForSlot('');
           }}
-          title={language === 'bn' ? 'প্রোফাইল বরাদ্দ করুন' : 'Allocate Profile to Customer'}
+          title={language === 'bn' ? 'প্রোফাইল বরাদ্দ করুন' : 'Assign Profile to Customer'}
           subtitle={`${assigningSlot.serviceName} (${assigningSlot.accountEmail}) - ${assigningSlot.profileName}`}
           maxWidth="md"
         >
@@ -1992,7 +1992,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                 disabled={!selectedSubscriptionIdForSlot}
                 className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold text-xs rounded-lg shadow-sm transition-all cursor-pointer"
               >
-                {language === 'bn' ? 'বরাদ্দ নিশ্চিত করুন' : 'Confirm Allocation'}
+                {language === 'bn' ? 'বরাদ্দ নিশ্চিত করুন' : 'Confirm Assignment'}
               </button>
             </div>
           </form>

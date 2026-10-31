@@ -121,7 +121,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'sales' as NavSection,
-      label: language === 'bn' ? t('nav_sales') : 'Sales / Orders',
+      label: language === 'bn' ? t('nav_sales') : 'Sales',
       icon: Receipt,
       badge: null,
     },
@@ -133,19 +133,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'cashbook' as NavSection,
-      label: language === 'bn' ? 'ক্যাশবুক' : 'Cashbook',
+      label: language === 'bn' ? 'ক্যাশবুক' : 'Money',
       icon: Landmark,
       badge: null,
     },
     {
       id: 'financial-control' as NavSection,
-      label: language === 'bn' ? 'আর্থিক নিয়ন্ত্রণ' : 'Financial Control',
+      label: language === 'bn' ? 'আর্থিক নিয়ন্ত্রণ' : 'Money Records',
       icon: ShieldCheck,
       badge: null,
     },
     {
       id: 'data-integrity' as NavSection,
-      label: language === 'bn' ? 'ডেটা সুরক্ষা' : 'Data Integrity',
+      label: language === 'bn' ? 'ডেটা সুরক্ষা' : 'Data Check',
       icon: Database,
       badge: null,
     },
@@ -169,19 +169,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'history' as NavSection,
-      label: language === 'bn' ? t('nav_history') : 'Activity History',
+      label: language === 'bn' ? t('nav_history') : 'Activity & Audit Trail',
       icon: History,
       badge: null,
     },
     {
       id: 'profitability' as NavSection,
-      label: language === 'bn' ? 'লাভ বিশ্লেষণ' : 'Profit Analytics',
+      label: language === 'bn' ? 'লাভ বিশ্লেষণ' : 'Profit Report',
       icon: BarChart3,
       badge: null,
     },
     {
       id: 'reports' as NavSection,
-      label: language === 'bn' ? t('nav_reports') : 'Reports & Analytics',
+      label: language === 'bn' ? t('nav_reports') : 'Reports',
       icon: BarChart3,
       badge: null,
     },
@@ -193,7 +193,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'reminders' as NavSection,
-      label: language === 'bn' ? 'স্মার্ট রিমাইন্ডার' : 'Smart Reminders',
+      label: language === 'bn' ? 'স্মার্ট রিমাইন্ডার' : 'Follow-up Center',
       icon: BellRing,
       badge: null,
     },
@@ -353,17 +353,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
               ),
             },
             {
-              label: language === 'bn' ? 'বিক্রয় ও অর্থ' : 'Revenue',
+              label: language === 'bn' ? 'বিক্রয় ও অর্থ' : 'Sales and Money',
               items: navItems.filter(item =>
                 ['subscriptions', 'sales', 'payments', 'cashbook', 'expenses', 'daily-closing', 'financial-control', 'invoices'].includes(item.id)
               ),
             },
             {
-              label: language === 'bn' ? 'বিশ্লেষণ' : 'Insights',
+              label: language === 'bn' ? 'বিশ্লেষণ' : 'Reports',
               items: navItems.filter(item => ['history', 'profitability', 'reports', 'notifications', 'reminders', 'data-integrity'].includes(item.id)),
             },
             {
-              label: language === 'bn' ? 'পছন্দসমূহ' : 'Preferences',
+              label: language === 'bn' ? 'পছন্দসমূহ' : 'Settings',
               items: navItems.filter(item => item.id === 'settings'),
             },
           ].map(group => (
@@ -430,7 +430,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className={`app-sidebar-footer mx-3 shrink-0 border-t border-white/[0.07] pb-[max(12px,env(safe-area-inset-bottom))] pt-3 ${isCollapsedDesktop ? 'lg:mx-1 lg:px-0.5' : 'lg:mx-3'}`}>
           <div className={`mb-2 flex items-center justify-between ${isCollapsedDesktop ? 'lg:justify-center' : ''}`}>
             <span className={`text-[10px] font-medium tracking-[0.12em] text-slate-500 ${isCollapsedDesktop ? 'lg:hidden' : ''}`}>
-              {language === 'bn' ? 'পছন্দসমূহ' : 'Preferences'}
+              {language === 'bn' ? 'পছন্দসমূহ' : 'Settings'}
             </span>
             <button
               type="button"
@@ -533,7 +533,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </span>
             </div>
             <span className={`text-[10px] font-mono text-slate-500 ${isCollapsedDesktop ? 'lg:hidden' : ''}`}>
-              • {stats.activeCount} {language === 'bn' ? 'সক্রিয়' : 'subs'}
+              • {stats.activeCount} {language === 'bn' ? 'সক্রিয়' : 'plans'}
             </span>
           </div>
         </div>

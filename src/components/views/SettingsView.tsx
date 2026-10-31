@@ -410,8 +410,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
         section: 'settings',
       });
       showToast(metadataSaved
-        ? `Full backup downloaded: ${filename}`
-        : `Full backup downloaded as ${filename}, but the local backup date could not be saved.`, metadataSaved ? 'success' : 'error');
+        ? `Full backup download started: ${filename}`
+        : `Full backup download started as ${filename}, but the local backup date could not be saved.`, metadataSaved ? 'success' : 'error');
       return true;
     } catch (error) {
       console.error('Business backup export failed.', error);
@@ -572,6 +572,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
       showToast('Business data was not deleted because a safety backup could not be created.', 'error');
       return;
     }
+    if (!window.confirm(
+      'A safety backup download was started. Continue only if you have saved the file securely outside this browser. The backup may contain sensitive service-account credentials. Permanently delete business data?'
+    )) return;
     clearBusinessData();
     setDeleteConfirmation('');
     showToast('Business data cleared.', 'success');
@@ -664,7 +667,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
     switch (activeSection) {
       case 'business':
         return <div className={cardClass}>
-          <SectionHeading title="Business details" description="The business name is used across your workspace and invoices." />
+          <SectionHeading title="Business Details" description="This name appears in the app and on invoices." />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Business name *"><input className={inputClass} maxLength={80} required minLength={2} value={draft.storeName || currentBusinessName} onChange={e => updateDraft({ storeName: e.target.value })} /></Field>
             <Field label="Tagline"><input className={inputClass} value={draft.tagline || ''} onChange={e => updateDraft({ tagline: e.target.value })} /></Field>
@@ -757,7 +760,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
         </div>;
       case 'payments':
         return <div className={cardClass}>
-          <SectionHeading title="Payment methods" description="Configure categories, transaction ID rules, and optional account labels. Changes never rewrite historical payments." />
+          <SectionHeading title="Payment Methods" description="Choose payment types and set when a payment ID is needed. Past payments will not change." />
           <div className="space-y-3">
             {paymentMethods.map(method => <div key={method.id} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -796,9 +799,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
             }}>Add</button>
           </div>
           <div className="mt-4"><CheckSetting label="Require a transaction ID by default for methods without a specific rule" checked={draft.paymentPreferences?.requireTransactionId ?? false} onChange={checked => setPaymentPreferences({ requireTransactionId: checked })} /></div>
-          <p className="mt-3 text-xs text-slate-500">Map payment methods to cashbook accounts so recorded receipts appear in balances. Account labels are informational only. Never enter passwords, PINs, or private credentials.</p>
+          <p className="mt-3 text-xs text-slate-500">Link each payment type to a money account to include payments in its balance. Account labels are for information only. Do not enter passwords or PINs here.</p>
           <div className="mt-6 border-t border-slate-100 pt-5 dark:border-slate-800">
-            <SectionHeading title="Cashbook categories" description="Manage categories used for other income and expenses." />
+            <SectionHeading title="Money Categories" description="Manage labels for other income and expenses." />
             <div className="mt-4 grid gap-5 lg:grid-cols-2">
               {([
                 ['expense', 'Expense categories', expenseCategories, newExpenseCategory, setNewExpenseCategory],
@@ -862,7 +865,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
             <CheckSetting label="Enable Smart Reminders" checked={preferences.enabled} onChange={enabled => updateDraft({ reminderPreferences: { ...preferences, enabled } })} />
           </section>
           <section className={cardClass}>
-            <SectionHeading title="Subscription Reminders" description="Choose the subscription expiry stages that should create reminders." />
+            <SectionHeading title="Plan Reminders" description="Choose when to remind you that a plan is ending." />
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{[30, 14, 7, 3, 1, 0].map(day => <CheckSetting key={day} label={day === 0 ? 'On expiry day' : `${day} days before expiry`} checked={preferences.subscriptionDays.includes(day)} onChange={enabled => toggleDay('subscriptionDays', day, enabled)} />)}</div>
           </section>
           <section className="grid gap-4 lg:grid-cols-2">
@@ -871,7 +874,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
               <div className="grid gap-2 sm:grid-cols-2">{[0, 1, 3, 7, 14, 30].map(day => <CheckSetting key={day} label={day === 0 ? 'Due today' : `${day} days overdue`} checked={preferences.paymentOverdueDays.includes(day)} onChange={enabled => toggleDay('paymentOverdueDays', day, enabled)} />)}</div>
             </div>
             <div className={cardClass}>
-              <SectionHeading title="Invoice Reminders" description="Due-day and overdue stages for invoices with an outstanding balance." />
+              <SectionHeading title="Invoice Reminders" description="Choose when to remind you about unpaid invoices." />
               <div className="grid gap-2 sm:grid-cols-2">{[0, 1, 3, 7, 14, 30].map(day => <CheckSetting key={day} label={day === 0 ? 'Due today' : `${day} days overdue`} checked={preferences.invoiceOverdueDays.includes(day)} onChange={enabled => toggleDay('invoiceOverdueDays', day, enabled)} />)}</div>
             </div>
           </section>
@@ -1084,17 +1087,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
           </section>
 
           <section className={cardClass}>
-            <SectionHeading title="Demo Data" description="Add realistic sample business data for testing and development." />
+            <SectionHeading title="Demo Data" description="Add sample data to try the app." />
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="max-w-2xl">
                 <p className="text-sm text-slate-600 dark:text-slate-300">
-                  Demo records use reserved IDs and are linked through the same customers, services, subscriptions, sales, payments, invoices, and financial reports used by the rest of XolveManager.
+                  Demo data works like regular customers, services, plans, sales, payments, invoices, and reports.
                 </p>
                 <p className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-                  Demo data will be added to your existing data. Existing data will not be deleted or overwritten.
+                  Demo data will be added to your current data. Your current data will not be changed or removed.
                 </p>
                 <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                  Demo data status: <span className="font-semibold text-slate-800 dark:text-slate-200">{demoDataStatus}</span>
+                  Demo data: <span className="font-semibold text-slate-800 dark:text-slate-200">{demoDataStatus}</span>
                   {demoDataStatus === 'Partially installed' && ' · Remove the marked records to recover before adding another set.'}
                 </p>
               </div>
@@ -1166,7 +1169,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
           </Modal>}
 
           <section className={cardClass}>
-            <SectionHeading title="Backup and restore" description="Export all supported business records into one portable, versioned file, then restore it here or on another device." />
+            <SectionHeading title="Back Up or Restore Data" description="Save your business records in one file. You can restore the file on this or another device." />
             <button type="button" disabled={backupBusy} onClick={() => void downloadBackup()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-600 disabled:cursor-wait disabled:opacity-60"><Download className="h-4 w-4" />{backupBusy ? 'Preparing backup…' : 'Export Full Backup'}</button>
             {backupSummary && <div role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm dark:border-emerald-900 dark:bg-emerald-950/20">
               <p className="font-semibold text-emerald-900 dark:text-emerald-200">Full backup generated: {backupSummary.filename}</p>
@@ -1238,7 +1241,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
           </section>
 
           <section className={cardClass}>
-            <SectionHeading title="Export business data" description="Download analysis-ready CSV. Account credentials and profile PINs are never included." />
+            <SectionHeading title="Download Business Data" description="Download your records as CSV files. Account passwords and profile PINs are not included." />
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               <CsvButton label="Customers CSV" onClick={() => exportCsv('customers', exportCustomersCSV(
                 customers, sales, payments, subscriptions, invoices, activityLogs, services, currency
@@ -1254,7 +1257,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
           </section>
 
           <section className={cardClass}>
-            <SectionHeading title="Import customers from CSV" description="Review valid rows and duplicate matches before import. Duplicates are skipped by default." />
+            <SectionHeading title="Import Customers from CSV" description="Check the customer list before importing. Duplicate customers are skipped." />
             <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium dark:border-slate-700"><FileSpreadsheet className="h-4 w-4" /> Choose customer CSV
               <input type="file" accept=".csv,text/csv" aria-label="Choose customer CSV file" className="sr-only" onChange={event => {
                 const file = event.target.files?.[0]; event.target.value = ''; if (!file) return;
@@ -1283,14 +1286,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
           </section>
 
           <section className={cardClass}>
-            <SectionHeading title="Data integrity" description="Run the full read-only check and review recovery guidance without changing saved records." />
+            <SectionHeading title="Check Your Data" description="Find data problems and see how to fix them. This check will not change your records." />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-600 dark:text-slate-400">
                 {lastIntegrityResult && lastIntegrityResult.businessId === currentBusiness?.businessId
                   ? `Last check: ${lastIntegrityResult.summary.errors} errors, ${lastIntegrityResult.summary.warnings} warnings · ${formatDateTime(lastIntegrityResult.checkedAt)}`
                   : 'No integrity check has been run for this business in this session.'}
               </p>
-              <button type="button" onClick={onOpenIntegrity} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold dark:border-slate-600"><ShieldCheck className="h-4 w-4" /> Open Data Integrity Center</button>
+              <button type="button" onClick={onOpenIntegrity} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold dark:border-slate-600"><ShieldCheck className="h-4 w-4" /> Check Data</button>
             </div>
           </section>
 

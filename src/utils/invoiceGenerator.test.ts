@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { InvoiceSaleDetails } from './invoiceGenerator.ts';
 import {
+  buildInvoiceWhatsAppMessage,
   getInvoiceCustomerContactDetails,
   getInvoiceCustomerDisplayName,
+  getInvoicePaymentStatusLabel,
 } from './invoiceGenerator.ts';
 
 const invoiceDetails: InvoiceSaleDetails = {
@@ -61,4 +63,24 @@ test('invoice contact details wrap long values without exposing a long internal 
 
   assert.deepEqual(getInvoiceCustomerContactDetails(longDetails), [`${'a'.repeat(120)}@example.com`]);
   assert.equal(getInvoiceCustomerDisplayName(longDetails), 'Ada Customer');
+});
+
+test('invoice payment status distinguishes partial, pending, and overdue without inventing due dates', () => {
+  assert.equal(getInvoicePaymentStatusLabel('paid'), 'PAID');
+  assert.equal(getInvoicePaymentStatusLabel('partial'), 'PARTIALLY PAID');
+  assert.equal(getInvoicePaymentStatusLabel('due', undefined, 75, '2026-01-02'), 'PENDING');
+  assert.equal(getInvoicePaymentStatusLabel('due', '2026-01-01', 75, '2026-01-02'), 'OVERDUE');
+  assert.equal(getInvoicePaymentStatusLabel('due', '2026-01-02', 75, '2026-01-02'), 'PENDING');
+});
+
+test('invoice WhatsApp message contains saved totals and does not fabricate a public URL', () => {
+  const message = buildInvoiceWhatsAppMessage(invoiceDetails);
+
+  assert.match(message, /Ada Customer/);
+  assert.match(message, /XolveManager|our business/);
+  assert.match(message, /INV-1/);
+  assert.match(message, /৳/);
+  assert.match(message, /Remaining due:/);
+  assert.match(message, /attach the downloaded invoice file manually/i);
+  assert.doesNotMatch(message, /https?:\/\//);
 });

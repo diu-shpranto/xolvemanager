@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   allocateInitialSalePayment,
   amountToMinorUnits,
+  allocateMinorUnitsInOrder,
   applyAdvanceCreditToSale,
   getCustomerAdvanceCredit,
   getPaymentCashSaleAllocation,
@@ -11,6 +12,7 @@ import {
   getSaleLineAllocations,
   getSalePaidAmount,
   getSalePaymentStatus,
+  isValidPaymentLineAllocation,
   splitPaymentAllocation,
 } from '../src/utils/saleUtils.ts';
 import {
@@ -75,6 +77,40 @@ test('partial payment preserves the remaining due and caps overpayment allocatio
   assert.equal(getSaleDueAmount(sale, [partial]), 90);
   assert.equal(getSalePaymentStatus(sale, [partial]), 'partial');
   assert.deepEqual(allocation, { allocatedAmount: 90, advanceCreditAmount: 60 });
+});
+
+test('combined sale payments allocate in displayed line order and stop at each line balance', () => {
+  assert.deepEqual(allocateMinorUnitsInOrder(50000, [45000, 30000]), [45000, 5000]);
+  assert.deepEqual(allocateMinorUnitsInOrder(30000, [45000, 30000]), [30000, 0]);
+  assert.deepEqual(allocateMinorUnitsInOrder(0, [45000, 30000]), [0, 0]);
+});
+
+test('ordered line payment allocation rejects invalid amounts and totals above line balances', () => {
+  assert.throws(() => allocateMinorUnitsInOrder(-1, [100]), /non-negative minor units/);
+  assert.throws(() => allocateMinorUnitsInOrder(101, [100]), /cannot exceed/);
+  assert.throws(() => allocateMinorUnitsInOrder(1.5, [100]), /non-negative minor units/);
+  assert.throws(() => allocateMinorUnitsInOrder(1, [Number.MAX_SAFE_INTEGER, 1]), /cannot exceed/);
+});
+
+test('service payment allocations support manual partial and full payments within each line balance', () => {
+  assert.equal(isValidPaymentLineAllocation(5000, [7000, 3000], [2000, 3000]), true);
+  assert.equal(isValidPaymentLineAllocation(10000, [7000, 3000], [7000, 3000]), true);
+  assert.equal(isValidPaymentLineAllocation(0, [7000, 3000], [0, 0]), true);
+  assert.equal(isValidPaymentLineAllocation(10000, [7000, 3000], [7001, 2999]), false);
+  assert.equal(isValidPaymentLineAllocation(9000, [7000, 3000], [7000, 3000]), false);
+  assert.equal(isValidPaymentLineAllocation(1000, [7000, 3000], [1000]), false);
+  assert.equal(isValidPaymentLineAllocation(1.5, [7000], [1.5]), false);
+});
+
+test('overpayment stays separate from capped per-service cash allocations', () => {
+  const tender = allocateInitialSalePayment(120, 100);
+  assert.equal(tender.cashApplied, 100);
+  assert.equal(tender.advanceCreditCreated, 20);
+  assert.equal(isValidPaymentLineAllocation(
+    amountToMinorUnits(tender.cashApplied),
+    [6000, 4000],
+    [6000, 4000]
+  ), true);
 });
 
 test('initial checkout calculates unpaid, partial, and exact-payment allocations', () => {

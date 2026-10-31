@@ -177,6 +177,18 @@ test('missing or invalid due dates do not generate overdue amounts', () => {
   assert.equal(summary.customers[0].earliestOverdueDate, undefined);
 });
 
+test('overdue expected payment dates are used when an invoice has no valid due date', () => {
+  const summary = options(
+    [sale('expected-date', customer.id, { expectedPaymentDate: '2026-02-20' })],
+    [],
+    [invoice('invoice-expected-date', 'expected-date')]
+  );
+
+  assert.equal(summary.totalOutstanding, 100);
+  assert.equal(summary.overdueAmount, 100);
+  assert.equal(summary.customers[0].earliestOverdueDate, '2026-02-20');
+});
+
 test('failed, pending, and invalid-date payments are not counted as collections', () => {
   const summary = options(
     [sale('unpaid')],

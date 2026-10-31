@@ -10,6 +10,7 @@ import { resolvePaymentCustomer, resolveSaleCustomer } from './relationships.ts'
 import { convertReportCurrency } from './reportMetrics.ts';
 import {
   getSaleDueAmount,
+  getSaleExpectedPaymentDate,
   getSalePaidAmount,
 } from './saleUtils.ts';
 
@@ -98,6 +99,7 @@ export function buildDueCollectionSummary({
     && Number(sale.amount) > 0
     && sale.paymentStatus !== 'failed'
     && sale.paymentStatus !== 'refunded'
+    && sale.paymentStatus !== 'voided'
     && Boolean(resolveSaleCustomer(sale, customers, subscriptions))
   );
 
@@ -127,9 +129,11 @@ export function buildDueCollectionSummary({
       const invoice = invoiceBySaleId.get(sale.id);
       const paid = getSalePaidAmount(sale, payments);
       const due = getSaleDueAmount(sale, payments);
-      const dueDate = invoice?.customerId === customer.id && validDate(invoice.dueDate)
+      const invoiceDueDate = invoice?.customerId === customer.id && validDate(invoice.dueDate)
         ? invoice.dueDate
         : undefined;
+      const expectedPaymentDate = getSaleExpectedPaymentDate(sale, payments);
+      const dueDate = invoiceDueDate || (validDate(expectedPaymentDate) ? expectedPaymentDate : undefined);
       const overdue = due > 0 && dueDate && dueDate < today ? due : 0;
       if (overdue > 0) overdueAmount += convertReportCurrency(overdue, sale.currency, currency);
       return {
@@ -138,6 +142,7 @@ export function buildDueCollectionSummary({
         charged: Number(sale.amount),
         paid,
         due,
+        dueDate,
         overdue,
       };
     });
@@ -151,8 +156,7 @@ export function buildDueCollectionSummary({
       )
       .sort((left, right) => right.paymentDate.localeCompare(left.paymentDate));
     const overdueDates = openTransactions
-      .map(transaction => transaction.invoice?.customerId === customer.id && validDate(transaction.invoice.dueDate)
-        && transaction.invoice.dueDate < today ? transaction.invoice.dueDate : undefined)
+      .map(transaction => transaction.dueDate && transaction.dueDate < today ? transaction.dueDate : undefined)
       .filter((date): date is string => Boolean(date))
       .sort();
     const totals = transactions.reduce((summary, transaction) => ({

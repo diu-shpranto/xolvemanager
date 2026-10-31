@@ -91,7 +91,7 @@ type DueSort = 'due' | 'oldest' | 'customer';
 const cardClass = 'surface-card p-3 sm:p-4';
 const labelClass = 'text-xs font-medium text-slate-500 dark:text-slate-400';
 const numberClass = 'mt-1 block truncate font-mono text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-white';
-const paymentStatuses: PaymentStatus[] = ['paid', 'partial', 'pending', 'failed', 'refunded'];
+const paymentStatuses: PaymentStatus[] = ['paid', 'partial', 'pending', 'failed', 'refunded', 'voided'];
 
 const normalizeDate = (value?: string): string => value?.slice(0, 10) || '';
 
@@ -507,6 +507,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       && Number.isFinite(Number(sale.amount))
       && sale.paymentStatus !== 'failed'
       && sale.paymentStatus !== 'refunded'
+      && sale.paymentStatus !== 'voided'
       && isWithinDateBounds(normalizeDate(sale.date), bounds)
       && matchesDimensions(sale)
     )
@@ -614,6 +615,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       isWithinDateBounds(normalizeDate(sale.date), comparisonBounds)
       && sale.paymentStatus !== 'failed'
       && sale.paymentStatus !== 'refunded'
+      && sale.paymentStatus !== 'voided'
       && matchesDimensions(sale)
     )
     : [], [businessSales, comparisonBounds, comparisonIsValid, matchesDimensions]);
@@ -903,11 +905,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     isWithinDateBounds(normalizeDate(sale.date), selectedMonthBounds)
     && matchesDimensions(sale)
     && sale.paymentStatus !== 'refunded'
+    && sale.paymentStatus !== 'voided'
   ) : [];
   const previousMonthSales = boundsAreValid ? businessSales.filter(sale =>
     isWithinDateBounds(normalizeDate(sale.date), previousMonthBounds)
     && matchesDimensions(sale)
     && sale.paymentStatus !== 'refunded'
+    && sale.paymentStatus !== 'voided'
   ) : [];
   const monthlyRevenue = calculateSalesFinancialSummary(monthlySales, businessPayments, currency).revenue;
   const previousMonthRevenue = calculateSalesFinancialSummary(previousMonthSales, businessPayments, currency).revenue;
@@ -918,6 +922,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     isWithinDateBounds(normalizeDate(sale.date), selectedDayBounds)
     && matchesDimensions(sale)
     && sale.paymentStatus !== 'refunded'
+    && sale.paymentStatus !== 'voided'
   ) : [];
   const todayPayments = reportPayments.filter(payment =>
     isWithinDateBounds(normalizeDate(payment.paymentDate), selectedDayBounds)
@@ -1074,6 +1079,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const matchedRenewalSales = boundsAreValid ? businessSales.filter(sale =>
     Boolean(sale.renewalOfSubscriptionId)
     && sale.paymentStatus !== 'refunded'
+    && sale.paymentStatus !== 'voided'
     && matchesDimensions(sale)
   ) : [];
   const todayRenewals = matchedRenewalSales.filter(sale => isWithinDateBounds(normalizeDate(sale.date), selectedDayBounds)).length;
@@ -1489,24 +1495,24 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
         <button type="button" onClick={() => onNavigate('reminders')} className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">View Smart Reminders →</button>
       </Section>
-      <Section title="Financial Overview" description={`Cash balances and posted cash flow ${bounds.start} – ${bounds.end}. Internal transfers change account balances but are excluded from net cash flow.`}>
+      <Section title="Money Summary" description={`Account balances and money in and out from ${bounds.start} to ${bounds.end}. Transfers between your accounts are not counted as income or spending.`}>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-          <MetricCard label="Sales Revenue" value={boundsAreValid ? formatCurrency(saleFinancials.revenue, currency) : '—'} tone="green" />
-          <MetricCard label="Customer Payments Received" value={boundsAreValid ? formatCurrency(reportPaymentsPaidTotal, currency) : '—'} tone="blue" />
+          <MetricCard label="Sales Total" value={boundsAreValid ? formatCurrency(saleFinancials.revenue, currency) : '—'} tone="green" />
+          <MetricCard label="Payments Received" value={boundsAreValid ? formatCurrency(reportPaymentsPaidTotal, currency) : '—'} tone="blue" />
           <MetricCard label="Expenses" value={boundsAreValid ? formatCurrency(expenseSummary.total, currency) : '—'} tone="amber" />
-          <MetricCard label="Outstanding Due" value={boundsAreValid ? formatCurrency(saleFinancials.due, currency) : '—'} tone="amber" />
-          <MetricCard label="Business Balance" value={formatCurrency(businessCashBalance, currency)} detail="Across financial accounts" />
-          <MetricCard label="Money In" value={boundsAreValid ? formatCurrency(cashFlowSummary.moneyIn, currency) : '—'} tone="green" detail="Received payments + other income" />
+          <MetricCard label="Money Due" value={boundsAreValid ? formatCurrency(saleFinancials.due, currency) : '—'} tone="amber" />
+          <MetricCard label="All Account Balances" value={formatCurrency(businessCashBalance, currency)} detail="Total across all accounts" />
+          <MetricCard label="Money In" value={boundsAreValid ? formatCurrency(cashFlowSummary.moneyIn, currency) : '—'} tone="green" detail="Payments and other income" />
           <MetricCard label="Money Out" value={boundsAreValid ? formatCurrency(cashFlowSummary.moneyOut, currency) : '—'} tone="amber" detail="Posted expenses" />
-          <MetricCard label="Net Cash Flow" value={boundsAreValid ? formatCurrency(cashFlowSummary.netCashFlow, currency) : '—'} tone="blue" detail="Transfers excluded" />
+          <MetricCard label="Money In Minus Out" value={boundsAreValid ? formatCurrency(cashFlowSummary.netCashFlow, currency) : '—'} tone="blue" detail="Payments received minus money spent" />
           <MetricCard label="Opening Balance" value={accountPeriodSummary.length ? formatCurrency(accountPeriodSummary.reduce((sum, account) => sum + account.openingBalance, 0), currency) : formatCurrency(0, currency)} />
           <MetricCard label="Closing Balance" value={accountPeriodSummary.length ? formatCurrency(accountPeriodSummary.reduce((sum, account) => sum + account.closingBalance, 0), currency) : formatCurrency(0, currency)} />
-          <MetricCard label="Internal Transfers" value={formatCurrency(transferTotal, currency)} detail={`${reportTransfers.length} posted transfers`} />
+          <MetricCard label="Transfers Between Accounts" value={formatCurrency(transferTotal, currency)} detail={`${reportTransfers.length} transfers`} />
         </div>
         <button type="button" onClick={() => onNavigate('cashbook')} className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">View Cashbook →</button>
       </Section>
 
-      <Section title="Receivables Aging" description={`Outstanding sales as of ${bounds.end}. Payments after this date are excluded. Where no invoice due date is stored, sale date is used as the aging date.`}>
+      <Section title="Unpaid Sales by Age" description={`Money due as of ${bounds.end}. Later payments are not included. If an invoice has no due date, the sale date is used.`}>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
           {[
             ['Current', accountingReceivableAging.current],
@@ -1518,21 +1524,21 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           ].map(([label, value]) => <MetricCard key={label} label={label as string} value={boundsAreValid ? formatCurrency(Number(value), currency) : '—'} tone={Number(value) > 0 ? 'amber' : 'slate'} />)}
         </div>
         <div className="data-table-scroll overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700" role="region" aria-label="Receivables report table; scroll horizontally to view all columns" tabIndex={0}>
-          <table className="w-full min-w-[600px] text-left text-xs"><thead className="bg-slate-50 text-[11px] uppercase text-slate-500 dark:bg-slate-800/70 dark:text-slate-400"><tr><th className="px-3 py-2">Customer / Invoice</th><th className="px-3 py-2">Due Date</th><th className="px-3 py-2">Status</th><th className="px-3 py-2 text-right">Total</th><th className="px-3 py-2 text-right">Paid</th><th className="px-3 py-2 text-right">Due</th></tr></thead>
+          <table className="w-full min-w-[600px] text-left text-xs"><thead className="bg-slate-50 text-[11px] uppercase text-slate-500 dark:bg-slate-800/70 dark:text-slate-400"><tr><th className="px-3 py-2">Customer / Invoice</th><th className="px-3 py-2">Due Date</th><th className="px-3 py-2">Status</th><th className="px-3 py-2 text-right">Total</th><th className="px-3 py-2 text-right">Paid</th><th className="px-3 py-2 text-right">Money Due</th></tr></thead>
             <tbody>{accountingReceivableAging.rows.slice(0, 20).map(row => <tr key={row.saleId} className="border-t border-slate-100 dark:border-slate-800"><td className="px-3 py-2.5 font-medium">{row.customerName}<span className="block text-[10px] text-slate-400">{row.invoiceNumber || row.saleId}</span></td><td className="px-3 py-2.5">{formatAppDate(row.dueDate, language)}</td><td className="px-3 py-2.5 capitalize">{row.status === 'overdue' ? `Overdue · ${row.ageDays} days` : row.status}</td><td className="px-3 py-2.5 text-right font-mono tabular-nums">{formatCurrency(row.total, currency)}</td><td className="px-3 py-2.5 text-right font-mono tabular-nums">{formatCurrency(row.paid, currency)}</td><td className="px-3 py-2.5 text-right font-mono font-semibold tabular-nums">{formatCurrency(row.due, currency)}</td></tr>)}
-              {!accountingReceivableAging.rows.length && <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">No outstanding receivables as of this date.</td></tr>}
+              {!accountingReceivableAging.rows.length && <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">No unpaid sales on this date.</td></tr>}
             </tbody>
           </table>
         </div>
       </Section>
 
       <Section
-        title="Profit Analytics"
-        description={`Actual account-cost snapshots and explicitly sale-linked direct costs for ${bounds.start} – ${bounds.end}. Gross sales use sale totals; payment receipts are not counted again. Unknown costs are not replaced with plan estimates.`}
+        title="Profit"
+        description={`Shows saved account costs and costs linked to sales from ${bounds.start} to ${bounds.end}. Sales and payments are shown separately. Unknown costs are not estimated.`}
       >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <MetricCard label="Gross Sales" value={boundsAreValid && actualProfitability ? formatCurrency(actualProfitability.grossSales, currency) : '—'} tone="green" detail="Eligible sale totals; separate from payment receipts." />
-          <MetricCard label="Actual Allocated Cost" value={boundsAreValid && actualProfitability ? formatCurrency(actualProfitability.actualAllocatedCost, currency) : '—'} tone="amber" detail={`Known account and sale-linked costs; ${actualProfitability?.unknownCostSales || 0} unknown-cost sale(s) excluded.`} />
+          <MetricCard label="Sales Total" value={boundsAreValid && actualProfitability ? formatCurrency(actualProfitability.grossSales, currency) : '—'} tone="green" detail="Does not include payments again." />
+          <MetricCard label="Known Costs" value={boundsAreValid && actualProfitability ? formatCurrency(actualProfitability.actualAllocatedCost, currency) : '—'} tone="amber" detail={`${actualProfitability?.unknownCostSales || 0} sales with unknown costs are not included.`} />
           <MetricCard label="Gross Profit" value={!boundsAreValid || !actualProfitability ? '—' : actualProfitability.grossProfit === null ? 'Unavailable' : formatCurrency(actualProfitability.grossProfit, currency)} tone="blue" detail={actualProfitability?.unknownCostSales ? `${actualProfitability.unknownCostSales} sale(s) have unknown cost.` : 'Gross sales less actual costs, before refunds and adjustments.'} />
           <MetricCard label="Refunds & Adjustments" value={boundsAreValid && actualProfitability ? formatCurrency(actualProfitability.refunds + actualProfitability.adjustments, currency) : '—'} tone="amber" detail={actualProfitability ? `Refunds ${formatCurrency(actualProfitability.refunds, currency)} · adjustments ${formatCurrency(actualProfitability.adjustments, currency)}` : 'Recorded values only.'} />
           <MetricCard label="Net Profit" value="Unavailable" tone="blue" detail="Operating expenses are not fully reconciled to sales." />
@@ -1721,6 +1727,20 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <h2 className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
             {hasFilters ? 'No results found.' : 'No data available for this period.'}
           </h2>
+          {!hasFilters && (
+            <>
+              <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-slate-500 dark:text-slate-400">
+                Record sales, payments, or expenses to see real activity in your reports.
+              </p>
+              <button
+                type="button"
+                onClick={() => onNavigate('sales')}
+                className="mt-3 inline-flex min-h-9 items-center rounded-lg px-3 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40"
+              >
+                Open sales
+              </button>
+            </>
+          )}
           {hasFilters && <button type="button" onClick={clearFilters} className="mt-3 text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">Clear filters</button>}
         </div>
       )}
@@ -2047,14 +2067,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </Section>
 
           <div className="grid min-w-0 gap-4 xl:grid-cols-2">
-            <Section title="Daily Closing Analytics" description="Reconciliation snapshots are read-only here; reports never create or change closing records.">
+            <Section title="Daily Totals Check" description="Compare saved daily totals with your records. This report does not change your saved totals.">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <MetricCard label="Days Closed" value={closedDates.size} tone="green" />
-                <MetricCard label="Activity Days Not Closed" value={[...closingActivityDates].filter(date => !closedDates.has(date)).length} />
-                <MetricCard label="Days With Mismatch" value={closingMismatches.length} tone={closingMismatches.length ? 'amber' : 'slate'} />
+                <MetricCard label="Days Not Closed" value={[...closingActivityDates].filter(date => !closedDates.has(date)).length} />
+                <MetricCard label="Days With Different Totals" value={closingMismatches.length} tone={closingMismatches.length ? 'amber' : 'slate'} />
                 <MetricCard label="Expected Total" value={formatCurrency(dailyClosingTotals.expected, currency)} />
                 <MetricCard label="Actual Total" value={formatCurrency(dailyClosingTotals.actual, currency)} />
-                <MetricCard label="Total Difference" value={formatCurrency(dailyClosingTotals.difference, currency)} tone={dailyClosingTotals.difference ? 'amber' : 'green'} />
+                <MetricCard label="Total Mismatch" value={formatCurrency(dailyClosingTotals.difference, currency)} tone={dailyClosingTotals.difference ? 'amber' : 'green'} />
               </div>
               {closingRows.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No daily closing records for this period.</p> : (
                 <div className="data-table-scroll max-h-[420px] w-full min-w-0 max-w-full overflow-auto" role="region" aria-label="Daily closing records table; scroll to view all records and columns" tabIndex={0}>
