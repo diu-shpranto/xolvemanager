@@ -105,7 +105,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   const { showToast } = useToast();
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection ?? 'business');
   const [draft, setDraft] = useState<AppSettings>(settings);
+  const [validationError, setValidationError] = useState('');
   const savedSettingsSnapshot = useRef(stableSerialize(settings));
+  const validationErrorRef = useRef<HTMLParagraphElement>(null);
   const [customMethod, setCustomMethod] = useState('');
   const [newExpenseCategory, setNewExpenseCategory] = useState('');
   const [newIncomeCategory, setNewIncomeCategory] = useState('');
@@ -298,24 +300,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
 
   const saveSettings = async (event: React.FormEvent) => {
     event.preventDefault();
+    setValidationError('');
+    const reportValidationError = (message: string, section: SettingsSection) => {
+      setValidationError(message);
+      setActiveSection(section);
+      showToast(message, 'error');
+      window.requestAnimationFrame(() => validationErrorRef.current?.focus());
+    };
     const name = draft.storeName.trim();
     if (name.length < 2 || name.length > 80) {
-      showToast('Business name must be between 2 and 80 characters.', 'error');
-      setActiveSection('business');
+      reportValidationError('Business name must be between 2 and 80 characters.', 'business');
       return;
     }
     const configuredPaymentMethodNames = normalizePaymentMethods(draft.paymentPreferences?.methods)
       .map(method => method.name.trim().toLocaleLowerCase());
     if (new Set(configuredPaymentMethodNames).size !== configuredPaymentMethodNames.length) {
-      showToast('Payment method names must be unique.', 'error');
-      setActiveSection('payments');
+      reportValidationError('Payment method names must be unique.', 'payments');
       return;
     }
     const invalidMethodMapping = normalizePaymentMethods(draft.paymentPreferences?.methods)
       .some(method => method.financialAccountId && !financialAccounts.some(account => account.id === method.financialAccountId));
     if (invalidMethodMapping) {
-      showToast('A payment method is mapped to an unavailable financial account.', 'error');
-      setActiveSection('payments');
+      reportValidationError('A payment method is mapped to an unavailable financial account.', 'payments');
       return;
     }
     const categorySets = [expenseCategories, incomeCategories];
@@ -323,8 +329,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
       const names = categories.map(category => category.name.trim().toLocaleLowerCase());
       return categories.some(category => !category.name.trim()) || new Set(names).size !== names.length;
     })) {
-      showToast('Financial categories must have unique, non-empty names.', 'error');
-      setActiveSection('payments');
+      reportValidationError('Financial categories must have unique, non-empty names.', 'payments');
       return;
     }
     try {
@@ -1369,14 +1374,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
         <button type="button" onClick={openGettingStarted} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
           <Sparkles className="h-4 w-4" /> Getting started
         </button>
-        {!['data', 'about'].includes(activeSection) && <button form="settings-form" type="submit" className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"><Save className="h-4 w-4" /> Save changes</button>}
+        {!['data', 'about'].includes(activeSection) && <button form="settings-form" type="submit" className="settings-save-button inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"><Save className="h-4 w-4" /> Save changes</button>}
       </div>
     </header>
     <div className="grid gap-5 lg:grid-cols-[230px_minmax(0,1fr)]">
-      <nav aria-label="Settings sections" className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
-        {sections.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => setActiveSection(id)} aria-current={activeSection === id ? 'page' : undefined} className={`flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors ${activeSection === id ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'}`}><Icon className="h-4 w-4" />{label}</button>)}
+      <nav aria-label="Settings sections" className="settings-section-nav flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
+        {sections.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => { setValidationError(''); setActiveSection(id); }} aria-current={activeSection === id ? 'page' : undefined} className={`flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors ${activeSection === id ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'}`}><Icon className="h-4 w-4" />{label}</button>)}
       </nav>
-      <form id="settings-form" onSubmit={saveSettings} className="min-w-0 space-y-4">
+      <form id="settings-form" onSubmit={saveSettings} onInputCapture={() => setValidationError('')} className="settings-form min-w-0 space-y-4">
+        {validationError && <p ref={validationErrorRef} tabIndex={-1} role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 outline-none focus-visible:ring-2 focus-visible:ring-rose-500 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">{validationError}</p>}
         <div className="flex items-center gap-2 text-xs text-slate-500"><Check className="h-4 w-4 text-emerald-600" />{active.label}</div>
         {renderContent()}
       </form>

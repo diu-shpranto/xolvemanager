@@ -996,6 +996,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       <div className="hidden xl:block bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
         <div className="data-table-scroll sales-table-scroll overflow-x-auto" role="region" aria-label="Sales table; scroll horizontally to view all columns" tabIndex={0}>
           <table className="w-full min-w-[1120px] whitespace-nowrap text-left border-collapse text-xs">
+            <caption className="sr-only">Sales</caption>
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 <th className="py-3 px-4">Sale</th>

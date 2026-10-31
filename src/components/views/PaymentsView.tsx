@@ -1220,6 +1220,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           <section aria-label="Due collection customers" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
             <div className="data-table-scroll hidden overflow-x-auto lg:block" role="region" aria-label="Due collection table" tabIndex={0}>
               <table className="w-full min-w-[1120px] text-left text-xs">
+                <caption className="sr-only">Payments awaiting collection</caption>
                 <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
                   <tr>
                     <th className="px-3 py-3">Customer / Reseller</th>
@@ -1462,13 +1463,13 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             </select>
           </label>}
           {selectedDate === 'custom' && <div className="grid grid-cols-2 gap-2 sm:col-span-2">
-            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">From<input type="date" value={customStart} onChange={event => setCustomStart(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
-            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">To<input type="date" value={customEnd} onChange={event => setCustomEnd(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">From<input type="date" value={customStart} aria-invalid={!validCustomRange} aria-describedby={!validCustomRange ? 'payment-custom-range-error' : undefined} onChange={event => setCustomStart(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">To<input type="date" value={customEnd} aria-invalid={!validCustomRange} aria-describedby={!validCustomRange ? 'payment-custom-range-error' : undefined} onChange={event => setCustomEnd(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
           </div>}
           <div className="flex items-end justify-end gap-3 text-xs text-slate-500 sm:col-span-2 lg:col-span-4">
             {activeFilterCount > 0 && <button type="button" onClick={resetPaymentFilters} className="font-semibold text-violet-700 hover:underline dark:text-violet-300">Clear filters</button>}
           </div>
-          {!validCustomRange && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300 sm:col-span-2 lg:col-span-4">Enter a valid custom date range.</p>}
+          {!validCustomRange && <p id="payment-custom-range-error" role="alert" className="text-xs text-rose-700 dark:text-rose-300 sm:col-span-2 lg:col-span-4">Enter a valid custom date range.</p>}
         </div>}
       </section>
 
@@ -1476,6 +1477,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         <section aria-label="Payments table" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
           <div className="data-table-scroll hidden overflow-x-auto lg:block" role="region" aria-label="Payments table; scroll horizontally to view all columns" tabIndex={0}>
             <table className="w-full min-w-[980px] text-left text-xs">
+              <caption className="sr-only">Payment history</caption>
               <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
                 <tr><th className="px-3 py-3">Payment</th><th className="px-3 py-3">Date</th><th className="px-3 py-3">Customer</th><th className="px-3 py-3">Invoice / Sale</th><th className="px-3 py-3">Service</th><th className="px-3 py-3">Method</th><th className="px-3 py-3">Amount</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Transaction</th><th className="px-3 py-3">Actions</th></tr>
               </thead>
@@ -1523,6 +1525,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         <section aria-label="Unpaid sales" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
           <div className="data-table-scroll hidden overflow-x-auto lg:block" role="region" aria-label="Unpaid sales table; scroll to see all columns" tabIndex={0}>
             <table className="w-full min-w-[850px] text-left text-xs">
+              <caption className="sr-only">Outstanding sales</caption>
               <thead className="bg-violet-50/60 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-violet-950/20 dark:text-slate-400"><tr><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Invoice / Sale</th><th className="px-4 py-3">Service</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Paid</th><th className="px-4 py-3">Due</th><th className="px-4 py-3">Last payment</th><th className="px-4 py-3">Days unpaid</th><th className="px-4 py-3">Actions</th></tr></thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {pageOutstanding.map(({ sale, invoice, due, paid, lastPayment, dueReferenceDate }) => {
