@@ -1,8 +1,8 @@
 {
   "name": "XolveManager",
   "short_name": "XolveManager",
-  "description": "Business management dashboard for customer records, subscriptions, sales, payments, service accounts, renewals, notifications, and reports.",
-  "start_url": "/",
+  "description": "Local-first business records for customers, subscriptions, sales, invoices, and payment tracking.",
+  "start_url": "/login",
   "scope": "/",
   "display": "standalone",
   "theme_color": "#380759",

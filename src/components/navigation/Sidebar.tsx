@@ -17,6 +17,7 @@ import {
   Settings,
   ShieldCheck,
   Database,
+  CircleHelp,
   Bell,
   BellRing,
   Sun,
@@ -45,6 +46,7 @@ export type NavSection =
   | 'profitability'
   | 'reports'
   | 'settings'
+  | 'help'
   | 'notifications'
   | 'reminders'
   | 'search';
@@ -201,6 +203,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'settings' as NavSection,
       label: t('nav_settings'),
       icon: Settings,
+      badge: null,
+    },
+    {
+      id: 'help' as NavSection,
+      label: language === 'bn' ? 'সহায়তা কেন্দ্র' : 'Help Center',
+      icon: CircleHelp,
       badge: null,
     },
   ];
@@ -363,8 +371,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               items: navItems.filter(item => ['history', 'profitability', 'reports', 'notifications', 'reminders', 'data-integrity'].includes(item.id)),
             },
             {
-              label: language === 'bn' ? 'পছন্দসমূহ' : 'Settings',
-              items: navItems.filter(item => item.id === 'settings'),
+              label: language === 'bn' ? 'সহায়তা ও পছন্দসমূহ' : 'Help & Settings',
+              items: navItems.filter(item => item.id === 'help' || item.id === 'settings'),
             },
           ].map(group => (
             <section key={group.label} aria-label={group.label}>

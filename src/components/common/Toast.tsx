@@ -70,10 +70,10 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
             <button
               type="button"
               onClick={() => removeToast(toast.id)}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-violet-500 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              className="icon-button shrink-0 text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200"
               aria-label="Dismiss notification"
             >
-              <X className="w-4 h-4" />
+              <X className="h-4 w-4" />
             </button>
           </div>
         ))}

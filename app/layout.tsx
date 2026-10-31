@@ -1,18 +1,21 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { productBrand } from '../src/config/brand';
+import { SITE_ORIGIN } from '../src/config/seo';
 import './globals.css';
 
-const productTitle = productBrand.name;
-const productDescription = 'XolveManager is a business management dashboard for customer records, subscriptions, sales, payments, service accounts, renewals, notifications, and reports.';
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-const metadataBase = siteUrl ? new URL(siteUrl) : undefined;
+const productTitle = `${productBrand.name} | Local-First Business Management`;
+const productDescription = 'Manage customer records, service plans, subscriptions, sales, invoices, and payment history in a local-first business workspace.';
+const metadataBase = new URL(SITE_ORIGIN);
 
 export const metadata: Metadata = {
-  title: productTitle,
+  title: {
+    default: productTitle,
+    template: `%s | ${productBrand.name}`,
+  },
   description: productDescription,
   applicationName: productBrand.shortName,
-  ...(metadataBase ? { metadataBase } : {}),
+  metadataBase,
   manifest: '/manifest.webmanifest',
   robots: {
     index: false,
@@ -35,20 +38,18 @@ export const metadata: Metadata = {
     description: productDescription,
     type: 'website',
     siteName: productBrand.name,
-    ...(metadataBase ? {
-      images: [{
-        url: '/xolvemanager-social.png',
-        width: 1200,
-        height: 630,
-        alt: 'XolveManager — Business, in better focus',
-      }],
-    } : {}),
+    images: [{
+      url: '/xolvemanager-social.png',
+      width: 1200,
+      height: 630,
+      alt: 'XolveManager — business management software',
+    }],
   },
   twitter: {
-    card: metadataBase ? 'summary_large_image' : 'summary',
+    card: 'summary_large_image',
     title: productTitle,
     description: productDescription,
-    ...(metadataBase ? { images: ['/xolvemanager-social.png'] } : {}),
+    images: ['/xolvemanager-social.png'],
   },
 };
 

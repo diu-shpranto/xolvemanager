@@ -82,6 +82,7 @@ import type {
   Sale,
   Subscription,
   PaymentMethod,
+  AppCurrency,
 } from '../../types';
 import {
   dashboardPanelWidgetIds,
@@ -126,6 +127,7 @@ import { runFinancialIntegrityCheck } from '../../utils/accountingControls';
 interface DashboardViewProps {
   onNavigate: (section: NavSection, targetId?: string) => void;
   onRequestCreate: (section: 'customers' | 'services' | 'accounts' | 'payments') => void;
+  onCreateReceivingAccount: (currency: AppCurrency) => void;
   onOpenNewSale: (customerId?: string, serviceId?: string) => void;
   onSelectCustomer: (customerId: string) => void;
   onRenewSubscription: (sub: Subscription) => void;
@@ -170,6 +172,25 @@ function DashboardPanel({
   );
 }
 
+function DashboardEmptyState({
+  message,
+  actionLabel,
+  onAction,
+}: {
+  message: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
+  return (
+    <div className="dashboard-empty-state">
+      <span>{message}</span>
+      <button type="button" onClick={onAction} className="dashboard-empty-action">
+        {actionLabel}<ArrowUpRight aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 function DashboardMetric({
   label,
   value,
@@ -200,6 +221,42 @@ function DashboardMetric({
     : <div className={`${dashboardPanelClass} dashboard-metric min-w-0`}>{content}</div>;
 }
 
+function DashboardCountUp({
+  value,
+  formatValue,
+  prefersReducedMotion,
+}: {
+  value: number;
+  formatValue: (value: number) => string;
+  prefersReducedMotion: boolean;
+}) {
+  const [displayValue, setDisplayValue] = useState(value);
+
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      setDisplayValue(value);
+      return;
+    }
+
+    let startTime: number | undefined;
+    let frame = 0;
+    const duration = 550;
+    const animate = (timestamp: number) => {
+      startTime ??= timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      const easedProgress = 1 - (1 - progress) ** 3;
+      setDisplayValue(value * easedProgress);
+      if (progress < 1) frame = window.requestAnimationFrame(animate);
+    };
+
+    setDisplayValue(0);
+    frame = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frame);
+  }, [prefersReducedMotion, value]);
+
+  return <>{formatValue(displayValue)}</>;
+}
+
 function PaymentStatusBadge({ status }: { status: string }) {
   const className = status === 'paid'
     ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
@@ -215,6 +272,7 @@ function PaymentStatusBadge({ status }: { status: string }) {
 export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigate,
   onRequestCreate,
+  onCreateReceivingAccount,
   onOpenNewSale,
   onSelectCustomer,
   onRenewSubscription,
@@ -277,6 +335,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     businessId: string;
     started: boolean;
     dismissed: boolean;
+    completed?: boolean;
     open: boolean;
   } | null>(null);
   useEffect(() => {
@@ -414,31 +473,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     item.businessId === currentBusiness?.businessId
   ), [dailyClosings, currentBusiness?.businessId]);
   const gettingStartedBusinessId = currentBusiness?.businessId || 'default';
-  const hasWorkspaceRecords = [
-    scopedCustomers,
-    scopedServices,
-    scopedAccounts,
-    scopedSubscriptions,
-    scopedSales,
-    scopedPayments,
-    scopedInvoices,
-    scopedOrders,
-    scopedFinancialAccounts,
-    scopedExpenses,
-    scopedOtherIncome,
-    scopedFinancialTransfers,
-    scopedFinancialAdjustments,
-    scopedReconciliations,
-    scopedFinancialPeriods,
-    scopedDailyClosings,
-  ].some(records => records.length > 0);
+  const hasEssentialSetup = scopedCustomers.length > 0
+    && scopedServices.length > 0
+    && scopedSales.length > 0;
+  const essentialStepsCompleted = [
+    scopedCustomers.length > 0,
+    scopedServices.length > 0,
+    scopedSales.length > 0,
+  ].filter(Boolean).length;
   useEffect(() => {
-    if (!currentUser || currentUser.isDemo || dashboardDataLoading
+    if (!currentUser || dashboardDataLoading
       || gettingStartedState?.businessId === gettingStartedBusinessId) return;
 
     const savedState = getGettingStartedState(gettingStartedBusinessId);
-    const nextState = savedState || getInitialGettingStartedState(hasWorkspaceRecords);
-    if (!savedState && nextState.started) {
+    let nextState = savedState || getInitialGettingStartedState(hasEssentialSetup);
+    if (hasEssentialSetup && !nextState.completed) {
+      nextState = { ...nextState, started: false, dismissed: false, completed: true };
+    } else if (!hasEssentialSetup && !nextState.completed) {
+      nextState = { ...nextState, started: true, dismissed: false };
+    }
+    if (!savedState || nextState !== savedState) {
       try {
         saveGettingStartedState(nextState, gettingStartedBusinessId);
       } catch (error) {
@@ -461,14 +515,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     dashboardDataLoading,
     gettingStartedBusinessId,
     gettingStartedState?.businessId,
-    hasWorkspaceRecords,
+    hasEssentialSetup,
     currentUser?.uid,
     currentUser?.isDemo,
     language,
     showToast,
   ]);
   const setGettingStartedVisibility = (open: boolean) => {
-    const nextState = { started: true, dismissed: !open };
+    const nextState = {
+      started: true,
+      dismissed: !open,
+      completed: gettingStartedState?.completed ?? hasEssentialSetup,
+    };
     setGettingStartedState({
       businessId: gettingStartedBusinessId,
       ...nextState,
@@ -1554,17 +1612,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     dateRange: 'তারিখের সীমা',
     addSale: 'নতুন বিক্রয়',
     receivedRevenue: 'প্রাপ্ত আয়',
-    receivedContext: 'নির্বাচিত সময়ে আদায়',
     customers: 'গ্রাহক',
     activeSubscriptions: 'সক্রিয় সাবস্ক্রিপশন',
     outstanding: 'বকেয়া',
-    currentDueContext: 'সব বিক্রয়ের বর্তমান বকেয়া',
-    advanceCreditContext: 'গ্রাহকদের অব্যবহৃত অগ্রিম ক্রেডিট',
     overdueInvoices: 'মেয়াদোত্তীর্ণ ইনভয়েস',
-    overdueInvoicesContext: 'নির্ধারিত তারিখ পেরিয়েছে, এখনো বকেয়া',
-    activeRecords: 'সক্রিয় রেকর্ড',
-    currentStatus: 'বর্তমান অবস্থা',
-    withinDays: (days: number) => `${formatNumber(days)} দিনের মধ্যে`,
     quickActions: 'দ্রুত কাজ',
     commonTasks: 'নিয়মিত কাজ',
     addCustomer: 'গ্রাহক যোগ',
@@ -1609,17 +1660,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     dateRange: 'Date range',
     addSale: 'Add Sale',
     receivedRevenue: 'Money received',
-    receivedContext: 'Payments received in this period',
     customers: 'Customers',
     activeSubscriptions: 'Active plans',
     outstanding: 'Money due',
-    currentDueContext: 'Current due across all sales',
-    advanceCreditContext: 'Unused customer advance credit',
     overdueInvoices: 'Overdue invoices',
-    overdueInvoicesContext: 'Past due date and still unpaid',
-    activeRecords: 'Active customers',
-    currentStatus: 'Active now',
-    withinDays: (days: number) => `In the next ${formatNumber(days)} days`,
     quickActions: 'Quick actions',
     commonTasks: 'Common tasks',
     addCustomer: 'Add Customer',
@@ -1658,6 +1702,275 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     moreReportsDescription: 'See accounts, money in and out, payments, and customers',
     advancedReports: 'Recurring income and renewals',
     advancedReportsDescription: 'See monthly income, plans, and expected payments',
+  };
+  const reportCopy = language === 'bn' ? {
+    moneySummary: 'আর্থিক সারসংক্ষেপ',
+    currentBalances: 'বর্তমান ব্যালেন্স · নির্বাচিত সময়ের আয় ও ব্যয়',
+    moneyRecords: 'আর্থিক রেকর্ড',
+    totalBalance: 'মোট ব্যালেন্স',
+    allAccountBalances: 'সব অ্যাকাউন্টের অর্থ',
+    moneyIn: 'অর্থ জমা',
+    incomeSources: 'পেমেন্ট ও অন্যান্য আয়',
+    moneyOut: 'অর্থ খরচ',
+    expenseSources: 'খরচ ও ফেরত',
+    today: 'আজ',
+    thisMonth: 'এই মাসে',
+    viewLedger: 'লেজার দেখুন',
+    accountingStatus: 'হিসাবের অবস্থা',
+    reconciliation: 'হিসাব মিল',
+    accountDifferences: (count: number) => `${formatNumber(count)}টি অ্যাকাউন্টে অমিল`,
+    noDifferences: 'কোনো অমিল পাওয়া যায়নি',
+    dataIntegrity: 'তথ্যের অখণ্ডতা',
+    financialErrors: (count: number) => `${formatNumber(count)}টি আর্থিক সমস্যা পর্যালোচনা করুন`,
+    storageWarningReview: 'স্টোরেজ সতর্কতা পর্যালোচনা করুন',
+    dailyClosing: 'দৈনিক হিসাব বন্ধ',
+    closedMatched: 'বন্ধ · মিলেছে',
+    difference: (amount: string) => `পার্থক্য ${amount}`,
+    notClosedToday: 'আজ হিসাব বন্ধ হয়নি',
+    financialPeriod: 'আর্থিক সময়কাল',
+    closed: 'বন্ধ',
+    open: 'চলমান',
+    receivable: 'পাওনা',
+    paymentMethods: 'পেমেন্টের মাধ্যম',
+    receivedPayments: 'গৃহীত পেমেন্ট',
+    paymentCount: (count: number) => `${formatNumber(count)}টি পেমেন্ট`,
+    noReceivedPayments: 'এই তারিখের সীমায় কোনো পেমেন্ট পাওয়া যায়নি।',
+    viewPayments: 'পেমেন্ট দেখুন',
+    expenses: 'খরচ',
+    recordedExpenses: 'ক্যাশবুকে নথিভুক্ত খরচ',
+    totalExpenses: 'মোট খরচ',
+    expenseCount: 'খরচের সংখ্যা',
+    noExpenses: 'এই তারিখের সীমায় কোনো খরচ নেই।',
+    viewCashbook: 'ক্যাশবুক দেখুন',
+    salesPaymentsOverview: 'বিক্রয় ও পেমেন্টের সারসংক্ষেপ',
+    viewReports: 'প্রতিবেদন দেখুন',
+    salesDateExplanation: 'বিক্রয়ের তারিখ অনুযায়ী বিক্রয়মূল্য; পেমেন্টের তারিখ অনুযায়ী প্রকৃত আদায় ·',
+    daily: 'দৈনিক',
+    weekly: 'সাপ্তাহিক',
+    monthly: 'মাসিক',
+    salesValueBySaleDate: 'বিক্রয়ের তারিখে বিক্রয়মূল্য',
+    collectedByPaymentDate: 'পেমেন্টের তারিখে প্রকৃত আদায়',
+    cashFlowTrend: 'নগদ প্রবাহের ধারা',
+    cashFlowDescription: 'লেজারের জমা, খরচ ও নিট নগদ প্রবাহ',
+    noCashFlow: 'এই তারিখের সীমায় কোনো নগদ প্রবাহের এন্ট্রি নেই।',
+    internalTransfersExcluded: 'এই সময়ে জমা ছিল {in}, খরচ ছিল {out}, এবং নিট নগদ প্রবাহ ছিল {net}। অভ্যন্তরীণ স্থানান্তর অন্তর্ভুক্ত নয়।',
+    recentSales: 'সাম্প্রতিক বিক্রয়',
+    viewAllSales: 'সব বিক্রয় দেখুন',
+    date: 'তারিখ',
+    customer: 'গ্রাহক',
+    servicePlan: 'সার্ভিস / প্ল্যান',
+    amount: 'পরিমাণ',
+    paid: 'পরিশোধিত',
+    due: 'বকেয়া',
+    status: 'অবস্থা',
+    actions: 'কাজ',
+    view: 'দেখুন',
+    invoice: 'ইনভয়েস',
+    viewSale: 'বিক্রয় দেখুন',
+    paidDue: 'পরিশোধিত',
+    recentPayments: 'সাম্প্রতিক পেমেন্ট',
+    viewAllPayments: 'সব পেমেন্ট দেখুন',
+    viewPayment: 'পেমেন্ট দেখুন',
+    recentExpenses: 'সাম্প্রতিক খরচ',
+    activeSubscriptions: 'সক্রিয় সাবস্ক্রিপশন',
+    viewAll: 'সব দেখুন',
+    started: 'শুরু',
+    expires: 'মেয়াদ শেষ',
+    endingSoon: 'শিগগির মেয়াদ শেষ',
+    reminderRule: (days: number) => `বর্তমান ${formatNumber(days)} দিনের রিমাইন্ডার নিয়ম অনুযায়ী।`,
+    viewSubscriptions: 'সাবস্ক্রিপশন দেখুন',
+    daysLeft: (days: number) => `${formatNumber(days)} দিন বাকি`,
+    whatsapp: 'হোয়াটসঅ্যাপ',
+    renew: 'নবায়ন',
+    outstandingPayments: 'বকেয়া পেমেন্ট',
+    filteredSalesDue: 'ফিল্টার করা বিক্রয়ের মোট বকেয়া',
+    highestDue: 'সর্বোচ্চ বকেয়া',
+    oldestSale: 'পুরোনো বিক্রয়',
+    noOutstanding: 'কোনো বকেয়া নেই।',
+    plansToRenew: 'নবায়নযোগ্য প্ল্যান',
+    topServices: 'শীর্ষ সার্ভিস',
+    viewServices: 'সার্ভিস দেখুন',
+    salesActiveCustomers: (sales: number, active: number, customers: number) => `${formatNumber(sales)}টি বিক্রয় · ${formatNumber(active)}টি সক্রিয় · ${formatNumber(customers)} জন গ্রাহক`,
+    salesAndActiveCount: (sales: number, active: number) => `${formatNumber(sales)}টি বিক্রয় · ${formatNumber(active)}টি সক্রিয়`,
+    received: 'আদায়',
+    salesValue: 'বিক্রয়মূল্য',
+    topCustomers: 'শীর্ষ গ্রাহক',
+    viewCustomers: 'গ্রাহক দেখুন',
+    totalCustomers: 'মোট গ্রাহক',
+    newInPeriod: 'সময়ে নতুন',
+    repeatInPeriod: 'সময়ে পুনরায়',
+    repeatCustomerHint: '২ বা তার বেশি বিক্রয়',
+    withDue: 'বকেয়াসহ',
+    withAdvanceCredit: 'অগ্রিম ক্রেডিটসহ',
+    customersSpent: 'ব্যয়',
+    invoices: 'ইনভয়েস',
+    viewAllInvoices: 'সব ইনভয়েস দেখুন',
+    totalInvoices: 'মোট ইনভয়েস',
+    pending: 'অপেক্ষমাণ',
+    invoicesWithDue: 'বকেয়াসহ ইনভয়েস',
+    totalMoneyDue: 'মোট বকেয়া অর্থ',
+    reminders: 'রিমাইন্ডার',
+    overdue: 'মেয়াদ পেরিয়েছে',
+    dueToday: 'আজ বকেয়া',
+    upcomingThisWeek: 'এই সপ্তাহে আসছে',
+    recentActivity: 'সাম্প্রতিক কার্যকলাপ',
+    viewAllActivity: 'সব কার্যকলাপ দেখুন',
+    todayPreset: 'আজ',
+    last7Days: 'গত ৭ দিন',
+    last30Days: 'গত ৩০ দিন',
+    thisWeek: 'এই সপ্তাহ',
+    lastWeek: 'গত সপ্তাহ',
+    thisMonthPreset: 'এই মাস',
+    lastMonth: 'গত মাস',
+    thisYear: 'এই বছর',
+    allTime: 'সব সময়',
+    customRange: 'নিজস্ব সময়সীমা',
+    todayDueCount: (count: number) => `${formatNumber(count)}টি আজ বকেয়া`,
+    upcomingCount: (count: number) => `${formatNumber(count)}টি এই সপ্তাহে আসছে`,
+    expiredDays: (days: number) => `${formatDurationDays(days)} মেয়াদ পেরিয়েছে`,
+    expiresToday: 'আজ মেয়াদ শেষ',
+    remainingDays: (days: number) => `${formatDurationDays(days)} বাকি`,
+    dueForDays: (days: number) => `${formatNumber(days)} দিন ধরে বকেয়া`,
+    total: 'মোট',
+    viewSaleAddPayment: 'বিক্রয় দেখুন / পেমেন্ট যোগ',
+    viewCustomer: 'গ্রাহক দেখুন',
+    whatsappReminder: 'হোয়াটসঅ্যাপ রিমাইন্ডার',
+    noRecentActivity: 'এখনও কোনো কার্যকলাপ নেই।',
+    activityDetails: 'কার্যকলাপের বিবরণ',
+  } : {
+    moneySummary: 'Money Summary',
+    currentBalances: 'Current balances · Money in and out',
+    moneyRecords: 'Money Records',
+    totalBalance: 'Total Balance',
+    allAccountBalances: 'Money in all accounts',
+    moneyIn: 'Money In',
+    incomeSources: 'Payments and other income',
+    moneyOut: 'Money Out',
+    expenseSources: 'Expenses and refunds',
+    today: 'Today',
+    thisMonth: 'This month',
+    viewLedger: 'View Ledger',
+    accountingStatus: 'Accounting control status',
+    reconciliation: 'Reconciliation',
+    accountDifferences: (count: number) => `${formatNumber(count)} account difference${count === 1 ? '' : 's'}`,
+    noDifferences: 'No known differences',
+    dataIntegrity: 'Data Integrity',
+    financialErrors: (count: number) => `${formatNumber(count)} financial error${count === 1 ? '' : 's'} to review`,
+    storageWarningReview: 'Storage warning to review',
+    dailyClosing: 'Daily Closing',
+    closedMatched: 'Closed · Matched',
+    difference: (amount: string) => `Difference ${amount}`,
+    notClosedToday: 'Not closed today',
+    financialPeriod: 'Financial Period',
+    closed: 'Closed',
+    open: 'Open',
+    receivable: 'Receivable',
+    paymentMethods: 'Payment Methods',
+    receivedPayments: 'Received payments',
+    paymentCount: (count: number) => `${formatNumber(count)} payments`,
+    noReceivedPayments: 'No received payments in this date range.',
+    viewPayments: 'View Payments',
+    expenses: 'Expenses',
+    recordedExpenses: 'Recorded Cashbook expenses',
+    totalExpenses: 'Total Expenses',
+    expenseCount: 'Number of Expenses',
+    noExpenses: 'No expenses in this date range.',
+    viewCashbook: 'View Cashbook',
+    salesPaymentsOverview: 'Sales and Payments Overview',
+    viewReports: 'View Reports',
+    salesDateExplanation: 'Sales value by sale date; actual cash collected by payment date ·',
+    daily: 'Daily',
+    weekly: 'Weekly',
+    monthly: 'Monthly',
+    salesValueBySaleDate: 'Sales value (sale date)',
+    collectedByPaymentDate: 'Actual cash collected (payment date)',
+    cashFlowTrend: 'Cash Flow Trend',
+    cashFlowDescription: 'Ledger money in, money out, and net cash flow',
+    noCashFlow: 'No cash flow entries in this date range.',
+    internalTransfersExcluded: 'For this period, money in was {in}, money out was {out}, and net cash flow was {net}. Internal transfers are excluded.',
+    recentSales: 'Recent Sales',
+    viewAllSales: 'View All Sales',
+    date: 'Date',
+    customer: 'Customer',
+    servicePlan: 'Service / Plan',
+    amount: 'Amount',
+    paid: 'Paid',
+    due: 'Due',
+    status: 'Status',
+    actions: 'Actions',
+    view: 'View',
+    invoice: 'Invoice',
+    viewSale: 'View Sale',
+    paidDue: 'Paid',
+    recentPayments: 'Recent Payments',
+    viewAllPayments: 'View All Payments',
+    viewPayment: 'View Payment',
+    recentExpenses: 'Recent Expenses',
+    activeSubscriptions: 'Active Subscriptions',
+    viewAll: 'View All',
+    started: 'Started',
+    expires: 'Expires',
+    endingSoon: 'Ending Soon',
+    reminderRule: (days: number) => `Using the existing ${formatNumber(days)}-day reminder rule.`,
+    viewSubscriptions: 'View Subscriptions',
+    daysLeft: (days: number) => `${formatNumber(days)}d left`,
+    whatsapp: 'WhatsApp',
+    renew: 'Renew',
+    outstandingPayments: 'Outstanding Payments',
+    filteredSalesDue: 'due across filtered sales.',
+    highestDue: 'Highest Due',
+    oldestSale: 'Oldest Sale',
+    noOutstanding: 'No outstanding balances.',
+    plansToRenew: 'Plans to Renew',
+    topServices: 'Top Services',
+    viewServices: 'View Services',
+    salesActiveCustomers: (sales: number, active: number, customers: number) => `${formatNumber(sales)} sales · ${formatNumber(active)} active · ${formatNumber(customers)} customers`,
+    salesAndActiveCount: (sales: number, active: number) => `${formatNumber(sales)} sales · ${formatNumber(active)} active`,
+    received: 'Received',
+    salesValue: 'sales value',
+    topCustomers: 'Top Customers',
+    viewCustomers: 'View Customers',
+    totalCustomers: 'Total customers',
+    newInPeriod: 'New in period',
+    repeatInPeriod: 'Repeat in period',
+    repeatCustomerHint: 'Customers with 2+ sales',
+    withDue: 'With outstanding due',
+    withAdvanceCredit: 'With advance credit',
+    customersSpent: 'spent',
+    invoices: 'Invoices',
+    viewAllInvoices: 'View All Invoices',
+    totalInvoices: 'Total Invoices',
+    pending: 'Pending',
+    invoicesWithDue: 'Invoices with Money Due',
+    totalMoneyDue: 'Total Money Due',
+    reminders: 'Reminders',
+    overdue: 'overdue',
+    dueToday: 'due today',
+    upcomingThisWeek: 'upcoming this week',
+    recentActivity: 'Recent Activity',
+    viewAllActivity: 'View All Activity',
+    todayPreset: 'Today',
+    last7Days: 'Last 7 Days',
+    last30Days: 'Last 30 Days',
+    thisWeek: 'This Week',
+    lastWeek: 'Last Week',
+    thisMonthPreset: 'This Month',
+    lastMonth: 'Last Month',
+    thisYear: 'This Year',
+    allTime: 'All Time',
+    customRange: 'Custom Range',
+    todayDueCount: (count: number) => `${formatNumber(count)} due today`,
+    upcomingCount: (count: number) => `${formatNumber(count)} upcoming this week`,
+    expiredDays: (days: number) => `${formatDurationDays(days)} expired`,
+    expiresToday: 'Expires today',
+    remainingDays: (days: number) => `${formatDurationDays(days)} remaining`,
+    dueForDays: (days: number) => `Due for ${formatNumber(days)} days`,
+    total: 'Total',
+    viewSaleAddPayment: 'View Sale / Add Payment',
+    viewCustomer: 'View Customer',
+    whatsappReminder: 'WhatsApp Reminder',
+    noRecentActivity: 'No recent activity yet.',
+    activityDetails: 'Activity details',
   };
   const reportRangeLabel = validReportRange
     ? `${formatAppDate(reportBounds.start, language)} – ${formatAppDate(reportBounds.end, language)}`
@@ -1749,61 +2062,85 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <button type="button" style={{ order }} onClick={() => onNavigate('payments')} className="dashboard-revenue-kpi">
         <span className="dashboard-kpi-eyebrow">{dashboardCopy.receivedRevenue}</span>
         <span className="dashboard-revenue-values">
-          <span><small>{currency}</small><strong>{formatCurrency(receivedInRange, currency)}</strong></span>
+          <span><strong><DashboardCountUp
+            value={receivedInRange}
+            formatValue={amount => formatCurrency(amount, currency)}
+            prefersReducedMotion={prefersReducedMotion}
+          /></strong></span>
         </span>
-        <span className="dashboard-revenue-context">{dashboardCopy.receivedContext} · {reportRangeLabel}</span>
         <ArrowUpRight className="dashboard-revenue-arrow" aria-hidden="true" />
       </button>
     ),
     customers: order => (
       <button type="button" style={{ order }} onClick={() => onNavigate('customers')} className="dashboard-kpi dashboard-kpi--customers">
         <span className="dashboard-kpi-label"><Users aria-hidden="true" /> {dashboardCopy.customers}</span>
-        <strong>{scopedCustomers.filter(customer => !customer.isArchived && customer.status !== 'archived').length}</strong>
-        <span className="dashboard-kpi-note">{dashboardCopy.activeRecords}</span>
+        <strong><DashboardCountUp
+          value={scopedCustomers.filter(customer => !customer.isArchived && customer.status !== 'archived').length}
+          formatValue={amount => formatNumber(Math.round(amount))}
+          prefersReducedMotion={prefersReducedMotion}
+        /></strong>
       </button>
     ),
     activeSubscriptions: order => (
       <button type="button" style={{ order }} onClick={() => onNavigate('subscriptions')} className="dashboard-kpi dashboard-kpi--subscriptions">
         <span className="dashboard-kpi-label"><CreditCard aria-hidden="true" /> {dashboardCopy.activeSubscriptions}</span>
-        <strong>{activeBusinessSubscriptions.length}</strong>
-        <span className="dashboard-kpi-note">{dashboardCopy.overdueInvoicesContext}</span>
+        <strong><DashboardCountUp
+          value={activeBusinessSubscriptions.length}
+          formatValue={amount => formatNumber(Math.round(amount))}
+          prefersReducedMotion={prefersReducedMotion}
+        /></strong>
       </button>
     ),
     expiringSubscriptions7: order => (
       <button type="button" style={{ order }} onClick={() => onNavigate('subscriptions')} className={`dashboard-kpi dashboard-kpi--ending${expiringWithin7Days ? ' is-attention' : ''}`}>
         <span className="dashboard-kpi-label"><Calendar aria-hidden="true" /> {summaryWidgetNames.expiringSubscriptions7}</span>
-        <strong>{expiringWithin7Days}</strong>
-        <span className="dashboard-kpi-note">{dashboardCopy.withinDays(7)}</span>
+        <strong><DashboardCountUp
+          value={expiringWithin7Days}
+          formatValue={amount => formatNumber(Math.round(amount))}
+          prefersReducedMotion={prefersReducedMotion}
+        /></strong>
       </button>
     ),
     expiringSubscriptions30: order => (
       <button type="button" style={{ order }} onClick={() => onNavigate('subscriptions')} className={`dashboard-kpi dashboard-kpi--ending${expiringWithin30Days ? ' is-attention' : ''}`}>
         <span className="dashboard-kpi-label"><Calendar aria-hidden="true" /> {summaryWidgetNames.expiringSubscriptions30}</span>
-        <strong>{expiringWithin30Days}</strong>
-        <span className="dashboard-kpi-note">{dashboardCopy.withinDays(30)}</span>
+        <strong><DashboardCountUp
+          value={expiringWithin30Days}
+          formatValue={amount => formatNumber(Math.round(amount))}
+          prefersReducedMotion={prefersReducedMotion}
+        /></strong>
       </button>
     ),
     outstandingPayments: order => (
       <button type="button" style={{ order }} onClick={() => onNavigate('payments')} className={`dashboard-kpi dashboard-kpi--outstanding${currentSalesSummary.due > 0 ? ' is-attention' : ''}`}>
         <span className="dashboard-kpi-label"><Wallet aria-hidden="true" /> {dashboardCopy.outstanding}</span>
         <span className="dashboard-kpi-currencies">
-          <span><small>{currency}</small><strong>{formatCurrency(currentSalesSummary.due, currency)}</strong></span>
+          <span><strong><DashboardCountUp
+            value={currentSalesSummary.due}
+            formatValue={amount => formatCurrency(amount, currency)}
+            prefersReducedMotion={prefersReducedMotion}
+          /></strong></span>
         </span>
-        <span className="dashboard-kpi-note">{dashboardCopy.currentDueContext}</span>
       </button>
     ),
     availableAdvanceCredit: order => (
       <button type="button" style={{ order }} onClick={() => onNavigate('customers')} className="dashboard-kpi dashboard-kpi--customers">
         <span className="dashboard-kpi-label"><Wallet aria-hidden="true" /> {summaryWidgetNames.availableAdvanceCredit}</span>
-        <strong>{formatCurrency(availableAdvanceCredit, currency)}</strong>
-        <span className="dashboard-kpi-note">{dashboardCopy.advanceCreditContext}</span>
+        <strong><DashboardCountUp
+          value={availableAdvanceCredit}
+          formatValue={amount => formatCurrency(amount, currency)}
+          prefersReducedMotion={prefersReducedMotion}
+        /></strong>
       </button>
     ),
     overdueInvoices: order => (
       <button type="button" style={{ order }} onClick={() => onNavigate('invoices')} className={`dashboard-kpi dashboard-kpi--ending${overdueInvoiceCount ? ' is-attention' : ''}`}>
         <span className="dashboard-kpi-label"><AlertTriangle aria-hidden="true" /> {summaryWidgetNames.overdueInvoices}</span>
-        <strong>{overdueInvoiceCount}</strong>
-        <span className="dashboard-kpi-note">{dashboardCopy.currentStatus}</span>
+        <strong><DashboardCountUp
+          value={overdueInvoiceCount}
+          formatValue={amount => formatNumber(Math.round(amount))}
+          prefersReducedMotion={prefersReducedMotion}
+        /></strong>
       </button>
     ),
   };
@@ -1821,21 +2158,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <label className="min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-200 sm:min-w-44">
             {dashboardCopy.dateRange}
             <select
-              aria-label="Dashboard date range"
+              aria-label={language === 'bn' ? 'ড্যাশবোর্ডের তারিখের সীমা' : 'Dashboard date range'}
               value={datePreset}
               onChange={event => setDatePreset(event.target.value as ReportDatePreset)}
               className={`${dashboardSelectClass} mt-0.5 w-full`}
             >
-              <option value="today">Today</option>
-              <option value="last_7_days">Last 7 Days</option>
-              <option value="last_30_days">Last 30 Days</option>
-              <option value="week">This Week</option>
-              <option value="last_week">Last Week</option>
-              <option value="month">This Month</option>
-              <option value="last_month">Last Month</option>
-              <option value="year">This Year</option>
-              <option value="all">All Time</option>
-              <option value="custom">Custom Range</option>
+              <option value="today">{reportCopy.todayPreset}</option>
+              <option value="last_7_days">{reportCopy.last7Days}</option>
+              <option value="last_30_days">{reportCopy.last30Days}</option>
+              <option value="week">{reportCopy.thisWeek}</option>
+              <option value="last_week">{reportCopy.lastWeek}</option>
+              <option value="month">{reportCopy.thisMonthPreset}</option>
+              <option value="last_month">{reportCopy.lastMonth}</option>
+              <option value="year">{reportCopy.thisYear}</option>
+              <option value="all">{reportCopy.allTime}</option>
+              <option value="custom">{reportCopy.customRange}</option>
             </select>
           </label>
           <button
@@ -1932,7 +2269,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <button type="button" onClick={() => window.location.reload()} className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold hover:bg-rose-100 dark:border-rose-800 dark:hover:bg-rose-900/40">Try Again</button>
         </div>
       )}
-      {!currentUser?.isDemo && !dashboardDataLoading
+      {!dashboardDataLoading
         && gettingStartedState?.businessId === gettingStartedBusinessId
         && gettingStartedState.open && (
         <section aria-labelledby="getting-started-title" className={`${dashboardPanelClass} space-y-4 sm:p-5`}>
@@ -1947,8 +2284,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
                 {language === 'bn'
-                  ? 'এক জায়গায় কাস্টমার ও সার্ভিস পরিচালনা করুন, তারপর বিক্রয়, ইনভয়েস ও পেমেন্ট অনুসরণ করুন।'
-                  : 'Manage customers and services in one place, then keep sales, invoices, and payments connected.'}
+                  ? 'প্রোফাইল, কাস্টমার ও সার্ভিস সাজিয়ে বিক্রয় রেকর্ড করুন। বিক্রয়ের সাথে ইনভয়েস তৈরি হয়; পেমেন্ট নিতে সক্রিয় রিসিভিং অ্যাকাউন্ট যোগ করুন।'
+                  : 'Set up your profile, customers, and services before recording sales. Invoices are created from sales; add an active receiving account when you are ready to collect payments.'}
               </p>
             </div>
             <button
@@ -1970,13 +2307,50 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 : 'Production Mode · your business data stays separate from Demo Mode.')}
           </p>
 
+          <div className="space-y-2" aria-label="Getting started progress">
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                {language === 'bn' ? 'প্রয়োজনীয় ধাপ' : 'Essential setup'}
+              </span>
+              <span className="text-slate-500 dark:text-slate-400">
+                {language === 'bn'
+                  ? `${essentialStepsCompleted} / 3 সম্পন্ন`
+                  : `${essentialStepsCompleted} of 3 complete`}
+              </span>
+            </div>
+            <div
+              role="progressbar"
+              aria-label={language === 'bn' ? 'প্রয়োজনীয় সেটআপের অগ্রগতি' : 'Essential setup progress'}
+              aria-valuemin={0}
+              aria-valuemax={3}
+              aria-valuenow={essentialStepsCompleted}
+              className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
+            >
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-[width]"
+                style={{ width: `${(essentialStepsCompleted / 3) * 100}%` }}
+              />
+            </div>
+          </div>
+
           <ol className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {[
+              {
+                title: language === 'bn' ? 'ব্যবসার প্রোফাইল পর্যালোচনা করুন' : 'Review your business profile',
+                description: language === 'bn' ? 'ইনভয়েসে ব্যবহারের জন্য ব্যবসার ঠিকানা ও পরিচিতি যোগ করুন।' : 'Add business details that customers can see on invoices.',
+                action: language === 'bn' ? 'প্রোফাইল খুলুন' : 'Review profile',
+                completed: Boolean(settings.businessProfile?.description?.trim()
+                  || settings.businessProfile?.address?.trim()
+                  || settings.businessProfile?.website?.trim()),
+                optional: true,
+                onClick: () => onNavigate('settings'),
+              },
               {
                 title: language === 'bn' ? 'প্রথম কাস্টমার যোগ করুন' : 'Add your first customer',
                 description: language === 'bn' ? 'কাস্টমারের যোগাযোগের তথ্য ও কার্যকলাপ একসাথে রাখুন।' : 'Keep customer contact details and activity together.',
                 action: language === 'bn' ? 'কাস্টমার যোগ করুন' : 'Add customer',
                 completed: scopedCustomers.length > 0,
+                optional: false,
                 onClick: () => onRequestCreate('customers'),
               },
               {
@@ -1984,28 +2358,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 description: language === 'bn' ? 'আপনার সার্ভিস, প্ল্যান ও সাবস্ক্রিপশন সাজান।' : 'Organize the services, plans, and subscriptions you offer.',
                 action: language === 'bn' ? 'সার্ভিস যোগ করুন' : 'Add service',
                 completed: scopedServices.length > 0,
+                optional: false,
                 onClick: () => onRequestCreate('services'),
               },
               {
+                title: language === 'bn' ? 'রিসিভিং অ্যাকাউন্ট যোগ করুন' : 'Add a receiving account',
+                description: language === 'bn'
+                  ? 'পেমেন্ট নেওয়ার সময় একটি সক্রিয় আর্থিক অ্যাকাউন্ট প্রয়োজন।'
+                  : 'An active financial account is needed when recording a payment.',
+                action: language === 'bn' ? 'রিসিভিং অ্যাকাউন্ট তৈরি করুন' : 'Create receiving account',
+                completed: scopedFinancialAccounts.some(account =>
+                  account.enabled && account.currency === currency
+                ),
+                optional: true,
+                onClick: () => onCreateReceivingAccount(currency),
+              },
+              {
                 title: language === 'bn' ? 'প্রথম বিক্রয় রেকর্ড করুন' : 'Record your first sale',
-                description: language === 'bn' ? 'বিক্রয় কাস্টমার, সার্ভিস ও পরবর্তী রেকর্ডের সাথে যুক্ত থাকে।' : 'Sales connect customers and services to the records that follow.',
+                description: language === 'bn' ? 'বিক্রয় ইনভয়েস তৈরি করে; পেমেন্ট পরে সংগ্রহ করা যায়।' : 'A sale creates its invoice; you can collect payment later.',
                 action: language === 'bn' ? 'নতুন বিক্রয়' : 'New sale',
                 completed: scopedSales.length > 0,
+                optional: false,
                 onClick: () => onOpenNewSale(),
-              },
-              {
-                title: language === 'bn' ? 'প্রথম ইনভয়েস তৈরি করুন' : 'Generate your first invoice',
-                description: language === 'bn' ? 'বিক্রয়ের সাথে ইনভয়েস তৈরি হয়; ইনভয়েস পেজে তা দেখুন।' : 'Invoices are created from sales and can be reviewed in Invoices.',
-                action: language === 'bn' ? 'ইনভয়েস দেখুন' : 'Open invoices',
-                completed: scopedInvoices.length > 0,
-                onClick: () => onNavigate('invoices'),
-              },
-              {
-                title: language === 'bn' ? 'একটি পেমেন্ট রেকর্ড করুন' : 'Record a payment',
-                description: language === 'bn' ? 'বকেয়া বিক্রয়ের জন্য পেমেন্ট সংগ্রহ করুন বা কাস্টমার পেমেন্ট রেকর্ড করুন।' : 'Collect against a sale or record a customer payment.',
-                action: language === 'bn' ? 'পেমেন্ট খুলুন' : 'Open payments',
-                completed: scopedPayments.length > 0,
-                onClick: () => onNavigate('payments'),
               },
             ].map((step, index) => (
               <li key={step.title} className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
@@ -2018,7 +2392,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {step.completed ? <Check aria-hidden="true" className="h-4 w-4" /> : index + 1}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{step.title}</h3>
+                    <h3 className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-white">
+                      {step.title}
+                      {step.optional && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span>}
+                    </h3>
                     <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{step.description}</p>
                   </div>
                 </div>
@@ -2052,9 +2429,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </section>
       )}
 
-      {dashboardDataLoading ? <div aria-label="Loading dashboard metrics" className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+      {dashboardDataLoading ? <div role="status" aria-live="polite" aria-busy="true" aria-label="Loading dashboard metrics" className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         {activeDashboardLayout.summaryOrder.filter(id => !activeDashboardLayout.hidden.includes(id))
-          .map((id, index) => <div key={id} style={{ order: index }} className="h-28 animate-pulse rounded-2xl bg-slate-200/70 dark:bg-slate-800" />)}
+          .map((id, index) => (
+            <div key={id} style={{ order: index }} aria-hidden="true" className="dashboard-kpi-skeleton">
+              <span className="dashboard-kpi-skeleton-line dashboard-kpi-skeleton-line--label" />
+              <span className="dashboard-kpi-skeleton-line dashboard-kpi-skeleton-line--value" />
+              <span className="dashboard-kpi-skeleton-line dashboard-kpi-skeleton-line--note" />
+            </div>
+          ))}
       </div> : activeDashboardLayout.summaryOrder.some(id => !activeDashboardLayout.hidden.includes(id)) && (
         <section aria-label="Business performance" className="dashboard-kpi-grid">
           {activeDashboardLayout.summaryOrder
@@ -2073,16 +2456,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 ? (language === 'bn' ? 'ডেমো মোড · নমুনা ডেটা' : 'Demo Mode · sample data')
                 : (language === 'bn' ? 'প্রোডাকশন মোড · ব্যবসার ডেটা' : 'Production Mode · business data')}
             </p>
-            {!currentUser?.isDemo && (
-              <button
-                type="button"
-                onClick={() => setGettingStartedVisibility(true)}
-                className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40"
-              >
-                <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
-                {language === 'bn' ? 'শুরু করার নির্দেশনা' : 'Getting started'}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setGettingStartedVisibility(true)}
+              className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40"
+            >
+              <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
+              {language === 'bn' ? 'শুরু করার নির্দেশনা' : 'Getting started'}
+            </button>
           </div>
         </div>
         <div className="dashboard-quick-actions-list">
@@ -2186,7 +2567,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
             </select>
           </div>
-          {trendData.length === 0 ? <p className="dashboard-empty-state">{dashboardCopy.noRevenue}</p> : (
+          {trendData.length === 0 ? <DashboardEmptyState
+            message={dashboardCopy.noRevenue}
+            actionLabel={dashboardCopy.viewAllSales}
+            onAction={() => onNavigate('sales')}
+          /> : (
             <div className="dashboard-revenue-chart" role="img" aria-label="Sales value and actual cash collected by date">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={trendData} margin={{ top: 12, right: 12, left: 0, bottom: 4 }}>
@@ -2204,7 +2589,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </DashboardPanel>}
 
         {isPanelVisible('subscriptionHealth') && <DashboardPanel title={dashboardCopy.subscriptionHealth} description={dashboardCopy.subscriptionHealthDescription} className="dashboard-health-panel" style={getPanelLayoutStyle('subscriptionHealth')}>
-          {subscriptionHealthData.length === 0 ? <p className="dashboard-empty-state">{dashboardCopy.noSubscriptions}</p> : (
+          {subscriptionHealthData.length === 0 ? <DashboardEmptyState
+            message={dashboardCopy.noSubscriptions}
+            actionLabel={language === 'bn' ? t('nav_subscriptions') : 'View subscriptions'}
+            onAction={() => onNavigate('subscriptions')}
+          /> : (
             <div className="dashboard-health-layout">
               <div className="dashboard-health-chart" role="img" aria-label={`Subscription status distribution: ${subscriptionHealthData.map(item => `${item.name} ${item.value}`).join(', ')}`}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -2230,7 +2619,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </DashboardPanel>}
 
       {isPanelVisible('recentSales') && <DashboardPanel title={dashboardCopy.recentSales} action={{ label: dashboardCopy.viewAllSales, onClick: () => onNavigate('sales') }} className="dashboard-recent-sales-panel" style={getPanelLayoutStyle('recentSales')}>
-        {centralRecentSales.length === 0 ? <p className="dashboard-empty-state">{dashboardCopy.noSales}</p> : (
+        {centralRecentSales.length === 0 ? <DashboardEmptyState
+          message={dashboardCopy.noSales}
+          actionLabel={dashboardCopy.viewAllSales}
+          onAction={() => onNavigate('sales')}
+        /> : (
           <div className="dashboard-recent-sales">
             {centralRecentSales.slice(0, 5).map(sale => {
               const customer = customerById.get(sale.customerId);
@@ -2258,13 +2651,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <summary><span>{dashboardCopy.moreReports}</span><span>{dashboardCopy.moreReportsDescription}</span></summary>
         <div className="dashboard-more-reports-content">
 
-      <DashboardPanel title="Reminders" action={{ label: 'View All', onClick: () => onNavigate('reminders') }}>
+      <DashboardPanel title={reportCopy.reminders} action={{ label: reportCopy.viewAll, onClick: () => onNavigate('reminders') }}>
         <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
-          <span className="rounded-full bg-rose-50 px-2.5 py-1 font-semibold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">{overdueReminders.length} overdue</span>
-          <span className="rounded-full bg-blue-50 px-2.5 py-1 font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">{dueTodayReminders.length} due today</span>
-          <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{upcomingReminders.length} upcoming this week</span>
+          <span className="rounded-full bg-rose-50 px-2.5 py-1 font-semibold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">{formatNumber(overdueReminders.length)} {reportCopy.overdue}</span>
+          <span className="rounded-full bg-blue-50 px-2.5 py-1 font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">{reportCopy.todayDueCount(dueTodayReminders.length)}</span>
+          <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{reportCopy.upcomingCount(upcomingReminders.length)}</span>
         </div>
-        {attentionReminders.length === 0 ? <p className="py-2 text-xs text-slate-500">No open reminders due soon.</p> : <div className="space-y-1.5">
+        {attentionReminders.length === 0 ? <DashboardEmptyState
+          message={language === 'bn' ? 'কাছাকাছি সময়ে কোনো রিমাইন্ডার নেই।' : 'No open reminders due soon.'}
+          actionLabel={language === 'bn' ? 'রিমাইন্ডার দেখুন' : 'View reminders'}
+          onAction={() => onNavigate('reminders')}
+        /> : <div className="space-y-1.5">
           {attentionReminders.map(reminder => <button key={reminder.id} type="button" onClick={() => onNavigate('reminders')} className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-2 text-left text-xs hover:border-emerald-200 hover:bg-emerald-50/50 dark:border-slate-800 dark:hover:border-emerald-900 dark:hover:bg-emerald-950/20">
             <span className="min-w-0 truncate font-semibold">{reminder.title}</span>
             <span className="shrink-0 text-slate-500">{formatAppDate(reminder.dueDate, language)}</span>
@@ -2272,63 +2669,73 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>}
       </DashboardPanel>
 
-      <DashboardPanel title="Money Summary" description={`Current balances · Money in and out ${reportBounds.start} – ${reportBounds.end}`} action={{ label: 'Money Records', onClick: () => onNavigate('financial-control') }}>
+      <DashboardPanel title={reportCopy.moneySummary} description={`${reportCopy.currentBalances} ${reportBounds.start} – ${reportBounds.end}`} action={{ label: reportCopy.moneyRecords, onClick: () => onNavigate('financial-control') }}>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <DashboardMetric label="Total Balance" value={formatCurrency(cashbookBalance, currency)} hint="Money in all accounts" />
-          <DashboardMetric label="Money In" value={formatCurrency(cashbookFlow.moneyIn, currency)} tone="green" hint="Payments and other income" />
-          <DashboardMetric label="Money Out" value={formatCurrency(cashbookFlow.moneyOut, currency)} tone="amber" hint="Expenses and refunds" />
+          <DashboardMetric label={reportCopy.totalBalance} value={formatCurrency(cashbookBalance, currency)} hint={reportCopy.allAccountBalances} />
+          <DashboardMetric label={reportCopy.moneyIn} value={formatCurrency(cashbookFlow.moneyIn, currency)} tone="green" hint={reportCopy.incomeSources} />
+          <DashboardMetric label={reportCopy.moneyOut} value={formatCurrency(cashbookFlow.moneyOut, currency)} tone="amber" hint={reportCopy.expenseSources} />
         </div>
         {accountSummaries.length > 0 ? <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {accountSummaries.map(({ account, balance, todayChange, monthChange }) => <button key={account.id} type="button" onClick={() => onNavigate('cashbook', account.id)} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50/60 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30">
             <span className="block truncate text-xs font-semibold text-slate-700 dark:text-slate-200">{account.name}</span>
             <span className="mt-1 block font-mono text-base font-bold text-slate-900 dark:text-white">{formatCurrency(balance, currency)}</span>
-            <span className="mt-1 block text-[10px] text-slate-500">Today <span className={todayChange >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}>{todayChange >= 0 ? '+' : '−'}{formatCurrency(Math.abs(todayChange), currency)}</span></span>
-            <span className="block text-[10px] text-slate-500">This month <span className={monthChange >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}>{monthChange >= 0 ? '+' : '−'}{formatCurrency(Math.abs(monthChange), currency)}</span></span>
-            <span className="mt-2 block text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">View Ledger <span className="sr-only">for {account.name}</span></span>
+            <span className="mt-1 block text-[10px] text-slate-500">{reportCopy.today} <span className={todayChange >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}>{todayChange >= 0 ? '+' : '−'}{formatCurrency(Math.abs(todayChange), currency)}</span></span>
+            <span className="block text-[10px] text-slate-500">{reportCopy.thisMonth} <span className={monthChange >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}>{monthChange >= 0 ? '+' : '−'}{formatCurrency(Math.abs(monthChange), currency)}</span></span>
+            <span className="mt-2 block text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">{reportCopy.viewLedger} <span className="sr-only">for {account.name}</span></span>
           </button>)}
-        </div> : <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-500 dark:border-slate-700">No financial accounts yet. Add one in Cashbook to start tracking recorded balances.</p>}
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Accounting control status">
-          <button type="button" onClick={() => onNavigate('financial-control')} className="rounded-lg border border-slate-200 p-3 text-left text-xs focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700"><span className="block text-slate-500">Reconciliation</span><span className="mt-1 block font-semibold text-slate-800 dark:text-slate-200">{reconciliationDifferences ? `${reconciliationDifferences} account difference${reconciliationDifferences === 1 ? '' : 's'}` : 'No known differences'}</span></button>
-          {(financialIntegrityErrors > 0 || storageWarning) && <button type="button" onClick={() => onNavigate('data-integrity')} className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-left text-xs focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-amber-800 dark:bg-amber-950/20"><span className="block text-amber-800 dark:text-amber-300">Data Integrity</span><span className="mt-1 block font-semibold text-amber-900 dark:text-amber-200">{financialIntegrityErrors ? `${financialIntegrityErrors} financial error${financialIntegrityErrors === 1 ? '' : 's'} to review` : 'Storage warning to review'}</span></button>}
-          <button type="button" onClick={() => onNavigate('daily-closing')} className="rounded-lg border border-slate-200 p-3 text-left text-xs focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700"><span className="block text-slate-500">Daily Closing</span><span className="mt-1 block font-semibold text-slate-800 dark:text-slate-200">{todayClosing ? `Closed · ${Math.abs(todayClosing.difference) < 0.005 ? 'Matched' : `Difference ${formatCurrency(todayClosing.difference, currency)}`}` : 'Not closed today'}</span></button>
-          <button type="button" onClick={() => onNavigate('financial-control')} className="rounded-lg border border-slate-200 p-3 text-left text-xs focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700"><span className="block text-slate-500">Financial Period</span><span className="mt-1 block font-semibold text-slate-800 dark:text-slate-200">{currentPeriodClosed ? 'Closed' : 'Open'} · Receivable {formatCurrency(financialSummary.due, currency)}</span></button>
+        </div> : <DashboardEmptyState
+          message={language === 'bn'
+            ? 'এখনও কোনো আর্থিক অ্যাকাউন্ট নেই। ক্যাশবুকে অ্যাকাউন্ট যোগ করে ব্যালেন্স ট্র্যাক করুন।'
+            : 'No financial accounts yet. Add one in Cashbook to start tracking balances.'}
+          actionLabel={language === 'bn' ? 'ক্যাশবুক খুলুন' : 'Open Cashbook'}
+          onAction={() => onNavigate('cashbook')}
+        />}
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label={reportCopy.accountingStatus}>
+          <button type="button" onClick={() => onNavigate('financial-control')} className="rounded-lg border border-slate-200 p-3 text-left text-xs focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700"><span className="block text-slate-500">{reportCopy.reconciliation}</span><span className="mt-1 block font-semibold text-slate-800 dark:text-slate-200">{reconciliationDifferences ? reportCopy.accountDifferences(reconciliationDifferences) : reportCopy.noDifferences}</span></button>
+          {(financialIntegrityErrors > 0 || storageWarning) && <button type="button" onClick={() => onNavigate('data-integrity')} className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-left text-xs focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-amber-800 dark:bg-amber-950/20"><span className="block text-amber-800 dark:text-amber-300">{reportCopy.dataIntegrity}</span><span className="mt-1 block font-semibold text-amber-900 dark:text-amber-200">{financialIntegrityErrors ? reportCopy.financialErrors(financialIntegrityErrors) : reportCopy.storageWarningReview}</span></button>}
+          <button type="button" onClick={() => onNavigate('daily-closing')} className="rounded-lg border border-slate-200 p-3 text-left text-xs focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700"><span className="block text-slate-500">{reportCopy.dailyClosing}</span><span className="mt-1 block font-semibold text-slate-800 dark:text-slate-200">{todayClosing ? Math.abs(todayClosing.difference) < 0.005 ? reportCopy.closedMatched : `${reportCopy.closed} · ${reportCopy.difference(formatCurrency(todayClosing.difference, currency))}` : reportCopy.notClosedToday}</span></button>
+          <button type="button" onClick={() => onNavigate('financial-control')} className="rounded-lg border border-slate-200 p-3 text-left text-xs focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700"><span className="block text-slate-500">{reportCopy.financialPeriod}</span><span className="mt-1 block font-semibold text-slate-800 dark:text-slate-200">{currentPeriodClosed ? reportCopy.closed : reportCopy.open} · {reportCopy.receivable} {formatCurrency(financialSummary.due, currency)}</span></button>
         </div>
       </DashboardPanel>
       <div className="grid gap-3 xl:grid-cols-2">
-      <DashboardPanel title="Payment Methods" description={`Received payments · ${reportBounds.start} – ${reportBounds.end}`} action={{ label: 'View Payments', onClick: () => onNavigate('payments') }}>
+      <DashboardPanel title={reportCopy.paymentMethods} description={`${reportCopy.receivedPayments} · ${reportBounds.start} – ${reportBounds.end}`} action={{ label: reportCopy.viewPayments, onClick: () => onNavigate('payments') }}>
         {paymentMethodSummary.length ? <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {paymentMethodSummary.map(method => <div key={method.methodId} className="rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50">
             <div className="flex justify-between gap-2"><span className="truncate text-xs font-semibold">{method.methodName}</span><span className="text-[10px] capitalize text-slate-500">{method.category.replace('_', ' ')}</span></div>
             <p className="mt-1 font-mono text-base font-bold">{formatCurrency(method.received, currency)}</p>
-            <p className="text-[10px] text-slate-500">{method.transactionCount} payments</p>
+            <p className="text-[10px] text-slate-500">{reportCopy.paymentCount(method.transactionCount)}</p>
           </div>)}
-        </div> : <p className="py-4 text-center text-xs text-slate-500">No received payments in this date range.</p>}
+        </div> : <p className="py-4 text-center text-xs text-slate-500">{reportCopy.noReceivedPayments}</p>}
       </DashboardPanel>
-      <DashboardPanel title="Expenses" description={`Recorded Cashbook expenses · ${reportBounds.start} – ${reportBounds.end}`} action={{ label: 'View Cashbook', onClick: () => onNavigate('cashbook') }}>
+      <DashboardPanel title={reportCopy.expenses} description={`${reportCopy.recordedExpenses} · ${reportBounds.start} – ${reportBounds.end}`} action={{ label: reportCopy.viewCashbook, onClick: () => onNavigate('cashbook') }}>
         <div className="grid grid-cols-2 gap-3">
-          <DashboardMetric label="Total Expenses" value={formatCurrency(expenseSummary.total, currency)} tone="amber" />
-          <DashboardMetric label="Number of Expenses" value={expenseSummary.count} />
+          <DashboardMetric label={reportCopy.totalExpenses} value={formatCurrency(expenseSummary.total, currency)} tone="amber" />
+          <DashboardMetric label={reportCopy.expenseCount} value={expenseSummary.count} />
         </div>
         {expenseSummary.categories.length ? <ul className="space-y-2">
           {expenseSummary.categories.slice(0, 5).map(category => <li key={category.name} className="flex items-center justify-between gap-3 text-xs">
             <span className="min-w-0 truncate font-medium text-slate-600 dark:text-slate-300">{category.name} <span className="text-slate-400">· {category.count}</span></span>
             <span className="shrink-0 font-mono font-semibold">{formatCurrency(category.total, currency)}</span>
           </li>)}
-        </ul> : <p className="py-3 text-center text-xs text-slate-500">No expenses in this date range.</p>}
+        </ul> : <p className="py-3 text-center text-xs text-slate-500">{reportCopy.noExpenses}</p>}
       </DashboardPanel>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <DashboardPanel title="Sales and Payments Overview" description={`${reportBounds.start} – ${reportBounds.end}`} action={{ label: 'View Reports', onClick: () => onNavigate('reports') }}>
+        <DashboardPanel title={reportCopy.salesPaymentsOverview} description={`${reportBounds.start} – ${reportBounds.end}`} action={{ label: reportCopy.viewReports, onClick: () => onNavigate('reports') }}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-slate-500">Sales value by sale date; actual cash collected by payment date · converted to {currency}.</p>
+            <p className="text-xs text-slate-500">{reportCopy.salesDateExplanation} {currency}.</p>
             <label className="sr-only" htmlFor="dashboard-trend-grouping">Trend grouping</label>
             <select id="dashboard-trend-grouping" value={trendGrouping} onChange={event => setTrendGrouping(event.target.value as 'daily' | 'weekly' | 'monthly')} className={dashboardSelectClass}>
-              <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+              <option value="daily">{reportCopy.daily}</option><option value="weekly">{reportCopy.weekly}</option><option value="monthly">{reportCopy.monthly}</option>
             </select>
           </div>
-          {trendData.length === 0 ? <p className="py-12 text-center text-xs text-slate-500">No sales or payments in this period.</p> : (
-            <div className="h-52 w-full min-w-0 sm:h-60" role="img" aria-label="Sales value and actual cash collected by date">
+          {trendData.length === 0 ? <DashboardEmptyState
+            message={language === 'bn' ? 'এই সময়ে কোনো বিক্রয় বা পেমেন্ট নেই।' : 'No sales or payments in this period.'}
+            actionLabel={language === 'bn' ? 'বিক্রয় দেখুন' : 'View sales'}
+            onAction={() => onNavigate('sales')}
+          /> : (
+            <div className="h-52 w-full min-w-0 sm:h-60" role="img" aria-label={language === 'bn' ? 'তারিখ অনুযায়ী বিক্রয়মূল্য ও প্রকৃত আদায়' : 'Sales value and actual cash collected by date'}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={trendData} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -2336,16 +2743,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <YAxis tick={{ fontSize: 10 }} width={58} />
                   <Tooltip formatter={(value, name) => [formatCurrency(Number(value), currency), String(name)]} />
                   <Legend />
-                  <Area type="monotone" dataKey="sales" name="Sales value (sale date)" stroke="#7c3aed" fill="#ede9fe" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
-                  <Area type="monotone" dataKey="cashReceived" name="Actual cash collected (payment date)" stroke="#059669" fill="#d1fae5" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                  <Area type="monotone" dataKey="sales" name={reportCopy.salesValueBySaleDate} stroke="#7c3aed" fill="#ede9fe" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                  <Area type="monotone" dataKey="cashReceived" name={reportCopy.collectedByPaymentDate} stroke="#059669" fill="#d1fae5" isAnimationActive={!prefersReducedMotion} animationDuration={350} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           )}
         </DashboardPanel>
-        <DashboardPanel title="Cash Flow Trend" description={`Ledger money in, money out, and net cash flow · ${reportBounds.start} – ${reportBounds.end}`} action={{ label: 'Open Cashbook', onClick: () => onNavigate('cashbook') }}>
-        {cashFlowTrend.length === 0 ? <p className="py-8 text-center text-xs text-slate-500">No cash flow entries in this date range.</p> : <>
-          <p className="sr-only">For this period, money in was {formatCurrency(cashbookFlow.moneyIn, currency)}, money out was {formatCurrency(cashbookFlow.moneyOut, currency)}, and net cash flow was {formatCurrency(cashbookFlow.netCashFlow, currency)}. Internal transfers are excluded.</p>
+        <DashboardPanel title={reportCopy.cashFlowTrend} description={`${reportCopy.cashFlowDescription} · ${reportBounds.start} – ${reportBounds.end}`} action={{ label: reportCopy.viewCashbook, onClick: () => onNavigate('cashbook') }}>
+        {cashFlowTrend.length === 0 ? <DashboardEmptyState
+          message={reportCopy.noCashFlow}
+          actionLabel={reportCopy.viewCashbook}
+          onAction={() => onNavigate('cashbook')}
+        /> : <>
+          <p className="sr-only">{reportCopy.internalTransfersExcluded
+            .replace('{in}', formatCurrency(cashbookFlow.moneyIn, currency))
+            .replace('{out}', formatCurrency(cashbookFlow.moneyOut, currency))
+            .replace('{net}', formatCurrency(cashbookFlow.netCashFlow, currency))}</p>
           <div className="h-52 w-full min-w-0 sm:h-60" role="img" aria-label={`Cash flow trend, grouped ${trendGrouping}; money in ${formatCurrency(cashbookFlow.moneyIn, currency)}, money out ${formatCurrency(cashbookFlow.moneyOut, currency)}, net ${formatCurrency(cashbookFlow.netCashFlow, currency)}.`}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={cashFlowTrend.map(point => ({
@@ -2361,9 +2775,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <YAxis tick={{ fontSize: 10 }} width={58} />
                 <Tooltip formatter={(value, name) => [formatCurrency(Number(value), currency), String(name)]} />
                 <Legend />
-                <Bar dataKey="moneyIn" name="Money In" fill="#059669" radius={[4, 4, 0, 0]} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
-                <Bar dataKey="moneyOut" name="Money Out" fill="#f59e0b" radius={[4, 4, 0, 0]} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
-                <Line type="monotone" dataKey="netCashFlow" name="Net Cash Flow" stroke="#2563eb" strokeWidth={2} dot={false} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                <Bar dataKey="moneyIn" name={reportCopy.moneyIn} fill="#059669" radius={[4, 4, 0, 0]} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                <Bar dataKey="moneyOut" name={reportCopy.moneyOut} fill="#f59e0b" radius={[4, 4, 0, 0]} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
+                <Line type="monotone" dataKey="netCashFlow" name={language === 'bn' ? 'নিট নগদ প্রবাহ' : 'Net Cash Flow'} stroke="#2563eb" strokeWidth={2} dot={false} isAnimationActive={!prefersReducedMotion} animationDuration={350} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -2372,19 +2786,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <DashboardPanel title="Recent Sales" action={{ label: 'View All Sales', onClick: () => onNavigate('sales') }}>
-          {centralRecentSales.length === 0 ? <p className="py-8 text-center text-xs text-slate-500">No sales yet.</p> : (
+        <DashboardPanel title={reportCopy.recentSales} action={{ label: reportCopy.viewAllSales, onClick: () => onNavigate('sales') }}>
+          {centralRecentSales.length === 0 ? <DashboardEmptyState
+            message={language === 'bn' ? 'এখনও কোনো বিক্রয় নেই।' : 'No sales yet.'}
+            actionLabel={language === 'bn' ? 'বিক্রয় দেখুন' : 'View sales'}
+            onAction={() => onNavigate('sales')}
+          /> : (
             <>
               <div className="hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[860px] text-left text-xs">
-                  <thead><tr className="border-b border-slate-200 text-slate-500 dark:border-slate-800"><th className="p-2">Date</th><th className="p-2">Customer</th><th className="p-2">Service / Plan</th><th className="p-2">Amount</th><th className="p-2">Paid</th><th className="p-2">Due</th><th className="p-2">Status</th><th className="p-2">Actions</th></tr></thead>
+                  <caption className="sr-only">{reportCopy.recentSales}</caption>
+                  <thead><tr className="border-b border-slate-200 text-slate-500 dark:border-slate-800"><th className="p-2">{reportCopy.date}</th><th className="p-2">{reportCopy.customer}</th><th className="p-2">{reportCopy.servicePlan}</th><th className="p-2">{reportCopy.amount}</th><th className="p-2">{reportCopy.paid}</th><th className="p-2">{reportCopy.due}</th><th className="p-2">{reportCopy.status}</th><th className="p-2">{reportCopy.actions}</th></tr></thead>
                   <tbody>{centralRecentSales.map(sale => {
                     const customer = customerById.get(sale.customerId);
                     const itemSummary = getSaleLineItems(sale).map(item =>
                       `${serviceById.get(item.serviceId)?.name || 'Service unavailable'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`
                     ).join('; ');
                     const financial = getSalePaymentSummary(sale, scopedPayments, currency);
-                    return <tr key={sale.id} className="border-b border-slate-100 dark:border-slate-800"><td className="p-2 whitespace-nowrap">{formatAppEventDateTime(sale.createdAt || sale.date)}</td><td className="p-2">{getCustomerDisplayName(customer)}</td><td className="p-2">{itemSummary}</td><td className="p-2 font-mono font-semibold">{formatCurrency(financial.revenue, currency)}</td><td className="p-2 font-mono">{formatCurrency(financial.paid, currency)}</td><td className="p-2 font-mono">{formatCurrency(financial.due, currency)}</td><td className="p-2"><PaymentStatusBadge status={getSalePaymentStatus(sale, scopedPayments)} /></td><td className="p-2"><div className="flex gap-1"><button type="button" onClick={() => onViewSale(sale.id)} className="rounded px-2 py-1 font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300">View</button><button type="button" aria-label={`View customer for ${sale.invoiceNo}`} onClick={() => onSelectCustomer(sale.customerId)} className="rounded px-2 py-1 font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300">Customer</button>{invoiceBySaleId.has(sale.id) && <button type="button" aria-label={`View invoice ${sale.invoiceNo}`} onClick={() => onViewInvoice(invoiceBySaleId.get(sale.id)!.invoiceId)} className="rounded px-2 py-1 font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300">Invoice</button>}</div></td></tr>;
+                    return <tr key={sale.id} className="border-b border-slate-100 dark:border-slate-800"><td className="p-2 whitespace-nowrap">{formatAppEventDateTime(sale.createdAt || sale.date)}</td><td className="p-2">{getCustomerDisplayName(customer)}</td><td className="p-2">{itemSummary}</td><td className="p-2 font-mono font-semibold">{formatCurrency(financial.revenue, currency)}</td><td className="p-2 font-mono">{formatCurrency(financial.paid, currency)}</td><td className="p-2 font-mono">{formatCurrency(financial.due, currency)}</td><td className="p-2"><PaymentStatusBadge status={getSalePaymentStatus(sale, scopedPayments)} /></td><td className="p-2"><div className="flex gap-1"><button type="button" onClick={() => onViewSale(sale.id)} className="rounded px-2 py-1 font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300">{reportCopy.view}</button><button type="button" aria-label={`${language === 'bn' ? 'গ্রাহক দেখুন' : 'View customer'}: ${sale.invoiceNo}`} onClick={() => onSelectCustomer(sale.customerId)} className="rounded px-2 py-1 font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300">{reportCopy.customer}</button>{invoiceBySaleId.has(sale.id) && <button type="button" aria-label={`${language === 'bn' ? 'ইনভয়েস দেখুন' : 'View invoice'} ${sale.invoiceNo}`} onClick={() => onViewInvoice(invoiceBySaleId.get(sale.id)!.invoiceId)} className="rounded px-2 py-1 font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300">{reportCopy.invoice}</button>}</div></td></tr>;
                   })}</tbody>
                 </table>
               </div>
@@ -2394,26 +2813,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   `${serviceById.get(item.serviceId)?.name || 'Service unavailable'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`
                 ).join('; ');
                 const financial = getSalePaymentSummary(sale, scopedPayments, currency);
-                return <article key={sale.id} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800"><div className="flex justify-between gap-2"><div className="min-w-0"><p className="truncate font-semibold">{getCustomerDisplayName(customer)}</p><p className="mt-1 text-[11px] text-slate-500">{itemSummary}</p></div><p className="shrink-0 font-mono text-xs font-bold">{formatCurrency(financial.revenue, currency)}</p></div><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><span className="text-[10px] text-slate-500">{formatAppEventDateTime(sale.createdAt || sale.date)}</span><PaymentStatusBadge status={getSalePaymentStatus(sale, scopedPayments)} /></div><p className="mt-2 text-[11px] text-slate-600 dark:text-slate-300">Paid {formatCurrency(financial.paid, currency)} · Due {formatCurrency(financial.due, currency)}</p><div className="mt-2 flex gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><button type="button" onClick={() => onViewSale(sale.id)}>View Sale</button><button type="button" onClick={() => onSelectCustomer(sale.customerId)}>Customer</button>{invoiceBySaleId.has(sale.id) && <button type="button" onClick={() => onViewInvoice(invoiceBySaleId.get(sale.id)!.invoiceId)}>Invoice</button>}</div></article>;
+                return <article key={sale.id} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800"><div className="flex justify-between gap-2"><div className="min-w-0"><p className="truncate font-semibold">{getCustomerDisplayName(customer)}</p><p className="mt-1 text-[11px] text-slate-500">{itemSummary}</p></div><p className="shrink-0 font-mono text-xs font-bold">{formatCurrency(financial.revenue, currency)}</p></div><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><span className="text-[10px] text-slate-500">{formatAppEventDateTime(sale.createdAt || sale.date)}</span><PaymentStatusBadge status={getSalePaymentStatus(sale, scopedPayments)} /></div><p className="mt-2 text-[11px] text-slate-600 dark:text-slate-300">{reportCopy.paid} {formatCurrency(financial.paid, currency)} · {reportCopy.due} {formatCurrency(financial.due, currency)}</p><div className="mt-2 flex gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><button type="button" onClick={() => onViewSale(sale.id)}>{reportCopy.viewSale}</button><button type="button" onClick={() => onSelectCustomer(sale.customerId)}>{reportCopy.customer}</button>{invoiceBySaleId.has(sale.id) && <button type="button" onClick={() => onViewInvoice(invoiceBySaleId.get(sale.id)!.invoiceId)}>{reportCopy.invoice}</button>}</div></article>;
               })}</div>
             </>
           )}
         </DashboardPanel>
 
-        <DashboardPanel title="Recent Payments" action={{ label: 'View All Payments', onClick: () => onNavigate('payments') }}>
-          {recentPayments.length === 0 ? <p className="py-8 text-center text-xs text-slate-500">No payments recorded in this period.</p> : (
+        <DashboardPanel title={reportCopy.recentPayments} action={{ label: reportCopy.viewAllPayments, onClick: () => onNavigate('payments') }}>
+          {recentPayments.length === 0 ? <DashboardEmptyState
+            message={language === 'bn' ? 'এই সময়ে কোনো পেমেন্ট রেকর্ড হয়নি।' : 'No payments recorded in this period.'}
+            actionLabel={language === 'bn' ? 'পেমেন্ট দেখুন' : 'View payments'}
+            onAction={() => onNavigate('payments')}
+          /> : (
             <div className="space-y-2">{recentPayments.map(payment => {
               const sale = paymentSaleById.get(payment.id);
               const customer = customerById.get(payment.customerId);
               const invoice = (payment.invoiceId && scopedInvoices.find(item => item.invoiceId === payment.invoiceId)) || (sale && invoiceBySaleId.get(sale.id));
-              return <article key={payment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 dark:border-slate-800"><div className="min-w-40"><p className="font-semibold">{getCustomerDisplayName(customer)}</p><p className="mt-0.5 text-[11px] text-slate-500">{formatAppEventDateTime(payment.createdAt || payment.paymentDate)} · {payment.paymentMethodName || payment.paymentMethod}{invoice ? ` · ${invoice.invoiceNumber}` : ''}</p></div><div className="flex items-center gap-2"><span className="font-mono text-xs font-bold">{formatCurrency(payment.amount, payment.currency)}</span><PaymentStatusBadge status={payment.paymentStatus} /></div><div className="flex gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><button type="button" onClick={() => onNavigate('payments', payment.id)}>View Payment</button>{sale && <button type="button" onClick={() => onViewSale(sale.id)}>View Sale</button>}{invoice && <button type="button" onClick={() => onViewInvoice(invoice.invoiceId)}>Invoice</button>}</div></article>;
+              return <article key={payment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 dark:border-slate-800"><div className="min-w-40"><p className="font-semibold">{getCustomerDisplayName(customer)}</p><p className="mt-0.5 text-[11px] text-slate-500">{formatAppEventDateTime(payment.createdAt || payment.paymentDate)} · {payment.paymentMethodName || payment.paymentMethod}{invoice ? ` · ${invoice.invoiceNumber}` : ''}</p></div><div className="flex items-center gap-2"><span className="font-mono text-xs font-bold">{formatCurrency(payment.amount, payment.currency)}</span><PaymentStatusBadge status={payment.paymentStatus} /></div><div className="flex gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><button type="button" onClick={() => onNavigate('payments', payment.id)}>{reportCopy.viewPayment}</button>{sale && <button type="button" onClick={() => onViewSale(sale.id)}>{reportCopy.viewSale}</button>}{invoice && <button type="button" onClick={() => onViewInvoice(invoice.invoiceId)}>{reportCopy.invoice}</button>}</div></article>;
             })}</div>
           )}
         </DashboardPanel>
       </div>
 
-      <DashboardPanel title="Recent Expenses" action={{ label: 'View Cashbook', onClick: () => onNavigate('cashbook') }}>
-        {recentExpenses.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No expenses in this date range.</p> : <div className="space-y-2">
+      <DashboardPanel title={reportCopy.recentExpenses} action={{ label: reportCopy.viewCashbook, onClick: () => onNavigate('cashbook') }}>
+        {recentExpenses.length === 0 ? <DashboardEmptyState
+          message={language === 'bn' ? 'এই সময়ে কোনো খরচ নেই।' : 'No expenses in this date range.'}
+          actionLabel={language === 'bn' ? 'ক্যাশবুক খুলুন' : 'Open Cashbook'}
+          onAction={() => onNavigate('cashbook')}
+        /> : <div className="space-y-2">
           {recentExpenses.map(expense => <article key={expense.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 text-xs dark:border-slate-800">
             <div className="min-w-0"><p className="font-semibold text-slate-800 dark:text-slate-100">{expense.categoryName}</p><p className="mt-0.5 truncate text-slate-500">{expense.description} · {accountById.get(expense.accountId)?.name || 'Account unavailable'}</p></div>
             <div className="shrink-0 text-right"><p className="font-mono font-bold">{formatCurrency(expense.amount, expense.currency)}</p><p className="mt-0.5 text-[10px] text-slate-500">{formatAppDate(expense.date, language)}</p></div>
@@ -2422,97 +2849,129 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </DashboardPanel>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <DashboardPanel title="Active Subscriptions" action={{ label: 'View All', onClick: () => onNavigate('subscriptions') }}>
-          {activeBusinessSubscriptions.length === 0 ? <p className="py-8 text-center text-xs text-slate-500">No active subscriptions.</p> : (
+        <DashboardPanel title={reportCopy.activeSubscriptions} action={{ label: reportCopy.viewAll, onClick: () => onNavigate('subscriptions') }}>
+          {activeBusinessSubscriptions.length === 0 ? <DashboardEmptyState
+            message={language === 'bn' ? 'এখনও কোনো সক্রিয় সাবস্ক্রিপশন নেই।' : 'No active subscriptions.'}
+            actionLabel={language === 'bn' ? 'সাবস্ক্রিপশন দেখুন' : 'View subscriptions'}
+            onAction={() => onNavigate('subscriptions')}
+          /> : (
             <div className="space-y-2">{activeBusinessSubscriptions.slice(0, 8).map(subscription => {
               const customer = customerById.get(subscription.customerId);
               const service = serviceById.get(subscription.serviceId);
-              return <div key={subscription.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 p-3 text-xs dark:border-slate-800"><div><button type="button" onClick={() => onNavigate('subscriptions', subscription.id)} className="font-semibold text-slate-800 hover:text-emerald-700 dark:text-slate-100 dark:hover:text-emerald-300">{getCustomerDisplayName(customer)}</button><p className="mt-0.5 text-slate-500">{service?.name || 'Service unavailable'} · {subscription.plan}</p></div><div className="text-right text-slate-500">Started {formatAppDate(subscription.startDate, language)}<p>Expires {formatAppDate(subscription.expiryDate, language)}</p></div><PaymentStatusBadge status={currentStatus(subscription)} /></div>;
+              return <div key={subscription.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 p-3 text-xs dark:border-slate-800"><div><button type="button" onClick={() => onNavigate('subscriptions', subscription.id)} className="font-semibold text-slate-800 hover:text-emerald-700 dark:text-slate-100 dark:hover:text-emerald-300">{getCustomerDisplayName(customer)}</button><p className="mt-0.5 text-slate-500">{service?.name || (language === 'bn' ? 'সার্ভিস অনুপলব্ধ' : 'Service unavailable')} · {subscription.plan}</p></div><div className="text-right text-slate-500">{reportCopy.started} {formatAppDate(subscription.startDate, language)}<p>{reportCopy.expires} {formatAppDate(subscription.expiryDate, language)}</p></div><PaymentStatusBadge status={currentStatus(subscription)} /></div>;
             })}</div>
           )}
         </DashboardPanel>
-        <DashboardPanel title="Ending Soon" description={`Using the existing ${settings.reminderNoticeDays}-day reminder rule.`} action={{ label: 'View Subscriptions', onClick: () => onNavigate('subscriptions') }}>
-          {endingSoonSubscriptions.length === 0 ? <p className="py-8 text-center text-xs text-slate-500">Nothing is ending soon.</p> : (
+        <DashboardPanel title={reportCopy.endingSoon} description={reportCopy.reminderRule(settings.reminderNoticeDays)} action={{ label: reportCopy.viewSubscriptions, onClick: () => onNavigate('subscriptions') }}>
+          {endingSoonSubscriptions.length === 0 ? <DashboardEmptyState
+            message={language === 'bn' ? 'শিগগির কোনো সাবস্ক্রিপশন শেষ হচ্ছে না।' : 'Nothing is ending soon.'}
+            actionLabel={language === 'bn' ? 'সাবস্ক্রিপশন দেখুন' : 'View subscriptions'}
+            onAction={() => onNavigate('subscriptions')}
+          /> : (
             <div className="space-y-2">{endingSoonSubscriptions.slice(0, 8).map(subscription => {
               const customer = customerById.get(subscription.customerId);
               const service = serviceById.get(subscription.serviceId);
               const days = Math.max(0, daysUntilExpiry(subscription));
-              return <div key={subscription.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-100 p-3 text-xs dark:border-amber-900/50"><div><button type="button" onClick={() => onNavigate('subscriptions', subscription.id)} className="font-semibold text-slate-800 hover:text-emerald-700 dark:text-slate-100">{getCustomerDisplayName(customer)}</button><p className="mt-0.5 text-slate-500">{service?.name || 'Service unavailable'} · {subscription.plan}</p></div><div className="text-right"><p>{formatAppDate(subscription.expiryDate, language)}</p><p className="mt-0.5 text-amber-700 dark:text-amber-300">{language === 'bn' ? `${formatDurationDays(days)} বাকি` : `${formatDurationDays(days)} left`}</p></div>{canContact(subscription.customerId) && <button type="button" onClick={() => openMessage({ customerId: subscription.customerId, subscriptionId: subscription.id, templateId: getExpiryWhatsAppTemplateId(getDaysDifference(subscription.expiryDate)) })} aria-label={`WhatsApp renewal reminder to ${customer?.name || 'customer'}`} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-2.5 py-1.5 font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</button>}<button type="button" onClick={() => onRenewSubscription(subscription)} className="rounded-lg bg-emerald-600 px-2.5 py-1.5 font-semibold text-white">Renew</button></div>;
+              return <div key={subscription.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-100 p-3 text-xs dark:border-amber-900/50"><div><button type="button" onClick={() => onNavigate('subscriptions', subscription.id)} className="font-semibold text-slate-800 hover:text-emerald-700 dark:text-slate-100">{getCustomerDisplayName(customer)}</button><p className="mt-0.5 text-slate-500">{service?.name || (language === 'bn' ? 'সার্ভিস অনুপলব্ধ' : 'Service unavailable')} · {subscription.plan}</p></div><div className="text-right"><p>{formatAppDate(subscription.expiryDate, language)}</p><p className="mt-0.5 text-amber-700 dark:text-amber-300">{reportCopy.daysLeft(days)}</p></div>{canContact(subscription.customerId) && <button type="button" onClick={() => openMessage({ customerId: subscription.customerId, subscriptionId: subscription.id, templateId: getExpiryWhatsAppTemplateId(getDaysDifference(subscription.expiryDate)) })} aria-label={`${language === 'bn' ? 'নবায়নের হোয়াটসঅ্যাপ রিমাইন্ডার' : 'WhatsApp renewal reminder'} ${customer?.name || (language === 'bn' ? 'গ্রাহক' : 'customer')}`} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-2.5 py-1.5 font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />{reportCopy.whatsapp}</button>}<button type="button" onClick={() => onRenewSubscription(subscription)} className="rounded-lg bg-emerald-600 px-2.5 py-1.5 font-semibold text-white">{reportCopy.renew}</button></div>;
             })}</div>
           )}
         </DashboardPanel>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <DashboardPanel title="Outstanding Payments" action={{ label: 'View Payments', onClick: () => onNavigate('payments') }}>
+        <DashboardPanel title={reportCopy.outstandingPayments} action={{ label: reportCopy.viewPayments, onClick: () => onNavigate('payments') }}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-slate-500">{formatCurrency(financialSummary.due, currency)} due across filtered sales.</p>
-            <select aria-label="Sort outstanding dashboard balances" value={outstandingSort} onChange={event => setOutstandingSort(event.target.value as 'due' | 'oldest')} className={dashboardSelectClass}><option value="due">Highest Due</option><option value="oldest">Oldest Sale</option></select>
+            <p className="text-xs text-slate-500">{formatCurrency(financialSummary.due, currency)} {reportCopy.filteredSalesDue}</p>
+            <select aria-label={language === 'bn' ? 'ড্যাশবোর্ডের বকেয়া সাজান' : 'Sort outstanding dashboard balances'} value={outstandingSort} onChange={event => setOutstandingSort(event.target.value as 'due' | 'oldest')} className={dashboardSelectClass}><option value="due">{reportCopy.highestDue}</option><option value="oldest">{reportCopy.oldestSale}</option></select>
           </div>
-          {outstandingSales.length === 0 ? <p className="py-8 text-center text-xs text-slate-500">No outstanding balances.</p> : (
+          {outstandingSales.length === 0 ? <DashboardEmptyState
+            message={reportCopy.noOutstanding}
+            actionLabel={reportCopy.viewPayments}
+            onAction={() => onNavigate('payments')}
+          /> : (
             <div className="space-y-2">{outstandingSales.slice(0, 8).map(({ sale, financial, invoice }) => {
               const customer = customerById.get(sale.customerId);
               const itemSummary = getSaleLineItems(sale).map(item =>
                 `${serviceById.get(item.serviceId)?.name || 'Service unavailable'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`
               ).join('; ');
               const daysDue = Math.max(0, -getDaysDifference(sale.date));
-              return <article key={sale.id} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-semibold">{getCustomerDisplayName(customer)}</p><p className="mt-0.5 text-[11px] text-slate-500">{invoice?.invoiceNumber || sale.invoiceNo} · {itemSummary}</p><p className="mt-1 text-[10px] text-slate-500">Due for {daysDue} days</p></div><div className="text-right text-[11px]"><p>Total {formatCurrency(financial.revenue, currency)}</p><p>Paid {formatCurrency(financial.paid, currency)}</p><p className="font-bold text-amber-700 dark:text-amber-300">Due {formatCurrency(financial.due, currency)}</p></div></div><div className="mt-2 flex flex-wrap gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><button type="button" onClick={() => onViewSale(sale.id)}>View Sale / Add Payment</button>{customer && <button type="button" onClick={() => onSelectCustomer(customer.id)}>View Customer</button>}{customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })}>WhatsApp Reminder</button>}{invoice && <button type="button" onClick={() => onViewInvoice(invoice.invoiceId)}>View Invoice</button>}</div></article>;
+              return <article key={sale.id} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-semibold">{getCustomerDisplayName(customer)}</p><p className="mt-0.5 text-[11px] text-slate-500">{invoice?.invoiceNumber || sale.invoiceNo} · {itemSummary}</p><p className="mt-1 text-[10px] text-slate-500">{reportCopy.dueForDays(daysDue)}</p></div><div className="text-right text-[11px]"><p>{reportCopy.total} {formatCurrency(financial.revenue, currency)}</p><p>{reportCopy.paid} {formatCurrency(financial.paid, currency)}</p><p className="font-bold text-amber-700 dark:text-amber-300">{reportCopy.due} {formatCurrency(financial.due, currency)}</p></div></div><div className="mt-2 flex flex-wrap gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><button type="button" onClick={() => onViewSale(sale.id)}>{reportCopy.viewSaleAddPayment}</button>{customer && <button type="button" onClick={() => onSelectCustomer(customer.id)}>{reportCopy.viewCustomer}</button>}{customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })}>{reportCopy.whatsappReminder}</button>}{invoice && <button type="button" onClick={() => onViewInvoice(invoice.invoiceId)}>{reportCopy.invoice}</button>}</div></article>;
             })}</div>
           )}
         </DashboardPanel>
-        <DashboardPanel title="Plans to Renew" description={`Ending within 30 days or expired in the last ${CUSTOMER_CRM_THRESHOLDS.recentlyExpiredDays} days.`} action={{ label: 'View All Plans', onClick: () => onNavigate('subscriptions') }}>
+        <DashboardPanel title={reportCopy.plansToRenew} description={language === 'bn' ? `৩০ দিনের মধ্যে শেষ হবে বা গত ${formatDurationDays(CUSTOMER_CRM_THRESHOLDS.recentlyExpiredDays)}-এ মেয়াদ শেষ হয়েছে।` : `Ending within 30 days or expired in the last ${CUSTOMER_CRM_THRESHOLDS.recentlyExpiredDays} days.`} action={{ label: reportCopy.viewSubscriptions, onClick: () => onNavigate('subscriptions') }}>
           <div className="grid grid-cols-3 gap-2">
-            <DashboardMetric label="Due Today" value={renewalsDueToday.length} />
-            <DashboardMetric label="This Week" value={renewalsDueThisWeek.length} />
-            <DashboardMetric label="This Month" value={renewalsDueThisMonth.length} />
+            <DashboardMetric label={language === 'bn' ? 'আজ বকেয়া' : 'Due Today'} value={renewalsDueToday.length} />
+            <DashboardMetric label={reportCopy.thisWeek} value={renewalsDueThisWeek.length} />
+            <DashboardMetric label={reportCopy.thisMonthPreset} value={renewalsDueThisMonth.length} />
           </div>
-          {renewalOpportunitySubscriptions.length === 0 ? <p className="text-center text-xs text-slate-500">No current renewal opportunities.</p> : <div className="space-y-2">{renewalOpportunitySubscriptions.slice(0, 5).map(subscription => {
+          {renewalOpportunitySubscriptions.length === 0 ? <DashboardEmptyState
+            message={language === 'bn' ? 'এখন কোনো রিনিউয়াল বাকি নেই।' : 'No current renewal opportunities.'}
+            actionLabel={language === 'bn' ? 'সাবস্ক্রিপশন দেখুন' : 'View subscriptions'}
+            onAction={() => onNavigate('subscriptions')}
+          /> : <div className="space-y-2">{renewalOpportunitySubscriptions.slice(0, 5).map(subscription => {
             const remainingDays = daysUntilExpiry(subscription);
             const status = currentStatus(subscription);
             return <div key={subscription.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-2.5 text-xs dark:bg-slate-800/60">
               <div><button type="button" onClick={() => onSelectCustomer(subscription.customerId)} className="text-left font-semibold">{getCustomerDisplayName(customerById.get(subscription.customerId))}</button><p className="text-slate-500">{serviceById.get(subscription.serviceId)?.name || 'Service unavailable'} · {subscription.plan} · {status.replace('_', ' ')}</p></div>
-              <div className="flex items-center gap-2"><span className="text-right text-slate-500">{formatAppDate(subscription.expiryDate, language)}<span className="block text-[10px]">{remainingDays < 0 ? `${Math.abs(remainingDays)}d expired` : remainingDays === 0 ? 'Expires today' : `${remainingDays}d remaining`}</span></span><button type="button" onClick={() => onRenewSubscription(subscription)} className="font-semibold text-emerald-700 dark:text-emerald-300">Renew</button></div>
+              <div className="flex items-center gap-2"><span className="text-right text-slate-500">{formatAppDate(subscription.expiryDate, language)}<span className="block text-[10px]">{remainingDays < 0 ? reportCopy.expiredDays(Math.abs(remainingDays)) : remainingDays === 0 ? reportCopy.expiresToday : reportCopy.remainingDays(remainingDays)}</span></span><button type="button" onClick={() => onRenewSubscription(subscription)} className="font-semibold text-emerald-700 dark:text-emerald-300">{reportCopy.renew}</button></div>
             </div>;
           })}</div>}
         </DashboardPanel>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <DashboardPanel title="Top Services" action={{ label: 'View Services', onClick: () => onNavigate('services') }}>
-          {servicePerformance.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No service performance data.</p> : <div className="space-y-2">{servicePerformance.slice(0, 6).map(item => <div key={item.serviceId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 text-xs dark:border-slate-800"><div><button type="button" onClick={() => onNavigate('services', item.serviceId)} className="font-semibold text-slate-800 hover:text-emerald-700 dark:text-slate-100">{item.serviceName}</button><p className="mt-0.5 text-slate-500">{item.salesCount} sales · {item.activeSubscriptions} active · {serviceCustomerCounts.get(item.serviceId) || 0} customers</p><p className="mt-0.5 text-[10px] text-slate-500">Received {formatCurrency(item.paid, currency)}</p></div><span className="font-mono font-bold">{formatCurrency(item.revenue, currency)}<span className="block text-right font-sans text-[10px] font-normal text-slate-500">sales value</span></span></div>)}</div>}
+        <DashboardPanel title={reportCopy.topServices} action={{ label: reportCopy.viewServices, onClick: () => onNavigate('services') }}>
+          {servicePerformance.length === 0 ? <DashboardEmptyState
+            message={language === 'bn' ? 'কোনো সার্ভিস পারফরম্যান্স ডেটা নেই।' : 'No service performance data.'}
+            actionLabel={language === 'bn' ? 'সার্ভিস দেখুন' : 'View services'}
+            onAction={() => onNavigate('services')}
+          /> : <div className="space-y-2">{servicePerformance.slice(0, 6).map(item => <div key={item.serviceId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 text-xs dark:border-slate-800"><div><button type="button" onClick={() => onNavigate('services', item.serviceId)} className="font-semibold text-slate-800 hover:text-emerald-700 dark:text-slate-100">{item.serviceName}</button><p className="mt-0.5 text-slate-500">{reportCopy.salesActiveCustomers(item.salesCount, item.activeSubscriptions, serviceCustomerCounts.get(item.serviceId) || 0)}</p><p className="mt-0.5 text-[10px] text-slate-500">{reportCopy.received} {formatCurrency(item.paid, currency)}</p></div><span className="font-mono font-bold">{formatCurrency(item.revenue, currency)}<span className="block text-right font-sans text-[10px] font-normal text-slate-500">{reportCopy.salesValue}</span></span></div>)}</div>}
         </DashboardPanel>
-        <DashboardPanel title="Top Customers" action={{ label: 'View Customers', onClick: () => onNavigate('customers') }}>
+        <DashboardPanel title={reportCopy.topCustomers} action={{ label: reportCopy.viewCustomers, onClick: () => onNavigate('customers') }}>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-            <DashboardMetric label="Total customers" value={customerInsights.total} onClick={() => onNavigate('customers')} />
-            <DashboardMetric label="New in period" value={customerInsights.newInPeriod} hint={reportRangeLabel} onClick={() => onNavigate('customers')} />
-            <DashboardMetric label="Repeat in period" value={customerInsights.repeatInPeriod} hint="Customers with 2+ sales" onClick={() => onNavigate('customers')} />
-            <DashboardMetric label="With outstanding due" value={customerInsights.withDue} onClick={() => onNavigate('payments')} />
-            <DashboardMetric label="With advance credit" value={customerInsights.withAdvanceCredit} onClick={() => onNavigate('customers')} />
+            <DashboardMetric label={reportCopy.totalCustomers} value={customerInsights.total} onClick={() => onNavigate('customers')} />
+            <DashboardMetric label={reportCopy.newInPeriod} value={customerInsights.newInPeriod} hint={reportRangeLabel} onClick={() => onNavigate('customers')} />
+            <DashboardMetric label={reportCopy.repeatInPeriod} value={customerInsights.repeatInPeriod} hint={reportCopy.repeatCustomerHint} onClick={() => onNavigate('customers')} />
+            <DashboardMetric label={reportCopy.withDue} value={customerInsights.withDue} onClick={() => onNavigate('payments')} />
+            <DashboardMetric label={reportCopy.withAdvanceCredit} value={customerInsights.withAdvanceCredit} onClick={() => onNavigate('customers')} />
           </div>
-          {customerSales.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No customer sales in this period.</p> : <div className="space-y-2">{customerSales.slice(0, 6).map(item => <div key={item.customerId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 text-xs dark:border-slate-800"><button type="button" onClick={() => onSelectCustomer(item.customerId)} className="text-left font-semibold text-slate-800 hover:text-emerald-700 dark:text-slate-100">{item.customerName}<span className="block font-normal text-slate-500">{item.salesCount} sales · {item.activeSubscriptions} active</span></button><div className="text-right"><p className="font-mono font-bold">{formatCurrency(item.spent, currency)} spent</p><p className="text-slate-500">{formatCurrency(item.paid, currency)} paid · {formatCurrency(item.due, currency)} due</p></div></div>)}</div>}
+          {customerSales.length === 0 ? <DashboardEmptyState
+            message={language === 'bn' ? 'এই সময়ে কোনো কাস্টমার বিক্রয় নেই।' : 'No customer sales in this period.'}
+            actionLabel={language === 'bn' ? 'কাস্টমার দেখুন' : 'View customers'}
+            onAction={() => onNavigate('customers')}
+          /> : <div className="space-y-2">{customerSales.slice(0, 6).map(item => <div key={item.customerId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 text-xs dark:border-slate-800"><button type="button" onClick={() => onSelectCustomer(item.customerId)} className="text-left font-semibold text-slate-800 hover:text-emerald-700 dark:text-slate-100">{item.customerName}<span className="block font-normal text-slate-500">{reportCopy.salesAndActiveCount(item.salesCount, item.activeSubscriptions)}</span></button><div className="text-right"><p className="font-mono font-bold">{formatCurrency(item.spent, currency)} {reportCopy.customersSpent}</p><p className="text-slate-500">{formatCurrency(item.paid, currency)} {reportCopy.paid} · {formatCurrency(item.due, currency)} {reportCopy.due}</p></div></div>)}</div>}
         </DashboardPanel>
       </div>
 
-      <DashboardPanel title="Invoices" action={{ label: 'View All Invoices', onClick: () => onNavigate('invoices') }}>
+      <DashboardPanel title={reportCopy.invoices} action={{ label: reportCopy.viewAllInvoices, onClick: () => onNavigate('invoices') }}>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-          <DashboardMetric label="Total Invoices" value={invoiceSummary.total} />
-          <DashboardMetric label="Paid" value={invoiceSummary.paid} tone="green" />
-          <DashboardMetric label="Pending" value={invoiceSummary.pending} tone="amber" />
-          <DashboardMetric label="Invoices with Money Due" value={invoiceSummary.withDue} />
-          <DashboardMetric label="Total Money Due" value={formatCurrency(invoiceSummary.dueAmount, currency)} tone="amber" />
+          <DashboardMetric label={reportCopy.totalInvoices} value={invoiceSummary.total} />
+          <DashboardMetric label={reportCopy.paid} value={invoiceSummary.paid} tone="green" />
+          <DashboardMetric label={reportCopy.pending} value={invoiceSummary.pending} tone="amber" />
+          <DashboardMetric label={reportCopy.invoicesWithDue} value={invoiceSummary.withDue} />
+          <DashboardMetric label={reportCopy.totalMoneyDue} value={formatCurrency(invoiceSummary.dueAmount, currency)} tone="amber" />
         </div>
-        {recentInvoices.length === 0 ? <p className="py-5 text-center text-xs text-slate-500">No invoices for this period.</p> : <div className="space-y-2">{recentInvoices.map(invoice => {
+        {recentInvoices.length === 0 ? <DashboardEmptyState
+          message={language === 'bn' ? 'এই সময়ে কোনো ইনভয়েস নেই।' : 'No invoices for this period.'}
+          actionLabel={language === 'bn' ? 'ইনভয়েস দেখুন' : 'View invoices'}
+          onAction={() => onNavigate('invoices')}
+        /> : <div className="space-y-2">{recentInvoices.map(invoice => {
           const sale = saleById.get(invoice.saleId);
           const customer = customerById.get(invoice.customerId);
           const service = serviceById.get(invoice.serviceId);
           const status = sale ? getSalePaymentStatus(sale, scopedPayments) : invoice.paymentStatus;
-          return <article key={invoice.invoiceId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 text-xs dark:border-slate-800"><div className="min-w-40"><p className="font-semibold">{invoice.invoiceNumber} · {formatAppEventDateTime(invoice.createdAt || invoice.invoiceDate)}</p><p className="mt-1 text-slate-500">{getCustomerDisplayName(customer)} · {service?.name || 'Service unavailable'} · {sale?.plan || 'Plan unavailable'}</p></div><p className="font-mono font-bold">{formatCurrency(sale?.amount ?? invoice.totalAmount, sale?.currency || currency)}</p><PaymentStatusBadge status={status} /><div className="flex gap-2"><button type="button" onClick={() => onViewInvoice(invoice.invoiceId)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">View</button><button type="button" disabled={isDownloadingInvoice} onClick={() => void handleDownloadInvoice(invoice)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"><Download className="h-3 w-3" /> PNG</button></div></article>;
+          return <article key={invoice.invoiceId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 text-xs dark:border-slate-800"><div className="min-w-40"><p className="font-semibold">{invoice.invoiceNumber} · {formatAppEventDateTime(invoice.createdAt || invoice.invoiceDate)}</p><p className="mt-1 text-slate-500">{getCustomerDisplayName(customer)} · {service?.name || (language === 'bn' ? 'সার্ভিস অনুপলব্ধ' : 'Service unavailable')} · {sale?.plan || (language === 'bn' ? 'প্ল্যান অনুপলব্ধ' : 'Plan unavailable')}</p></div><p className="font-mono font-bold">{formatCurrency(sale?.amount ?? invoice.totalAmount, sale?.currency || currency)}</p><PaymentStatusBadge status={status} /><div className="flex gap-2"><button type="button" onClick={() => onViewInvoice(invoice.invoiceId)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">{reportCopy.view}</button><button type="button" disabled={isDownloadingInvoice} onClick={() => void handleDownloadInvoice(invoice)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"><Download className="h-3 w-3" /> PNG</button></div></article>;
         })}</div>}
       </DashboardPanel>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <DashboardPanel title="Recent Activity" action={{ label: 'View All Activity', onClick: () => onNavigate('history') }}>
-          {recentActivities.length === 0 ? <p className="py-6 text-center text-xs text-slate-500">No recent activity.</p> : <ol className="space-y-3">{recentActivities.map(activity => <li key={activity.id} className="flex gap-3"><span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><Activity className="h-3.5 w-3.5" /></span><div className="min-w-0"><p className="text-xs font-semibold text-slate-800 dark:text-slate-100">{activity.title}</p><p className="mt-0.5 text-xs text-slate-500">{activity.description}</p><p className="mt-1 text-[10px] text-slate-400">{formatAppEventDateTime(activity.timestamp)}</p></div></li>)}</ol>}
+        <DashboardPanel title={reportCopy.recentActivity} action={{ label: reportCopy.viewAllActivity, onClick: () => onNavigate('history') }}>
+          {recentActivities.length === 0 ? <DashboardEmptyState
+            message={reportCopy.noRecentActivity}
+            actionLabel={language === 'bn' ? 'ইতিহাস দেখুন' : 'View history'}
+            onAction={() => onNavigate('history')}
+          /> : <ol className="space-y-3">{recentActivities.map(activity => <li key={activity.id} className="flex gap-3"><span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><Activity className="h-3.5 w-3.5" /></span><div className="min-w-0"><p className="text-xs font-semibold text-slate-800 dark:text-slate-100">{activity.title}</p><p className="mt-0.5 text-xs text-slate-500">{activity.description}</p><p className="mt-1 text-[10px] text-slate-400">{formatAppEventDateTime(activity.timestamp)}</p></div></li>)}</ol>}
         </DashboardPanel>
       </div>
 

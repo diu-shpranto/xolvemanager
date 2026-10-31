@@ -22,6 +22,7 @@ import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
 import { CustomerNameWithType } from '../common/CustomerNameWithType';
+import { ReceivingAccountSelector } from '../common/ReceivingAccountSelector';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
 import { formatAppDate, formatCurrency, getDaysDifference, getDateInTimeZone, getTodayDateString } from '../../utils/dateUtils';
 import { getCustomerDisplayName, getCustomerOptionLabel, resolvePaymentCustomer } from '../../utils/relationships';
@@ -59,6 +60,8 @@ import {
 } from '../../utils/dueCollection';
 
 interface PaymentsViewProps {
+  isActive?: boolean;
+  resumeCollectionRequest?: number;
   focusPaymentId?: string;
   onFocusedPaymentHandled?: () => void;
   createRequest?: number;
@@ -146,6 +149,8 @@ function getAgingBucket(days: number, formatNumber: (value: number) => string, d
 }
 
 export const PaymentsView: React.FC<PaymentsViewProps> = ({
+  isActive = true,
+  resumeCollectionRequest = 0,
   focusPaymentId,
   onFocusedPaymentHandled,
   createRequest,
@@ -235,6 +240,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const [possibleDuplicateConfirmed, setPossibleDuplicateConfirmed] = useState(false);
   const operationId = useRef('');
   const isSavingRef = useRef(false);
+  const lastResumedCollectionRequest = useRef(0);
 
   const resetPaymentFilters = () => {
     setSelectedMethod('all');
@@ -356,11 +362,15 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     || financialAccounts.find(account => account.name.toLocaleLowerCase() === newMethod.toLocaleLowerCase())?.id
     || '';
   const collectionAccounts = financialAccounts.filter(account => account.enabled && account.currency === newAdvanceCurrency);
-  const collectionDestinationAccount = financialAccounts.find(account =>
+  const collectionDestinationAccount = collectionAccounts.find(account =>
     account.id === (collectionFinancialAccountId || mappedCollectionAccountId)
-      && account.enabled
-      && account.currency === newAdvanceCurrency
   );
+
+  useEffect(() => {
+    if (!isActive || !resumeCollectionRequest || lastResumedCollectionRequest.current === resumeCollectionRequest) return;
+    lastResumedCollectionRequest.current = resumeCollectionRequest;
+    setIsAddPaymentOpen(true);
+  }, [isActive, resumeCollectionRequest]);
   const methodOptions = useMemo(
     () => [...new Set([...paymentMethods.map(method => method.name), ...payments.map(payment => payment.paymentMethodName || payment.paymentMethod)])],
     [paymentMethods, payments]
@@ -1210,6 +1220,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           <section aria-label="Due collection customers" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
             <div className="data-table-scroll hidden overflow-x-auto lg:block" role="region" aria-label="Due collection table" tabIndex={0}>
               <table className="w-full min-w-[1120px] text-left text-xs">
+                <caption className="sr-only">Payments awaiting collection</caption>
                 <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
                   <tr>
                     <th className="px-3 py-3">Customer / Reseller</th>
@@ -1452,13 +1463,13 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             </select>
           </label>}
           {selectedDate === 'custom' && <div className="grid grid-cols-2 gap-2 sm:col-span-2">
-            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">From<input type="date" value={customStart} onChange={event => setCustomStart(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
-            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">To<input type="date" value={customEnd} onChange={event => setCustomEnd(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">From<input type="date" value={customStart} aria-invalid={!validCustomRange} aria-describedby={!validCustomRange ? 'payment-custom-range-error' : undefined} onChange={event => setCustomStart(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">To<input type="date" value={customEnd} aria-invalid={!validCustomRange} aria-describedby={!validCustomRange ? 'payment-custom-range-error' : undefined} onChange={event => setCustomEnd(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
           </div>}
           <div className="flex items-end justify-end gap-3 text-xs text-slate-500 sm:col-span-2 lg:col-span-4">
             {activeFilterCount > 0 && <button type="button" onClick={resetPaymentFilters} className="font-semibold text-violet-700 hover:underline dark:text-violet-300">Clear filters</button>}
           </div>
-          {!validCustomRange && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300 sm:col-span-2 lg:col-span-4">Enter a valid custom date range.</p>}
+          {!validCustomRange && <p id="payment-custom-range-error" role="alert" className="text-xs text-rose-700 dark:text-rose-300 sm:col-span-2 lg:col-span-4">Enter a valid custom date range.</p>}
         </div>}
       </section>
 
@@ -1466,6 +1477,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         <section aria-label="Payments table" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
           <div className="data-table-scroll hidden overflow-x-auto lg:block" role="region" aria-label="Payments table; scroll horizontally to view all columns" tabIndex={0}>
             <table className="w-full min-w-[980px] text-left text-xs">
+              <caption className="sr-only">Payment history</caption>
               <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
                 <tr><th className="px-3 py-3">Payment</th><th className="px-3 py-3">Date</th><th className="px-3 py-3">Customer</th><th className="px-3 py-3">Invoice / Sale</th><th className="px-3 py-3">Service</th><th className="px-3 py-3">Method</th><th className="px-3 py-3">Amount</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Transaction</th><th className="px-3 py-3">Actions</th></tr>
               </thead>
@@ -1513,6 +1525,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         <section aria-label="Unpaid sales" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
           <div className="data-table-scroll hidden overflow-x-auto lg:block" role="region" aria-label="Unpaid sales table; scroll to see all columns" tabIndex={0}>
             <table className="w-full min-w-[850px] text-left text-xs">
+              <caption className="sr-only">Outstanding sales</caption>
               <thead className="bg-violet-50/60 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-violet-950/20 dark:text-slate-400"><tr><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Invoice / Sale</th><th className="px-4 py-3">Service</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Paid</th><th className="px-4 py-3">Due</th><th className="px-4 py-3">Last payment</th><th className="px-4 py-3">Days unpaid</th><th className="px-4 py-3">Actions</th></tr></thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {pageOutstanding.map(({ sale, invoice, due, paid, lastPayment, dueReferenceDate }) => {
@@ -1555,8 +1568,40 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         <div className="flex gap-2"><button type="button" disabled={currentPage <= 1} onClick={() => setPage(value => Math.max(1, value - 1))} className="min-h-9 rounded-lg border border-slate-200 px-3 font-semibold disabled:opacity-40 dark:border-slate-700">Previous</button><button type="button" disabled={currentPage >= totalPages} onClick={() => setPage(value => Math.min(totalPages, value + 1))} className="min-h-9 rounded-lg border border-slate-200 px-3 font-semibold disabled:opacity-40 dark:border-slate-700">Next</button></div>
       </nav>}
 
-      <Modal isOpen={isAddPaymentOpen} onClose={() => { if (!isSaving) setIsAddPaymentOpen(false); }} title={newPaymentMode === 'collect' ? 'Collect payment' : newPaymentMode === 'advance' ? 'Record advance payment' : newPaymentMode === 'apply-advance' ? 'Use advance payment' : 'Record payment'} subtitle={newPaymentMode === 'collect' ? 'Choose a customer, select bills, and record the payment.' : newPaymentMode === 'advance' ? 'Record money paid before it is linked to a sale.' : newPaymentMode === 'apply-advance' ? 'Use an earlier payment for a sale that is still due.' : 'Add a payment to an outstanding sale.'} maxWidth="lg">
-        <form onSubmit={handleRecordPayment} className="space-y-4">
+      <Modal
+        isOpen={isAddPaymentOpen}
+        onClose={() => { if (!isSaving) setIsAddPaymentOpen(false); }}
+        title={newPaymentMode === 'collect' ? 'Collect payment' : newPaymentMode === 'advance' ? 'Record advance payment' : newPaymentMode === 'apply-advance' ? 'Use advance payment' : 'Record payment'}
+        subtitle={newPaymentMode === 'collect' ? 'Choose a customer, select bills, and record the payment.' : newPaymentMode === 'advance' ? 'Record money paid before it is linked to a sale.' : newPaymentMode === 'apply-advance' ? 'Use an earlier payment for a sale that is still due.' : 'Add a payment to an outstanding sale.'}
+        maxWidth="lg"
+        footer={newPaymentMode === 'collect' && !collectionReceipt && collectionCustomer && collectionStep === 3 ? (
+          <div className="payment-collection-action-footer flex items-center justify-between gap-2 sm:justify-end sm:gap-3">
+            <button
+              form="customer-payment-collection-form"
+              type="button"
+              disabled={isSaving}
+              onClick={() => setCollectionStep(2)}
+              className="min-h-12 min-w-24 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              Back
+            </button>
+            <button
+              form="customer-payment-collection-form"
+              type="submit"
+              disabled={isSaving || !collectionCustomer || !collectionDestinationAccount || parsedNewAmountMinor === null || parsedNewAmountMinor <= 0 || !activePaymentMethods.length || Boolean(duplicateTransaction || (possibleDuplicate && !possibleDuplicateConfirmed))}
+              aria-busy={isSaving}
+              className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
+            >
+              {isSaving ? <><Clock3 className="h-4 w-4 animate-spin" /> Saving…</> : 'Record Payment'}
+            </button>
+          </div>
+        ) : undefined}
+      >
+        <form
+          id={newPaymentMode === 'collect' ? 'customer-payment-collection-form' : undefined}
+          onSubmit={handleRecordPayment}
+          className={`space-y-4 ${newPaymentMode === 'collect' ? 'payment-collection-form' : ''}`}
+        >
           {newPaymentMode !== 'collect' && <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800 sm:grid-cols-3" aria-label="Payment action">
             <button type="button" aria-pressed={newPaymentMode === 'sale'} onClick={() => { setNewPaymentMode('sale'); setNewSaleId(''); setNewAmount(''); setCollectionReceipt(null); setPossibleDuplicateConfirmed(false); }} className={`min-h-10 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'sale' ? 'bg-white text-violet-700 shadow-xs dark:bg-slate-700 dark:text-violet-200' : 'text-slate-600 dark:text-slate-300'}`}>Payment for a sale</button>
             <button type="button" aria-pressed={newPaymentMode === 'advance'} onClick={() => { setNewPaymentMode('advance'); setNewSaleId(''); setNewAmount(''); setCollectionReceipt(null); setPossibleDuplicateConfirmed(false); }} className={`min-h-10 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'advance' ? 'bg-white text-violet-700 shadow-xs dark:bg-slate-700 dark:text-violet-200' : 'text-slate-600 dark:text-slate-300'}`}>Add advance payment</button>
@@ -1735,12 +1780,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   <span className="text-slate-500"> · Selected due: {formatCurrency(collectionSelectedDue, newAdvanceCurrency)}</span>
                 </div>
                 {selectedCollectionItems.length === 0 && <p role="status" className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-900 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-100">No bills selected. The money will be saved as an advance payment.</p>}
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="payment-collection-fields grid min-w-0 gap-4 sm:grid-cols-2">
                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Money received *
-                    <input required type="number" min="0.01" step="0.01" inputMode="decimal" value={newAmount} onChange={event => { setNewAmount(event.target.value); setPossibleDuplicateConfirmed(false); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                    <input required type="number" min="0.01" step="0.01" inputMode="decimal" value={newAmount} onChange={event => { setNewAmount(event.target.value); setPossibleDuplicateConfirmed(false); }} className="mt-1.5 min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
                   </label>
                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Date received *
-                    <input required type="date" max={today} value={newPaymentDate} onChange={event => setNewPaymentDate(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                    <input required type="date" max={today} value={newPaymentDate} onChange={event => setNewPaymentDate(event.target.value)} className="mt-1.5 min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
                   </label>
                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">How was it paid? *
                     <select required value={newMethod} onChange={event => {
@@ -1750,39 +1795,93 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                         || financialAccounts.find(account => account.name.toLocaleLowerCase() === methodName.toLocaleLowerCase())?.id
                         || '');
                       setPossibleDuplicateConfirmed(false);
-                    }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+                    }} className="mt-1.5 min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
                       {activePaymentMethods.map(method => <option key={method} value={method}>{methodLabel(method)}</option>)}
                     </select>
                   </label>
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Account receiving money *
-                    <select required value={collectionDestinationAccount?.id || ''} onChange={event => setCollectionFinancialAccountId(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
-                      <option value="">Choose an account</option>{collectionAccounts.map(account => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}
-                    </select>
-                    <span className="mt-1 block text-[11px] font-normal text-slate-500">{collectionDestinationAccount ? 'Select the account this money went to.' : 'Choose an active account in this currency.'}</span>
-                  </label>
+                  <div className="min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    <span className="mb-1.5 block">Account receiving money *</span>
+                    <ReceivingAccountSelector
+                      accounts={collectionAccounts}
+                      selectedAccountId={collectionDestinationAccount?.id || ''}
+                      currency={newAdvanceCurrency}
+                      paymentMethods={paymentMethods}
+                      onSelect={setCollectionFinancialAccountId}
+                      onCreateAccount={() => {
+                        setIsAddPaymentOpen(false);
+                        onCreateRequestHandled?.();
+                        onNavigateSection?.('cashbook', `action:account:${newAdvanceCurrency}`);
+                      }}
+                    />
+                    {collectionAccounts.length > 0 && !collectionDestinationAccount && (
+                      <p role="alert" className="mt-1 text-[11px] font-normal text-rose-700 dark:text-rose-300">
+                        Choose an active receiving account before recording the payment.
+                      </p>
+                    )}
+                  </div>
                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Reference number {paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId) ? '*' : '(optional)'}
-                    <input required={paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId)} value={newTransactionId} onChange={event => { setNewTransactionId(event.target.value); setPossibleDuplicateConfirmed(false); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                    <input required={paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId)} value={newTransactionId} onChange={event => { setNewTransactionId(event.target.value); setPossibleDuplicateConfirmed(false); }} className="mt-1.5 min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
                   </label>
                   <label className="text-sm font-semibold text-slate-700 dark:text-slate-200 sm:col-span-2">Note (optional)
-                    <input value={newNotes} onChange={event => setNewNotes(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                    <input value={newNotes} onChange={event => setNewNotes(event.target.value)} className="mt-1.5 min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
                   </label>
                 </div>
-                {parsedNewAmountMinor !== null && <section aria-label="Payment allocation preview" className="space-y-2 rounded-xl border border-violet-200 bg-violet-50/60 p-3 text-sm dark:border-violet-900 dark:bg-violet-950/20">
-                  <h3 className="font-semibold">Check payment</h3>
-                  {selectedCollectionItems.map(item => {
-                    const allocation = collectionAllocationPlan.perLine[`${item.sale.id}:${item.line.id}`];
-                    return <div key={`preview:${item.sale.id}:${item.line.id}`} className="flex flex-wrap justify-between gap-2 text-xs">
-                      <span className="min-w-0 break-words">{item.invoice?.invoiceNumber || item.sale.invoiceNo} · {item.line.serviceNameSnapshot || servicesById.get(item.line.serviceId)?.name || 'Service'} · {item.line.plan}</span>
-                      <strong className="font-mono">{formatCurrency((allocation?.cashAllocated || 0) + (allocation?.advanceApplied || 0), newAdvanceCurrency)}</strong>
-                    </div>;
-                  })}
-                  <div className="border-t border-violet-200 pt-2 text-xs dark:border-violet-900">
-                    <div className="flex justify-between gap-2"><span>Money received</span><strong className="font-mono">{formatCurrency(parsedNewAmountMinor === null ? 0 : minorUnitsToAmount(parsedNewAmountMinor), newAdvanceCurrency)}</strong></div>
-                    <div className="mt-1 flex justify-between gap-2"><span>Advance payment used</span><strong className="font-mono">{formatCurrency(collectionAllocationPlan.advanceApplied, newAdvanceCurrency)}</strong></div>
-                    <div className="mt-1 flex justify-between gap-2"><span>Paid toward selected bills</span><strong className="font-mono">{formatCurrency(collectionAllocationPlan.cashAllocated, newAdvanceCurrency)}</strong></div>
-                    <div className="mt-1 flex justify-between gap-2"><span>Advance payment added</span><strong className="font-mono">{formatCurrency(collectionAllocationPlan.advanceCreditCreated, newAdvanceCurrency)}</strong></div>
-                    <div className="mt-1 flex justify-between gap-2 font-semibold"><span>Selected due left</span><strong className="font-mono">{formatCurrency(collectionAllocationPlan.remainingSelectedDue, newAdvanceCurrency)}</strong></div>
-                  </div>
+                {parsedNewAmountMinor !== null && <section aria-label="Payment allocation preview" className="payment-allocation-preview space-y-3 rounded-2xl border border-violet-200 bg-violet-50/60 p-3 text-sm dark:border-violet-900 dark:bg-violet-950/20 sm:p-4">
+                  <header className="space-y-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-950 dark:text-white">Check payment</h3>
+                        <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
+                          For <strong className="text-slate-900 dark:text-white">{getCustomerDisplayName(collectionCustomer)}</strong>
+                          {collectionCustomer.phone ? ` · ${collectionCustomer.phone}` : ''}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-violet-800 dark:bg-slate-900 dark:text-violet-200">
+                        {selectedCollectionItems.length
+                          ? `${selectedCollectionItems.length} selected bill${selectedCollectionItems.length === 1 ? '' : 's'}`
+                          : 'Advance payment'}
+                      </span>
+                    </div>
+                    {selectedCollectionItems.length > 0 && <div className="space-y-1.5" aria-label="Selected invoice details">
+                      {selectedCollectionItems.map(item => {
+                        const allocation = collectionAllocationPlan.perLine[`${item.sale.id}:${item.line.id}`];
+                        return <div key={`preview:${item.sale.id}:${item.line.id}`} className="flex min-w-0 items-start justify-between gap-3 rounded-xl border border-violet-100 bg-white/80 px-3 py-2 text-xs dark:border-violet-900/70 dark:bg-slate-900/70">
+                          <span className="min-w-0 break-words">
+                            <strong className="block text-slate-900 dark:text-white">{item.invoice?.invoiceNumber || item.sale.invoiceNo}</strong>
+                            <span className="text-slate-600 dark:text-slate-300">{item.line.serviceNameSnapshot || servicesById.get(item.line.serviceId)?.name || 'Service'} · {item.line.plan} · Sale {item.sale.id}</span>
+                          </span>
+                          <strong className="shrink-0 font-mono text-slate-900 dark:text-white">
+                            {formatCurrency((allocation?.cashAllocated || 0) + (allocation?.advanceApplied || 0), newAdvanceCurrency)}
+                          </strong>
+                        </div>;
+                      })}
+                    </div>}
+                    {selectedCollectionItems.length === 0 && <p className="rounded-xl border border-violet-100 bg-white/80 px-3 py-2 text-xs leading-5 text-slate-600 dark:border-violet-900/70 dark:bg-slate-900/70 dark:text-slate-300">
+                      No bills selected. This payment will be saved as an advance for {getCustomerDisplayName(collectionCustomer)}.
+                    </p>}
+                  </header>
+                  <dl className="payment-allocation-summary grid min-w-0 grid-cols-2 gap-2 min-[480px]:grid-cols-3">
+                    <div className="payment-allocation-metric payment-allocation-metric--received min-w-0 rounded-xl border border-violet-200 bg-white p-2.5 dark:border-violet-800 dark:bg-slate-900">
+                      <dt className="text-[11px] font-semibold text-violet-800 dark:text-violet-200">Money received</dt>
+                      <dd className="mt-1 break-words font-mono text-base font-bold text-violet-950 dark:text-white">{formatCurrency(minorUnitsToAmount(parsedNewAmountMinor), newAdvanceCurrency)}</dd>
+                    </div>
+                    <div className="payment-allocation-metric min-w-0 rounded-xl border border-slate-200 bg-white/80 p-2.5 dark:border-slate-700 dark:bg-slate-900/80">
+                      <dt className="text-[11px] font-medium leading-4 text-slate-600 dark:text-slate-300">Advance payment used</dt>
+                      <dd className="mt-1 break-words font-mono text-sm font-bold text-slate-900 dark:text-white">{formatCurrency(collectionAllocationPlan.advanceApplied, newAdvanceCurrency)}</dd>
+                    </div>
+                    <div className="payment-allocation-metric min-w-0 rounded-xl border border-slate-200 bg-white/80 p-2.5 dark:border-slate-700 dark:bg-slate-900/80">
+                      <dt className="text-[11px] font-medium leading-4 text-slate-600 dark:text-slate-300">Paid toward selected bills</dt>
+                      <dd className="mt-1 break-words font-mono text-sm font-bold text-slate-900 dark:text-white">{formatCurrency(collectionAllocationPlan.cashAllocated, newAdvanceCurrency)}</dd>
+                    </div>
+                    <div className="payment-allocation-metric min-w-0 rounded-xl border border-slate-200 bg-white/80 p-2.5 dark:border-slate-700 dark:bg-slate-900/80">
+                      <dt className="text-[11px] font-medium leading-4 text-slate-600 dark:text-slate-300">Advance payment added</dt>
+                      <dd className="mt-1 break-words font-mono text-sm font-bold text-slate-900 dark:text-white">{formatCurrency(collectionAllocationPlan.advanceCreditCreated, newAdvanceCurrency)}</dd>
+                    </div>
+                    <div className="payment-allocation-metric payment-allocation-metric--due col-span-2 min-w-0 rounded-xl border border-amber-300 bg-amber-50 p-2.5 dark:border-amber-800 dark:bg-amber-950/30 min-[480px]:col-span-1">
+                      <dt className="text-[11px] font-bold leading-4 text-amber-900 dark:text-amber-200">Selected due left</dt>
+                      <dd className="mt-1 break-words font-mono text-base font-bold text-amber-950 dark:text-amber-100">{formatCurrency(collectionAllocationPlan.remainingSelectedDue, newAdvanceCurrency)}</dd>
+                    </div>
+                  </dl>
                 </section>}
                 {duplicateTransaction && <DuplicateWarning payment={duplicateTransaction} onReview={() => { setIsAddPaymentOpen(false); openPaymentDetails(duplicateTransaction); }} />}
                 {!duplicateTransaction && possibleDuplicate && <DuplicateWarning payment={possibleDuplicate} onReview={() => { setIsAddPaymentOpen(false); openPaymentDetails(possibleDuplicate); }} />}
@@ -1791,10 +1890,6 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   <span>This is a different payment. I checked the similar receipt.</span>
                 </label>}
                 <p className="text-[11px] text-slate-500">The receipt also saves when it was recorded.</p>
-                <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-                  <button type="button" disabled={isSaving} onClick={() => setCollectionStep(2)} className="min-h-10 rounded-xl border border-slate-200 px-4 text-sm font-semibold dark:border-slate-700">Back</button>
-                  <button type="submit" disabled={isSaving || !collectionCustomer || !collectionDestinationAccount || parsedNewAmountMinor === null || parsedNewAmountMinor <= 0 || !activePaymentMethods.length || Boolean(duplicateTransaction || (possibleDuplicate && !possibleDuplicateConfirmed))} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">{isSaving ? <><Clock3 className="h-4 w-4 animate-spin" /> Saving…</> : 'Record Payment'}</button>
-                </div>
                 </>}
               </>}
             </div>

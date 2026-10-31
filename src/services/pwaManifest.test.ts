@@ -19,8 +19,8 @@ const manifest = JSON.parse(readFileSync(new URL('../../public/manifest.webmanif
 test('PWA manifest has the product identity and standalone launch configuration', () => {
   assert.equal(manifest.name, 'XolveManager');
   assert.equal(manifest.short_name, 'XolveManager');
-  assert.match(manifest.description, /customer records, subscriptions, sales, payments/);
-  assert.equal(manifest.start_url, '/');
+  assert.match(manifest.description, /customers, subscriptions, sales, invoices/);
+  assert.equal(manifest.start_url, '/login');
   assert.equal(manifest.scope, '/');
   assert.equal(manifest.display, 'standalone');
   assert.equal(manifest.orientation, undefined);

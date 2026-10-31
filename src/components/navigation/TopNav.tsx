@@ -21,6 +21,7 @@ import {
   UserCheck,
   Wifi,
   WifiOff,
+  CircleHelp,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { NavSection } from './Sidebar';
@@ -43,6 +44,7 @@ interface TopNavProps {
   onOpenNewSale: () => void;
   hideNewSaleAction?: boolean;
   onNavigate: (section: NavSection) => void;
+  onOpenHelp: () => void;
   onNavigateToNotification?: (section: NavSection, entityId?: string) => void;
   onSelectSearchResult: (result: GlobalSearchResult) => void;
   onViewAllSearchResults: (query: string) => void;
@@ -58,6 +60,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   onOpenNewSale,
   hideNewSaleAction = false,
   onNavigate,
+  onOpenHelp,
   onNavigateToNotification,
   onSelectSearchResult,
   onViewAllSearchResults,
@@ -262,20 +265,6 @@ export const TopNav: React.FC<TopNavProps> = ({
         </div>
       </div>
 
-      <div className="app-topbar-search-trigger-wrap md:hidden">
-      <button
-        type="button"
-        onClick={() => setShowCommandCenter(true)}
-        className="app-icon-button global-search-trigger lg:hidden"
-        aria-label={`${language === 'bn' ? 'সার্চ খুলুন' : 'Search'} (${searchShortcut})`}
-        title={`${language === 'bn' ? 'সার্চ খুলুন' : 'Search'} (${searchShortcut})`}
-        aria-expanded={showCommandCenter}
-        aria-haspopup="dialog"
-      >
-        <Search className="h-[18px] w-[18px] shrink-0" />
-      </button>
-      </div>
-
       <div className="app-topbar-search relative hidden min-w-0 md:block">
         <Search className="app-topbar-search-icon pointer-events-none absolute left-2.5 h-3.5 w-3.5" />
         <input
@@ -297,10 +286,23 @@ export const TopNav: React.FC<TopNavProps> = ({
       </div>
 
       <div className="app-topbar-tools">
+        <div className="app-topbar-search-trigger-wrap md:hidden">
+          <button
+            type="button"
+            onClick={() => setShowCommandCenter(true)}
+            className="app-icon-button global-search-trigger lg:hidden"
+            aria-label={`${language === 'bn' ? 'সার্চ খুলুন' : 'Search'} (${searchShortcut})`}
+            title={`${language === 'bn' ? 'সার্চ খুলুন' : 'Search'} (${searchShortcut})`}
+            aria-expanded={showCommandCenter}
+            aria-haspopup="dialog"
+          >
+            <Search className="h-[18px] w-[18px] shrink-0" />
+          </button>
+        </div>
         <div className="app-topbar-system-group">
-      <span className={`app-connection-status ${pwa.isOnline ? 'is-online' : 'is-offline'}`} role="status" aria-label={pwa.isOnline ? 'Online' : 'Working offline'} title={pwa.isOnline ? 'Online' : 'Working offline'}>
+      <span className={`app-connection-status ${pwa.isOnline ? 'is-online' : 'is-offline'}`} role="status" aria-label={pwa.isOnline ? (language === 'bn' ? 'অনলাইন' : 'Online') : (language === 'bn' ? 'অফলাইনে কাজ করছে' : 'Working offline')} title={pwa.isOnline ? (language === 'bn' ? 'অনলাইন' : 'Online') : (language === 'bn' ? 'অফলাইনে কাজ করছে' : 'Working offline')}>
         {pwa.isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
-        <span>{pwa.isOnline ? 'Online' : 'Offline'}</span>
+        <span>{pwa.isOnline ? (language === 'bn' ? 'অনলাইন' : 'Online') : (language === 'bn' ? 'অফলাইন' : 'Offline')}</span>
       </span>
         {/* Language Switcher [ বাংলা | EN ] - Desktop Only */}
         <div className="hidden lg:flex app-control-group">
@@ -371,6 +373,15 @@ export const TopNav: React.FC<TopNavProps> = ({
         )}
 
         {/* Notifications */}
+        <button
+          type="button"
+          onClick={onOpenHelp}
+          className="app-icon-button hidden md:inline-flex"
+          aria-label="Open contextual Help Center"
+          title="Help Center"
+        >
+          <CircleHelp className="h-4 w-4" />
+        </button>
         <div ref={notifRef} className="relative">
           <button
             onClick={() => setShowNotifications(!showNotifications)}
@@ -600,8 +611,12 @@ export const TopNav: React.FC<TopNavProps> = ({
     </header>
 
     {(!pwa.isOnline || pwa.updateAvailable) && !isConnectionNoticeDismissed && <div className={`flex items-center justify-between gap-3 border-b px-4 py-2 text-xs sm:px-6 ${pwa.isOnline ? 'border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200' : 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200'}`} role="status" aria-live="polite">
-      <span className="min-w-0 flex-1">{pwa.updatePending ? 'Update queued until current work is complete.' : !pwa.isOnline ? 'Working offline — local business data remains available on this device.' : 'New version available.'}</span>
-      {pwa.updateAvailable && !pwa.updatePending && <button type="button" onClick={requestPwaUpdate} className="shrink-0 rounded-lg border border-current/30 px-3 py-1.5 font-semibold hover:bg-black/5 dark:hover:bg-white/5">Update</button>}
+      <span className="min-w-0 flex-1">{pwa.updatePending
+        ? language === 'bn' ? 'বর্তমান কাজ শেষ হলে আপডেটটি চালু হবে।' : 'Update queued until current work is complete.'
+        : !pwa.isOnline
+          ? language === 'bn' ? 'ইন্টারনেট সংযোগ নেই। এই ডিভাইসে সংরক্ষিত ডেটা ব্যবহার করা যাবে; কিছু অনলাইন সুবিধা বন্ধ থাকতে পারে।' : 'No internet connection. Saved data is available on this device; some online features may be unavailable.'
+          : language === 'bn' ? 'নতুন সংস্করণ উপলভ্য।' : 'New version available.'}</span>
+      {pwa.updateAvailable && !pwa.updatePending && <button type="button" onClick={requestPwaUpdate} className="min-h-10 shrink-0 rounded-lg border border-current/30 px-3 py-1.5 font-semibold hover:bg-black/5 dark:hover:bg-white/5">{language === 'bn' ? 'আপডেট' : 'Update'}</button>}
       <button
         type="button"
         onClick={() => setIsConnectionNoticeDismissed(true)}
@@ -614,7 +629,12 @@ export const TopNav: React.FC<TopNavProps> = ({
     </div>}
 
     {showCommandCenter && (
-      <Suspense fallback={null}>
+      <Suspense fallback={
+        <div className="app-lazy-action-status" role="status" aria-live="polite" aria-busy="true">
+          <span className="app-lazy-action-spinner" aria-hidden="true" />
+          <span>{language === 'bn' ? 'সার্চ প্রস্তুত হচ্ছে…' : 'Preparing search…'}</span>
+        </div>
+      }>
         <CommandCenter
           isOpen={showCommandCenter}
           onClose={() => setShowCommandCenter(false)}

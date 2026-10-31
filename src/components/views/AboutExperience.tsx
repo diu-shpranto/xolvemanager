@@ -196,57 +196,6 @@ const gettingStarted: {
   },
 ];
 
-const questions: {
-  question: string;
-  answer: string;
-  destination?: NavSection;
-  linkLabel?: string;
-  openDataManagement?: boolean;
-}[] = [
-  {
-    question: 'Where do I find customer records?',
-    answer: 'Open Customers from the main navigation. Search or adjust the status filters to find active or archived records.',
-    destination: 'customers',
-    linkLabel: 'Open Customers',
-  },
-  {
-    question: 'How do I review a sale or payment?',
-    answer: 'Use Sales to review sale records and Payments to search payment status, method, and transaction details. The Dashboard also shows recent sales and payments.',
-    destination: 'sales',
-    linkLabel: 'Open Sales',
-  },
-  {
-    question: 'Where are subscription start and expiry dates shown?',
-    answer: 'Open Subscriptions and select a record to review its dates, status, and expiry information. The list also includes status and quick expiry filters.',
-    destination: 'subscriptions',
-    linkLabel: 'Open Subscriptions',
-  },
-  {
-    question: 'What should I check if a record seems to be missing?',
-    answer: 'Check the current business shown in the app header, the search text, date ranges, and status or archive filters. If it is still not visible, review saved records in Data Integrity. Do not clear browser storage as a troubleshooting step.',
-    destination: 'data-integrity',
-    linkLabel: 'Open Data Integrity',
-  },
-  {
-    question: 'Where can I create or restore a backup?',
-    answer: 'Open Settings, then Data & Storage. Create a downloadable JSON backup there. A restore starts with a validation preview and requires confirmation; the app creates a safety backup before applying it.',
-    openDataManagement: true,
-    linkLabel: 'Open Data & Storage',
-  },
-  {
-    question: 'Are Demo and Production records separated?',
-    answer: 'Yes. Demo and Production records use separate browser storage namespaces. Both remain on this device and browser profile; Demo is not a separate cloud account or server-side security boundary.',
-  },
-  {
-    question: 'Do records remain after refreshing the page?',
-    answer: 'Business records are saved to browser LocalStorage and normally remain available in the same browser profile after a refresh. They are not cloud-synced, and browser or device changes can affect local data, so keep a separate backup.',
-  },
-  {
-    question: 'Is local sign-in server-side security?',
-    answer: 'No. Sign-in is stored in this browser and is not server-side authentication or a security boundary. Protect access to your device and browser profile.',
-  },
-];
-
 const workflow = [
   'Add or select a customer.',
   'Choose an available service and plan.',
@@ -425,28 +374,14 @@ export const AboutExperience: React.FC<AboutExperienceProps> = ({
 
     <section className="about-page-section" aria-labelledby="about-faq-title">
       <div className="about-page-section__heading">
-        <p className="about-page-kicker">FAQ &amp; troubleshooting</p>
-        <h3 id="about-faq-title">Quick answers for common tasks.</h3>
+        <p className="about-page-kicker">Help &amp; troubleshooting</p>
+        <h3 id="about-faq-title">Find a guide for your next step.</h3>
+        <p>Search verified step-by-step guides and troubleshooting in the in-app Help Center.</p>
       </div>
-      <div className="about-page-faq">
-        {questions.map(({ question, answer, destination, linkLabel, openDataManagement }) => (
-          <details key={question}>
-            <summary>{question}</summary>
-            <div>
-              <p>{answer}</p>
-              {destination && linkLabel && (
-                <button type="button" onClick={() => onNavigate(destination)}>
-                  {linkLabel}<ArrowRight aria-hidden="true" />
-                </button>
-              )}
-              {openDataManagement && linkLabel && (
-                <button type="button" onClick={onOpenDataManagement}>
-                  {linkLabel}<ArrowRight aria-hidden="true" />
-                </button>
-              )}
-            </div>
-          </details>
-        ))}
+      <div className="about-page-actions">
+        <button type="button" onClick={() => onNavigate('help')}>
+          <BookOpen aria-hidden="true" /> Open Help Center <ArrowRight aria-hidden="true" />
+        </button>
       </div>
     </section>
 
@@ -470,7 +405,7 @@ export const AboutExperience: React.FC<AboutExperienceProps> = ({
         <div><dt>Version</dt><dd>{productBrand.version}</dd></div>
         <div><dt>Business</dt><dd>{currentBusinessName || 'Not set'}</dd></div>
         <div><dt>Running as</dt><dd>{displayMode}</dd></div>
-        <div><dt>Help &amp; support</dt><dd>No external guide or support destination is configured.</dd></div>
+        <div><dt>Help &amp; support</dt><dd>In-app Help Center and public Support Center.</dd></div>
       </dl>
       <p className="about-page-caption">
         <FileText aria-hidden="true" /> In-app data and backup guidance is available in Data &amp; Storage settings.
