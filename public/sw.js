@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'xolve-manager-static-v';
-const CACHE_NAME = `${CACHE_PREFIX}next-10`;
+const CACHE_NAME = `${CACHE_PREFIX}next-11`;
 const PREVIOUS_CACHE_COUNT = 1;
 const PRECACHE_URLS = [
   '/manifest.webmanifest',
@@ -72,7 +72,9 @@ self.addEventListener('fetch', event => {
           return response;
         })
         .catch(async error => {
-          const cachedPage = await findCachedResponse(request) || await findCachedResponse('/');
+          const cachedPage = await findCachedResponse(request)
+            || await findCachedResponse('/login')
+            || await findCachedResponse('/');
           if (cachedPage) return cachedPage;
           console.error('App page could not be loaded and has no offline copy.', error);
           return Response.error();

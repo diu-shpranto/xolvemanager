@@ -14,13 +14,14 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { policy: slug } = await params;
   const policy = getLegalPolicy(slug);
-  if (!policy) return { title: 'Policy not found | XolveManager', robots: { index: false, follow: false } };
+  if (!policy) return { title: 'Policy not found', robots: { index: false, follow: false } };
 
+  const isIndexablePolicy = ['privacy', 'data-backup'].includes(policy.slug);
   return {
-    title: `${policy.title} | XolveManager`,
+    title: policy.title,
     description: policy.description,
     alternates: { canonical: `/legal/${policy.slug}` },
-    robots: { index: false, follow: false },
+    robots: { index: isIndexablePolicy, follow: true },
     other: { 'last-updated': LEGAL_POLICY_UPDATED_AT },
   };
 }

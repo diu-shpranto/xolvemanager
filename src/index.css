@@ -2699,7 +2699,9 @@ button.dashboard-metric:hover {
   gap: 0.8rem;
   overflow: hidden;
   padding: 1.5rem;
-  background: #2f1c51;
+  background:
+    radial-gradient(ellipse at 92% 0%, rgba(196, 181, 253, 0.2), transparent 42%),
+    linear-gradient(125deg, #302044 0%, #493166 100%);
   color: #fff;
   text-align: left;
   transition: background-color 160ms ease, box-shadow 160ms ease;
@@ -3663,8 +3665,13 @@ button.dashboard-metric:hover {
   }
 
   .dashboard-revenue-kpi {
-    min-height: 10rem;
-    padding: 1.2rem;
+    min-height: 4.875rem;
+    gap: 0.35rem;
+    padding: 0.625rem;
+  }
+
+  .dashboard-kpi-eyebrow {
+    font-size: 0.65rem;
   }
 
   .dashboard-revenue-values {
@@ -3672,12 +3679,12 @@ button.dashboard-metric:hover {
   }
 
   .dashboard-revenue-values strong {
-    font-size: clamp(1.2rem, 5.2vw, 1.6rem);
+    font-size: clamp(0.9rem, 4vw, 1.1rem);
   }
 
   .dashboard-revenue-arrow {
-    top: 1rem;
-    right: 1rem;
+    top: 0.625rem;
+    right: 0.625rem;
   }
 
   .dashboard-attention-item {
@@ -11427,7 +11434,10 @@ button.dashboard-metric:hover {
 
 .app-main .dashboard-view .dashboard-revenue-kpi {
   border-color: rgba(196, 181, 253, 0.2) !important;
-  background: linear-gradient(125deg, #302044 0%, #493166 100%);
+  background:
+    radial-gradient(ellipse at 92% 0%, rgba(196, 181, 253, 0.2), transparent 42%),
+    linear-gradient(125deg, #302044 0%, #493166 100%);
+  box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .app-main .dashboard-view .dashboard-kpi {
