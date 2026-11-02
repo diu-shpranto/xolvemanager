@@ -64,6 +64,7 @@ test('local owner lifecycle keeps auth separate from business records', async ()
   );
   assert.equal(user.role, 'owner');
   assert.equal(user.email, 'owner@example.com');
+  assert.equal(user.onboardingEligible, true);
   assert.ok(recoveryKey.length >= 64);
   const storedAccount = JSON.parse(localStorage.getItem(AUTH_ACCOUNTS_KEY));
   assert.equal(storedAccount.account.email, 'owner@example.com');
@@ -77,6 +78,7 @@ test('local owner lifecycle keeps auth separate from business records', async ()
   await assert.rejects(signInLocally('owner@example.com', 'wrong-password'), { code: 'INVALID_CREDENTIALS' });
   const signedInUser = await signInLocally('OWNER@example.com', 'StrongPass!123');
   assert.equal(signedInUser.uid, user.uid);
+  assert.equal(signedInUser.onboardingEligible, true);
   assert.ok(localStorage.getItem(AUTH_SESSION_KEY));
   assert.equal(sessionStorage.getItem(AUTH_SESSION_KEY), null);
   assert.equal(restoreLocalSession().uid, user.uid);
@@ -102,6 +104,13 @@ test('local owner lifecycle keeps auth separate from business records', async ()
   assert.equal(localStorage.getItem(AUTH_SESSION_KEY), null);
   assert.equal(localStorage.getItem('sqp_customers_v2'), '[{"id":"preserved-customer"}]');
   assert.equal(JSON.stringify([...localStorage.values.entries()]).includes(rotatedKey), false);
+
+  const legacyDatabase = JSON.parse(localStorage.getItem(AUTH_ACCOUNTS_KEY));
+  delete legacyDatabase.account.onboardingEligible;
+  localStorage.setItem(AUTH_ACCOUNTS_KEY, JSON.stringify(legacyDatabase));
+  const returningUser = await signInLocally('owner@example.com', 'NewStrongPass!456');
+  assert.equal(returningUser.uid, user.uid);
+  assert.equal(returningUser.onboardingEligible, undefined);
 
   const activeProductionSession = {
     version: 1,

@@ -5,7 +5,6 @@ import type { FormEvent } from 'react';
 import {
   ArrowRight,
   ChartNoAxesCombined,
-  Check,
   ChevronRight,
   CreditCard,
   Eye,
@@ -52,7 +51,7 @@ interface AuthScreenProps {
 const copy = {
   en: {
     loginTitle: 'Sign in',
-    loginIntro: 'Manage your business with XolveManager.',
+    loginIntro: 'Use the account created in this browser. Your business records stay here and do not sync between devices.',
     signupTitle: 'Create your account',
     signupIntro: 'Create an account on this browser.',
     recoveryTitle: 'Reset your password',
@@ -64,7 +63,6 @@ const copy = {
     recoveryKey: 'Recovery code',
     persistentSession: 'You will stay signed in on this device until you sign out.',
     welcomeEyebrow: 'WELCOME BACK',
-    keepSignedIn: 'Keep me signed in',
     signIn: 'Sign in',
     create: 'Create account',
     createNewAccount: 'Create an account',
@@ -119,7 +117,7 @@ const copy = {
   },
   bn: {
     loginTitle: 'সাইন ইন করুন',
-    loginIntro: 'XolveManager দিয়ে আপনার ব্যবসা পরিচালনা চালিয়ে যান।',
+    loginIntro: 'এই ব্রাউজারে তৈরি করা অ্যাকাউন্ট দিয়ে সাইন ইন করুন। ব্যবসার তথ্য এখানেই থাকে, অন্য ডিভাইসে সিঙ্ক হয় না।',
     signupTitle: 'মালিকের অ্যাকাউন্ট তৈরি করুন',
     signupIntro: 'এই ব্রাউজারের জন্য একটিমাত্র স্থানীয় মালিক অ্যাকাউন্ট তৈরি করুন।',
     recoveryTitle: 'অ্যাকাউন্ট পুনরুদ্ধার',
@@ -131,7 +129,6 @@ const copy = {
     recoveryKey: 'রিকভারি কী',
     persistentSession: 'সাইন আউট না করা পর্যন্ত এই ডিভাইসে সাইন ইন থাকবে।',
     welcomeEyebrow: 'আবার স্বাগতম',
-    keepSignedIn: 'সাইন ইন রাখা হবে',
     signIn: 'সাইন ইন',
     create: 'অ্যাকাউন্ট তৈরি করুন',
     createNewAccount: 'নতুন অ্যাকাউন্ট তৈরি করুন',
@@ -432,7 +429,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
 
                     {mode === 'login' && (
                       <div className="auth-login-options">
-                        <span><i aria-hidden="true"><Check /></i>{text.keepSignedIn}</span>
+                        <p className="auth-session-note">{text.persistentSession}</p>
                         <button type="button" onClick={() => navigate('/forgot-password')} className="auth-text-link">{text.forgot}</button>
                       </div>
                     )}

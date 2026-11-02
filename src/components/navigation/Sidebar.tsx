@@ -25,6 +25,7 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { productBrand } from '../../config/brand';
 import { ProductLogo } from '../common/BrandLockup';
 
 export type NavSection =
@@ -322,7 +323,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   tone="inverse"
                   showTagline
                   markOnly={isCollapsedDesktop}
-                  markSrc="/icons/xolvemanager-brand-192.png"
+                  markSrc={productBrand.iconUrl}
                   className="app-sidebar-desktop-brand hidden md:inline-flex"
                 />
               </button>
