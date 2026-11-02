@@ -110,6 +110,7 @@ import {
 } from '../services/businessStore';
 import {
   createRecordId,
+  getActiveDataEnvironment,
   getStorageKey,
   getStorageWarnings,
   getAccounts,
@@ -158,6 +159,7 @@ import {
   isValidOrderQuotation,
   saveSubscriptions,
   STORAGE_KEYS,
+  AtomicStorageReplaceError,
   replaceRawValuesAtomically,
   writeRawValue,
 } from '../services/localStorageStore';
@@ -269,6 +271,14 @@ export interface CurrentAdminUser {
   businessId?: string | null;
   isDemo?: boolean;
   onboardingEligible?: boolean;
+}
+
+export interface DataImportResult {
+  success: boolean;
+  stage?: string;
+  error?: string;
+  rollbackStatus?: 'not-needed' | 'verified' | 'failed';
+  dataStatus?: 'unchanged' | 'unknown' | 'replaced';
 }
 
 interface AppContextType {
@@ -432,10 +442,11 @@ interface AppContextType {
   demoDataCounts: DemoDataCounts;
   installDemoData: () => DemoDataCounts;
   removeDemoData: () => DemoDataCounts;
+  resetDemoData: () => DemoDataCounts;
   resetToSampleData: () => void;
   clearBusinessData: () => void;
   exportDataJSON: () => string;
-  importDataJSON: (jsonStr: string) => boolean;
+  importDataJSON: (jsonStr: string) => DataImportResult;
 
   // Computed Metrics
   stats: {
@@ -6474,33 +6485,13 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     setSettings(snapshot.settings);
   };
 
-  const installDemoData = (): DemoDataCounts => {
-    const manifestKey = getDemoDataManifestKey(currentBusiness?.businessId);
-    const rawManifest = readRawValue(manifestKey);
-    if (rawManifest !== null) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(rawManifest);
-      } catch (error) {
-        console.error('Demo data installation metadata is invalid.', error);
-        throw new Error('Demo data metadata is unreadable. Use Remove Demo Data to recover the marked records before adding again.');
-      }
-      if (!isValidDemoDataManifest(parsed)) {
-        throw new Error('Demo data metadata is invalid. No records were changed.');
-      }
-      if (manifestHasDemoData(parsed)) {
-        throw new Error('Demo data is already installed. Remove it before installing a fresh set.');
-      }
-    }
-
-    const current = getDemoSnapshot();
-    const existingCounts = getDemoDataCounts(current);
-    if (Object.values(existingCounts).some(count => count > 0)) {
-      throw new Error('Partially installed demo records were found. Remove Demo Data to recover them before installing again.');
-    }
-    const { snapshot, manifest } = buildDemoData(current, currentBusiness?.businessId);
+  const validateDemoSnapshot = (
+    snapshot: DemoDataSnapshot,
+    manifest: DemoDataManifest,
+    businessId?: string
+  ): void => {
     const integrity = runDataIntegrityCheck({
-      businessId: currentBusiness?.businessId,
+      businessId,
       customers: snapshot.customers,
       services: snapshot.services,
       serviceAccounts: snapshot.accounts,
@@ -6528,13 +6519,46 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     if (demoErrors.length > 0) {
       throw new Error(`Demo data validation failed: ${demoErrors.slice(0, 3).map(issue => issue.message).join(' ')}`);
     }
+  };
 
+  const installDemoData = (): DemoDataCounts => {
+    if (getActiveDataEnvironment() !== 'demo') {
+      throw new Error('Demo data can only be installed in Demo Mode.');
+    }
+    const manifestKey = getDemoDataManifestKey(currentBusiness?.businessId);
+    const rawManifest = readRawValue(manifestKey);
+    if (rawManifest !== null) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(rawManifest);
+      } catch (error) {
+        console.error('Demo data installation metadata is invalid.', error);
+        throw new Error('Demo data metadata is unreadable. Use Remove Demo Data to recover the marked records before adding again.');
+      }
+      if (!isValidDemoDataManifest(parsed)) {
+        throw new Error('Demo data metadata is invalid. No records were changed.');
+      }
+      if (manifestHasDemoData(parsed)) {
+        throw new Error('Demo data is already installed. Remove it before installing a fresh set.');
+      }
+    }
+
+    const current = getDemoSnapshot();
+    const existingCounts = getDemoDataCounts(current);
+    if (Object.values(existingCounts).some(count => count > 0)) {
+      throw new Error('Partially installed demo records were found. Remove Demo Data to recover them before installing again.');
+    }
+    const { snapshot, manifest } = buildDemoData(current, currentBusiness?.businessId);
+    validateDemoSnapshot(snapshot, manifest, currentBusiness?.businessId);
     persistDemoSnapshot(snapshot, manifestKey, manifest);
     applyDemoSnapshot(snapshot);
     return getDemoDataCounts(snapshot);
   };
 
   const removeDemoData = (): DemoDataCounts => {
+    if (getActiveDataEnvironment() !== 'demo') {
+      throw new Error('Demo data can only be removed in Demo Mode.');
+    }
     const manifestKey = getDemoDataManifestKey(currentBusiness?.businessId);
     const rawManifest = readRawValue(manifestKey);
     let manifest: DemoDataManifest;
@@ -6567,6 +6591,49 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     }
     const snapshot = removeDemoDataFromSnapshot(current, manifest);
     persistDemoSnapshot(snapshot, manifestKey, null);
+    applyDemoSnapshot(snapshot);
+    return getDemoDataCounts(snapshot);
+  };
+
+  const resetDemoData = (): DemoDataCounts => {
+    if (getActiveDataEnvironment() !== 'demo') {
+      throw new Error('Demo data can only be reset in Demo Mode.');
+    }
+    const businessId = currentBusiness?.businessId;
+    const manifestKey = getDemoDataManifestKey(businessId);
+    const rawManifest = readRawValue(manifestKey);
+    let manifest: DemoDataManifest;
+    if (rawManifest === null) {
+      manifest = discoverDemoDataManifest(getDemoSnapshot(), businessId);
+    } else {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(rawManifest);
+      } catch (error) {
+        console.error('Demo data installation metadata is invalid.', error);
+        throw new Error('Demo data metadata is unreadable. No data was changed.');
+      }
+      if (!isValidDemoDataManifest(parsed)) {
+        throw new Error('Demo data metadata is invalid. No data was changed.');
+      }
+      if (parsed.businessId && parsed.businessId !== businessId) {
+        throw new Error('Demo data belongs to a different business and cannot be reset here.');
+      }
+      manifest = parsed;
+    }
+    const current = getDemoSnapshot();
+    const counts = getDemoDataCounts(current);
+    if (!manifestHasDemoData(manifest) && Object.values(counts).every(count => count === 0)) {
+      throw new Error('No demo data is installed.');
+    }
+    const references = findExternalDemoReferences(current, manifest);
+    if (references.length > 0) {
+      throw new Error(`Demo data is linked to non-demo ${references.join(', ')} records. Reassign or remove those links first; no data was changed.`);
+    }
+    const cleaned = removeDemoDataFromSnapshot(current, manifest);
+    const { snapshot, manifest: replacementManifest } = buildDemoData(cleaned, businessId);
+    validateDemoSnapshot(snapshot, replacementManifest, businessId);
+    persistDemoSnapshot(snapshot, manifestKey, replacementManifest);
     applyDemoSnapshot(snapshot);
     return getDemoDataCounts(snapshot);
   };
@@ -6676,6 +6743,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     const data = {
       schemaVersion: 1,
       exportedAt: new Date().toISOString(),
+      environment: getActiveDataEnvironment(),
       business: currentBusiness,
       demoDataManifest,
       preferences: {
@@ -6710,16 +6778,23 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     return JSON.stringify(data, null, 2);
   };
 
-  const importDataJSON = (jsonStr: string): boolean => {
+  const importDataJSON = (jsonStr: string): DataImportResult => {
+    let stage = 'JSON parsing';
+    let storageCommitted = false;
     try {
       const parsed: unknown = JSON.parse(jsonStr);
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return false;
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new Error('The backup root must be a JSON object.');
+      }
       const data = parsed as Record<string, unknown>;
-      if ('schemaVersion' in data && data.schemaVersion !== 1) return false;
+      stage = 'Schema validation';
+      if ('schemaVersion' in data && data.schemaVersion !== 1) {
+        throw new Error(`Unsupported backup schema version: ${String(data.schemaVersion)}.`);
+      }
       const recordsValue = data.records;
       if ('schemaVersion' in data && (
         typeof recordsValue !== 'object' || recordsValue === null || Array.isArray(recordsValue)
-      )) return false;
+      )) throw new Error('The versioned backup records collection is missing or invalid.');
       const records = (recordsValue && typeof recordsValue === 'object' && !Array.isArray(recordsValue))
         ? recordsValue as Record<string, unknown>
         : data;
@@ -6733,51 +6808,69 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         'payments',
         'activityLogs',
       ];
-      if ('orders' in records && !Array.isArray(records.orders)) return false;
+      stage = 'Collection validation';
+      if ('orders' in records && !Array.isArray(records.orders)) {
+        throw new Error('The orders collection is invalid.');
+      }
       if (Array.isArray(records.orders) && (records.orders as unknown[]).some(item =>
         typeof item !== 'object' || item === null || Array.isArray(item)
         || ('schemaVersion' in data && typeof (item as Record<string, unknown>).id !== 'string')
-      )) return false;
-      if ('schemaVersion' in data && !Array.isArray(records.notifications)) return false;
-      if ('schemaVersion' in data && collectionKeys.some(key => !Array.isArray(records[key]))) return false;
-      if (collectionKeys.some(key => key in records && !Array.isArray(records[key]))) return false;
-      if ('reminders' in records && !Array.isArray(records.reminders)) return false;
-      if ('profitabilityCosts' in records && !Array.isArray(records.profitabilityCosts)) return false;
+      )) throw new Error('One or more order records are invalid.');
+      if ('schemaVersion' in data && !Array.isArray(records.notifications)) {
+        throw new Error('The notifications collection is missing or invalid.');
+      }
+      if ('schemaVersion' in data && collectionKeys.some(key => !Array.isArray(records[key]))) {
+        throw new Error('One or more required record collections are missing or invalid.');
+      }
+      if (collectionKeys.some(key => key in records && !Array.isArray(records[key]))) {
+        throw new Error('One or more record collections are not arrays.');
+      }
+      if ('reminders' in records && !Array.isArray(records.reminders)) {
+        throw new Error('The reminders collection is invalid.');
+      }
+      if ('profitabilityCosts' in records && !Array.isArray(records.profitabilityCosts)) {
+        throw new Error('The profitability costs collection is invalid.');
+      }
       if ('notifications' in records && (
         !Array.isArray(records.notifications) ||
         !(records.notifications as unknown[]).every(isBusinessNotification)
-      )) return false;
+      )) throw new Error('One or more notification records are invalid.');
       const idKeyFor = (key: string) => key === 'invoices' ? 'invoiceId' : 'id';
       if (collectionKeys.some(key =>
         key in records && (records[key] as unknown[]).some(item =>
           typeof item !== 'object' || item === null || Array.isArray(item) ||
           ('schemaVersion' in data && typeof (item as Record<string, unknown>)[idKeyFor(key)] !== 'string')
         )
-      )) return false;
+      )) throw new Error('One or more records are missing a valid identifier or are not objects.');
+      stage = 'Settings and preference validation';
       if ('settings' in data && (typeof data.settings !== 'object' || data.settings === null || Array.isArray(data.settings))) {
-        return false;
+        throw new Error('The business settings object is invalid.');
       }
 
       const importedSettings = data.settings as Partial<AppSettings> | undefined;
       const importedPreferences = data.preferences;
       if (importedPreferences !== undefined && (
         typeof importedPreferences !== 'object' || importedPreferences === null || Array.isArray(importedPreferences)
-      )) return false;
+      )) throw new Error('The display preferences object is invalid.');
       if (importedPreferences && typeof importedPreferences === 'object') {
         const preferences = importedPreferences as Record<string, unknown>;
         if ((preferences.theme !== undefined && preferences.theme !== 'light' && preferences.theme !== 'dark')
           || (preferences.language !== undefined && preferences.language !== 'en' && preferences.language !== 'bn')
-          || (preferences.currency !== undefined && preferences.currency !== 'BDT' && preferences.currency !== 'USD')) return false;
+          || (preferences.currency !== undefined && preferences.currency !== 'BDT' && preferences.currency !== 'USD')) {
+          throw new Error('The backup contains unsupported display preferences.');
+        }
       }
       const importedDemoManifest = data.demoDataManifest;
       if (importedDemoManifest !== undefined && importedDemoManifest !== null
-        && !isValidDemoDataManifest(importedDemoManifest)) return false;
+        && !isValidDemoDataManifest(importedDemoManifest)) {
+        throw new Error('The Demo data manifest is invalid.');
+      }
       if (importedSettings && (
         (importedSettings.storeName !== undefined && typeof importedSettings.storeName !== 'string') ||
         (importedSettings.currency !== undefined && importedSettings.currency !== 'BDT' && importedSettings.currency !== 'USD') ||
         (importedSettings.language !== undefined && importedSettings.language !== 'en' && importedSettings.language !== 'bn') ||
         (importedSettings.reminderNoticeDays !== undefined && !Number.isFinite(importedSettings.reminderNoticeDays))
-      )) return false;
+      )) throw new Error('The backup contains invalid business settings.');
       const importedName = importedSettings?.storeName ||
         (typeof data.store === 'string' ? data.store : '') ||
         (typeof data.business === 'object' && data.business !== null && 'name' in data.business &&
@@ -6787,9 +6880,10 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         normalizedImportedName &&
         (normalizedImportedName.length < 2 || normalizedImportedName.length > 80)
       ) {
-        return false;
+        throw new Error('The backup business name must contain 2 to 80 characters.');
       }
 
+      stage = 'Record normalization and relationship validation';
       const business = normalizedImportedName
         ? createRestoredBusinessRecord(data.business, normalizedImportedName)
         : currentBusiness;
@@ -6818,7 +6912,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
           importedOrderReferences.add(order.reference.toLocaleLowerCase());
         }
         return !valid;
-      })) return false;
+      })) throw new Error('One or more orders are duplicated or reference a missing customer or business.');
       const scopedOrders = importedOrders.map(order => ({
         ...order,
         ...(business?.businessId ? { businessId: business.businessId } : {}),
@@ -6909,6 +7003,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       const restoredCurrency = importedPreferenceValues.currency === 'USD' || importedPreferenceValues.currency === 'BDT'
         ? importedPreferenceValues.currency
         : importedSettings?.currency;
+      stage = 'Data integrity validation';
       const restoreIntegrity = runDataIntegrityCheck({
         businessId: business?.businessId,
         customers: imported.customers,
@@ -6933,11 +7028,13 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         settings: committedSettings,
       }, { cacheResult: false });
       if (restoreIntegrity.errors.length) {
-        console.error(`Backup restore was stopped because ${restoreIntegrity.errors.length} critical integrity issue(s) were found.`,
-          restoreIntegrity.errors.map(issue => `${issue.entityType}${issue.entityId ? ` ${issue.entityId}` : ''}: ${issue.message}`));
-        return false;
+        const integrityErrors = restoreIntegrity.errors.map(issue =>
+          `${issue.entityType}${issue.entityId ? ` ${issue.entityId}` : ''}: ${issue.message}`
+        );
+        throw new Error(`Data integrity validation failed: ${integrityErrors.join(' ')}`);
       }
 
+      stage = 'Browser storage snapshot and commit';
       replaceRawValuesAtomically({
         ...(business ? { [STORAGE_KEYS.BUSINESS]: JSON.stringify(business) } : {}),
         ...(currentBusiness?.businessId && currentBusiness.businessId !== business?.businessId
@@ -6969,7 +7066,9 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         ...(restoredLanguage ? { [STORAGE_KEYS.LANG]: restoredLanguage } : {}),
         ...(restoredCurrency ? { [STORAGE_KEYS.CURRENCY]: restoredCurrency } : {}),
       });
+      storageCommitted = true;
 
+      stage = 'Updating in-memory application state';
       if (business && normalizedImportedName) {
         setCurrentBusiness(business);
         setCurrentBusinessName(business.name);
@@ -6998,10 +7097,22 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       if (restoredTheme) setIsDark(restoredTheme === 'dark');
       if (restoredLanguage) setLanguageState(restoredLanguage);
       if (restoredCurrency) setCurrencyState(restoredCurrency);
-      return true;
+      return { success: true };
     } catch (error) {
-      console.error('Business backup restore failed before completion.', error);
-      return false;
+      const failureStage = error instanceof AtomicStorageReplaceError
+        ? `Browser storage ${error.stage}`
+        : stage;
+      const rollbackStatus = error instanceof AtomicStorageReplaceError
+        ? error.rollbackStatus
+        : 'not-needed';
+      console.error(`Business backup restore failed during ${failureStage}.`, error);
+      return {
+        success: false,
+        stage: failureStage,
+        error: error instanceof Error ? error.message : String(error),
+        rollbackStatus,
+        dataStatus: storageCommitted ? 'replaced' : rollbackStatus === 'failed' ? 'unknown' : 'unchanged',
+      };
     }
   };
 
@@ -7156,6 +7267,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         demoDataCounts,
         installDemoData,
         removeDemoData,
+        resetDemoData,
         resetToSampleData,
         clearBusinessData,
         exportDataJSON,

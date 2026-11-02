@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  canMergeBackup,
   createVersionedBackup,
+  getBackupBusinessId,
+  getBackupCounts,
+  getBackupRecordCount,
   planBackupMerge,
+  requiresBusinessIdentityConfirmation,
+  requiresEmptyBackupConfirmation,
   validateBackup,
   verifyBackupIntegrity,
 } from './dataBackupService.ts';
@@ -73,6 +79,99 @@ test('creates a portable empty backup with a checked manifest and SHA-256 checks
     ...backup,
     records: { ...backup.records, customers: [{ id: 'tampered' }] },
   })).length > 0);
+  const tampered = {
+    ...backup,
+    records: { ...backup.records, customers: [{ id: 'tampered' }] },
+  };
+  assert.equal(validateBackup(tampered).valid, false);
+});
+
+test('allows an intentionally blank Production business name in a safety backup', async () => {
+  const backup = await createVersionedBackup(JSON.stringify({
+    business: null,
+    settings: { storeName: '' },
+    environment: 'production',
+    records: emptyRecords,
+  }), 'test');
+
+  assert.equal(backup.settings.storeName, '');
+  assert.equal(validateBackup(backup).valid, true);
+});
+
+test('resolves a stable Business ID only when backup metadata and records agree', async () => {
+  const backup = await createVersionedBackup(JSON.stringify({
+    business: { businessId: 'business-1', name: 'Test Business' },
+    settings: { businessId: 'business-1' },
+    records: emptyRecords,
+  }), 'test');
+  assert.equal(getBackupBusinessId(backup), 'business-1');
+  assert.equal(getBackupBusinessId({
+    ...backup,
+    business: null,
+    settings: { ...backup.settings, businessId: 'business-from-settings' },
+  }), 'business-from-settings');
+  assert.equal(getBackupBusinessId({
+    ...backup,
+    business: null,
+    settings: { ...backup.settings, businessId: undefined },
+    records: { ...backup.records, customers: [{ id: 'customer-1', businessId: 'business-from-records' }] },
+  }), 'business-from-records');
+  assert.equal(getBackupBusinessId({
+    ...backup,
+    settings: { ...backup.settings, businessId: 'conflicting-business' },
+  }), undefined);
+  assert.equal(getBackupBusinessId({
+    ...backup,
+    business: null,
+    settings: { ...backup.settings, businessId: undefined },
+    records: {
+      ...backup.records,
+      customers: [{ id: 'customer-1', businessId: 'business-1' }],
+      services: [{ id: 'service-1', businessId: 'business-2' }],
+    },
+  }), undefined);
+});
+
+test('preserves populated backup counts and explicit Demo profile metadata', async () => {
+  const customer = { id: 'customer-1', name: 'Test Customer', phone: '', email: '' };
+  const backup = await createVersionedBackup(JSON.stringify({
+    business: { businessId: 'business-1', name: 'Test Business' },
+    environment: 'demo',
+    settings: {},
+    records: { ...emptyRecords, customers: [customer] },
+  }), 'test');
+
+  assert.equal(backup.environment, 'demo');
+  assert.equal(getBackupRecordCount(backup.records), 1);
+  assert.equal(getBackupCounts(backup.records).customers, 1);
+  assert.equal(validateBackup(backup).valid, true);
+
+  const displayedRecords = {
+    ...emptyRecords,
+    customers: Array.from({ length: 20 }, (_, index) => ({ id: `customer-${index}` })),
+    services: Array.from({ length: 6 }, (_, index) => ({ id: `service-${index}` })),
+    sales: Array.from({ length: 40 }, (_, index) => ({ id: `sale-${index}` })),
+    payments: Array.from({ length: 40 }, (_, index) => ({ id: `payment-${index}` })),
+    invoices: Array.from({ length: 40 }, (_, index) => ({ invoiceId: `invoice-${index}` })),
+  };
+  assert.equal(getBackupCounts(displayedRecords).customers, 20);
+  assert.equal(getBackupCounts(displayedRecords).services, 6);
+  assert.equal(getBackupCounts(displayedRecords).sales, 40);
+  assert.equal(getBackupCounts(displayedRecords).payments, 40);
+  assert.equal(getBackupCounts(displayedRecords).invoices, 40);
+  assert.equal(getBackupRecordCount(displayedRecords), 146);
+  assert.equal(requiresEmptyBackupConfirmation(displayedRecords, emptyRecords), true);
+  assert.equal(requiresEmptyBackupConfirmation(emptyRecords, emptyRecords), false);
+});
+
+test('blocks unsafe Merge across business IDs or storage profiles', () => {
+  assert.equal(canMergeBackup('business-1', 'business-1', 'production', 'production'), true);
+  assert.equal(canMergeBackup('business-1', 'business-2', 'production', 'production'), false);
+  assert.equal(canMergeBackup('business-1', 'business-1', 'production', 'demo'), false);
+  assert.equal(canMergeBackup(undefined, 'business-1', 'production', 'production'), false);
+  assert.equal(requiresBusinessIdentityConfirmation('business-1', 'business-2'), true);
+  assert.equal(requiresBusinessIdentityConfirmation('business-1', undefined), true);
+  assert.equal(requiresBusinessIdentityConfirmation('business-1', 'business-1'), false);
 });
 
 test('merges idempotently, keeps conflicting IDs and avoids duplicate sale and payment references', () => {
@@ -116,6 +215,32 @@ test('merges idempotently, keeps conflicting IDs and avoids duplicate sale and p
   assert.equal(Object.values(repeated.added).reduce((sum, count) => sum + count, 0), 0);
   assert.equal(repeated.records.sales.length, 2);
   assert.equal(repeated.records.payments.length, 2);
+});
+
+test('preserves linked invoice, payment allocation, and advance-credit references during Merge', () => {
+  const customer = { id: 'customer-2', name: 'Linked customer' };
+  const sale = { id: 'sale-2', customerId: customer.id, invoiceNo: 'INV-2' };
+  const invoice = { invoiceId: 'invoice-2', invoiceNumber: 'INV-2', saleId: sale.id, customerId: customer.id };
+  const payment = {
+    id: 'payment-2',
+    customerId: customer.id,
+    invoiceId: invoice.invoiceId,
+    saleId: sale.id,
+    advanceCreditAmount: 25,
+    allocations: [{ saleId: sale.id, invoiceId: invoice.invoiceId, amount: 75, fundingSource: 'advance_credit' }],
+  };
+  const merged = planBackupMerge(emptyRecords, {
+    ...emptyRecords,
+    customers: [customer],
+    sales: [sale],
+    invoices: [invoice],
+    payments: [payment],
+  });
+
+  assert.deepEqual(merged.records.customers, [customer]);
+  assert.deepEqual(merged.records.sales, [sale]);
+  assert.deepEqual(merged.records.invoices, [invoice]);
+  assert.deepEqual(merged.records.payments, [payment]);
 });
 
 test('backs up and validates saved quotations without treating them as sales or payments', async () => {

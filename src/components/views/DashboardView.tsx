@@ -2121,7 +2121,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="dashboard-view mx-auto flex max-w-[1600px] flex-col gap-5 px-4 py-5 sm:gap-6 sm:px-6 sm:py-6 xl:px-8">
-      <header className="dashboard-page-header flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <header className="dashboard-page-header flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-sm font-bold tracking-wide text-violet-700 dark:text-violet-300">{dashboardCopy.overview}</p>
           <h1 className="mt-1 whitespace-nowrap text-3xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-4xl">
