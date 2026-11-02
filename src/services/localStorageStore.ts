@@ -156,15 +156,44 @@ export const writeRawValue = (key: string, value: string): void => {
   storageWarnings.delete(`write:${key}`);
 };
 
+export type AtomicStorageRollbackStatus = 'not-needed' | 'verified' | 'failed';
+
+export class AtomicStorageReplaceError extends Error {
+  constructor(
+    readonly stage: 'snapshot' | 'commit',
+    readonly originalError: unknown,
+    readonly rollbackStatus: AtomicStorageRollbackStatus,
+  ) {
+    const cause = originalError instanceof Error ? originalError.message : String(originalError);
+    const rollbackMessage = rollbackStatus === 'verified'
+      ? 'Rollback was verified.'
+      : rollbackStatus === 'failed'
+        ? 'Rollback could not be verified.'
+        : 'No storage writes were made.';
+    super(`Browser storage ${stage} failed: ${cause} ${rollbackMessage}`);
+    this.name = 'AtomicStorageReplaceError';
+  }
+}
+
 export const replaceRawValuesAtomically = (values: Record<string, string | null>): void => {
   const storage = getStorage();
-  if (!storage) throw new Error('Browser storage is unavailable.');
-  const scopedValues = Object.fromEntries(
-    Object.entries(values).map(([key, value]) => [getStorageKey(key), value])
-  );
+  if (!storage) {
+    throw new AtomicStorageReplaceError('snapshot', new Error('Browser storage is unavailable.'), 'not-needed');
+  }
+
+  let scopedValues: Record<string, string | null>;
   const previous = new Map<string, string | null>();
   try {
+    scopedValues = Object.fromEntries(
+      Object.entries(values).map(([key, value]) => [getStorageKey(key), value])
+    );
     Object.keys(scopedValues).forEach(key => previous.set(key, storage.getItem(key)));
+  } catch (error) {
+    console.error('Could not snapshot browser data before replacement.', error);
+    throw new AtomicStorageReplaceError('snapshot', error, 'not-needed');
+  }
+
+  try {
     Object.entries(scopedValues).forEach(([key, value]) => {
       if (value === null) storage.removeItem(key);
       else storage.setItem(key, value);
@@ -179,14 +208,31 @@ export const replaceRawValuesAtomically = (values: Record<string, string | null>
         rollbackErrors.push(rollbackError);
       }
     });
-    console.error('Replacing local data failed; rollback was attempted.', error, rollbackErrors);
-    if (rollbackErrors.length) {
-      throw new Error('Restore failed and browser storage could not fully roll back. Keep the safety backup and reload the application.');
-    }
-    throw new Error('Restore failed. Previous browser data was restored.');
+
+    const verificationErrors: unknown[] = [];
+    previous.forEach((value, key) => {
+      try {
+        if (storage.getItem(key) !== value) {
+          verificationErrors.push(new Error(`Stored value for "${key}" does not match its pre-restore snapshot.`));
+        }
+      } catch (verificationError) {
+        verificationErrors.push(verificationError);
+      }
+    });
+
+    const rollbackStatus = verificationErrors.length === 0
+      ? 'verified'
+      : 'failed';
+    console.error('Replacing local data failed.', {
+      originalError: error,
+      rollbackErrors,
+      verificationErrors,
+      rollbackStatus,
+    });
+    throw new AtomicStorageReplaceError('commit', error, rollbackStatus);
   }
   Object.keys(values).forEach(key => storageWarnings.delete(`write:${key}`));
-}
+};
 
 export const removeStoredValue = (key: string): void => {
   try {

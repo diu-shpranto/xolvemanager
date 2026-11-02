@@ -9,7 +9,6 @@ import {
   AppSettings,
 } from '../types';
 import { getTodayDateString } from '../utils/dateUtils';
-import { DEFAULT_INVOICE_BUSINESS_NAME, DEFAULT_INVOICE_SUPPORT_NUMBER } from '../config/brand';
 
 const today = getTodayDateString();
 
@@ -844,15 +843,15 @@ export const initialActivityLogs: ActivityLog[] = [
 ];
 
 export const initialSettings: AppSettings = {
-  storeName: DEFAULT_INVOICE_BUSINESS_NAME,
+  storeName: '',
   tagline: '',
   currency: 'BDT',
   language: 'en',
-  adminEmail: 'demo@example.com',
-  adminName: 'Demo User',
+  adminEmail: '',
+  adminName: '',
   reminderNoticeDays: 7,
-  contactPhone: DEFAULT_INVOICE_SUPPORT_NUMBER,
-  whatsappNumber: DEFAULT_INVOICE_SUPPORT_NUMBER,
+  contactPhone: '',
+  whatsappNumber: '',
   facebookPageUrl: '',
   whatsappReminderTemplateEN:
     'Hello {customer_name},\nThis is a friendly reminder from {store_name} that your {service_name} ({plan}) subscription will expire in {days_left} days on {expiry_date}.\nPlease contact us to renew before the expiry date. Thank you!',

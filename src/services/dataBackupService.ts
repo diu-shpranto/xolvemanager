@@ -100,6 +100,33 @@ const dateOnlyIsValid = (value: unknown): boolean => {
   const date = new Date(year, month - 1, day);
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 };
+const isBackupEnvironment = (value: unknown): value is BackupEnvironment =>
+  value === 'demo' || value === 'production' || value === 'mixed' || value === 'unknown';
+
+export const getBackupBusinessId = (backup: Pick<BackupDocument, 'business' | 'settings' | 'records'>): string | undefined => {
+  const businessId = isRecord(backup.business)
+    && typeof backup.business.businessId === 'string' && backup.business.businessId.trim()
+    ? backup.business.businessId
+    : undefined;
+  const settingsBusinessId = typeof backup.settings?.businessId === 'string'
+    && backup.settings.businessId.trim()
+    ? backup.settings.businessId
+    : undefined;
+  if (businessId && settingsBusinessId && businessId !== settingsBusinessId) return undefined;
+
+  const metadataBusinessId = businessId || settingsBusinessId;
+  const recordBusinessIds = new Set(
+    [...REQUIRED_COLLECTIONS, ...FINANCIAL_COLLECTIONS, ...OPTIONAL_COLLECTIONS]
+      .flatMap(name => Array.isArray(backup.records[name]) ? backup.records[name] : [])
+      .flatMap(item => isRecord(item) && typeof item.businessId === 'string' && item.businessId.trim()
+        ? [item.businessId]
+        : [])
+  );
+  if (recordBusinessIds.size > 1) return undefined;
+  const recordBusinessId = [...recordBusinessIds][0];
+  if (metadataBusinessId && recordBusinessId && metadataBusinessId !== recordBusinessId) return undefined;
+  return metadataBusinessId || recordBusinessId;
+};
 
 export const getBackupEnvironment = (records: Record<string, unknown>, demoManifest: unknown): BackupEnvironment => {
   let demoRecords = 0;
@@ -169,7 +196,9 @@ export async function createVersionedBackup(json: string, appVersion: string): P
     business: parsed.business ?? null,
     demoDataManifest: parsed.demoDataManifest ?? null,
     preferences: isRecord(parsed.preferences) ? parsed.preferences : {},
-    environment: getBackupEnvironment(records, parsed.demoDataManifest),
+    environment: isBackupEnvironment(parsed.environment)
+      ? parsed.environment
+      : getBackupEnvironment(records, parsed.demoDataManifest),
     categoryManifest,
     settings: parsed.settings,
     records: {
@@ -368,8 +397,9 @@ export function validateBackup(input: unknown): BackupValidation {
       errors.push(`Profitability cost row ${index + 1} has manual allocations that do not total 100%.`);
     }
   });
-  if (isRecord(input.settings) && typeof input.settings.storeName === 'string' &&
-    (input.settings.storeName.trim().length < 2 || input.settings.storeName.trim().length > 80)) {
+  if (isRecord(input.settings) && typeof input.settings.storeName === 'string'
+    && input.settings.storeName.trim()
+    && (input.settings.storeName.trim().length < 2 || input.settings.storeName.trim().length > 80)) {
     errors.push('Business settings contain an invalid business name.');
   }
   if (isRecord(input.settings) && input.settings.currency !== undefined &&
@@ -389,8 +419,29 @@ export function validateBackup(input: unknown): BackupValidation {
       if (!isRecord(item)) errors.push(`${name} row ${index + 1} is not a record.`);
     });
   }
-  if (isRecord(input.business) && typeof input.business.businessId === 'string') {
-    const businessId = input.business.businessId;
+  const businessBusinessId = isRecord(input.business)
+    && typeof input.business.businessId === 'string' && input.business.businessId.trim()
+    ? input.business.businessId
+    : undefined;
+  const settingsBusinessId = isRecord(input.settings)
+    && typeof input.settings.businessId === 'string' && input.settings.businessId.trim()
+    ? input.settings.businessId
+    : undefined;
+  if (businessBusinessId && settingsBusinessId && businessBusinessId !== settingsBusinessId) {
+    errors.push('Backup business metadata contains conflicting Business IDs.');
+  }
+  const businessId = businessBusinessId || settingsBusinessId;
+  const recordBusinessIds = new Set(
+    [...REQUIRED_COLLECTIONS, ...FINANCIAL_COLLECTIONS, ...OPTIONAL_COLLECTIONS]
+      .flatMap(name => Array.isArray(records[name]) ? records[name] as unknown[] : [])
+      .flatMap(item => isRecord(item) && typeof item.businessId === 'string' && item.businessId.trim()
+        ? [item.businessId]
+        : [])
+  );
+  if (!businessId && recordBusinessIds.size > 1) {
+    errors.push('Backup records reference multiple Business IDs.');
+  }
+  if (businessId) {
     REQUIRED_COLLECTIONS.forEach(name => arrays[name].forEach(item => {
       if (isRecord(item) && typeof item.businessId === 'string' && item.businessId !== businessId) {
         errors.push(`${name} record ${String(item.id ?? '')} belongs to a different business.`);
@@ -1287,6 +1338,36 @@ export function getBackupCounts(records: BackupRecords): BackupCollectionCounts 
         : isRecord(item) && Array.isArray(item.plans) ? item.plans.length : 0
     ), 0),
   };
+}
+
+export function getBackupRecordCount(records: BackupRecords): number {
+  return [...REQUIRED_COLLECTIONS, ...FINANCIAL_COLLECTIONS, ...OPTIONAL_COLLECTIONS]
+    .reduce((count, name) => count + (Array.isArray(records[name]) ? records[name].length : 0), 0);
+}
+
+export function canMergeBackup(
+  currentBusinessId: string | undefined,
+  backupBusinessId: string | undefined,
+  activeEnvironment: BackupEnvironment,
+  backupEnvironment: BackupEnvironment,
+): boolean {
+  return Boolean(currentBusinessId && backupBusinessId)
+    && currentBusinessId === backupBusinessId
+    && activeEnvironment === backupEnvironment;
+}
+
+export function requiresBusinessIdentityConfirmation(
+  currentBusinessId: string | undefined,
+  backupBusinessId: string | undefined,
+): boolean {
+  return !currentBusinessId || !backupBusinessId || currentBusinessId !== backupBusinessId;
+}
+
+export function requiresEmptyBackupConfirmation(
+  currentRecords: BackupRecords,
+  backupRecords: BackupRecords,
+): boolean {
+  return getBackupRecordCount(currentRecords) > 0 && getBackupRecordCount(backupRecords) === 0;
 }
 
 export interface BackupMergePlan {

@@ -33,6 +33,7 @@ import { getDailyFinancialSummary, getFinancialLedger } from '../utils/financial
 
 export const DEMO_DATA_ID_PREFIX = 'xvm_demo_';
 export const DEMO_DATA_MANIFEST_KEY_PREFIX = 'xvm_demo_data_manifest_v1_';
+export const DEMO_BUSINESS_NAME = 'XolveKart Demo';
 
 export interface DemoDataManifest {
   version: 1;
@@ -158,8 +159,9 @@ const demoNames = [
   'Rahim Ahmed', 'Karim Hasan', 'Nusrat Jahan', 'Sadia Islam', 'Tanvir Hossain',
   'Fahim Rahman', 'Mehedi Hasan', 'Tania Akter', 'Arif Chowdhury', 'Jannatul Ferdous',
   'Saif Ahmed', 'Mahin Islam', 'Rafiul Hasan', 'Mim Akter', 'Shakil Ahmed',
-  'Nabila Akter', 'Hasan Mahmud', 'Farzana Islam', 'Imran Kabir', 'Samiha Noor',
 ];
+const DEMO_CUSTOMER_COUNT = 15;
+const DEMO_SALE_COUNT = 15;
 
 const expenseCategoryDefinitions = [
   ['internet', 'Internet'],
@@ -245,16 +247,16 @@ export const getDemoDataManifestKey = (businessId?: string): string =>
 
 export const getDemoDataPreview = (): DemoDataPreview => ({
   counts: {
-    customers: 20,
+    customers: DEMO_CUSTOMER_COUNT,
     services: 6,
     plans: 19,
     accounts: 8,
     profiles: 24,
-    sales: 40,
+    sales: DEMO_SALE_COUNT,
     orders: 0,
-    payments: 40,
-    subscriptions: 40,
-    invoices: 40,
+    payments: DEMO_SALE_COUNT,
+    subscriptions: DEMO_SALE_COUNT,
+    invoices: DEMO_SALE_COUNT,
     expenses: 20,
     financialAccounts: 5,
     transfers: 4,
@@ -303,8 +305,10 @@ export const getDemoDataCounts = (snapshot: DemoDataSnapshot): DemoDataCounts =>
 export const getDemoDataStatus = (counts: DemoDataCounts): 'Not installed' | 'Installed' | 'Partially installed' => {
   const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
   if (total === 0) return 'Not installed';
-  return counts.customers >= 20 && counts.services >= 6 && counts.sales >= 40
-    && counts.subscriptions >= 40 && counts.expenses >= 20
+  return counts.customers >= DEMO_CUSTOMER_COUNT && counts.services >= 6 && counts.accounts >= 8
+    && counts.financialAccounts >= 5 && counts.sales >= DEMO_SALE_COUNT
+    && counts.payments >= DEMO_SALE_COUNT && counts.invoices >= DEMO_SALE_COUNT
+    && counts.subscriptions >= DEMO_SALE_COUNT && counts.expenses >= 20
     ? 'Installed'
     : 'Partially installed';
 };
@@ -553,6 +557,7 @@ export const buildDemoData = (
   const addedIncomeCategories = categoryFor(incomeCategoryDefinitions, incomeCategories, 'income');
   const nextSettings: AppSettings = {
     ...current.settings,
+    storeName: DEMO_BUSINESS_NAME,
     financialPreferences: {
       ...current.settings.financialPreferences,
       expenseCategories: [...expenseCategories, ...addedExpenseCategories.filter(category => !expenseCategories.some(existing => existing.id === category.id))],
@@ -577,7 +582,7 @@ export const buildDemoData = (
   });
   const usedInvoiceNo = invoiceNumbers;
 
-  for (let index = 0; index < 40; index += 1) {
+  for (let index = 0; index < DEMO_SALE_COUNT; index += 1) {
     const entry = serviceEntries[index % serviceEntries.length];
     const plan = entry.plans[Math.floor(index / serviceEntries.length) % entry.plans.length];
     const customer = customers[index % customers.length];
@@ -604,14 +609,14 @@ export const buildDemoData = (
         ? Number((total * (index % 2 ? 0.4 : 0.65)).toFixed(currency === 'BDT' ? 0 : 2))
         : 0;
     let startOffset: number;
-    if (index < 10) startOffset = -Math.max(1, plan.durationDays - (10 + (index % 20)));
-    else if (index < 22) startOffset = -Math.max(1, plan.durationDays - (1 + (index % 7)));
-    else if (index < 32) startOffset = -plan.durationDays - (1 + (index % 20));
-    else if (index < 36) startOffset = 2 + (index % 8);
+    if (index < 5) startOffset = -Math.max(1, plan.durationDays - (10 + index));
+    else if (index < 9) startOffset = -Math.max(1, plan.durationDays - (1 + (index % 4)));
+    else if (index < 12) startOffset = -plan.durationDays - (1 + (index % 3));
+    else if (index < 14) startOffset = 2 + (index % 8);
     else startOffset = -Math.max(1, plan.durationDays - 20);
     const startDate = dateOffset(today, startOffset);
     const expiryDate = calculateExpiryDate(startDate, plan.durationDays);
-    const derivedStatus = index >= 36
+    const derivedStatus = index === DEMO_SALE_COUNT - 1
       ? 'cancelled'
       : expiryDate < today
         ? 'expired'
@@ -622,6 +627,12 @@ export const buildDemoData = (
     const createdAt = dayTimestamp(saleDate);
     const selectedMethod = paymentMethods[index % paymentMethods.length];
     const financialAccount = financialAccounts[index % financialAccounts.length];
+    const advanceCreditAmount = index === 0
+      ? currency === 'BDT' ? 350 : 2.92
+      : 0;
+    const paymentAmount = paymentStatus === 'paid' || paymentStatus === 'partial'
+      ? amountPaid + advanceCreditAmount
+      : total;
     let linkedAccount: Account | undefined;
     let linkedProfile: AccountProfile | undefined;
     if (accountProfile && accountProfile.account.serviceId === entry.service.id) {
@@ -684,13 +695,17 @@ export const buildDemoData = (
       invoiceId,
       saleId,
       subscriptionId,
-      amount: paymentStatus === 'paid' || paymentStatus === 'partial' ? amountPaid : total,
       currency: plan.currency,
       paymentMethod: selectedMethod,
       paymentMethodName: selectedMethod,
       financialAccountId: financialAccount.id,
       paymentDate: saleDate,
       paymentStatus,
+      ...(advanceCreditAmount > 0 ? { advanceCreditAmount } : {}),
+      amount: paymentAmount,
+      ...(paymentStatus === 'paid' || paymentStatus === 'partial'
+        ? { allocations: [{ saleId, invoiceId, amount: amountPaid }] }
+        : {}),
       transactionId: sale.transactionId,
       senderNumber: sale.senderNumber,
       notes: '[DEMO DATA] Sample payment; no real money moved.',
@@ -698,6 +713,7 @@ export const buildDemoData = (
     }, businessId);
     const invoice = createInvoiceRecord(sale, [payment], undefined, businessId, invoiceId);
     invoice.invoiceNumber = invoiceNo;
+    invoice.dueDate = dateOffset(saleDate, 7);
     invoice.updatedAt = nowIso;
     invoice.creationLogPending = false;
     ids.sales.push(saleId);
@@ -916,9 +932,10 @@ export const buildDemoData = (
   }
 
   const demoNotifications: BusinessNotification[] = Array.from({ length: 6 }, (_, index) => {
-    const sale = sales[index * 5];
-    const invoice = invoices[index * 5];
-    const subscription = subscriptions[index * 5];
+    const saleIndex = Math.floor(index * sales.length / 6);
+    const sale = sales[saleIndex];
+    const invoice = invoices[saleIndex];
+    const subscription = subscriptions[saleIndex];
     const id = makeUniqueId(demoId('notification', String(index + 1).padStart(3, '0')), used.notifications);
     ids.notifications.push(id);
     const category: BusinessNotification['category'] = index % 3 === 0 ? 'subscription'
