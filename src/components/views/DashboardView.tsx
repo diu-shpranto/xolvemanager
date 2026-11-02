@@ -28,6 +28,7 @@ import {
   Plus,
   UserPlus,
   PackagePlus,
+  ShoppingCart,
   Check,
   Download,
   Wallet,
@@ -315,8 +316,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     servicesLoading,
     servicesError,
     storageWarning,
-    demoDataStatus,
-    installDemoData,
     updateSettings,
   } = useApp();
   const getDaysDifference = getDaysDifferenceForTimeZone(settings.businessProfile?.timeZone);
@@ -332,7 +331,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     normalizeDashboardLayout(settings.dashboardLayout)
   );
   const [gettingStartedState, setGettingStartedState] = useState<{
-    businessId: string;
+    userId: string;
     started: boolean;
     dismissed: boolean;
     completed?: boolean;
@@ -472,29 +471,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const scopedDailyClosings = useMemo(() => dailyClosings.filter(item =>
     item.businessId === currentBusiness?.businessId
   ), [dailyClosings, currentBusiness?.businessId]);
-  const gettingStartedBusinessId = currentBusiness?.businessId || 'default';
-  const hasEssentialSetup = scopedCustomers.length > 0
-    && scopedServices.length > 0
-    && scopedSales.length > 0;
-  const essentialStepsCompleted = [
-    scopedCustomers.length > 0,
-    scopedServices.length > 0,
-    scopedSales.length > 0,
-  ].filter(Boolean).length;
+  const gettingStartedUserId = currentUser?.uid || '';
   useEffect(() => {
-    if (!currentUser || dashboardDataLoading
-      || gettingStartedState?.businessId === gettingStartedBusinessId) return;
-
-    const savedState = getGettingStartedState(gettingStartedBusinessId);
-    let nextState = savedState || getInitialGettingStartedState(hasEssentialSetup);
-    if (hasEssentialSetup && !nextState.completed) {
-      nextState = { ...nextState, started: false, dismissed: false, completed: true };
-    } else if (!hasEssentialSetup && !nextState.completed) {
-      nextState = { ...nextState, started: true, dismissed: false };
+    if (currentUser?.onboardingEligible !== true || currentUser.isDemo || dashboardDataLoading || !gettingStartedUserId) {
+      setGettingStartedState(null);
+      return;
     }
-    if (!savedState || nextState !== savedState) {
+    if (gettingStartedState?.userId === gettingStartedUserId) return;
+
+    const savedState = getGettingStartedState(gettingStartedUserId);
+    const nextState = savedState || getInitialGettingStartedState(false);
+    if (!savedState) {
       try {
-        saveGettingStartedState(nextState, gettingStartedBusinessId);
+        saveGettingStartedState(nextState, gettingStartedUserId);
       } catch (error) {
         console.error('Could not save the getting-started state.', error);
         showToast(
@@ -507,33 +496,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     setGettingStartedState({
-      businessId: gettingStartedBusinessId,
+      userId: gettingStartedUserId,
       ...nextState,
-      open: nextState.started && !nextState.dismissed,
+      open: !savedState && nextState.started && !nextState.dismissed && !nextState.completed,
     });
   }, [
     dashboardDataLoading,
-    gettingStartedBusinessId,
-    gettingStartedState?.businessId,
-    hasEssentialSetup,
+    gettingStartedUserId,
+    gettingStartedState?.userId,
+    currentUser?.onboardingEligible,
     currentUser?.uid,
     currentUser?.isDemo,
     language,
     showToast,
   ]);
-  const setGettingStartedVisibility = (open: boolean) => {
-    const nextState = {
-      started: true,
-      dismissed: !open,
-      completed: gettingStartedState?.completed ?? hasEssentialSetup,
-    };
-    setGettingStartedState({
-      businessId: gettingStartedBusinessId,
-      ...nextState,
-      open,
-    });
+  const finishGettingStarted = (completed: boolean) => {
+    if (!gettingStartedUserId) return;
+    const nextState = { started: true, dismissed: !completed, completed };
     try {
-      saveGettingStartedState(nextState, gettingStartedBusinessId);
+      saveGettingStartedState(nextState, gettingStartedUserId);
     } catch (error) {
       console.error('Could not save the getting-started preference.', error);
       showToast(
@@ -542,7 +523,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           : 'Could not save your getting-started preference in this browser.',
         'error'
       );
+      return;
     }
+    setGettingStartedState({ userId: gettingStartedUserId, ...nextState, open: false });
   };
   const customerCrmMetrics = useMemo(() => buildCustomerCrmMetrics(
     scopedCustomers,
@@ -2009,15 +1992,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  const handleLoadDemoData = () => {
-    try {
-      const counts = installDemoData();
-      showToast(`Demo data added: ${counts.customers} customers, ${counts.sales} sales, ${counts.payments} payments.`, 'success');
-    } catch (error) {
-      console.error('Could not install demo data.', error);
-      showToast(error instanceof Error ? error.message : 'Could not install demo data.', 'error');
-    }
-  };
   const renderWidgetControls = (
     group: 'summaryOrder' | 'panelOrder',
     widgetIds: readonly DashboardWidgetId[]
@@ -2270,131 +2244,84 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       )}
       {!dashboardDataLoading
-        && gettingStartedState?.businessId === gettingStartedBusinessId
+        && currentUser?.onboardingEligible === true
+        && !currentUser.isDemo
+        && gettingStartedState?.userId === gettingStartedUserId
         && gettingStartedState.open && (
-        <section aria-labelledby="getting-started-title" className={`${dashboardPanelClass} space-y-4 sm:p-5`}>
+        <section aria-labelledby="getting-started-title" className={`${dashboardPanelClass} space-y-3`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300">
-                <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
-                {language === 'bn' ? 'শুরু করুন' : 'Getting started'}
-              </div>
-              <h2 id="getting-started-title" className="mt-2 text-lg font-bold text-slate-900 dark:text-white">
-                {language === 'bn' ? 'XolveManager দিয়ে ব্যবসা গুছিয়ে নিন' : 'Make the most of XolveManager'}
+            <div>
+              <h2 id="getting-started-title" className="text-base font-bold text-slate-900 dark:text-white">
+                Get started with XolveManager
               </h2>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-                {language === 'bn'
-                  ? 'প্রোফাইল, কাস্টমার ও সার্ভিস সাজিয়ে বিক্রয় রেকর্ড করুন। বিক্রয়ের সাথে ইনভয়েস তৈরি হয়; পেমেন্ট নিতে সক্রিয় রিসিভিং অ্যাকাউন্ট যোগ করুন।'
-                  : 'Set up your profile, customers, and services before recording sales. Invoices are created from sales; add an active receiving account when you are ready to collect payments.'}
+              <p className="mt-1 text-sm leading-5 text-slate-600 dark:text-slate-300">
+                Set up your workspace in a few simple steps.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setGettingStartedVisibility(false)}
-              className="min-h-9 rounded-lg px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              {language === 'bn' ? 'বন্ধ করুন' : 'Dismiss'}
-            </button>
           </div>
 
-          <p role="status" className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
-            {currentUser?.isDemo
-              ? (language === 'bn'
-                ? 'ডেমো মোড · নমুনা ডেটা প্রোডাকশন মোড থেকে আলাদা।'
-                : 'Demo Mode · sample data is isolated from Production Mode.')
-              : (language === 'bn'
-                ? 'প্রোডাকশন মোড · আপনার ব্যবসার ডেটা ডেমো মোড থেকে আলাদা।'
-                : 'Production Mode · your business data stays separate from Demo Mode.')}
-          </p>
-
-          <div className="space-y-2" aria-label="Getting started progress">
-            <div className="flex items-center justify-between gap-3 text-xs">
-              <span className="font-semibold text-slate-700 dark:text-slate-200">
-                {language === 'bn' ? 'প্রয়োজনীয় ধাপ' : 'Essential setup'}
-              </span>
-              <span className="text-slate-500 dark:text-slate-400">
-                {language === 'bn'
-                  ? `${essentialStepsCompleted} / 3 সম্পন্ন`
-                  : `${essentialStepsCompleted} of 3 complete`}
-              </span>
-            </div>
-            <div
-              role="progressbar"
-              aria-label={language === 'bn' ? 'প্রয়োজনীয় সেটআপের অগ্রগতি' : 'Essential setup progress'}
-              aria-valuemin={0}
-              aria-valuemax={3}
-              aria-valuenow={essentialStepsCompleted}
-              className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
-            >
-              <div
-                className="h-full rounded-full bg-emerald-500 transition-[width]"
-                style={{ width: `${(essentialStepsCompleted / 3) * 100}%` }}
-              />
-            </div>
-          </div>
-
-          <ol className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          <ol className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
             {[
               {
-                title: language === 'bn' ? 'ব্যবসার প্রোফাইল পর্যালোচনা করুন' : 'Review your business profile',
-                description: language === 'bn' ? 'ইনভয়েসে ব্যবহারের জন্য ব্যবসার ঠিকানা ও পরিচিতি যোগ করুন।' : 'Add business details that customers can see on invoices.',
-                action: language === 'bn' ? 'প্রোফাইল খুলুন' : 'Review profile',
-                completed: Boolean(settings.businessProfile?.description?.trim()
-                  || settings.businessProfile?.address?.trim()
-                  || settings.businessProfile?.website?.trim()),
-                optional: true,
-                onClick: () => onNavigate('settings'),
-              },
-              {
-                title: language === 'bn' ? 'প্রথম কাস্টমার যোগ করুন' : 'Add your first customer',
-                description: language === 'bn' ? 'কাস্টমারের যোগাযোগের তথ্য ও কার্যকলাপ একসাথে রাখুন।' : 'Keep customer contact details and activity together.',
-                action: language === 'bn' ? 'কাস্টমার যোগ করুন' : 'Add customer',
+                title: 'Add your first customer',
+                description: 'Save customer details and find their records in one place.',
+                action: 'Add customer',
                 completed: scopedCustomers.length > 0,
-                optional: false,
+                icon: UserPlus,
                 onClick: () => onRequestCreate('customers'),
               },
               {
-                title: language === 'bn' ? 'প্রথম সার্ভিস তৈরি করুন' : 'Create your first service',
-                description: language === 'bn' ? 'আপনার সার্ভিস, প্ল্যান ও সাবস্ক্রিপশন সাজান।' : 'Organize the services, plans, and subscriptions you offer.',
-                action: language === 'bn' ? 'সার্ভিস যোগ করুন' : 'Add service',
+                title: 'Create your first service',
+                description: 'Set service plans, prices, durations, and availability.',
+                action: 'Create service',
                 completed: scopedServices.length > 0,
-                optional: false,
+                icon: PackagePlus,
                 onClick: () => onRequestCreate('services'),
               },
               {
-                title: language === 'bn' ? 'রিসিভিং অ্যাকাউন্ট যোগ করুন' : 'Add a receiving account',
-                description: language === 'bn'
-                  ? 'পেমেন্ট নেওয়ার সময় একটি সক্রিয় আর্থিক অ্যাকাউন্ট প্রয়োজন।'
-                  : 'An active financial account is needed when recording a payment.',
-                action: language === 'bn' ? 'রিসিভিং অ্যাকাউন্ট তৈরি করুন' : 'Create receiving account',
+                title: 'Configure a receiving account',
+                description: 'Choose where recorded payments will be received.',
+                action: 'Set up account',
                 completed: scopedFinancialAccounts.some(account =>
                   account.enabled && account.currency === currency
                 ),
-                optional: true,
+                icon: Wallet,
                 onClick: () => onCreateReceivingAccount(currency),
               },
               {
-                title: language === 'bn' ? 'প্রথম বিক্রয় রেকর্ড করুন' : 'Record your first sale',
-                description: language === 'bn' ? 'বিক্রয় ইনভয়েস তৈরি করে; পেমেন্ট পরে সংগ্রহ করা যায়।' : 'A sale creates its invoice; you can collect payment later.',
-                action: language === 'bn' ? 'নতুন বিক্রয়' : 'New sale',
+                title: 'Record your first sale',
+                description: 'Create a sale and its invoice; record payment separately.',
+                action: 'Record sale',
                 completed: scopedSales.length > 0,
-                optional: false,
+                icon: ShoppingCart,
                 onClick: () => onOpenNewSale(),
+              },
+              {
+                title: 'Record your first payment',
+                description: 'Record money received against an outstanding sale.',
+                action: 'Record payment',
+                completed: scopedPayments.some(payment =>
+                  payment.amount > 0
+                  && (payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial')
+                ),
+                icon: CreditCard,
+                onClick: () => onRequestCreate('payments'),
               },
             ].map((step, index) => (
               <li key={step.title} className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
                 <div className="flex min-w-0 items-start gap-2.5">
                   <span
-                    role="img"
-                    aria-label={step.completed ? (language === 'bn' ? 'সম্পন্ন' : 'Completed') : (language === 'bn' ? 'অসম্পন্ন' : 'Not completed')}
-                    className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${step.completed ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}
+                    className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
                   >
-                    {step.completed ? <Check aria-hidden="true" className="h-4 w-4" /> : index + 1}
+                    <step.icon aria-hidden="true" className="h-4 w-4" />
                   </span>
                   <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                      Step {index + 1}
+                    </p>
                     <h3 className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-white">
                       {step.title}
-                      {step.optional && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span>}
+                      {step.completed && <Check aria-label="Completed" className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
                     </h3>
                     <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-400">{step.description}</p>
                   </div>
@@ -2410,22 +2337,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             ))}
           </ol>
 
-          {demoDataStatus === 'Not installed' && (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {language === 'bn'
-                  ? 'নমুনা ডেটা যোগ করা ঐচ্ছিক এবং শুধু বর্তমান ওয়ার্কস্পেসে যোগ হবে।'
-                  : 'Sample data is optional and is added only to the current workspace.'}
-              </p>
-              <button
-                type="button"
-                onClick={handleLoadDemoData}
-                className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                {language === 'bn' ? 'নমুনা ডেটা যোগ করুন' : 'Load sample data'}
-              </button>
-            </div>
-          )}
+          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={() => finishGettingStarted(false)}
+              className="min-h-9 rounded-lg px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Skip for now
+            </button>
+            <button
+              type="button"
+              onClick={() => finishGettingStarted(true)}
+              className="min-h-9 rounded-lg bg-violet-700 px-3 text-xs font-semibold text-white transition-colors hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
+            >
+              Complete setup
+            </button>
+          </div>
         </section>
       )}
 
@@ -2456,14 +2383,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 ? (language === 'bn' ? 'ডেমো মোড · নমুনা ডেটা' : 'Demo Mode · sample data')
                 : (language === 'bn' ? 'প্রোডাকশন মোড · ব্যবসার ডেটা' : 'Production Mode · business data')}
             </p>
-            <button
-              type="button"
-              onClick={() => setGettingStartedVisibility(true)}
-              className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40"
-            >
-              <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
-              {language === 'bn' ? 'শুরু করার নির্দেশনা' : 'Getting started'}
-            </button>
           </div>
         </div>
         <div className="dashboard-quick-actions-list">

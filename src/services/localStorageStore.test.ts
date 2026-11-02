@@ -121,7 +121,7 @@ test('Demo and Production use separate LocalStorage namespaces', () => {
   }
 });
 
-test('getting-started dismissal is scoped by business and data environment', () => {
+test('getting-started dismissal and completion persist per user and data environment', () => {
   assert.deepEqual(getInitialGettingStartedState(false), { started: true, dismissed: false });
   assert.deepEqual(getInitialGettingStartedState(true), { started: false, dismissed: false });
 
@@ -137,24 +137,24 @@ test('getting-started dismissal is scoped by business and data environment', () 
     const productionState = { started: true, dismissed: true };
     const demoState = { started: true, dismissed: false };
 
-    saveGettingStartedState(productionState, 'business-1');
-    assert.deepEqual(getGettingStartedState('business-1'), productionState);
-    assert.equal(getGettingStartedState('business-2'), null);
-    const completedState = { started: false, dismissed: false, completed: true };
-    saveGettingStartedState(completedState, 'business-1');
-    assert.deepEqual(getGettingStartedState('business-1'), completedState);
-    saveGettingStartedState(productionState, 'business-1');
+    saveGettingStartedState(productionState, 'user-1');
+    assert.deepEqual(getGettingStartedState('user-1'), productionState);
+    assert.equal(getGettingStartedState('user-2'), null);
+    const completedState = { started: true, dismissed: false, completed: true };
+    saveGettingStartedState(completedState, 'user-1');
+    assert.deepEqual(getGettingStartedState('user-1'), completedState);
+    saveGettingStartedState(productionState, 'user-1');
 
     setActiveDataEnvironment('demo');
-    assert.equal(getGettingStartedState('business-1'), null);
-    saveGettingStartedState(demoState, 'business-1');
-    assert.deepEqual(getGettingStartedState('business-1'), demoState);
+    assert.equal(getGettingStartedState('user-1'), null);
+    saveGettingStartedState(demoState, 'user-1');
+    assert.deepEqual(getGettingStartedState('user-1'), demoState);
 
     setActiveDataEnvironment('production');
-    assert.deepEqual(getGettingStartedState('business-1'), productionState);
+    assert.deepEqual(getGettingStartedState('user-1'), productionState);
     assert.notEqual(
-      localStorage.getItem(`${STORAGE_KEYS.GETTING_STARTED}.business-1`),
-      localStorage.getItem(`xolvemanager.demo.v1.${STORAGE_KEYS.GETTING_STARTED}.business-1`)
+      localStorage.getItem(`${STORAGE_KEYS.GETTING_STARTED}.user-1`),
+      localStorage.getItem(`xolvemanager.demo.v1.${STORAGE_KEYS.GETTING_STARTED}.user-1`)
     );
   } finally {
     Object.defineProperty(globalThis, 'window', {

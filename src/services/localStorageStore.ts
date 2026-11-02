@@ -242,20 +242,20 @@ const isGettingStartedState = (value: unknown): value is GettingStartedState =>
   && typeof value.dismissed === 'boolean'
   && (!('completed' in value) || typeof value.completed === 'boolean');
 
-const getGettingStartedStorageKey = (businessId?: string): string =>
-  `${STORAGE_KEYS.GETTING_STARTED}.${encodeURIComponent(businessId || 'default')}`;
+const getGettingStartedStorageKey = (scopeId?: string): string =>
+  `${STORAGE_KEYS.GETTING_STARTED}.${encodeURIComponent(scopeId || 'default')}`;
 
-export const getGettingStartedState = (businessId?: string): GettingStartedState | null =>
+export const getGettingStartedState = (scopeId?: string): GettingStartedState | null =>
   readJsonValue<GettingStartedState | null>(
-    getGettingStartedStorageKey(businessId),
+    getGettingStartedStorageKey(scopeId),
     null,
     (value): value is GettingStartedState | null => value === null || isGettingStartedState(value)
   );
 
 export const saveGettingStartedState = (
   state: GettingStartedState,
-  businessId?: string
-): void => writeJsonValue(getGettingStartedStorageKey(businessId), state);
+  scopeId?: string
+): void => writeJsonValue(getGettingStartedStorageKey(scopeId), state);
 
 export const updateJsonValue = <T>(
   key: string,

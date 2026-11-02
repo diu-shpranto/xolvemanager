@@ -13,6 +13,7 @@ export interface LocalAuthUser {
   name: string;
   role: 'owner';
   isDemo?: boolean;
+  onboardingEligible?: boolean;
 }
 
 interface PasswordCredential {
@@ -162,7 +163,8 @@ const isAuthDatabase = (value: unknown): value is AuthDatabase => {
     && account.activeSessions.every(session => typeof session === 'string' && /^[a-f0-9]{64}$/.test(session))
     && new Set(account.activeSessions).size === account.activeSessions.length
     && typeof account.createdAt === 'string'
-    && Number.isFinite(Date.parse(account.createdAt));
+    && Number.isFinite(Date.parse(account.createdAt))
+    && (account.onboardingEligible === undefined || typeof account.onboardingEligible === 'boolean');
 };
 
 const readDatabase = (): AuthDatabase | null => {
@@ -208,6 +210,7 @@ const toUser = (account: LocalAccount): LocalAuthUser => ({
   email: account.email,
   name: account.name,
   role: account.role,
+  ...(account.onboardingEligible === true ? { onboardingEligible: true } : {}),
 });
 
 const formatRecoveryKey = (): string => {
@@ -370,6 +373,7 @@ export const createOwnerAccount = async (
     email: normalizedEmail,
     name: normalizedName,
     role: 'owner',
+    onboardingEligible: true,
     passwordCredential: { salt: passwordSalt, verifier: passwordVerifier, iterations: PASSWORD_ITERATIONS },
     recoveryCredential: { salt: recoverySalt, verifier: recoveryVerifier, iterations: PASSWORD_ITERATIONS },
     activeSessions: [],

@@ -24,6 +24,7 @@ import {
   CircleHelp,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { productBrand } from '../../config/brand';
 import { NavSection } from './Sidebar';
 import { formatAppDateTime } from '../../utils/dateUtils';
 import { ProductLogo } from '../common/BrandLockup';
@@ -253,7 +254,12 @@ export const TopNav: React.FC<TopNavProps> = ({
           aria-label={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to Dashboard'}
           title={language === 'bn' ? 'ড্যাশবোর্ডে যান' : 'Go to Dashboard'}
         >
-          <ProductLogo size="compact" markOnly className="app-topbar-product-mark" />
+          <ProductLogo
+            size="compact"
+            markOnly
+            markSrc={productBrand.iconUrl}
+            className="app-topbar-product-mark"
+          />
           <span className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">XolveManager</span>
         </button>
         <div className="app-topbar-business hidden md:flex">

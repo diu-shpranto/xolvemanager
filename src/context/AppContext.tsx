@@ -268,6 +268,7 @@ export interface CurrentAdminUser {
   role: 'super_admin' | 'admin' | 'owner';
   businessId?: string | null;
   isDemo?: boolean;
+  onboardingEligible?: boolean;
 }
 
 interface AppContextType {

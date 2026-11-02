@@ -4,8 +4,8 @@ import { productBrand } from '../src/config/brand';
 import { SITE_ORIGIN } from '../src/config/seo';
 import './globals.css';
 
-const productTitle = `${productBrand.name} | Local-First Business Management`;
-const productDescription = 'Manage customer records, service plans, subscriptions, sales, invoices, and payment history in a local-first business workspace.';
+const productTitle = `${productBrand.name} | Customer & Subscription Management Software`;
+const productDescription = 'Organize customer records, services, subscriptions, sales, invoices, and recorded payments in one browser-based business workspace.';
 const metadataBase = new URL(SITE_ORIGIN);
 
 export const metadata: Metadata = {
