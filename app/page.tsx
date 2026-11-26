@@ -348,39 +348,43 @@ export default function Home() {
       <main className="scroll-smooth motion-reduce:scroll-auto">
         {/* Hero */}
         <section className={`relative overflow-hidden bg-gradient-to-b from-violet-100 via-[#F8F6FF] to-white ${styles.sectionReveal}`}>
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 [background-image:radial-gradient(rgba(89,37,220,0.09)_1px,transparent_1px)] [background-size:22px_22px] [mask-image:linear-gradient(to_bottom,black,transparent_78%)]" />
           <div aria-hidden="true" className="pointer-events-none absolute -top-32 right-[-10%] h-96 w-96 rounded-full bg-violet-300/30 blur-3xl" />
           <div aria-hidden="true" className="pointer-events-none absolute bottom-[-40%] left-[-8%] h-80 w-80 rounded-full bg-fuchsia-200/30 blur-3xl" />
           <div className="relative mx-auto grid max-w-7xl items-center gap-10 px-4 py-12 sm:px-8 sm:py-16 lg:grid-cols-[0.95fr_1.05fr] lg:gap-12 lg:py-20">
             <div className="relative z-10">
-              <p className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/80 px-3.5 py-1.5 text-xs font-bold text-violet-800 shadow-sm">
+              <p className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/90 px-3 py-1.5 text-[11px] font-bold tracking-wide text-violet-800 shadow-sm">
                 <span className="h-2 w-2 rounded-full bg-violet-600" aria-hidden="true" />
                 Cloud account · Works on any device
               </p>
               <h1 className="mt-5 max-w-2xl text-[2.5rem] font-extrabold leading-[1.08] tracking-[-0.045em] text-slate-950 sm:text-5xl lg:text-[3.5rem]">
-                Manage customers, subscriptions &amp; sales — on any device.
+                Manage customers, subscriptions &amp; sales <span className="text-violet-700">— on any device.</span>
               </h1>
               <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
                 Sign in with Google or email, and your business records follow your account — not just one browser.
               </p>
-              <ul className="mt-7 hidden gap-2.5 text-sm font-medium text-slate-700 sm:grid sm:grid-cols-2">
+              <ul className="mt-8 hidden gap-3 text-sm font-medium text-slate-700 sm:grid sm:grid-cols-2">
                 {[
                   { label: 'Sign in with Google or email', icon: LogIn },
                   { label: 'Your data follows your account', icon: Smartphone },
                   { label: 'Each account sees only its own data', icon: ShieldCheck },
                   { label: 'Works offline after first load', icon: WifiOff },
                 ].map(({ label, icon: Icon }) => (
-                  <li key={label} className="flex items-start gap-2.5">
-                    <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md bg-violet-100 text-violet-700">
-                      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                  <li key={label} className="flex items-start gap-3 rounded-2xl border border-violet-100 bg-white/80 p-3.5 shadow-sm shadow-violet-950/[0.03]">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700">
+                      <Icon className="h-4 w-4" aria-hidden="true" />
                     </span>
-                    <span>{label}</span>
+                    <span className="leading-6">{label}</span>
                   </li>
                 ))}
               </ul>
             </div>
 
             <div className="relative mx-auto w-full">
-              <HomepageAuthCard />
+              <div aria-hidden="true" className="pointer-events-none absolute -inset-6 rounded-[2.5rem] bg-violet-400/25 blur-2xl" />
+              <div className="relative">
+                <HomepageAuthCard />
+              </div>
             </div>
           </div>
         </section>
