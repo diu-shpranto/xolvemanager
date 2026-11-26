@@ -538,8 +538,8 @@
   }
 
   /* Embedded on the light introduction page: everything outside the card
-   * stays light so it stays readable on the hero; the card itself keeps
-   * its dark styling as a self-contained unit. */
+   * stays light so it stays readable on the hero (the card itself is
+   * forced light below — the landing page is light-only). */
   .shell.embedded:global(.auth-page),
   .shell.embedded:global(.auth-page)[data-auth-mode="login"],
   .shell.embedded:global(.auth-page)[data-auth-mode="signup"] {
@@ -584,5 +584,90 @@
 
   .shell.embedded .subNote {
     color: #8a91a5;
+  }
+
+  /* The landing page itself is light-only, so on a dark OS the embedded
+   * card must be forced light too — a dark card on the light hero reads
+   * as broken. Standalone /login and /signup keep their dark mode. */
+  .shell.embedded .card {
+    border-color: #e5e7eb;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px rgba(16, 24, 40, 0.06);
+  }
+
+  .shell.embedded :global(.auth-input),
+  .shell.embedded:global(.auth-page)[data-auth-mode="login"] :global(.auth-input),
+  .shell.embedded:global(.auth-page)[data-auth-mode="signup"] :global(.auth-input) {
+    border-color: #e5e7eb;
+    color: #17213b;
+    background: #ffffff;
+  }
+
+  .shell.embedded :global(.auth-input)::placeholder {
+    color: #9ba1b2;
+  }
+
+  .shell.embedded :global(.auth-field) {
+    color: #333b57;
+  }
+
+  .shell.embedded :global(.auth-divider) {
+    color: #8a91a5;
+  }
+
+  .shell.embedded :global(.auth-divider) span {
+    background: #e5e7eb;
+  }
+
+  .shell.embedded .googleBtn {
+    border-color: #e5e7eb;
+    color: #303249;
+    background: #ffffff;
+  }
+
+  .shell.embedded .googleBtn:hover:not(:disabled) {
+    border-color: #d1d5db;
+    background: #f9fafb;
+  }
+
+  .shell.embedded .googleBtn > svg:last-child {
+    color: #8175ae;
+  }
+
+  .shell.embedded .primaryBtn:hover:not(:disabled) {
+    border-color: #4e21b8;
+    background: #4e21b8;
+  }
+
+  .shell.embedded :global(.auth-session-note) {
+    color: #777e93;
+  }
+
+  .shell.embedded :global(.auth-text-link) {
+    color: #5925dc;
+  }
+
+  .shell.embedded :global(.auth-alert) {
+    border-color: #e5e7eb;
+    color: #17213b;
+    background: #ffffff;
+  }
+
+  .shell.embedded :global(.auth-alert--error) {
+    border-color: #f2c9d0;
+    color: #872b3a;
+    background: #fff5f6;
+  }
+
+  .shell.embedded :global(.auth-alert--warning) {
+    border-color: #f0d9a4;
+    color: #72521a;
+    background: #fff9e9;
+  }
+
+  .shell.embedded :global(.auth-secondary-button) {
+    border-color: #e5e7eb;
+    color: #303249;
+    background: #ffffff;
   }
 }
