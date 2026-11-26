@@ -6,13 +6,15 @@
  * AppContext.importDataJSON, the same validated, atomic restore path the
  * Settings → Restore backup flow already uses.
  *
- * Two explicit modes, chosen by the user in the UI — never automatic on
- * non-empty local data:
+ * Two modes for applying a downloaded snapshot:
  * - Replace: the cloud snapshot is applied wholesale. The UI must download
- *   a local backup file FIRST and abort if that fails.
+ *   a local backup file FIRST and abort if that fails. Replace is manual
+ *   only — it never runs automatically.
  * - Merge: per record, keyed by local id, newest-wins — the cloud row's
  *   `updated_at` (server time of its last upload) against the local
  *   record's `updatedAt`. Records that exist on only one side are kept.
+ *   Merge is the mode auto-sync uses after sign-in and on its periodic
+ *   checks, because it never deletes local records.
  *
  * Timestamp rules, in order:
  * - A record with no usable `updatedAt` (some types do not carry one, and

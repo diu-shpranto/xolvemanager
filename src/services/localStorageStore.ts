@@ -340,6 +340,39 @@ export const readJsonValue = <T>(
 
 export const writeJsonValue = (key: string, value: unknown): void => {
   writeRawValue(key, JSON.stringify(value));
+  notifyLocalDataChanged();
+};
+
+/**
+ * Local-data change listeners (auto-sync).
+ *
+ * Fired on every local write — record collections, settings, business —
+ * through `writeJsonValue`. The auto-sync engine subscribes and debounces;
+ * a notification never means "upload now", only "something may have
+ * changed", and the engine's snapshot fingerprint decides whether an
+ * upload is actually needed. Listeners never run during reads.
+ */
+export type LocalDataChangeListener = () => void;
+
+const localDataChangeListeners = new Set<LocalDataChangeListener>();
+
+export const onLocalDataChanged = (
+  listener: LocalDataChangeListener
+): (() => void) => {
+  localDataChangeListeners.add(listener);
+  return () => {
+    localDataChangeListeners.delete(listener);
+  };
+};
+
+const notifyLocalDataChanged = (): void => {
+  for (const listener of [...localDataChangeListeners]) {
+    try {
+      listener();
+    } catch (error) {
+      console.error('A local data change listener failed.', error);
+    }
+  }
 };
 
 export interface GettingStartedState {

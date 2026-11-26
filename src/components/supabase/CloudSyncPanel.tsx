@@ -21,6 +21,7 @@ import {
   snapshotToImportJSON,
   type MergeResult,
 } from '../../services/supabase/sync';
+import { useAutoSyncStatus } from './AutoSyncEngine';
 import { getActiveDataEnvironment, getActiveWorkspaceId } from '../../services/localStorageStore';
 
 type PanelState =
@@ -72,9 +73,11 @@ const storeLastDownload = (summary: LastDownload): void => {
  * Cloud download (sync-down) panel.
  *
  * Shown only after a Supabase sign-in, in the production data environment.
- * Nothing here runs automatically: the user presses "Download from cloud",
- * sees what the cloud holds, and then chooses Merge or Replace — or, when
- * this browser is empty, the cloud copy is applied straight away.
+ * Auto-sync now handles the usual flow on its own (upload after changes,
+ * restore after sign-in, periodic download from other devices) — this
+ * panel stays as the manual backup: press "Download from cloud" any time
+ * to pull the cloud copy now, and choose Merge or Replace — or, when this
+ * browser is empty, the cloud copy is applied straight away.
  *
  * - Merge: per record, newest-wins (cloud row updated_at vs local
  *   updatedAt). Records on only one side are kept.
@@ -86,6 +89,7 @@ const storeLastDownload = (summary: LastDownload): void => {
  */
 export function CloudSyncPanel() {
   const { exportDataJSON, importDataJSON, workspaceId } = useApp();
+  const autoSync = useAutoSyncStatus();
   const [state, setState] = useState<PanelState>('checking');
   const [userId, setUserId] = useState('');
   const [message, setMessage] = useState('');
@@ -257,12 +261,36 @@ export function CloudSyncPanel() {
 
   if (state === 'hidden' || state === 'checking') return null;
 
+  const autoSyncLine = (() => {
+    switch (autoSync.state) {
+      case 'restoring':
+        return 'Auto-sync is restoring your cloud data…';
+      case 'uploading':
+        return 'Auto-sync is uploading your changes…';
+      case 'downloading':
+        return 'Auto-sync is downloading changes from your other devices…';
+      case 'offline':
+        return 'You are offline — auto-sync will resume when you are back online.';
+      case 'error':
+        return autoSync.message || 'Auto-sync could not sync. Try downloading below.';
+      case 'off':
+        return autoSync.message || 'Auto-sync is off for this browser.';
+      case 'idle':
+        return autoSync.lastSyncedAt
+          ? `Auto-sync is on — last synced ${new Date(autoSync.lastSyncedAt).toLocaleString()}.`
+          : 'Auto-sync is on — your changes upload automatically.';
+      default:
+        return '';
+    }
+  })();
+
   return (
     <div
       role="status"
       className="mb-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-100"
     >
       <p className="font-semibold">Download your cloud data to this browser?</p>
+      {autoSyncLine && <p className="mt-1">{autoSyncLine}</p>}
       {state === 'idle' && (
         <>
           <p className="mt-1">
