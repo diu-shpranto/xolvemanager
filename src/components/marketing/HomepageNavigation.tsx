@@ -49,12 +49,12 @@ export function HomepageNavigation() {
   const closeMenu = () => setIsOpen(false);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-violet-100/80 bg-white/95 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-blue-100/80 bg-white/95 backdrop-blur">
       <div className="mx-auto flex h-[68px] max-w-7xl items-center justify-between gap-3 px-4 sm:px-8">
         <Link
           href="/"
           aria-label="XolveManager home"
-          className="inline-flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-violet-600"
+          className="inline-flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600"
           onClick={closeMenu}
         >
           <Image
@@ -72,7 +72,7 @@ export function HomepageNavigation() {
             <a
               key={item.href}
               href={item.href}
-              className="rounded-md text-sm font-semibold text-slate-600 transition-colors hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-violet-600"
+              className="rounded-md text-sm font-semibold text-slate-600 transition-colors hover:text-blue-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600"
             >
               {item.label}
             </a>
@@ -82,13 +82,13 @@ export function HomepageNavigation() {
         <div className="hidden items-center gap-2 lg:flex">
           <Link
             href="/login"
-            className="inline-flex min-h-10 items-center justify-center rounded-lg px-3 text-sm font-bold text-slate-700 transition-colors hover:bg-violet-50 hover:text-violet-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
+            className="inline-flex min-h-10 items-center justify-center rounded-lg px-3 text-sm font-bold text-slate-700 transition-colors hover:bg-blue-50 hover:text-blue-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
             Sign in
           </Link>
           <Link
             href="/signup"
-            className="inline-flex min-h-10 items-center justify-center rounded-lg bg-violet-700 px-4 text-sm font-bold text-white shadow-sm shadow-violet-900/15 transition hover:-translate-y-0.5 hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
+            className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-700 px-4 text-sm font-bold text-white shadow-sm shadow-blue-900/15 transition hover:-translate-y-0.5 hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
             Get started free
           </Link>
@@ -97,7 +97,7 @@ export function HomepageNavigation() {
         <div ref={menuRef} className="relative lg:hidden">
           <button
             type="button"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200/90 bg-white text-slate-700 shadow-sm shadow-slate-900/5 transition duration-200 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200/90 bg-white text-slate-700 shadow-sm shadow-slate-900/5 transition duration-200 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
             aria-label={isOpen ? 'Close navigation menu' : 'Open navigation menu'}
             aria-expanded={isOpen}
             aria-controls="mobile-home-navigation"
@@ -109,11 +109,11 @@ export function HomepageNavigation() {
             <nav
               id="mobile-home-navigation"
               aria-label="Mobile navigation"
-              className="absolute right-0 top-12 z-50 w-[min(19rem,calc(100vw-2rem))] overflow-hidden rounded-[1.35rem] border border-white/90 bg-white/95 p-2.5 shadow-2xl shadow-slate-950/15 ring-1 ring-violet-950/5 backdrop-blur-xl"
+              className="absolute right-0 top-12 z-50 w-[min(19rem,calc(100vw-2rem))] overflow-hidden rounded-[1.35rem] border border-white/90 bg-white/95 p-2.5 shadow-2xl shadow-slate-950/15 ring-1 ring-blue-950/5 backdrop-blur-xl"
             >
               <div className="flex items-center justify-between px-3 pb-2 pt-2">
                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Explore</p>
-                <BookOpenText aria-hidden="true" className="h-4 w-4 text-violet-500" />
+                <BookOpenText aria-hidden="true" className="h-4 w-4 text-blue-500" />
               </div>
               <nav className="flex flex-col gap-0.5" aria-label="Explore">
                 {navigationItems.map(({ label, href, icon: Icon }) => (
@@ -121,13 +121,13 @@ export function HomepageNavigation() {
                     key={href}
                     href={href}
                     onClick={closeMenu}
-                    className="group flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-slate-700 transition duration-150 hover:bg-violet-50 hover:text-violet-900 focus-visible:outline-2 focus-visible:outline-violet-600"
+                    className="group flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-slate-700 transition duration-150 hover:bg-blue-50 hover:text-blue-900 focus-visible:outline-2 focus-visible:outline-blue-600"
                   >
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-50 text-slate-500 transition-colors group-hover:bg-white group-hover:text-violet-700">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-50 text-slate-500 transition-colors group-hover:bg-white group-hover:text-blue-700">
                       <Icon aria-hidden="true" className="h-4 w-4" />
                     </span>
                     <span className="flex-1">{label}</span>
-                    <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-slate-300 transition-colors group-hover:text-violet-500" />
+                    <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 text-slate-300 transition-colors group-hover:text-blue-500" />
                   </a>
                 ))}
               </nav>
@@ -135,14 +135,14 @@ export function HomepageNavigation() {
                 <Link
                   href="/login"
                   onClick={closeMenu}
-                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm shadow-slate-900/5 transition-colors hover:border-violet-200 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm shadow-slate-900/5 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-800 focus-visible:outline-2 focus-visible:outline-blue-600"
                 >
                   Sign in
                 </Link>
                 <Link
                   href="/signup"
                   onClick={closeMenu}
-                  className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-700 to-violet-800 px-3 text-sm font-bold text-white shadow-md shadow-violet-900/20 transition duration-200 hover:-translate-y-0.5 hover:from-violet-600 hover:to-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-700 to-blue-800 px-3 text-sm font-bold text-white shadow-md shadow-blue-900/20 transition duration-200 hover:-translate-y-0.5 hover:from-blue-600 hover:to-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 >
                   Get started
                 </Link>
@@ -153,7 +153,7 @@ export function HomepageNavigation() {
       </div>
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-violet-600 via-fuchsia-500 to-violet-600"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-blue-600 via-sky-500 to-blue-600"
       />
     </header>
   );

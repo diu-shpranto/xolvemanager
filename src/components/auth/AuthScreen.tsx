@@ -53,12 +53,6 @@ interface AuthScreenProps {
   initialError?: string;
   onAuthenticated: (user: LocalAuthUser) => void;
   onNavigate: (path: string) => void;
-  /** Embedded inside the introduction page hero: the form sits in the
-   * page instead of being the whole page — no full-page shell, no
-   * wordmark above the card (the page header already has it) and no
-   * footer (the page has its own). Mode switches are handled by the
-   * parent in place. */
-  embedded?: boolean;
 }
 
 const copy = {
@@ -306,7 +300,7 @@ const getErrorMessage = (error: unknown, language: Language): string => {
 
 const inputClass = 'auth-input';
 
-export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, onNavigate, embedded = false }: AuthScreenProps) {
+export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, onNavigate }: AuthScreenProps) {
   const [language, setLanguage] = useState<Language>('en');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -644,16 +638,14 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   ) : null;
 
   return (
-    <main className={`auth-page ${styles.shell}${embedded ? ` ${styles.embedded}` : ''}`} data-auth-language={language} data-auth-mode={mode}>
+    <main className={`auth-page ${styles.shell}`} data-auth-language={language} data-auth-mode={mode}>
       <div className={styles.page}>
         <div className={styles.topbar}>
           <button type="button" onClick={updateLanguage} className="auth-language" aria-label={language === 'en' ? 'Switch language to Bangla' : 'Switch language to English'}><Globe2 aria-hidden="true" />{text.language}<ChevronRight aria-hidden="true" /></button>
         </div>
-        {!embedded && (
-          <div className={styles.brandmark}>
-            <ProductLogo size="compact" tone={prefersDark ? 'inverse' : 'default'} showTagline className={styles.brandLogo} />
-          </div>
-        )}
+        <div className={styles.brandmark}>
+          <ProductLogo size="compact" tone={prefersDark ? 'inverse' : 'default'} showTagline className={styles.brandLogo} />
+        </div>
 
         {resultKey ? (
           <section className={styles.card} aria-labelledby="auth-heading">
@@ -823,27 +815,25 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
 
           </>
         )}
-        {!embedded && (
-          <footer className="auth-footer" aria-label="XolveManager footer navigation">
-              <nav className="auth-footer-links" aria-label="Quick links">
-                <a href="/legal/privacy" className="auth-footer-link" aria-label="Privacy policy">
-                  <span className="auth-footer-icon"><ShieldCheck aria-hidden="true" /></span>
-                  <span className="auth-footer-label auth-footer-label--full">Privacy</span>
-                  <span className="auth-footer-label auth-footer-label--short">Privacy</span>
-                </a>
-                <a href="/legal" className="auth-footer-link" aria-label="Legal & Trust Center">
-                  <span className="auth-footer-icon"><Scale aria-hidden="true" /></span>
-                  <span className="auth-footer-label auth-footer-label--full">Legal &amp; Trust Center</span>
-                  <span className="auth-footer-label auth-footer-label--short">Legal</span>
-                </a>
-                <a href="/support" className="auth-footer-link" aria-label="Contact & Support">
-                  <span className="auth-footer-icon"><Headset aria-hidden="true" /></span>
-                  <span className="auth-footer-label auth-footer-label--full">Contact &amp; Support</span>
-                  <span className="auth-footer-label auth-footer-label--short">Support</span>
-                </a>
-              </nav>
-            </footer>
-        )}
+        <footer className="auth-footer" aria-label="XolveManager footer navigation">
+          <nav className="auth-footer-links" aria-label="Quick links">
+            <a href="/legal/privacy" className="auth-footer-link" aria-label="Privacy policy">
+              <span className="auth-footer-icon"><ShieldCheck aria-hidden="true" /></span>
+              <span className="auth-footer-label auth-footer-label--full">Privacy</span>
+              <span className="auth-footer-label auth-footer-label--short">Privacy</span>
+            </a>
+            <a href="/legal" className="auth-footer-link" aria-label="Legal & Trust Center">
+              <span className="auth-footer-icon"><Scale aria-hidden="true" /></span>
+              <span className="auth-footer-label auth-footer-label--full">Legal &amp; Trust Center</span>
+              <span className="auth-footer-label auth-footer-label--short">Legal</span>
+            </a>
+            <a href="/support" className="auth-footer-link" aria-label="Contact & Support">
+              <span className="auth-footer-icon"><Headset aria-hidden="true" /></span>
+              <span className="auth-footer-label auth-footer-label--full">Contact &amp; Support</span>
+              <span className="auth-footer-label auth-footer-label--short">Support</span>
+            </a>
+          </nav>
+        </footer>
       </div>
     </main>
   );
