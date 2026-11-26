@@ -37,7 +37,7 @@ export const helpArticles: HelpArticle[] = [
     id: 'getting-started',
     category: 'Getting Started',
     title: 'Get started with your workspace',
-    introduction: 'Set up the records you need for your first sale. You can explore Demo mode separately; it does not change Production records.',
+    introduction: 'Set up the records you need for your first sale.',
     steps: [
       'Open the Dashboard and use the Getting started checklist to see customer, service, and sale setup progress.',
       'Add a customer with a name and phone number.',
@@ -45,7 +45,7 @@ export const helpArticles: HelpArticle[] = [
       'Record a sale using the customer and active service plan.',
       'Create a receiving account in Money when you are ready to record money received.',
     ],
-    keywords: ['first time', 'setup', 'onboarding', 'dashboard', 'workspace', 'demo', 'production'],
+    keywords: ['first time', 'setup', 'onboarding', 'dashboard', 'workspace', 'production'],
     destination: 'dashboard',
     destinationLabel: 'Open Dashboard',
     related: ['customer-create', 'service-create', 'sales-create', 'receiving-account'],
@@ -271,7 +271,7 @@ export const helpArticles: HelpArticle[] = [
     destinationLabel: 'Open Settings',
     externalHref: '/legal/privacy',
     related: ['backup-restore', 'getting-started'],
-    note: 'Demo and Production use separate browser storage namespaces, but both remain on this device and browser profile.',
+    note: 'Records remain on this device and browser profile.',
   },
   {
     id: 'trouble-no-customers',

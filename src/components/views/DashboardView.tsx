@@ -474,7 +474,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   ), [dailyClosings, currentBusiness?.businessId]);
   const gettingStartedUserId = currentUser?.uid || '';
   useEffect(() => {
-    if (currentUser?.onboardingEligible !== true || currentUser.isDemo || dashboardDataLoading || !gettingStartedUserId) {
+    if (currentUser?.onboardingEligible !== true || dashboardDataLoading || !gettingStartedUserId) {
       setGettingStartedState(null);
       return;
     }
@@ -507,7 +507,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     gettingStartedState?.userId,
     currentUser?.onboardingEligible,
     currentUser?.uid,
-    currentUser?.isDemo,
     language,
     showToast,
   ]);
@@ -2319,7 +2318,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       )}
       {!dashboardDataLoading
         && currentUser?.onboardingEligible === true
-        && !currentUser.isDemo
         && gettingStartedState?.userId === gettingStartedUserId
         && gettingStartedState.open && (
         <section aria-labelledby="getting-started-title" className={`${dashboardPanelClass} space-y-3`}>
@@ -2409,9 +2407,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <span>{dashboardCopy.commonTasks}</span>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <p className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300">
-              {currentUser?.isDemo
-                ? (language === 'bn' ? 'ডেমো মোড · নমুনা ডেটা' : 'Demo Mode · sample data')
-                : (language === 'bn' ? 'প্রোডাকশন মোড · ব্যবসার ডেটা' : 'Production Mode · business data')}
+              {language === 'bn' ? 'প্রোডাকশন মোড · ব্যবসার ডেটা' : 'Production Mode · business data'}
             </p>
           </div>
         </div>

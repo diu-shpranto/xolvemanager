@@ -9,7 +9,6 @@ import {
   Eye,
   EyeOff,
   Globe2,
-  HardDrive,
   Headset,
   KeyRound,
   LoaderCircle,
@@ -42,7 +41,6 @@ import {
   localAuthMessages,
   resetLocalPassword,
   signInLocally,
-  signInWithDemoAccount,
 } from '../../services/localAuthService';
 import styles from './AuthScreen.module.css';
 
@@ -59,13 +57,13 @@ interface AuthScreenProps {
 
 const copy = {
   en: {
-    loginTitle: 'Sign in',
-    loginIntroCloud: 'Your cloud account keeps your business data in sync across devices. Sign in with Google, or with your email and password.',
-    loginIntroLocal: 'Sign in to the account on this device. Your business data stays in this browser and never syncs.',
-    signupTitleCloud: 'Create your cloud account',
+    loginTitle: 'Welcome back',
+    loginIntroCloud: 'Sign in to continue to your account.',
+    loginIntroLocal: 'Sign in to the account on this device. Your data stays in this browser.',
+    signupTitleCloud: 'Create your account',
     signupTitleLocal: 'Create an account on this device',
-    signupIntroCloud: 'One account for every device. Your customers, sales and payments sync to the cloud.',
-    signupIntroLocal: 'Create an account that lives only in this browser. Its data never leaves this device.',
+    signupIntroCloud: 'Sign up to get started.',
+    signupIntroLocal: 'Create an account on this device. Its data stays in this browser.',
     recoveryTitle: 'Reset your device password',
     recoveryIntro: 'This resets the password of the account on this device. Use the recovery key you saved when you created the account.',
     fullName: 'Full name',
@@ -74,24 +72,23 @@ const copy = {
     confirmPassword: 'Enter password again',
     recoveryKey: 'Recovery code',
     persistentSession: 'You will stay signed in on this device until you sign out.',
-    cloudSessionNote: 'Your cloud session is kept in this browser until you sign out.',
-    welcomeEyebrow: 'CLOUD ACCOUNT',
+    cloudSessionNote: 'You will stay signed in on this device until you sign out.',
+    welcomeEyebrow: 'WELCOME BACK',
     localEyebrow: 'THIS DEVICE ONLY',
     setupEyebrow: 'NEW ACCOUNT',
     recoveryEyebrow: 'RESET PASSWORD',
     savedEyebrow: 'ACCOUNT SAVED',
     signIn: 'Sign in',
-    create: 'Create account',
-    createNewAccount: 'Create an account',
-    createAccountPrompt: 'New to XolveManager?',
+    create: 'Sign up',
+    createAccountPrompt: "Don't have an account?",
+    signUp: 'Sign up',
     signInPrompt: 'Already have an account?',
-    divider: 'or',
-    emailDivider: 'or continue with email',
+    emailDivider: 'or',
     recover: 'Set new password',
     forgot: 'Forgot password?',
     cloudForgot: 'Forgot password?',
-    cloudResetTitle: 'Reset your cloud password',
-    cloudResetIntro: 'Enter the email address of your cloud account. We will send you a link to set a new password.',
+    cloudResetTitle: 'Reset your password',
+    cloudResetIntro: 'Enter your email address. We will send you a link to set a new password.',
     cloudResetSend: 'Send reset link',
     cloudResetSentTitle: 'Check your inbox',
     cloudResetSentBody: 'We sent a password reset link to {email}. It only works in this browser — open the link here.',
@@ -99,7 +96,7 @@ const copy = {
     cloudResetResent: 'A new link was sent.',
     cloudResetLinkInvalid: 'That reset link did not work — it may have expired, already been used, or been opened in another browser. Request a new link below.',
     cloudResetSetTitle: 'Set a new password',
-    cloudResetSetIntro: 'Choose a new password for your cloud account. You will stay signed in after this.',
+    cloudResetSetIntro: 'Choose a new password. You will stay signed in after this.',
     loginLink: 'Back to sign in',
     show: 'Show password',
     hide: 'Hide password',
@@ -118,23 +115,12 @@ const copy = {
     loading: 'Working…',
     google: 'Continue with Google',
     googleLoading: 'Connecting to Google…',
-    googleNote: 'Any Google account works — no extra setup needed.',
-    brandTitle: 'Manage customers, subscriptions & sales — on any device.',
-    brandDesc: 'One cloud account for your whole business. Sign in anywhere and your customers, sales and payments follow you.',
-    brandPoint1: 'Any Google account or email',
-    brandPoint2: 'Your data follows your account',
-    brandPoint3: 'Every account sees only its own data',
-    brandFoot: 'Your data is yours — it syncs only when you choose.',
-    brandTagline: 'Manage your business — on any device.',
+    googleNote: 'Use any Google account.',
     language: 'বাংলা',
-    demoLogin: 'Try the demo',
-    demoLoginSubtitle: 'Sample data — nothing is saved to your account.',
-    demoLoading: 'Loading demo…',
-    deviceBoxTitle: 'Prefer to stay on this device?',
-    deviceBoxBody: 'No cloud account, no sync. Your business data stays in this browser only.',
+    deviceBoxBody: 'Your data stays only in this browser.',
     deviceBoxButton: 'Continue on this device',
-    backToCloud: 'Back to cloud sign-in',
-    deviceActiveNote: 'You are using the account on this device. Data stays in this browser and never syncs.',
+    backToCloud: 'Back to sign in',
+    deviceActiveNote: 'You are using the account on this device. Data stays in this browser.',
     errName: 'Enter your full name.',
     errNameLong: 'Name must be 100 characters or fewer.',
     errEmail: 'Enter a valid email address.',
@@ -154,13 +140,13 @@ const copy = {
     errGeneric: 'Something went wrong. Please try again.',
   },
   bn: {
-    loginTitle: 'সাইন ইন করুন',
-    loginIntroCloud: 'ক্লাউড অ্যাকাউন্টে আপনার ব্যবসার ডেটা সব ডিভাইসে সিঙ্ক হয়। Google দিয়ে, অথবা ইমেইল ও পাসওয়ার্ড দিয়ে সাইন ইন করুন।',
-    loginIntroLocal: 'এই ডিভাইসের অ্যাকাউন্টে সাইন ইন করুন। আপনার ব্যবসার ডেটা এই ব্রাউজারেই থাকবে, সিঙ্ক হবে না।',
-    signupTitleCloud: 'ক্লাউড অ্যাকাউন্ট তৈরি করুন',
+    loginTitle: 'স্বাগতম',
+    loginIntroCloud: 'আপনার অ্যাকাউন্টে যেতে সাইন ইন করুন।',
+    loginIntroLocal: 'এই ডিভাইসের অ্যাকাউন্টে সাইন ইন করুন। আপনার ডেটা এই ব্রাউজারেই থাকবে।',
+    signupTitleCloud: 'আপনার অ্যাকাউন্ট তৈরি করুন',
     signupTitleLocal: 'এই ডিভাইসে অ্যাকাউন্ট তৈরি করুন',
-    signupIntroCloud: 'সব ডিভাইসের জন্য একটি অ্যাকাউন্ট। গ্রাহক, বিক্রয় ও পেমেন্ট ক্লাউডে সিঙ্ক হবে।',
-    signupIntroLocal: 'শুধু এই ব্রাউজারে থাকে এমন একটি অ্যাকাউন্ট তৈরি করুন। এর ডেটা এই ডিভাইস ছাড়বে না।',
+    signupIntroCloud: 'শুরু করতে সাইন আপ করুন।',
+    signupIntroLocal: 'এই ডিভাইসে অ্যাকাউন্ট তৈরি করুন। এর ডেটা এই ব্রাউজারেই থাকবে।',
     recoveryTitle: 'ডিভাইসের পাসওয়ার্ড রিসেট করুন',
     recoveryIntro: 'এটি এই ডিভাইসের অ্যাকাউন্টের পাসওয়ার্ড রিসেট করবে। অ্যাকাউন্ট তৈরির সময় সংরক্ষিত রিকভারি কী ব্যবহার করুন।',
     fullName: 'পূর্ণ নাম',
@@ -169,24 +155,23 @@ const copy = {
     confirmPassword: 'পাসওয়ার্ড নিশ্চিত করুন',
     recoveryKey: 'রিকভারি কী',
     persistentSession: 'সাইন আউট না করা পর্যন্ত এই ডিভাইসে সাইন ইন থাকবে।',
-    cloudSessionNote: 'সাইন আউট না করা পর্যন্ত এই ব্রাউজারে আপনার ক্লাউড সেশন সংরক্ষিত থাকবে।',
-    welcomeEyebrow: 'ক্লাউড অ্যাকাউন্ট',
+    cloudSessionNote: 'সাইন আউট না করা পর্যন্ত এই ডিভাইসে সাইন ইন থাকবে।',
+    welcomeEyebrow: 'স্বাগতম',
     localEyebrow: 'শুধু এই ডিভাইসে',
     setupEyebrow: 'নতুন অ্যাকাউন্ট',
     recoveryEyebrow: 'পাসওয়ার্ড রিসেট',
     savedEyebrow: 'অ্যাকাউন্ট সংরক্ষিত',
     signIn: 'সাইন ইন',
-    create: 'অ্যাকাউন্ট তৈরি করুন',
-    createNewAccount: 'অ্যাকাউন্ট তৈরি করুন',
-    createAccountPrompt: 'XolveManager-এ নতুন?',
+    create: 'সাইন আপ',
+    createAccountPrompt: 'অ্যাকাউন্ট নেই?',
+    signUp: 'সাইন আপ',
     signInPrompt: 'আগে থেকেই অ্যাকাউন্ট আছে?',
-    divider: 'অথবা',
-    emailDivider: 'অথবা ইমেইল দিয়ে',
+    emailDivider: 'অথবা',
     recover: 'নতুন পাসওয়ার্ড সেট করুন',
     forgot: 'পাসওয়ার্ড ভুলে গেছেন?',
     cloudForgot: 'পাসওয়ার্ড ভুলে গেছেন?',
-    cloudResetTitle: 'ক্লাউড পাসওয়ার্ড রিসেট করুন',
-    cloudResetIntro: 'ক্লাউড অ্যাকাউন্টের ইমেইল ঠিকানা লিখুন। নতুন পাসওয়ার্ড সেট করার লিংক পাঠানো হবে।',
+    cloudResetTitle: 'পাসওয়ার্ড রিসেট করুন',
+    cloudResetIntro: 'আপনার ইমেইল ঠিকানা লিখুন। নতুন পাসওয়ার্ড সেট করার লিংক পাঠানো হবে।',
     cloudResetSend: 'রিসেট লিংক পাঠান',
     cloudResetSentTitle: 'ইনবক্স দেখুন',
     cloudResetSentBody: '{email} ঠিকানায় পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে। এটি শুধু এই ব্রাউজারেই কাজ করবে — লিংকটি এখানেই খুলুন।',
@@ -194,7 +179,7 @@ const copy = {
     cloudResetResent: 'নতুন লিংক পাঠানো হয়েছে।',
     cloudResetLinkInvalid: 'রিসেট লিংকটি কাজ করেনি — হয়তো মেয়াদ শেষ হয়ে গেছে, ইতিমধ্যে ব্যবহৃত হয়েছে, অথবা অন্য ব্রাউজারে খোলা হয়েছে। নিচে নতুন লিংক চেয়ে নিন।',
     cloudResetSetTitle: 'নতুন পাসওয়ার্ড সেট করুন',
-    cloudResetSetIntro: 'ক্লাউড অ্যাকাউন্টের জন্য নতুন পাসওয়ার্ড বেছে নিন। এরপর সাইন ইন থাকবে।',
+    cloudResetSetIntro: 'নতুন পাসওয়ার্ড বেছে নিন। এরপর সাইন ইন থাকবে।',
     loginLink: 'সাইন ইন-এ ফিরে যান',
     show: 'পাসওয়ার্ড দেখান',
     hide: 'পাসওয়ার্ড লুকান',
@@ -213,23 +198,12 @@ const copy = {
     loading: 'অপেক্ষা করুন…',
     google: 'Google দিয়ে চালিয়ে যান',
     googleLoading: 'Google-এ সংযোগ হচ্ছে…',
-    googleNote: 'যেকোনো Google অ্যাকাউন্ট চলবে — আলাদা কিছু করতে হবে না।',
-    brandTitle: 'গ্রাহক, সাবস্ক্রিপশন ও বিক্রয় পরিচালনা করুন — যেকোনো ডিভাইসে।',
-    brandDesc: 'পুরো ব্যবসার জন্য একটি ক্লাউড অ্যাকাউন্ট। যেকোনো জায়গা থেকে সাইন ইন করুন — গ্রাহক, বিক্রয় ও পেমেন্ট আপনার সাথেই থাকবে।',
-    brandPoint1: 'যেকোনো Google অ্যাকাউন্ট বা ইমেইল',
-    brandPoint2: 'আপনার ডেটা আপনার অ্যাকাউন্টের সাথেই যায়',
-    brandPoint3: 'প্রতিটি অ্যাকাউন্ট শুধু নিজের ডেটাই দেখে',
-    brandFoot: 'আপনার ডেটা আপনারই — আপনি চাইলেই সিঙ্ক হবে।',
-    brandTagline: 'আপনার ব্যবসা পরিচালনা করুন — যেকোনো ডিভাইসে।',
+    googleNote: 'যেকোনো Google অ্যাকাউন্ট ব্যবহার করুন।',
     language: 'English',
-    demoLogin: 'ডেমো দেখুন',
-    demoLoginSubtitle: 'নমুনা ডেটা — আপনার অ্যাকাউন্টে কিছু সংরক্ষিত হবে না।',
-    demoLoading: 'ডেমো ওয়ার্কস্পেস প্রস্তুত হচ্ছে…',
-    deviceBoxTitle: 'শুধু এই ডিভাইসেই থাকতে চান?',
-    deviceBoxBody: 'ক্লাউড অ্যাকাউন্ট নয়, সিঙ্ক নয়। আপনার ব্যবসার ডেটা শুধু এই ব্রাউজারেই থাকবে।',
+    deviceBoxBody: 'আপনার ডেটা শুধু এই ব্রাউজারেই থাকবে।',
     deviceBoxButton: 'এই ডিভাইসেই চালিয়ে যান',
-    backToCloud: 'ক্লাউড সাইন-ইনে ফিরে যান',
-    deviceActiveNote: 'আপনি এই ডিভাইসের অ্যাকাউন্ট ব্যবহার করছেন। ডেটা এই ব্রাউজারেই থাকবে, সিঙ্ক হবে না।',
+    backToCloud: 'সাইন ইন-এ ফিরে যান',
+    deviceActiveNote: 'আপনি এই ডিভাইসের অ্যাকাউন্ট ব্যবহার করছেন। ডেটা এই ব্রাউজারেই থাকবে।',
     errName: 'আপনার পূর্ণ নাম লিখুন।',
     errNameLong: 'নাম সর্বোচ্চ ১০০ অক্ষরের মধ্যে হতে হবে।',
     errEmail: 'সঠিক ইমেইল ঠিকানা লিখুন।',
@@ -265,31 +239,6 @@ const fieldErrorStyle: CSSProperties = {
   fontSize: '0.72rem',
   fontWeight: 500,
   lineHeight: 1.45,
-};
-
-const deviceBoxStyle: CSSProperties = {
-  marginTop: '0.4rem',
-  padding: '0.9rem',
-  border: '1px solid #e4e2f0',
-  borderRadius: '0.9rem',
-  background: '#faf9fd',
-};
-
-const deviceBoxTitleStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.45rem',
-  margin: 0,
-  color: '#292d45',
-  fontSize: '0.85rem',
-  fontWeight: 700,
-};
-
-const deviceBoxBodyStyle: CSSProperties = {
-  margin: '0.4rem 0 0.75rem',
-  color: '#66718b',
-  fontSize: '0.78rem',
-  lineHeight: 1.55,
 };
 
 type FieldName = 'name' | 'email' | 'password' | 'confirmation' | 'recoveryKey' | 'terms';
@@ -344,7 +293,6 @@ const getErrorMessage = (error: unknown, language: Language): string => {
     WEAK_PASSWORD: 'কমপক্ষে ১০ অক্ষর এবং বড়/ছোট হাতের অক্ষর, সংখ্যা ও চিহ্নের মধ্যে অন্তত তিন ধরনের অক্ষর ব্যবহার করুন।',
     PASSWORD_MISMATCH: 'পাসওয়ার্ড দুটি মিলছে না।',
     INVALID_RECOVERY_KEY: 'ইমেইল ঠিকানা বা রিকভারি কী সঠিক নয়।',
-    DEMO_SESSION_CONFLICT: 'ডেমো মোডে যাওয়ার আগে নিবন্ধিত অ্যাকাউন্ট থেকে সাইন আউট করুন।',
     STORAGE_FAILURE: 'স্থানীয় প্রমাণীকরণ ডেটা সংরক্ষণ বা পড়া যায়নি। ব্যবসার ডেটা পরিবর্তন করা হয়নি।',
   };
   return messages[error.code] || error.message;
@@ -379,6 +327,19 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   const [cloudResetView, setCloudResetView] = useState<CloudResetView>('none');
   const [resetLinkFailed, setResetLinkFailed] = useState(false);
   const [resent, setResent] = useState(false);
+
+  // Dark mode follows the operating system (prefers-color-scheme), so the
+  // wordmark switches to its light variant on dark backgrounds.
+  const [prefersDark, setPrefersDark] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches,
+  );
+
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (event: MediaQueryListEvent) => setPrefersDark(event.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
 
   useEffect(() => {
     try {
@@ -639,20 +600,6 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     }
   };
 
-  const handleDemoLogin = async () => {
-    setError('');
-    setBusy(true);
-    try {
-      clearCloudSessionFlag();
-      const user = await signInWithDemoAccount();
-      onAuthenticated(user);
-    } catch (caught) {
-      setError(getErrorMessage(caught, language));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handleCopyKey = async () => {
     try {
       await navigator.clipboard.writeText(resultKey);
@@ -674,13 +621,6 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
           : mode === 'signup'
             ? (authProvider === 'cloud' ? text.signupTitleCloud : text.signupTitleLocal)
             : text.recoveryTitle;
-  const eyebrow = cloudResetView !== 'none'
-    ? text.recoveryEyebrow
-    : mode === 'forgot-password'
-      ? text.recoveryEyebrow
-      : mode === 'signup'
-        ? text.setupEyebrow
-        : authProvider === 'cloud' ? text.welcomeEyebrow : text.localEyebrow;
   const intro = cloudResetView === 'sent'
     ? text.cloudResetSentBody.replace('{email}', email)
     : cloudResetView === 'reset'
@@ -699,32 +639,17 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
 
   return (
     <main className={`auth-page ${styles.shell}`} data-auth-language={language} data-auth-mode={mode}>
-      <div className={styles.frame}>
-        <aside className={styles.brand} aria-label="About XolveManager">
-          <ProductLogo size="compact" tone="inverse" showTagline className={styles.brandLogo} />
-          <div className={styles.brandBody}>
-            <h1 className={styles.brandTitle}>{text.brandTitle}</h1>
-            <p className={styles.brandDesc}>{text.brandDesc}</p>
-            <ul className={styles.brandPoints}>
-              <li><span className={styles.brandPointIcon}><Mail aria-hidden="true" /></span>{text.brandPoint1}</li>
-              <li><span className={styles.brandPointIcon}><Cloud aria-hidden="true" /></span>{text.brandPoint2}</li>
-              <li><span className={styles.brandPointIcon}><ShieldCheck aria-hidden="true" /></span>{text.brandPoint3}</li>
-            </ul>
-          </div>
-          <p className={styles.brandFoot}>{text.brandFoot}</p>
-        </aside>
-        <div className={styles.brandCompact}>
-          <ProductLogo size="compact" tone="inverse" showTagline className={styles.brandLogo} />
-          <p>{text.brandTagline}</p>
+      <div className={styles.page}>
+        <div className={styles.topbar}>
+          <button type="button" onClick={updateLanguage} className="auth-language" aria-label={language === 'en' ? 'Switch language to Bangla' : 'Switch language to English'}><Globe2 aria-hidden="true" />{text.language}<ChevronRight aria-hidden="true" /></button>
         </div>
-        <section className={styles.panel} aria-labelledby="auth-heading">
-          <div className={styles.card}>
-            <div className="auth-panel-header" style={{ justifyContent: 'flex-end' }}>
-              <button type="button" onClick={updateLanguage} className="auth-language" aria-label={language === 'en' ? 'Switch language to Bangla' : 'Switch language to English'}><Globe2 aria-hidden="true" />{text.language}<ChevronRight aria-hidden="true" /></button>
-            </div>
+        <div className={styles.brandmark}>
+          <ProductLogo size="compact" tone={prefersDark ? 'inverse' : 'default'} showTagline className={styles.brandLogo} />
+        </div>
 
-              {resultKey ? (
-                <div className="auth-success">
+        {resultKey ? (
+          <section className={styles.card} aria-labelledby="auth-heading">
+            <div className="auth-success">
                   <div className="auth-success-mark"><KeyRound aria-hidden="true" /></div>
                   <p className="auth-eyebrow">{text.savedEyebrow}</p>
                   <h2 id="auth-heading">{mode === 'signup' ? text.accountSavedTitle : text.recoverySavedTitle}</h2>
@@ -734,20 +659,14 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                   {mode === 'signup' && <p className="auth-policy-note">{text.singleOwnerPolicy}</p>}
                   <button type="button" onClick={() => navigate('/login')} className={styles.primaryBtn} style={{ marginTop: '1.2rem' }}>{text.continue}</button>
                 </div>
-              ) : (
-                <>
-                  <div className="auth-heading">
-                    <p className="auth-eyebrow">{eyebrow}</p>
-                    <h2 id="auth-heading">{title}</h2>
-                    <p className="auth-intro">{intro}</p>
-                  </div>
-
-                  {(mode === 'login' || mode === 'signup') && cloudResetView === 'none' && (
-                    <div className={styles.segmented} aria-label={language === 'bn' ? 'সাইন ইন বা অ্যাকাউন্ট তৈরি করুন' : 'Sign in or create an account'}>
-                      <button type="button" onClick={() => navigate('/login')} className={mode === 'login' ? `${styles.segmentedButton} ${styles.segmentedActive}` : styles.segmentedButton} aria-current={mode === 'login' ? 'page' : undefined} disabled={busy || oauthBusy}>{text.signIn}</button>
-                      <button type="button" onClick={() => navigate('/signup')} className={mode === 'signup' ? `${styles.segmentedButton} ${styles.segmentedActive}` : styles.segmentedButton} aria-current={mode === 'signup' ? 'page' : undefined} disabled={busy || oauthBusy}>{text.createNewAccount}</button>
-                    </div>
-                  )}
+          </section>
+        ) : (
+          <>
+            <header className={styles.heading}>
+              <h1 id="auth-heading">{title}</h1>
+              <p className={styles.intro}>{intro}</p>
+            </header>
+            <section className={styles.card} aria-labelledby="auth-heading">
 
                   {error && <div role="alert" aria-live="assertive" className="auth-alert auth-alert--error">{error}</div>}
                   {cloudResetView === 'request' && resetLinkFailed && <div role="alert" className="auth-alert auth-alert--warning">{text.cloudResetLinkInvalid}</div>}
@@ -883,32 +802,26 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                       <button type="button" onClick={() => navigate('/login')} className="auth-text-link">{text.loginLink}</button>
                     </div>
                   )}
+                </section>
 
-                  {cloudAvailable && authProvider === 'cloud' && mode !== 'forgot-password' && cloudResetView === 'none' && (
-                    <section aria-label={text.deviceBoxTitle} style={deviceBoxStyle}>
-                      <p style={deviceBoxTitleStyle}><HardDrive aria-hidden="true" style={{ width: '0.95rem', height: '0.95rem' }} />{text.deviceBoxTitle}</p>
-                      <p style={deviceBoxBodyStyle}>{text.deviceBoxBody}</p>
-                      <button type="button" onClick={() => switchProvider('local')} disabled={busy || oauthBusy} className="auth-secondary-button" style={{ width: '100%' }}>{text.deviceBoxButton}</button>
-                    </section>
-                  )}
+            {(mode === 'login' || mode === 'signup') && cloudResetView === 'none' && (
+              <p className={styles.switch}>
+                {mode === 'login' ? text.createAccountPrompt : text.signInPrompt}{' '}
+                <button type="button" onClick={() => navigate(mode === 'login' ? '/signup' : '/login')} className={styles.switchLink} disabled={busy || oauthBusy}>
+                  {mode === 'login' ? text.signUp : text.signIn}
+                </button>
+              </p>
+            )}
 
-                  {mode === 'login' && cloudResetView === 'none' && (
-                    <>
-                      <div className="auth-divider"><span />{text.divider}<span /></div>
-                      <button type="button" onClick={() => void handleDemoLogin()} disabled={busy || oauthBusy} className="auth-account-button auth-demo-button">
-                        {busy ? <LoaderCircle className="auth-spinner" aria-hidden="true" /> : <ShieldCheck aria-hidden="true" />}
-                        <span>
-                          <strong>{busy ? text.demoLoading : text.demoLogin}</strong>
-                          <small>{text.demoLoginSubtitle}</small>
-                        </span>
-                        <ChevronRight aria-hidden="true" />
-                      </button>
-                    </>
-                  )}
-
-                </>
-              )}
-            <footer className="auth-footer" aria-label="XolveManager footer navigation">
+            {cloudAvailable && authProvider === 'cloud' && mode !== 'forgot-password' && cloudResetView === 'none' && (
+              <p className={styles.subLink}>
+                <button type="button" onClick={() => switchProvider('local')} disabled={busy || oauthBusy} className="auth-text-link">{text.deviceBoxButton}</button>
+                <span className={styles.subNote}> · {text.deviceBoxBody}</span>
+              </p>
+            )}
+          </>
+        )}
+        <footer className="auth-footer" aria-label="XolveManager footer navigation">
               <nav className="auth-footer-links" aria-label="Quick links">
                 <a href="/legal/privacy" className="auth-footer-link" aria-label="Privacy policy">
                   <span className="auth-footer-icon"><ShieldCheck aria-hidden="true" /></span>
@@ -927,8 +840,6 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                 </a>
               </nav>
             </footer>
-          </div>
-        </section>
       </div>
     </main>
   );

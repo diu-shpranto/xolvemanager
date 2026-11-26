@@ -4,7 +4,6 @@ import {
   Bell, BellRing, Building2, Check, CreditCard, Database, FileText, Image, Palette,
   Save, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, Download,
   AlertTriangle, FileSpreadsheet, RotateCcw, Trash2, Image as ImageIcon, ChevronDown, ChevronUp, MessageCircle,
-  Eye, Sparkles,
 } from 'lucide-react';
 import { useApp, type DataImportResult } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
@@ -20,7 +19,6 @@ import { CsvImportUtility } from '../settings/CsvImportUtility';
 import { initialSettings } from '../../data/mockData';
 import { productBrand } from '../../config/brand';
 import { ProductLogo } from '../common/BrandLockup';
-import { Modal } from '../common/Modal';
 import { AboutExperience } from './AboutExperience';
 import { InstallAppPrompt } from '../common/InstallAppPrompt';
 import type { NavSection } from '../navigation/Sidebar';
@@ -40,7 +38,6 @@ import { getWhatsAppTemplates, supportedWhatsAppVariables, validateWhatsAppTempl
 import { DEFAULT_REMINDER_PREFERENCES } from '../../services/reminderEngine';
 import { getLastDataIntegrityResult } from '../../utils/dataIntegrity';
 import { usePwaState } from '../../hooks/usePwaState';
-import { getDemoDataPreview } from '../../services/demoDataService';
 import { inspectStorageDurability, requestStoragePersistence, type StorageDurabilityInfo } from '../../services/storageDurability';
 import { formatAppDateTime } from '../../utils/dateUtils';
 import {
@@ -105,7 +102,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
     dailyClosings, financialReconciliations, financialPeriods, profitabilityCosts,
     logActivity,
     currentBusiness,
-    demoDataStatus, demoDataCounts, installDemoData, removeDemoData, resetDemoData,
     isDark, toggleDarkMode, currency, setCurrency, language, setLanguage,
   } = useApp();
   const { formatDateTime, formatDurationDays } = useAppFormatting();
@@ -142,9 +138,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   const [isRequestingStoragePersistence, setIsRequestingStoragePersistence] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [selectedWhatsAppTemplateId, setSelectedWhatsAppTemplateId] = useState<WhatsAppTemplateId>('renewal_reminder');
-  const [demoDialog, setDemoDialog] = useState<'preview' | 'remove' | 'reset' | null>(null);
-  const [demoActionError, setDemoActionError] = useState<string | null>(null);
-  const [isDemoDataBusy, setIsDemoDataBusy] = useState(false);
 
   useEffect(() => {
     setDraft(settings);
@@ -236,56 +229,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   };
 
   const updateDraft = (updates: Partial<AppSettings>) => setDraft(previous => ({ ...previous, ...updates }));
-  const openDemoDialog = (dialog: 'preview' | 'remove' | 'reset') => {
-    setDemoActionError(null);
-    setDemoDialog(dialog);
-  };
-  const closeDemoDialog = () => {
-    setDemoActionError(null);
-    setDemoDialog(null);
-  };
-  const addDemoRecords = () => {
-    setIsDemoDataBusy(true);
-    setDemoActionError(null);
-    try {
-      const counts = installDemoData();
-      closeDemoDialog();
-      showToast(`Demo data added: ${counts.customers} customers, ${counts.sales} sales, and ${counts.expenses} expenses.`, 'success');
-    } catch (error) {
-      console.error('Could not install demo data.', error);
-      showToast(error instanceof Error ? error.message : 'Could not install demo data.', 'error');
-    } finally {
-      setIsDemoDataBusy(false);
-    }
-  };
-  const removeDemoRecords = () => {
-    setIsDemoDataBusy(true);
-    setDemoActionError(null);
-    try {
-      removeDemoData();
-      closeDemoDialog();
-      showToast('Demo data was removed. Your other business data was preserved.', 'success');
-    } catch (error) {
-      console.error('Could not remove demo data.', error);
-      setDemoActionError(error instanceof Error ? error.message : 'Could not remove demo data.');
-    } finally {
-      setIsDemoDataBusy(false);
-    }
-  };
-  const resetDemoRecords = () => {
-    setIsDemoDataBusy(true);
-    setDemoActionError(null);
-    try {
-      const counts = resetDemoData();
-      closeDemoDialog();
-      showToast(`Demo data reset: ${counts.customers} customers, ${counts.sales} sales, and ${counts.expenses} expenses.`, 'success');
-    } catch (error) {
-      console.error('Could not reset demo data.', error);
-      setDemoActionError(error instanceof Error ? error.message : 'Could not reset demo data.');
-    } finally {
-      setIsDemoDataBusy(false);
-    }
-  };
   const setBusinessProfile = (updates: NonNullable<AppSettings['businessProfile']>) =>
     updateDraft({ businessProfile: { ...draft.businessProfile, ...updates } });
   const setInvoicePreferences = (updates: NonNullable<AppSettings['invoicePreferences']>) =>
@@ -294,7 +237,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
     updateDraft({ paymentPreferences: { ...draft.paymentPreferences, ...updates } });
   const expenseCategories = draft.financialPreferences?.expenseCategories || initialSettings.financialPreferences?.expenseCategories || [];
   const incomeCategories = draft.financialPreferences?.incomeCategories || initialSettings.financialPreferences?.incomeCategories || [];
-  const demoPreview = getDemoDataPreview();
   const setFinancialPreferences = (updates: NonNullable<AppSettings['financialPreferences']>) =>
     updateDraft({ financialPreferences: { ...draft.financialPreferences, ...updates } });
   const whatsappTemplates = getWhatsAppTemplates(draft);
@@ -1237,98 +1179,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
               </select>
             </Field>
           </section>
-
-          <section className={cardClass}>
-            <SectionHeading title="Demo Data" description="Add sample data to try the app." />
-            <div className="flex flex-col gap-4">
-              <div className="w-full">
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  Demo data works like regular customers, services, plans, sales, payments, invoices, and reports.
-                </p>
-                <p className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-                  Demo data will be added to your current data. Your current data will not be changed or removed.
-                </p>
-                <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                  Demo data: <span className="font-semibold text-slate-800 dark:text-slate-200">{demoDataStatus}</span>
-                  {demoDataStatus === 'Partially installed' && ' · Remove the marked records to recover before adding another set.'}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button type="button" onClick={() => openDemoDialog('preview')} className="inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
-                  <Eye className="h-4 w-4" /> Preview Demo Data
-                </button>
-                <button type="button" disabled={demoDataStatus === 'Installed' || demoDataStatus === 'Partially installed'} onClick={() => openDemoDialog('preview')} className="inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
-                  <Sparkles className="h-4 w-4" /> Add Demo Data
-                </button>
-                <button type="button" disabled={demoDataStatus === 'Not installed'} onClick={() => openDemoDialog('remove')} className="inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-rose-300 px-3.5 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/30">
-                  <Trash2 className="h-4 w-4" /> Remove Demo Data
-                </button>
-                <button type="button" disabled={demoDataStatus === 'Not installed'} onClick={() => openDemoDialog('reset')} className="inline-flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-amber-300 px-3.5 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-900 dark:text-amber-300 dark:hover:bg-amber-950/30">
-                  <RotateCcw className="h-4 w-4" /> Reset Demo Data
-                </button>
-              </div>
-            </div>
-            {demoDataStatus !== 'Not installed' && <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4 lg:grid-cols-6">
-              {[
-                ['Customers', demoDataCounts.customers],
-                ['Services', demoDataCounts.services],
-                ['Plans', demoDataCounts.plans],
-                ['Accounts', demoDataCounts.accounts],
-                ['Subscriptions', demoDataCounts.subscriptions],
-                ['Sales', demoDataCounts.sales],
-                ['Payments', demoDataCounts.payments],
-                ['Invoices', demoDataCounts.invoices],
-                ['Expenses', demoDataCounts.expenses],
-                ['Reminders', demoDataCounts.reminders],
-                ['Communications', demoDataCounts.communications],
-                ['Notifications', demoDataCounts.notifications],
-              ].map(([label, count]) => <div key={label} className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/70">
-                <span className="text-slate-500 dark:text-slate-400">{label}</span>
-                <strong className="ml-2 text-slate-900 dark:text-white">{count}</strong>
-              </div>)}
-            </div>}
-          </section>
-
-          {demoDialog && <Modal
-            isOpen
-            onClose={() => !isDemoDataBusy && closeDemoDialog()}
-            title={demoDialog === 'preview' ? 'Demo Data Preview' : demoDialog === 'remove' ? 'Remove Demo Data?' : 'Reset Demo Data?'}
-            maxWidth="xl"
-            footer={<div className="flex flex-wrap justify-end gap-2">
-              <button type="button" disabled={isDemoDataBusy} onClick={closeDemoDialog} className="min-h-10 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold dark:border-slate-700">Cancel</button>
-              {demoDialog === 'preview'
-                ? <button type="button" disabled={isDemoDataBusy || demoDataStatus !== 'Not installed'} onClick={addDemoRecords} className="min-h-10 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{isDemoDataBusy ? 'Adding…' : 'Add Demo Data'}</button>
-                : demoDialog === 'remove'
-                  ? <button type="button" disabled={isDemoDataBusy} onClick={removeDemoRecords} className="min-h-10 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{isDemoDataBusy ? 'Removing…' : 'Remove Demo Data'}</button>
-                  : <button type="button" disabled={isDemoDataBusy} onClick={resetDemoRecords} className="min-h-10 rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{isDemoDataBusy ? 'Resetting…' : 'Reset Demo Data'}</button>}
-            </div>}
-          >
-            <div>
-              {demoActionError && <div role="alert" className="mb-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200">{demoActionError}</div>}
-              {demoDialog === 'preview' ? <>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{demoPreview.description} Existing data will not be deleted.</p>
-                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {Object.entries(demoPreview.counts).map(([label, count]) => <div key={label} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-                    <span className="block text-xs capitalize text-slate-500 dark:text-slate-400">{label.replace(/([A-Z])/g, ' $1')}</span>
-                    <strong className="mt-1 block text-lg text-slate-900 dark:text-white">{count}</strong>
-                  </div>)}
-                </div>
-                <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-                  Demo data will be added to your existing data. Existing data will not be deleted or overwritten.
-                </div>
-              </> : demoDialog === 'remove' ? <>
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">This will remove only records marked as demo data. Your existing real data will remain unchanged.</p>
-                <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-                  If any non-demo record depends on demo data, removal will stop without changing anything rather than break your customer, service, subscription, sale, payment, invoice, account, or profile relationships. Reassign or remove those links first.
-                </div>
-              </> : <>
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">This replaces only marked Demo records with a fresh fictional sample dataset. Other Demo workspace records and all Production data remain unchanged.</p>
-                <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-                  Reset stops without changing data if a non-demo record depends on a Demo record. The replacement is saved atomically.
-                </div>
-              </>}
-            </div>
-          </Modal>}
 
           <section className={cardClass}>
             <SectionHeading title="Back Up or Restore Data" description="Move your business data between devices with one full backup file." />

@@ -83,21 +83,6 @@ import { getAccountBalance, getDailyFinancialSummary, getFinancialLedger } from 
 import { getAccountingLedgerBalance, runFinancialIntegrityCheck } from '../utils/accountingControls';
 import { runDataIntegrityCheck } from '../utils/dataIntegrity';
 import { createInvoiceRecord } from '../utils/invoiceUtils';
-import {
-  buildDemoData,
-  DEMO_DATA_ID_PREFIX,
-  discoverDemoDataManifest,
-  findExternalDemoReferences,
-  getDemoDataCounts,
-  getDemoDataManifestKey,
-  getDemoDataStatus,
-  isValidDemoDataManifest,
-  manifestHasDemoData,
-  removeDemoDataFromSnapshot,
-  type DemoDataCounts,
-  type DemoDataManifest,
-  type DemoDataSnapshot,
-} from '../services/demoDataService';
 import { translations, TranslationKey } from '../i18n/translations';
 import { DEFAULT_INVOICE_BUSINESS_NAME } from '../config/brand';
 import {
@@ -273,7 +258,6 @@ export interface CurrentAdminUser {
   photoURL?: string | null;
   role: 'super_admin' | 'admin' | 'owner';
   businessId?: string | null;
-  isDemo?: boolean;
   onboardingEligible?: boolean;
 }
 
@@ -442,11 +426,6 @@ interface AppContextType {
 
   // Settings & Storage
   updateSettings: (updates: Partial<AppSettings>) => Promise<void>;
-  demoDataStatus: 'Not installed' | 'Installed' | 'Partially installed';
-  demoDataCounts: DemoDataCounts;
-  installDemoData: () => DemoDataCounts;
-  removeDemoData: () => DemoDataCounts;
-  resetDemoData: () => DemoDataCounts;
   resetToSampleData: () => void;
   clearBusinessData: () => void;
   exportDataJSON: () => string;
@@ -585,7 +564,7 @@ const normalizeBusinessData = (
     services: normalizedServices,
     accounts: normalizedAccounts.map(account => ({
       ...account,
-      planId: account.id.startsWith(DEMO_DATA_ID_PREFIX)
+      planId: account.id.startsWith('xvm_demo_')
         ? undefined
         : planIdFor(account.serviceId, account.plan) || account.planId,
     })),
@@ -6502,244 +6481,6 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     }
   };
 
-  const getDemoSnapshot = (): DemoDataSnapshot => ({
-    customers,
-    services,
-    accounts,
-    subscriptions,
-    sales,
-    orders,
-    payments,
-    invoices,
-    financialAccounts,
-    expenses,
-    otherIncome,
-    financialTransfers,
-    financialAdjustments,
-    dailyClosings,
-    financialReconciliations,
-    financialPeriods,
-    reminders,
-    profitabilityCosts,
-    activityLogs,
-    notifications,
-    settings,
-  });
-
-  const persistDemoSnapshot = (
-    snapshot: DemoDataSnapshot,
-    manifestKey: string,
-    manifest: DemoDataManifest | null
-  ): void => {
-    const persistedSettings = Object.fromEntries(
-      Object.entries({
-        ...snapshot.settings,
-        ...(currentBusiness?.businessId ? { businessId: currentBusiness.businessId } : {}),
-      }).filter(([key]) => key !== 'storeName')
-    );
-    replaceRawValuesAtomically({
-      [STORAGE_KEYS.CUSTOMERS]: JSON.stringify(snapshot.customers),
-      [STORAGE_KEYS.SERVICES]: JSON.stringify(snapshot.services),
-      [STORAGE_KEYS.ACCOUNTS]: JSON.stringify(snapshot.accounts),
-      [STORAGE_KEYS.SUBSCRIPTIONS]: JSON.stringify(snapshot.subscriptions),
-      [STORAGE_KEYS.SALES]: JSON.stringify(snapshot.sales),
-      [STORAGE_KEYS.ORDERS]: JSON.stringify(snapshot.orders),
-      [STORAGE_KEYS.PAYMENTS]: JSON.stringify(snapshot.payments),
-      [STORAGE_KEYS.INVOICES]: JSON.stringify(snapshot.invoices),
-      [STORAGE_KEYS.FINANCIAL_ACCOUNTS]: JSON.stringify(snapshot.financialAccounts),
-      [STORAGE_KEYS.EXPENSES]: JSON.stringify(snapshot.expenses),
-      [STORAGE_KEYS.OTHER_INCOME]: JSON.stringify(snapshot.otherIncome),
-      [STORAGE_KEYS.FINANCIAL_TRANSFERS]: JSON.stringify(snapshot.financialTransfers),
-      [STORAGE_KEYS.FINANCIAL_ADJUSTMENTS]: JSON.stringify(snapshot.financialAdjustments),
-      [STORAGE_KEYS.DAILY_CLOSINGS]: JSON.stringify(snapshot.dailyClosings),
-      [STORAGE_KEYS.FINANCIAL_RECONCILIATIONS]: JSON.stringify(snapshot.financialReconciliations),
-      [STORAGE_KEYS.FINANCIAL_PERIODS]: JSON.stringify(snapshot.financialPeriods),
-      [STORAGE_KEYS.REMINDERS]: JSON.stringify(snapshot.reminders),
-      [STORAGE_KEYS.PROFITABILITY_COSTS]: JSON.stringify(snapshot.profitabilityCosts),
-      [STORAGE_KEYS.LOGS]: JSON.stringify(snapshot.activityLogs),
-      [STORAGE_KEYS.NOTIFICATIONS]: JSON.stringify(snapshot.notifications),
-      [STORAGE_KEYS.SETTINGS]: JSON.stringify(persistedSettings),
-      [manifestKey]: manifest ? JSON.stringify(manifest) : null,
-    });
-  };
-
-  const applyDemoSnapshot = (snapshot: DemoDataSnapshot): void => {
-    setCustomers(snapshot.customers);
-    setServices(snapshot.services);
-    setAccounts(snapshot.accounts);
-    setSubscriptions(snapshot.subscriptions);
-    setSales(snapshot.sales);
-    setOrders(snapshot.orders);
-    setPayments(snapshot.payments);
-    setInvoices(snapshot.invoices);
-    setFinancialAccounts(snapshot.financialAccounts);
-    setExpenses(snapshot.expenses);
-    setOtherIncome(snapshot.otherIncome);
-    setFinancialTransfers(snapshot.financialTransfers);
-    setFinancialAdjustments(snapshot.financialAdjustments);
-    setDailyClosings(snapshot.dailyClosings);
-    setFinancialReconciliations(snapshot.financialReconciliations);
-    setFinancialPeriods(snapshot.financialPeriods);
-    setReminders(snapshot.reminders);
-    setProfitabilityCosts(snapshot.profitabilityCosts);
-    setActivityLogs(snapshot.activityLogs);
-    setNotifications(snapshot.notifications);
-    setSettings(snapshot.settings);
-  };
-
-  const validateDemoSnapshot = (
-    snapshot: DemoDataSnapshot,
-    manifest: DemoDataManifest,
-    businessId?: string
-  ): void => {
-    const integrity = runDataIntegrityCheck({
-      businessId,
-      customers: snapshot.customers,
-      services: snapshot.services,
-      serviceAccounts: snapshot.accounts,
-      subscriptions: snapshot.subscriptions,
-      sales: snapshot.sales,
-      payments: snapshot.payments,
-      invoices: snapshot.invoices,
-      financialAccounts: snapshot.financialAccounts,
-      expenses: snapshot.expenses,
-      otherIncome: snapshot.otherIncome,
-      financialTransfers: snapshot.financialTransfers,
-      financialAdjustments: snapshot.financialAdjustments,
-      dailyClosings: snapshot.dailyClosings,
-      financialReconciliations: snapshot.financialReconciliations,
-      financialPeriods: snapshot.financialPeriods,
-      reminders: snapshot.reminders,
-      profitabilityCosts: snapshot.profitabilityCosts,
-      activityLogs: snapshot.activityLogs,
-      notifications: snapshot.notifications,
-      settings: snapshot.settings,
-      storageWarnings: getStorageWarnings(),
-    }, { cacheResult: false });
-    const demoIds = new Set([...Object.values(manifest.records).flat(), ...manifest.planIds]);
-    const demoErrors = integrity.errors.filter(issue => issue.entityId && demoIds.has(issue.entityId));
-    if (demoErrors.length > 0) {
-      throw new Error(`Demo data validation failed: ${demoErrors.slice(0, 3).map(issue => issue.message).join(' ')}`);
-    }
-  };
-
-  const installDemoData = (): DemoDataCounts => {
-    if (getActiveDataEnvironment() !== 'demo') {
-      throw new Error('Demo data can only be installed in Demo Mode.');
-    }
-    const manifestKey = getDemoDataManifestKey(currentBusiness?.businessId);
-    const rawManifest = readRawValue(manifestKey);
-    if (rawManifest !== null) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(rawManifest);
-      } catch (error) {
-        console.error('Demo data installation metadata is invalid.', error);
-        throw new Error('Demo data metadata is unreadable. Use Remove Demo Data to recover the marked records before adding again.');
-      }
-      if (!isValidDemoDataManifest(parsed)) {
-        throw new Error('Demo data metadata is invalid. No records were changed.');
-      }
-      if (manifestHasDemoData(parsed)) {
-        throw new Error('Demo data is already installed. Remove it before installing a fresh set.');
-      }
-    }
-
-    const current = getDemoSnapshot();
-    const existingCounts = getDemoDataCounts(current);
-    if (Object.values(existingCounts).some(count => count > 0)) {
-      throw new Error('Partially installed demo records were found. Remove Demo Data to recover them before installing again.');
-    }
-    const { snapshot, manifest } = buildDemoData(current, currentBusiness?.businessId);
-    validateDemoSnapshot(snapshot, manifest, currentBusiness?.businessId);
-    persistDemoSnapshot(snapshot, manifestKey, manifest);
-    applyDemoSnapshot(snapshot);
-    return getDemoDataCounts(snapshot);
-  };
-
-  const removeDemoData = (): DemoDataCounts => {
-    if (getActiveDataEnvironment() !== 'demo') {
-      throw new Error('Demo data can only be removed in Demo Mode.');
-    }
-    const manifestKey = getDemoDataManifestKey(currentBusiness?.businessId);
-    const rawManifest = readRawValue(manifestKey);
-    let manifest: DemoDataManifest;
-    if (rawManifest === null) {
-      manifest = discoverDemoDataManifest(getDemoSnapshot(), currentBusiness?.businessId);
-    } else {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(rawManifest);
-      } catch (error) {
-        console.error('Demo data installation metadata is invalid.', error);
-        throw new Error('Demo data metadata is unreadable. No records were removed.');
-      }
-      if (!isValidDemoDataManifest(parsed)) {
-        throw new Error('Demo data metadata is invalid. No records were removed.');
-      }
-      if (parsed.businessId && parsed.businessId !== currentBusiness?.businessId) {
-        throw new Error('Demo data belongs to a different business and cannot be removed here.');
-      }
-      manifest = parsed;
-    }
-    const current = getDemoSnapshot();
-    const counts = getDemoDataCounts(current);
-    if (!manifestHasDemoData(manifest) && Object.values(counts).every(count => count === 0)) {
-      throw new Error('No demo data is installed.');
-    }
-    const references = findExternalDemoReferences(current, manifest);
-    if (references.length > 0) {
-      throw new Error(`Demo data is linked to non-demo ${references.join(', ')} records. Reassign or remove those links first; no data was changed.`);
-    }
-    const snapshot = removeDemoDataFromSnapshot(current, manifest);
-    persistDemoSnapshot(snapshot, manifestKey, null);
-    applyDemoSnapshot(snapshot);
-    return getDemoDataCounts(snapshot);
-  };
-
-  const resetDemoData = (): DemoDataCounts => {
-    if (getActiveDataEnvironment() !== 'demo') {
-      throw new Error('Demo data can only be reset in Demo Mode.');
-    }
-    const businessId = currentBusiness?.businessId;
-    const manifestKey = getDemoDataManifestKey(businessId);
-    const rawManifest = readRawValue(manifestKey);
-    let manifest: DemoDataManifest;
-    if (rawManifest === null) {
-      manifest = discoverDemoDataManifest(getDemoSnapshot(), businessId);
-    } else {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(rawManifest);
-      } catch (error) {
-        console.error('Demo data installation metadata is invalid.', error);
-        throw new Error('Demo data metadata is unreadable. No data was changed.');
-      }
-      if (!isValidDemoDataManifest(parsed)) {
-        throw new Error('Demo data metadata is invalid. No data was changed.');
-      }
-      if (parsed.businessId && parsed.businessId !== businessId) {
-        throw new Error('Demo data belongs to a different business and cannot be reset here.');
-      }
-      manifest = parsed;
-    }
-    const current = getDemoSnapshot();
-    const counts = getDemoDataCounts(current);
-    if (!manifestHasDemoData(manifest) && Object.values(counts).every(count => count === 0)) {
-      throw new Error('No demo data is installed.');
-    }
-    const references = findExternalDemoReferences(current, manifest);
-    if (references.length > 0) {
-      throw new Error(`Demo data is linked to non-demo ${references.join(', ')} records. Reassign or remove those links first; no data was changed.`);
-    }
-    const cleaned = removeDemoDataFromSnapshot(current, manifest);
-    const { snapshot, manifest: replacementManifest } = buildDemoData(cleaned, businessId);
-    validateDemoSnapshot(snapshot, replacementManifest, businessId);
-    persistDemoSnapshot(snapshot, manifestKey, replacementManifest);
-    applyDemoSnapshot(snapshot);
-    return getDemoDataCounts(snapshot);
-  };
-
   const resetToSampleData = () => {
     const sampleData = normalizeBusinessData(
       initialCustomers,
@@ -6779,12 +6520,6 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
   };
 
   const clearBusinessData = () => {
-    const snapshot = getDemoSnapshot();
-    const demoRecords = discoverDemoDataManifest(snapshot, currentBusiness?.businessId);
-    const settingsAfterDemoCleanup = removeDemoDataFromSnapshot(snapshot, demoRecords).settings;
-    replaceRawValuesAtomically({
-      [getDemoDataManifestKey(currentBusiness?.businessId)]: null,
-    });
     setCustomers([]);
     setServices([]);
     setAccounts([]);
@@ -6803,7 +6538,6 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     setFinancialPeriods([]);
     setReminders([]);
     setProfitabilityCosts([]);
-    setSettings(settingsAfterDemoCleanup);
     setActivityLogs([]);
     clearNotifications();
     logActivity({
@@ -6826,28 +6560,12 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
     if (storageIssues.length) {
       throw new Error(`Full backup is unavailable because browser storage has unresolved issues: ${storageIssues[0]}`);
     }
-    const demoManifestRaw = readRawValue(getDemoDataManifestKey(currentBusiness?.businessId));
-    let demoDataManifest: DemoDataManifest;
-    if (demoManifestRaw) {
-      let parsedManifest: unknown;
-      try {
-        parsedManifest = JSON.parse(demoManifestRaw);
-      } catch {
-        throw new Error('The saved demo-data manifest is unreadable. Resolve the storage warning before creating a full backup.');
-      }
-      if (!isValidDemoDataManifest(parsedManifest)) {
-        throw new Error('The saved demo-data manifest is invalid. Resolve the data integrity issue before creating a full backup.');
-      }
-      demoDataManifest = parsedManifest;
-    } else {
-      demoDataManifest = discoverDemoDataManifest(getDemoSnapshot(), currentBusiness?.businessId);
-    }
     const data = {
       schemaVersion: 1,
       exportedAt: new Date().toISOString(),
       environment: getActiveDataEnvironment(),
       business: currentBusiness,
-      demoDataManifest,
+      demoDataManifest: null,
       preferences: {
         theme: isDark ? 'dark' : 'light',
         language,
@@ -6962,11 +6680,6 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
           throw new Error('The backup contains unsupported display preferences.');
         }
       }
-      const importedDemoManifest = data.demoDataManifest;
-      if (importedDemoManifest !== undefined && importedDemoManifest !== null
-        && !isValidDemoDataManifest(importedDemoManifest)) {
-        throw new Error('The Demo data manifest is invalid.');
-      }
       if (importedSettings && (
         (importedSettings.storeName !== undefined && typeof importedSettings.storeName !== 'string') ||
         (importedSettings.currency !== undefined && importedSettings.currency !== 'BDT' && importedSettings.currency !== 'USD') ||
@@ -7068,31 +6781,6 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       const committedSettings = business
         ? { ...restoredSettings, businessId: business.businessId, storeName: business.name }
         : restoredSettings;
-      const restoredDemoManifest = importedDemoManifest && isValidDemoDataManifest(importedDemoManifest)
-        ? { ...importedDemoManifest, ...(business?.businessId ? { businessId: business.businessId } : {}) }
-        : discoverDemoDataManifest({
-          customers: imported.customers,
-          services: imported.services,
-          accounts: imported.accounts,
-          subscriptions: imported.subscriptions,
-          sales: imported.sales,
-          orders: scopedOrders,
-          payments: imported.payments,
-          invoices: restoredInvoices,
-          financialAccounts: importedFinancialAccounts,
-          expenses: importedExpenses,
-          otherIncome: importedOtherIncome,
-          financialTransfers: importedFinancialTransfers,
-          financialAdjustments: importedFinancialAdjustments,
-          dailyClosings: importedDailyClosings,
-          financialReconciliations: importedFinancialReconciliations,
-          financialPeriods: importedFinancialPeriods,
-          reminders: importedReminders,
-          profitabilityCosts: importedProfitabilityCosts,
-          activityLogs: imported.activityLogs,
-          notifications: restoredNotifications,
-          settings: committedSettings,
-        }, business?.businessId);
       const importedPreferenceValues = importedPreferences && typeof importedPreferences === 'object'
         ? importedPreferences as Record<string, unknown>
         : {};
@@ -7139,10 +6827,6 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       stage = 'Browser storage snapshot and commit';
       replaceRawValuesAtomically({
         ...(business ? { [STORAGE_KEYS.BUSINESS]: JSON.stringify(business) } : {}),
-        ...(currentBusiness?.businessId && currentBusiness.businessId !== business?.businessId
-          ? { [getDemoDataManifestKey(currentBusiness.businessId)]: null }
-          : {}),
-        [getDemoDataManifestKey(business?.businessId)]: JSON.stringify(restoredDemoManifest),
         [STORAGE_KEYS.CUSTOMERS]: JSON.stringify(imported.customers),
         [STORAGE_KEYS.SERVICES]: JSON.stringify(imported.services),
         [STORAGE_KEYS.ACCOUNTS]: JSON.stringify(imported.accounts),
@@ -7245,8 +6929,6 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       activeServices: services.filter(s => !s.isArchived && s.status === 'active').length,
     };
   }, [customers, subscriptions, sales, settings.reminderNoticeDays, currency, accounts.length, services]);
-  const demoDataCounts = getDemoDataCounts(getDemoSnapshot());
-  const demoDataStatus = getDemoDataStatus(demoDataCounts);
 
   return (
     <AppContext.Provider
@@ -7365,11 +7047,6 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         getNotificationCount,
         getUnreadNotifications: getUnreadNotificationsForBusiness,
         updateSettings,
-        demoDataStatus,
-        demoDataCounts,
-        installDemoData,
-        removeDemoData,
-        resetDemoData,
         resetToSampleData,
         clearBusinessData,
         exportDataJSON,

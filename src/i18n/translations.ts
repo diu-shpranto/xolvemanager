@@ -230,7 +230,6 @@ export const translations = {
     logoutAllDevices: 'Sign Out on All Devices',
     exportBackup: 'Download a Full Backup',
     importBackup: 'Restore a Backup',
-    resetDemoData: 'Reset Demo Data',
 
     // Authentication
     loginTitle: productBrand.name,
@@ -241,8 +240,6 @@ export const translations = {
     passwordInput: 'Password',
     rememberSession: 'Keep me signed in on this device',
     signInButton: 'Sign In',
-    quickDemoLogin: 'Try the Demo',
-    demoHint: 'Open the demo to try the app.',
 
     // Notification Toasts
     saleCreatedSuccess: 'Sale saved and plan started.',
@@ -482,7 +479,6 @@ export const translations = {
     logoutAllDevices: 'সব ডিভাইস থেকে লগআউট',
     exportBackup: 'সম্পূর্ণ JSON ব্যাকআপ ডাউনলোড',
     importBackup: 'ব্যাকআপ থেকে রিস্টোর',
-    resetDemoData: 'ডেমো ডাটায় রিসেট করুন',
 
     // Authentication
     loginTitle: productBrand.name,
@@ -493,8 +489,6 @@ export const translations = {
     passwordInput: 'পাসওয়ার্ড',
     rememberSession: 'এই ডিভাইসে সেশন মনে রাখুন',
     signInButton: 'অ্যাডমিন ড্যাশবোর্ডে প্রবেশ করুন',
-    quickDemoLogin: 'কুইক ডেমো অ্যাক্সেস',
-    demoHint: 'সহজে দেখার জন্য ডিফল্ট ডেমো লগইন প্রস্তুত করা আছে।',
 
     // Notification Toasts
     saleCreatedSuccess: 'নতুন বিক্রয় সংরক্ষিত এবং সাবস্ক্রিপশন সক্রিয় হয়েছে!',

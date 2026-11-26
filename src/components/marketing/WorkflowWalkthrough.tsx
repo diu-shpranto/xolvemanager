@@ -29,7 +29,7 @@ const steps: WalkthroughStep[] = [
     description: 'Store customer details and return to customer records to review related activity.',
     screenshot: {
       src: '/images/xolvemanager-walkthrough-customers.png',
-      alt: 'Actual XolveManager customer module in Demo Mode, with customer summary, activity totals, and record search.',
+      alt: 'Actual XolveManager customer module with sample data, showing customer summary, activity totals, and record search.',
       caption: 'Customer records',
       width: 615,
     },
@@ -40,7 +40,7 @@ const steps: WalkthroughStep[] = [
     description: 'Set up services and plans with the prices, durations, and availability you offer.',
     screenshot: {
       src: '/images/xolvemanager-walkthrough-services.png',
-      alt: 'Actual XolveManager service catalog in Demo Mode, with service and active-plan summaries.',
+      alt: 'Actual XolveManager service catalog with sample data, showing service and active-plan summaries.',
       caption: 'Service catalog',
       width: 615,
     },
@@ -57,13 +57,13 @@ const steps: WalkthroughStep[] = [
     description: 'Record a sale, create its invoice, and review payment progress.',
     screenshot: {
       src: '/images/xolvemanager-walkthrough-sales.png',
-      alt: 'Actual XolveManager Sales module in Demo Mode, with sale totals, payment status summaries, and the New Sale action.',
+      alt: 'Actual XolveManager Sales module with sample data, showing sale totals, payment status summaries, and the New Sale action.',
       caption: 'Sales',
       width: 615,
     },
     relatedScreenshot: {
       src: '/images/xolvemanager-walkthrough-invoices.png',
-      alt: 'Actual XolveManager Invoices and receipts module in Demo Mode, showing billed, collected, and outstanding amounts.',
+      alt: 'Actual XolveManager Invoices and receipts module with sample data, showing billed, collected, and outstanding amounts.',
       caption: 'Invoices',
       width: 615,
     },
@@ -74,13 +74,13 @@ const steps: WalkthroughStep[] = [
     description: 'Record payments, check balances, and review business records and reports.',
     screenshot: {
       src: '/images/xolvemanager-walkthrough-payments.png',
-      alt: 'Actual XolveManager Payments module in Demo Mode, with payment history, collection actions, and balances.',
+      alt: 'Actual XolveManager Payments module with sample data, showing payment history, collection actions, and balances.',
       caption: 'Payments',
       width: 615,
     },
     relatedScreenshot: {
       src: '/images/xolvemanager-walkthrough-reports.png',
-      alt: 'Actual XolveManager business report in Demo Mode, showing recorded activity and profitability summaries.',
+      alt: 'Actual XolveManager business report with sample data, showing recorded activity and profitability summaries.',
       caption: 'Business reports',
       width: 615,
     },
@@ -145,7 +145,7 @@ export function WorkflowWalkthrough() {
                   />
                   <figcaption className={styles.workflowScreenshotCaption}>
                     <span>{step.screenshot.caption}</span>
-                    <span>Demo Mode</span>
+                    <span>Sample data</span>
                   </figcaption>
                 </figure>
 
@@ -168,7 +168,7 @@ export function WorkflowWalkthrough() {
         </ol>
 
         <p className={styles.workflowNote}>
-          Screenshots show fictional sample records in Demo Mode. Your business records stay in your browser.
+          Screenshots show fictional sample records. Your business records stay in your browser.
           Payments are recorded—not processed, and subscriptions are tracked—not automatically billed.
         </p>
       </div>
