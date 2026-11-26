@@ -127,24 +127,74 @@ export const isCloudSession = (): boolean => {
   }
 };
 
-/** Email/password sign-up against Supabase Auth. Also signs the user in. */
+export interface CloudSignUpResult {
+  user: CloudAuthUser;
+  /** True when email confirmation is on: no session was created and the
+   * account must open the confirmation link before it can sign in. */
+  confirmationPending: boolean;
+}
+
+/** Email/password sign-up against Supabase Auth. The account is created
+ * but the user is NOT signed in: any session the sign-up returns is
+ * signed out immediately, so the new account must sign in with its
+ * credentials before it can enter the workspace. When email confirmation
+ * is on, no session is created at all — the confirmation link returns to
+ * /login, where the shell signs the confirmed account in. */
 export const signUpWithSupabase = async (
   name: string,
   email: string,
   password: string
-): Promise<CloudAuthUser> => {
+): Promise<CloudSignUpResult> => {
   const client = requireClient();
   const { data, error } = await client.auth.signUp({
     email: email.trim().toLowerCase(),
     password,
-    options: { data: { full_name: name.trim() } },
+    options: {
+      data: { full_name: name.trim() },
+      emailRedirectTo: `${window.location.origin}/login`,
+    },
   });
   if (error) throw new SupabaseAuthError('SIGNUP_FAILED', error.message);
   if (!data.user) throw new SupabaseAuthError('SIGNUP_FAILED', 'Cloud sign-up did not return an account.');
   clearCloudPasswordRecoveryPending();
-  markCloudSession();
-  setActiveWorkspaceId(data.user.id);
-  return toCloudUser(data.user);
+  // Email confirmation is off, so sign-up returns an active session.
+  // Sign it out right away and clear the cloud-session markers: the
+  // caller sends the user to the sign-in page instead of the workspace.
+  try {
+    if (data.session) await client.auth.signOut();
+  } catch {
+    // Best effort: signOut clears the local session even when its server
+    // call fails, and the markers below are cleared regardless.
+  }
+  clearCloudSessionFlag();
+  setActiveWorkspaceId(LOCAL_WORKSPACE_ID);
+  return { user: toCloudUser(data.user), confirmationPending: !data.session };
+};
+
+/**
+ * Passwordless sign-in — email the user a sign-in link. The link returns
+ * to /dashboard; the browser client exchanges its PKCE code on load and
+ * the shell signs the user in, exactly like a Google OAuth return.
+ *
+ * `shouldCreateUser: false`: a link is only sent to an existing account,
+ * so the login page cannot be used to create accounts without a name or
+ * terms. An unknown email gets EMAIL_LINK_NO_ACCOUNT instead of a link.
+ */
+export const signInWithEmailLink = async (email: string): Promise<void> => {
+  const client = requireClient();
+  const { error } = await client.auth.signInWithOtp({
+    email: email.trim().toLowerCase(),
+    options: {
+      shouldCreateUser: false,
+      emailRedirectTo: `${window.location.origin}/dashboard`,
+    },
+  });
+  if (error) {
+    if (error.message.toLowerCase().includes('signups not allowed')) {
+      throw new SupabaseAuthError('EMAIL_LINK_NO_ACCOUNT', 'No account uses this email yet. Sign up first.');
+    }
+    throw new SupabaseAuthError('EMAIL_LINK_FAILED', error.message);
+  }
 };
 
 /** Email/password sign-in against Supabase Auth. */

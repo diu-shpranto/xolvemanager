@@ -26,6 +26,7 @@ import {
   hasCloudPasswordRecoverySession,
   requestCloudPasswordReset,
   setCloudPassword,
+  signInWithEmailLink,
   signInWithGoogle,
   signInWithSupabase,
   signUpWithSupabase,
@@ -94,6 +95,12 @@ const copy = {
     cloudResetSentBody: 'We sent a password reset link to {email}. It only works in this browser — open the link here.',
     cloudResetResend: 'Resend the link',
     cloudResetResent: 'A new link was sent.',
+    accountConfirmationNotice: 'Check your email — we sent a confirmation link to {email}. Open it, then sign in.',
+    useEmailLink: 'Sign in with an email link instead',
+    usePassword: 'Back to password sign-in',
+    sendEmailLink: 'Send sign-in link',
+    emailLinkSent: 'Check your email — we sent a sign-in link to {email}.',
+    emailLinkResend: 'Send a new link',
     cloudResetLinkInvalid: 'That reset link did not work — it may have expired, already been used, or been opened in another browser. Request a new link below.',
     cloudResetSetTitle: 'Set a new password',
     cloudResetSetIntro: 'Choose a new password. You will stay signed in after this.',
@@ -106,6 +113,7 @@ const copy = {
     recoverySaved: 'You will not see it again. Keep it somewhere safe.',
     accountSavedTitle: 'Account created — save your recovery code',
     accountSaved: 'This code is shown only once. Keep it private. You can use it to reset your password.',
+    accountCreatedNotice: 'Account created — sign in to continue.',
     copyKey: 'Copy recovery code',
     copied: 'Copied',
     continue: 'Continue to sign in',
@@ -177,6 +185,12 @@ const copy = {
     cloudResetSentBody: '{email} ঠিকানায় পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে। এটি শুধু এই ব্রাউজারেই কাজ করবে — লিংকটি এখানেই খুলুন।',
     cloudResetResend: 'লিংকটি আবার পাঠান',
     cloudResetResent: 'নতুন লিংক পাঠানো হয়েছে।',
+    accountConfirmationNotice: 'ইমেইল দেখুন — {email}-এ কনফার্মেশন লিংক পাঠানো হয়েছে। লিংকটি খুলে তারপর সাইন ইন করুন।',
+    useEmailLink: 'ইমেইল লিংক দিয়ে সাইন ইন করুন',
+    usePassword: 'পাসওয়ার্ড দিয়ে সাইন ইনে ফিরুন',
+    sendEmailLink: 'সাইন-ইন লিংক পাঠান',
+    emailLinkSent: 'ইমেইল দেখুন — {email}-এ সাইন-ইন লিংক পাঠানো হয়েছে।',
+    emailLinkResend: 'নতুন লিংক পাঠান',
     cloudResetLinkInvalid: 'রিসেট লিংকটি কাজ করেনি — হয়তো মেয়াদ শেষ হয়ে গেছে, ইতিমধ্যে ব্যবহৃত হয়েছে, অথবা অন্য ব্রাউজারে খোলা হয়েছে। নিচে নতুন লিংক চেয়ে নিন।',
     cloudResetSetTitle: 'নতুন পাসওয়ার্ড সেট করুন',
     cloudResetSetIntro: 'নতুন পাসওয়ার্ড বেছে নিন। এরপর সাইন ইন থাকবে।',
@@ -189,6 +203,7 @@ const copy = {
     recoverySaved: 'কীটি আবার দেখানো হবে না। নিরাপদ স্থানে সংরক্ষণ করুন।',
     accountSavedTitle: 'অ্যাকাউন্ট তৈরি হয়েছে — রিকভারি কী সংরক্ষণ করুন',
     accountSaved: 'কীটি শুধু এখন দেখানো হচ্ছে। এটি ব্যক্তিগত রাখুন।',
+    accountCreatedNotice: 'অ্যাকাউন্ট তৈরি হয়েছে — সাইন ইন করে এগিয়ে যান।',
     copyKey: 'রিকভারি কী কপি করুন',
     copied: 'কপি হয়েছে',
     continue: 'সাইন ইন করতে এগিয়ে যান',
@@ -256,6 +271,9 @@ const getSupabaseFriendlyMessage = (error: SupabaseAuthError, language: Language
   if (message.includes('user already registered') || message.includes('already registered')) {
     return t('An account with this email already exists. Try signing in instead.', 'এই ইমেইল দিয়ে ইতিমধ্যে অ্যাকাউন্ট আছে। সাইন ইন করে দেখুন।');
   }
+  if (message.includes('signups not allowed')) {
+    return t('No account uses this email yet. Sign up first.', 'এই ইমেইল দিয়ে এখনো কোনো অ্যাকাউন্ট নেই। প্রথমে সাইন আপ করুন।');
+  }
   if (message.includes('email not confirmed')) {
     return t('Please confirm your email first — check your inbox for the confirmation link.', 'আগে আপনার ইমেইল নিশ্চিত করুন — ইনবক্সে পাঠানো নিশ্চিতকরণ লিংকটি দেখুন।');
   }
@@ -300,6 +318,11 @@ const getErrorMessage = (error: unknown, language: Language): string => {
 
 const inputClass = 'auth-input';
 
+/** One-time marker left by a successful cloud sign-up: the sign-in page
+ * reads it, shows "account created — sign in", pre-fills the email and
+ * clears it, so the notice appears exactly once. */
+const ACCOUNT_CREATED_KEY = 'xolvemanager.auth.account-created.v1';
+
 export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, onNavigate }: AuthScreenProps) {
   const [language, setLanguage] = useState<Language>('en');
   const [name, setName] = useState('');
@@ -311,11 +334,15 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState(initialError || '');
+  const [notice, setNotice] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [busy, setBusy] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
   const [resultKey, setResultKey] = useState('');
   const [copied, setCopied] = useState(false);
+  /** Login only: password form, or passwordless email-link form. */
+  const [loginMethod, setLoginMethod] = useState<'password' | 'link'>('password');
+  const [linkSent, setLinkSent] = useState(false);
   const text = copy[language];
   // Cloud (Supabase) sign-in is the primary path when configured; the local
   // account on this device stays available as a clearly secondary option.
@@ -389,6 +416,26 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     setError(initialError || '');
   }, [initialError]);
 
+  // After a cloud sign-up, the sign-in page shows the one-time notice
+  // and pre-fills the new account's email. When email confirmation is
+  // on, the notice instead asks the user to open the confirmation link.
+  useEffect(() => {
+    if (mode !== 'login') return;
+    try {
+      const raw = window.sessionStorage.getItem(ACCOUNT_CREATED_KEY);
+      if (!raw) return;
+      window.sessionStorage.removeItem(ACCOUNT_CREATED_KEY);
+      const parsed = JSON.parse(raw) as { email?: unknown; confirmationPending?: unknown };
+      const createdEmail = typeof parsed.email === 'string' ? parsed.email : '';
+      if (createdEmail) setEmail(createdEmail);
+      setNotice(parsed.confirmationPending === true
+        ? text.accountConfirmationNotice.replace('{email}', createdEmail)
+        : text.accountCreatedNotice);
+    } catch {
+      // No notice: sign-in works normally without it.
+    }
+  }, [mode, text]);
+
   useEffect(() => {
     const visualViewport = window.visualViewport;
     if (!visualViewport) return;
@@ -422,6 +469,9 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
 
   const navigate = (path: string) => {
     setError('');
+    setNotice('');
+    setLoginMethod('password');
+    setLinkSent(false);
     setFieldErrors({});
     setResultKey('');
     setCopied(false);
@@ -436,6 +486,8 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     setAuthProvider(provider);
     setError('');
     setFieldErrors({});
+    setLoginMethod('password');
+    setLinkSent(false);
     setCloudResetView('none');
     setResetLinkFailed(false);
     setResent(false);
@@ -463,6 +515,11 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
 
   const validateForm = (): FieldErrors => {
     const errors: FieldErrors = {};
+    // Passwordless email-link sign-in: only the email matters.
+    if (mode === 'login' && authProvider === 'cloud' && loginMethod === 'link') {
+      if (!isValidAuthEmail(email)) errors.email = text.errEmail;
+      return errors;
+    }
     if (mode === 'signup') {
       if (name.trim().length === 0) errors.name = text.errName;
       else if (name.trim().length > 100) errors.name = text.errNameLong;
@@ -542,14 +599,26 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     if (Object.keys(errors).length > 0) return;
     setBusy(true);
     try {
+      if (mode === 'login' && authProvider === 'cloud' && loginMethod === 'link') {
+        await signInWithEmailLink(email);
+        setLinkSent(true);
+        return;
+      }
       if (mode === 'login' && authProvider === 'cloud') {
         const user = await signInWithSupabase(email, password);
         onAuthenticated(user);
         return;
       }
       if (mode === 'signup' && authProvider === 'cloud') {
-        const user = await signUpWithSupabase(name, email, password);
-        onAuthenticated(user);
+        const { user, confirmationPending } = await signUpWithSupabase(name, email, password);
+        // The new account is NOT signed in: leave a one-time marker and
+        // send the user to the sign-in page to sign in with it.
+        try {
+          window.sessionStorage.setItem(ACCOUNT_CREATED_KEY, JSON.stringify({ email: user.email, confirmationPending, at: Date.now() }));
+        } catch {
+          // No marker: the sign-in page still works, just without the notice.
+        }
+        navigate('/login');
         return;
       }
       if (mode === 'login') {
@@ -584,6 +653,18 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
       setError(getErrorMessage(caught, language));
     } finally {
       setOauthBusy(false);
+    }
+  };
+
+  const handleResendEmailLink = async () => {
+    setError('');
+    setBusy(true);
+    try {
+      await signInWithEmailLink(email);
+    } catch (caught) {
+      setError(getErrorMessage(caught, language));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -669,6 +750,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
             <section className={styles.card} aria-labelledby="auth-heading">
 
                   {error && <div role="alert" aria-live="assertive" className="auth-alert auth-alert--error">{error}</div>}
+                  {notice && <div role="status" className="auth-alert auth-alert--success">{notice}</div>}
                   {cloudResetView === 'request' && resetLinkFailed && <div role="alert" className="auth-alert auth-alert--warning">{text.cloudResetLinkInvalid}</div>}
                   {mode === 'signup' && hasAccount && authProvider === 'local' && <div role="alert" className="auth-alert auth-alert--warning">{text.setupDisabled}</div>}
 
@@ -678,26 +760,20 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                     </button>
                   )}
 
-                  {cloudAvailable && authProvider === 'cloud' && mode !== 'forgot-password' && cloudResetView === 'none' && (
-                    <>
-                      <button type="button" onClick={() => void handleGoogleLogin()} disabled={busy || oauthBusy || !googleEnabled} className={styles.googleBtn} title={googleEnabled ? undefined : 'Google sign-in is not configured yet.'}>
-                        {oauthBusy ? <LoaderCircle className="auth-spinner" aria-hidden="true" /> : <GoogleMark />}
-                        <span>{oauthBusy ? text.googleLoading : text.google}</span>
-                        <ChevronRight aria-hidden="true" />
-                      </button>
-                      {googleEnabled
-                        ? <p className="auth-session-note" style={{ marginTop: '0.5rem' }}>{text.googleNote}</p>
-                        : <p className="auth-session-note" style={{ marginTop: '0.5rem' }}>{language === 'bn' ? 'Google সাইন-ইন এখনও চালু হয়নি — ইমেইল ও পাসওয়ার্ড ব্যবহার করুন।' : 'Google sign-in is not configured yet — use email and password.'}</p>}
-                      <div className="auth-divider"><span />{text.emailDivider}<span /></div>
-                    </>
-                  )}
-
                   {cloudResetView === 'sent' ? (
                     <>
                       {resent && <p className="auth-session-note" role="status">{text.cloudResetResent}</p>}
                       <button type="button" onClick={() => void handleResendResetLink()} disabled={busy || oauthBusy} className="auth-secondary-button" style={{ width: '100%' }}>{busy ? text.loading : text.cloudResetResend}</button>
                       <div className="auth-links">
                         <button type="button" onClick={closeCloudReset} className="auth-text-link">{text.loginLink}</button>
+                      </div>
+                    </>
+                  ) : linkSent ? (
+                    <>
+                      <p className="auth-session-note" role="status">{text.emailLinkSent.replace('{email}', email)}</p>
+                      <button type="button" onClick={() => void handleResendEmailLink()} disabled={busy || oauthBusy} className="auth-secondary-button" style={{ width: '100%' }}>{busy ? text.loading : text.emailLinkResend}</button>
+                      <div className="auth-links">
+                        <button type="button" onClick={() => { setLinkSent(false); setLoginMethod('password'); }} className="auth-text-link">{text.usePassword}</button>
                       </div>
                     </>
                   ) : (
@@ -722,7 +798,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                       </label>
                     )}
 
-                    {cloudResetView !== 'request' && (
+                    {cloudResetView !== 'request' && loginMethod !== 'link' && (
                     <label className="auth-field">{text.password}
                       <span className="auth-password-wrap">
                         <LockKeyhole aria-hidden="true" />
@@ -756,7 +832,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                         <button type="button" onClick={() => navigate('/forgot-password')} className="auth-text-link">{text.forgot}</button>
                       </div>
                     )}
-                    {mode === 'login' && authProvider === 'cloud' && cloudResetView === 'none' && (
+                    {mode === 'login' && authProvider === 'cloud' && cloudResetView === 'none' && loginMethod !== 'link' && (
                       <div className="auth-login-options">
                         <p className="auth-session-note">{text.cloudSessionNote}</p>
                         <button type="button" onClick={() => { setError(''); setFieldErrors({}); setCloudResetView('request'); }} className="auth-text-link">{text.cloudForgot}</button>
@@ -787,8 +863,31 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                       </div>
                     )}
 
-                    <button type="submit" disabled={busy || oauthBusy || (mode === 'signup' && hasAccount && authProvider === 'local')} className={styles.primaryBtn}>{busy && <LoaderCircle className="auth-spinner" aria-hidden="true" />}{busy ? text.loading : cloudResetView === 'request' ? text.cloudResetSend : cloudResetView === 'reset' ? text.recover : mode === 'login' ? <>{text.signIn}<ArrowRight aria-hidden="true" /></> : mode === 'signup' ? text.create : text.recover}</button>
+                    <button type="submit" disabled={busy || oauthBusy || (mode === 'signup' && hasAccount && authProvider === 'local')} className={styles.primaryBtn}>{busy && <LoaderCircle className="auth-spinner" aria-hidden="true" />}{busy ? text.loading : cloudResetView === 'request' ? text.cloudResetSend : cloudResetView === 'reset' ? text.recover : mode === 'login' && authProvider === 'cloud' && loginMethod === 'link' ? text.sendEmailLink : mode === 'login' ? <>{text.signIn}<ArrowRight aria-hidden="true" /></> : mode === 'signup' ? text.create : text.recover}</button>
+
+                    {mode === 'login' && authProvider === 'cloud' && cloudResetView === 'none' && (
+                      <div style={{ textAlign: 'center' }}>
+                        <button type="button" onClick={() => { setLoginMethod(loginMethod === 'link' ? 'password' : 'link'); setError(''); setFieldErrors({}); setLinkSent(false); }} className="auth-text-link">
+                          {loginMethod === 'link' ? text.usePassword : text.useEmailLink}
+                        </button>
+                      </div>
+                    )}
                   </form>
+                  )}
+
+                  {/* Google sign-in sits below the email form, as on most sites. */}
+                  {cloudAvailable && authProvider === 'cloud' && mode !== 'forgot-password' && cloudResetView === 'none' && !linkSent && (
+                    <>
+                      <div className="auth-divider"><span />{text.emailDivider}<span /></div>
+                      <button type="button" onClick={() => void handleGoogleLogin()} disabled={busy || oauthBusy || !googleEnabled} className={styles.googleBtn} title={googleEnabled ? undefined : 'Google sign-in is not configured yet.'}>
+                        {oauthBusy ? <LoaderCircle className="auth-spinner" aria-hidden="true" /> : <GoogleMark />}
+                        <span>{oauthBusy ? text.googleLoading : text.google}</span>
+                        <ChevronRight aria-hidden="true" />
+                      </button>
+                      {googleEnabled
+                        ? <p className="auth-session-note" style={{ marginTop: '0.5rem' }}>{text.googleNote}</p>
+                        : <p className="auth-session-note" style={{ marginTop: '0.5rem' }}>{language === 'bn' ? 'Google সাইন-ইন এখনও চালু হয়নি — ইমেইল ও পাসওয়ার্ড ব্যবহার করুন।' : 'Google sign-in is not configured yet — use email and password.'}</p>}
+                    </>
                   )}
 
                   {cloudResetView !== 'none' && cloudResetView !== 'sent' && (

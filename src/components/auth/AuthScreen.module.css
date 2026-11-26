@@ -499,6 +499,12 @@
     background: rgba(217, 119, 6, 0.15);
   }
 
+  .shell :global(.auth-alert--success) {
+    border-color: rgba(74, 222, 128, 0.4);
+    color: #bbf7d0;
+    background: rgba(22, 163, 74, 0.16);
+  }
+
   .shell :global(.auth-secondary-button) {
     border-color: #4b5563;
     color: #f9fafb;

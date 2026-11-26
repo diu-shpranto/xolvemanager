@@ -4938,6 +4938,12 @@ button.dashboard-metric:hover {
   background: #fff9e9;
 }
 
+.auth-alert--success {
+  border-color: #bfe6c8;
+  color: #1c5c2e;
+  background: #f0f9f1;
+}
+
 .auth-form {
   display: grid;
   gap: 0.95rem;
