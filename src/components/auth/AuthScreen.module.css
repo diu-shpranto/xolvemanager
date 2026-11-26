@@ -52,6 +52,30 @@
   font-family: var(--font-bn);
 }
 
+/* Embedded on the introduction page: the card sits inside the hero, so
+ * the full-page shell (100vh, gray page background, page padding) becomes
+ * a plain content column. The wordmark and footer are hidden by
+ * AuthScreen itself (the page header/footer already provide them). */
+.shell.embedded:global(.auth-page) {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.shell.embedded:global(.auth-page)[data-auth-mode="login"],
+.shell.embedded:global(.auth-page)[data-auth-mode="signup"] {
+  background: transparent;
+}
+
+.shell.embedded .page {
+  margin-inline: auto;
+}
+
+.shell.embedded .topbar {
+  margin-bottom: 1.25rem;
+}
+
 @media (max-height: 840px) {
   .shell:global(.auth-page) {
     align-items: flex-start;
@@ -511,5 +535,54 @@
 
   .page :global(.auth-footer-link:hover) {
     color: #e5e7eb;
+  }
+
+  /* Embedded on the light introduction page: everything outside the card
+   * stays light so it stays readable on the hero; the card itself keeps
+   * its dark styling as a self-contained unit. */
+  .shell.embedded:global(.auth-page),
+  .shell.embedded:global(.auth-page)[data-auth-mode="login"],
+  .shell.embedded:global(.auth-page)[data-auth-mode="signup"] {
+    color: #17213b;
+    background: transparent;
+  }
+
+  .shell.embedded:global(.auth-page) .topbar :global(.auth-language) {
+    border-color: #e5e7eb;
+    color: #4b5563;
+    background: #ffffff;
+  }
+
+  .shell.embedded:global(.auth-page) .topbar :global(.auth-language):hover {
+    border-color: #d1d5db;
+    background: #f9fafb;
+  }
+
+  .shell.embedded .heading h1 {
+    color: #17213b;
+  }
+
+  .shell.embedded .intro {
+    color: #66718b;
+  }
+
+  .shell.embedded .switch {
+    color: #66718b;
+  }
+
+  .shell.embedded .switchLink {
+    color: #5925dc;
+  }
+
+  .shell.embedded .subLink {
+    color: #66718b;
+  }
+
+  .shell.embedded .subLink :global(.auth-text-link) {
+    color: #5925dc;
+  }
+
+  .shell.embedded .subNote {
+    color: #8a91a5;
   }
 }

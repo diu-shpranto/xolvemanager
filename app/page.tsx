@@ -27,6 +27,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { HomepageAuthCard } from '../src/components/marketing/HomepageAuthCard';
 import { HomepageNavigation } from '../src/components/marketing/HomepageNavigation';
 import { WorkflowWalkthrough } from '../src/components/marketing/WorkflowWalkthrough';
 import {
@@ -324,25 +325,6 @@ const privacyPoints = [
   },
 ];
 
-function ActionLink({ href, children, secondary = false }: {
-  href: string;
-  children: ReactNode;
-  secondary?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition duration-200 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-violet-600 motion-reduce:transform-none ${
-        secondary
-          ? 'border border-violet-200 bg-white text-violet-900 hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-50'
-          : 'bg-violet-700 text-white shadow-lg shadow-violet-900/15 hover:-translate-y-0.5 hover:bg-violet-800'
-      }`}
-    >
-      {children}
-    </Link>
-  );
-}
-
 function Eyebrow({ children, dark = false }: { children: ReactNode; dark?: boolean }) {
   return (
     <p className={`text-xs font-bold uppercase tracking-[0.18em] ${dark ? 'text-violet-300' : 'text-violet-700'}`}>
@@ -380,12 +362,6 @@ export default function Home() {
               <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
                 XolveManager is a simple workspace for small businesses. Sign in with any Google account or email, and your customers, services, subscriptions, sales, invoices, and payments follow your account — not just one browser.
               </p>
-              <div className="mt-7 flex flex-col gap-3 min-[420px]:flex-row">
-                <ActionLink href="/signup">
-                  Create Free Account <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </ActionLink>
-                <ActionLink href="/login" secondary>Sign In</ActionLink>
-              </div>
               <p className="mt-3 text-xs leading-5 text-slate-500">
                 Free to start. No separate app to install — it runs in your browser.
               </p>
@@ -406,42 +382,8 @@ export default function Home() {
               </ul>
             </div>
 
-            <div className="relative mx-auto w-full max-w-2xl lg:max-w-none">
-              <div aria-hidden="true" className="absolute -inset-5 rounded-[3rem] bg-violet-300/40 blur-3xl" />
-              <div className="relative overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-2xl shadow-violet-950/15 sm:rounded-3xl">
-                <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-2.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400" aria-hidden="true" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400" aria-hidden="true" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" aria-hidden="true" />
-                  <span className="ml-2 hidden min-w-0 flex-1 truncate rounded-md bg-white px-3 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200 sm:block">
-                    xolvemanager.vercel.app
-                  </span>
-                </div>
-                <Image
-                  src="/images/xolvemanager-dashboard-showcase.png"
-                  alt="XolveManager demo dashboard showing sample business summaries, workspace navigation, and quick actions."
-                  width={1400}
-                  height={720}
-                  sizes="(max-width: 1023px) 100vw, 55vw"
-                  priority
-                  className="h-auto w-full"
-                />
-              </div>
-              <div className="relative -mt-5 ml-4 flex max-w-xs items-center gap-2.5 rounded-2xl border border-violet-100 bg-white/95 px-4 py-3 shadow-lg shadow-violet-950/10 backdrop-blur sm:ml-8">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700">
-                  <ShieldCheck className="h-5 w-5" aria-hidden="true" />
-                </span>
-                <p className="text-xs font-semibold leading-5 text-slate-700">
-                  Your account · Your data follows you
-                </p>
-              </div>
-              <div className="relative mt-5 flex flex-wrap justify-center gap-2">
-                {['Add Customers', 'Create Services and Plans', 'Track Subscriptions', 'Record Sales and Payments'].map(label => (
-                  <span key={label} className="rounded-full border border-violet-100 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-600 shadow-sm sm:text-xs">
-                    {label}
-                  </span>
-                ))}
-              </div>
+            <div className="relative mx-auto w-full">
+              <HomepageAuthCard />
             </div>
           </div>
         </section>
@@ -508,6 +450,42 @@ export default function Home() {
               <p className="mt-4 text-sm leading-6 text-slate-600">
                 These illustrative previews use labels and placeholders—not customer, account, or financial data. The same screens open on any device you sign in from. Actual screens may change as the app evolves.
               </p>
+            </div>
+            <div className="relative mx-auto mt-10 w-full max-w-4xl">
+              <div aria-hidden="true" className="absolute -inset-5 rounded-[3rem] bg-violet-300/40 blur-3xl" />
+              <div className="relative overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-2xl shadow-violet-950/15 sm:rounded-3xl">
+                <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-2.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400" aria-hidden="true" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400" aria-hidden="true" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" aria-hidden="true" />
+                  <span className="ml-2 hidden min-w-0 flex-1 truncate rounded-md bg-white px-3 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200 sm:block">
+                    xolvemanager.vercel.app
+                  </span>
+                </div>
+                <Image
+                  src="/images/xolvemanager-dashboard-showcase.png"
+                  alt="XolveManager demo dashboard showing sample business summaries, workspace navigation, and quick actions."
+                  width={1400}
+                  height={720}
+                  sizes="(max-width: 1023px) 100vw, 896px"
+                  className="h-auto w-full"
+                />
+              </div>
+              <div className="relative -mt-5 ml-4 flex max-w-xs items-center gap-2.5 rounded-2xl border border-violet-100 bg-white/95 px-4 py-3 shadow-lg shadow-violet-950/10 backdrop-blur sm:ml-8">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700">
+                  <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <p className="text-xs font-semibold leading-5 text-slate-700">
+                  Your account · Your data follows you
+                </p>
+              </div>
+              <div className="relative mt-5 flex flex-wrap justify-center gap-2">
+                {['Add Customers', 'Create Services and Plans', 'Track Subscriptions', 'Record Sales and Payments'].map(label => (
+                  <span key={label} className="rounded-full border border-violet-100 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-600 shadow-sm sm:text-xs">
+                    {label}
+                  </span>
+                ))}
+              </div>
             </div>
             <div className="mt-9 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {productModules.map(module => <ProductModulePreview key={module.title} {...module} />)}
