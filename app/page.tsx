@@ -360,12 +360,9 @@ export default function Home() {
                 Manage customers, subscriptions &amp; sales — on any device.
               </h1>
               <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-                XolveManager is a simple workspace for small businesses. Sign in with any Google account or email, and your customers, services, subscriptions, sales, invoices, and payments follow your account — not just one browser.
+                Sign in with Google or email, and your business records follow your account — not just one browser.
               </p>
-              <p className="mt-3 text-xs leading-5 text-slate-500">
-                Free to start. No separate app to install — it runs in your browser.
-              </p>
-              <ul className="mt-7 grid gap-2.5 text-sm font-medium text-slate-700 sm:grid-cols-2">
+              <ul className="mt-7 hidden gap-2.5 text-sm font-medium text-slate-700 sm:grid sm:grid-cols-2">
                 {[
                   { label: 'Sign in with Google or email', icon: LogIn },
                   { label: 'Your data follows your account', icon: Smartphone },
@@ -411,9 +408,6 @@ export default function Home() {
                 </article>
               ))}
             </div>
-            <p className="mx-auto mt-6 max-w-2xl text-center text-sm leading-6 text-slate-500">
-              Prefer to keep everything on one device? A device-only account is still available on the sign-in page — your records stay in that browser.
-            </p>
           </div>
         </section>
 
@@ -454,14 +448,6 @@ export default function Home() {
             <div className="relative mx-auto mt-10 w-full max-w-4xl">
               <div aria-hidden="true" className="absolute -inset-5 rounded-[3rem] bg-violet-300/40 blur-3xl" />
               <div className="relative overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-2xl shadow-violet-950/15 sm:rounded-3xl">
-                <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-2.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400" aria-hidden="true" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400" aria-hidden="true" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" aria-hidden="true" />
-                  <span className="ml-2 hidden min-w-0 flex-1 truncate rounded-md bg-white px-3 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200 sm:block">
-                    xolvemanager.vercel.app
-                  </span>
-                </div>
                 <Image
                   src="/images/xolvemanager-dashboard-showcase.png"
                   alt="XolveManager demo dashboard showing sample business summaries, workspace navigation, and quick actions."
@@ -502,7 +488,7 @@ export default function Home() {
                 Your records belong to your cloud account. Each account has its own workspace, so another account never sees your data. Cloud upload and download happen only when you choose them — nothing moves in the background.
               </p>
               <p className="mt-4 text-sm leading-6 text-violet-200/80">
-                You can also download a full backup file any time, and a device-only account keeps everything in one browser if you prefer that. Clearing browser data can remove records that exist only on that device, so keep a backup.
+                You can also download a full backup file any time. Clearing browser data can remove records that exist only on that device, so keep a backup.
               </p>
               <Link href="/legal/privacy" className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-white underline decoration-violet-300 underline-offset-4 transition hover:decoration-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
                 Read the Privacy &amp; Data Notice <ArrowRight className="h-4 w-4" aria-hidden="true" />

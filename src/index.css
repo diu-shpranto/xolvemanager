@@ -896,6 +896,23 @@ html[lang="bn"] :is(.page-title, .app-main h1),
     animation-delay: 100ms;
   }
 
+  /* Phones: pin the navbar to the very top of the viewport. `sticky` left
+   * a blank band above the bar on some phone browsers (the bar moved with
+   * the page instead of sticking); `fixed` cannot do that. The shell keeps
+   * the same top padding so the content below does not jump up.
+   * (The `.app-shell` prefix beats the later base `.app-topbar-region`
+   * rule in the cascade — same specificity would lose to it.) */
+  .app-shell .app-topbar-region {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+  }
+
+  .app-shell {
+    padding-top: var(--app-header-height);
+  }
+
 }
 
 @media (min-width: 768px) {

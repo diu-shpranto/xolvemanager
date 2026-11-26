@@ -821,12 +821,6 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
               </p>
             )}
 
-            {cloudAvailable && authProvider === 'cloud' && mode !== 'forgot-password' && cloudResetView === 'none' && (
-              <p className={styles.subLink}>
-                <button type="button" onClick={() => switchProvider('local')} disabled={busy || oauthBusy} className="auth-text-link">{text.deviceBoxButton}</button>
-                <span className={styles.subNote}> · {text.deviceBoxBody}</span>
-              </p>
-            )}
           </>
         )}
         {!embedded && (
