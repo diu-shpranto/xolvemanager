@@ -124,14 +124,14 @@ const cloudSteps: Array<{
   },
   {
     step: 'Step 2',
-    title: 'Upload when you choose',
-    description: 'Your records move to your cloud account only when you tap Upload. Nothing is sent automatically.',
-    icon: Upload,
+    title: 'Syncs automatically',
+    description: 'When you are signed in, your records upload to your cloud account a few seconds after you change them. Nothing leaves your device except to your own account.',
+    icon: RefreshCw,
   },
   {
     step: 'Step 3',
-    title: 'Download on any device',
-    description: 'Sign in on another device and download your records there. Switch accounts, and each one shows only its own data.',
+    title: 'Restored on any device',
+    description: 'Sign in on another device and your records are restored there automatically. Switch accounts, and each one shows only its own data.',
     icon: Download,
   },
 ];
@@ -202,8 +202,8 @@ const features: Array<{
     icon: ShieldCheck,
   },
   {
-    title: 'Backup, Upload & Download',
-    description: 'Download a backup file any time, or upload your records to your cloud account and download them on another device — both are actions you choose.',
+    title: 'Automatic Sync & Backup',
+    description: 'Your records sync to your cloud account automatically when you are signed in, and you can download a backup file any time.',
     icon: ArchiveRestore,
   },
 ];
@@ -282,11 +282,11 @@ const faqs = [
   },
   {
     question: 'How do I see my records on another device?',
-    answer: 'Open XolveManager on the other device and sign in with the same Google account or email. Then choose Download in the app to bring your records onto that device.',
+    answer: 'Open XolveManager on the other device and sign in with the same Google account or email. Your records are restored automatically. You can also download them manually from Settings.',
   },
   {
     question: 'Does my data sync automatically?',
-    answer: 'No. Nothing moves on its own. Upload from one device and download on the other — both are actions you choose in the app.',
+    answer: 'Yes. When you are signed in, your changes upload to your cloud account a few seconds after you make them, and signing in on another device restores them there.',
   },
   {
     question: 'Can someone else see my records?',
@@ -313,8 +313,8 @@ const privacyPoints = [
     icon: ShieldCheck,
   },
   {
-    title: 'Sync on your terms',
-    description: 'Upload and download are actions you choose. Nothing moves automatically.',
+    title: 'Automatic sync, private by default',
+    description: 'Your records sync to your own cloud account automatically when you are signed in — and only your account can see them.',
     icon: Upload,
   },
   {
@@ -487,7 +487,7 @@ export default function Home() {
               <Eyebrow dark>Privacy &amp; trust</Eyebrow>
               <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">Your data is yours.</h2>
               <p className="mt-5 leading-7 text-blue-100/85">
-                Your records belong to your cloud account. Each account has its own workspace, so another account never sees your data. Cloud upload and download happen only when you choose them — nothing moves in the background.
+                Your records belong to your cloud account. Each account has its own workspace, so another account never sees your data. When you are signed in, your records sync to your cloud account automatically — and only to your account.
               </p>
               <p className="mt-4 text-sm leading-6 text-blue-200/80">
                 You can also download a full backup file any time. Clearing browser data can remove records that exist only on that device, so keep a backup.
