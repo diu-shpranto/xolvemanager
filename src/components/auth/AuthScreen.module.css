@@ -1,0 +1,411 @@
+/* New visual system for the sign-in / sign-up screens only.
+ *
+ * Scoped to AuthScreen via CSS modules. The old global .auth-frame /
+ * .auth-panel / .auth-card layout classes in index.css are no longer used
+ * by this component (three later cascade layers restyle them into a
+ * single 440-480px card, and one hides the old brand panel entirely), so
+ * the split-screen layout lives here instead.
+ *
+ * The global `auth-page` class is kept on <main> alongside .shell so the
+ * CSS variables (--auth-ink, --auth-violet, --auth-focus), the
+ * focus-visible ring, the Bangla font rule and the focus-reveal hook that
+ * key off `.auth-page` keep working. The compound `.shell:global(.auth-page)`
+ * selector (0,2,0) deterministically overrides the global single-column
+ * layout (0,1,0) without touching index.css.
+ */
+
+.shell:global(.auth-page) {
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  overflow-x: clip;
+  padding: clamp(0.75rem, 2.5vw, 2rem);
+  color: #17213b;
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(ellipse at 12% 8%, rgba(139, 92, 246, 0.32), transparent 34rem),
+    radial-gradient(ellipse at 88% 90%, rgba(56, 120, 255, 0.2), transparent 32rem),
+    linear-gradient(135deg, #070b18 0%, #10172d 38%, #1d113d 100%);
+}
+
+.shell:global(.auth-page)[data-auth-language="bn"] {
+  font-family: var(--font-bn);
+}
+
+@media (max-height: 840px) {
+  .shell:global(.auth-page) {
+    align-items: flex-start;
+  }
+}
+
+/* Split-screen frame: brand panel + form panel on desktop, one column below. */
+.frame {
+  display: grid;
+  width: min(100%, 1160px);
+  min-height: min(88vh, 780px);
+  grid-template-columns: minmax(0, 1.02fr) minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid rgba(192, 178, 255, 0.38);
+  border-radius: 1.75rem;
+  background: #ffffff;
+  box-shadow: 0 40px 90px rgba(2, 4, 18, 0.55), 0 12px 32px rgba(68, 49, 143, 0.25);
+}
+
+/* ---- Brand panel (desktop) ---- */
+.brand {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 2rem;
+  overflow: hidden;
+  padding: clamp(2rem, 4vw, 3.25rem) clamp(1.9rem, 3.5vw, 3rem);
+  color: #f7f6ff;
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse at 82% 18%, rgba(139, 92, 246, 0.5), transparent 26rem),
+    radial-gradient(ellipse at 8% 88%, rgba(56, 120, 255, 0.28), transparent 24rem),
+    linear-gradient(158deg, #150b33 0%, #1d1145 48%, #2a1660 100%);
+}
+
+/* Soft ring, top right. */
+.brand::before {
+  position: absolute;
+  z-index: -1;
+  top: -8rem;
+  right: -9rem;
+  width: 24rem;
+  aspect-ratio: 1;
+  border: 1px solid rgba(219, 211, 255, 0.1);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2rem rgba(219, 211, 255, 0.03), 0 0 0 4rem rgba(219, 211, 255, 0.02);
+  content: "";
+  pointer-events: none;
+}
+
+/* Glow blob, bottom left. */
+.brand::after {
+  position: absolute;
+  z-index: -1;
+  bottom: -6rem;
+  left: -6rem;
+  width: 20rem;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.45), transparent 65%);
+  content: "";
+  pointer-events: none;
+}
+
+.brandLogo :global(.brand-lockup__wordmark) {
+  width: clamp(10rem, 16vw, 12.5rem);
+  height: auto;
+}
+
+.brandLogo :global(.brand-lockup__tagline) {
+  color: #c4b5fd;
+  font-size: 0.68rem;
+}
+
+.brandBody {
+  display: grid;
+  gap: 1.1rem;
+  max-width: 30rem;
+}
+
+.brandTitle {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(1.9rem, 2.6vw, 2.55rem);
+  font-weight: 780;
+  letter-spacing: -0.045em;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+.brandDesc {
+  margin: 0;
+  color: rgba(227, 229, 245, 0.8);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.brandPoints {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.brandPoints li {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  color: rgba(244, 243, 255, 0.92);
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.brandPointIcon {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 0.6rem;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.brandPointIcon svg {
+  width: 1rem;
+  height: 1rem;
+  color: #ddd6fe;
+}
+
+.brandFoot {
+  margin: 0;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(219, 211, 255, 0.16);
+  color: rgba(222, 220, 247, 0.72);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+/* ---- Compact brand header (phones / tablets) ---- */
+.brandCompact {
+  display: none;
+}
+
+/* ---- Form side ---- */
+.panel {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+  background:
+    radial-gradient(ellipse at 96% 6%, rgba(139, 92, 246, 0.12), transparent 20rem),
+    linear-gradient(180deg, #f7f5ff 0%, #fbf9ff 100%);
+}
+
+.card {
+  width: min(100%, 30rem);
+  padding: clamp(1.35rem, 2.6vw, 2.1rem);
+  border: 1px solid rgba(216, 209, 244, 0.95);
+  border-radius: 1.5rem;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 24px 60px rgba(40, 30, 81, 0.1), 0 8px 20px rgba(48, 40, 92, 0.04);
+  animation: card-enter 420ms cubic-bezier(0.2, 0, 1, 1) both;
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Segmented Sign in / Create account switch. */
+.segmented {
+  display: flex;
+  gap: 0.25rem;
+  margin: 0 0 1.25rem;
+  padding: 0.25rem;
+  border: 1px solid #e9e4f8;
+  border-radius: 999px;
+  background: #f1eefc;
+}
+
+.segmentedButton {
+  flex: 1;
+  min-height: 2.6rem;
+  border: 0;
+  border-radius: 999px;
+  color: #5d6478;
+  background: transparent;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.segmentedButton:hover:not(.segmentedActive) {
+  color: #3d3a5c;
+}
+
+.segmentedButton.segmentedActive {
+  color: #ffffff;
+  background: linear-gradient(115deg, #9c6cff 0%, #7a4ae0 55%, #6a3ad7 100%);
+  box-shadow: 0 8px 18px rgba(96, 64, 220, 0.28);
+}
+
+/* Google button. */
+.googleBtn {
+  display: flex;
+  width: 100%;
+  min-height: 3.4rem;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid #e3def5;
+  border-radius: 0.9rem;
+  color: #303249;
+  background: #ffffff;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 650;
+  text-align: left;
+  box-shadow: 0 2px 8px rgba(48, 40, 92, 0.05);
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.googleBtn:hover:not(:disabled) {
+  border-color: #c9bcf7;
+  box-shadow: 0 10px 24px rgba(74, 59, 160, 0.1);
+  transform: translateY(-1px);
+}
+
+.googleBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.googleBtn > span {
+  flex: 1;
+}
+
+.googleBtn > svg:last-child {
+  width: 0.9rem;
+  height: 0.9rem;
+  color: #8175ae;
+}
+
+/* Primary submit. */
+.primaryBtn {
+  display: flex;
+  width: 100%;
+  min-height: 3.4rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  margin-top: 0.15rem;
+  padding: 0.72rem 1rem;
+  border: 1px solid #7a4ae0;
+  border-radius: 0.9rem;
+  color: #ffffff;
+  background: linear-gradient(115deg, #9c6cff 0%, #7a4ae0 52%, #6a3ad7 100%);
+  box-shadow: 0 12px 26px rgba(96, 64, 220, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 720;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  filter: brightness(1.05);
+  box-shadow: 0 16px 30px rgba(96, 64, 220, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.primaryBtn:active:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(96, 64, 220, 0.22);
+  transform: translateY(0);
+}
+
+.primaryBtn:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.12);
+  opacity: 0.62;
+}
+
+.primaryBtn svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+/* ---- Phones / tablets: brand panel becomes a compact header. ---- */
+@media (max-width: 1023px) {
+  .frame {
+    width: min(100%, 480px);
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    border-radius: 1.25rem;
+  }
+
+  .brand {
+    display: none;
+  }
+
+  .brandCompact {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 1.1rem 1.25rem 1rem;
+    color: #f7f6ff;
+    background:
+      radial-gradient(ellipse at 85% 0%, rgba(139, 92, 246, 0.55), transparent 18rem),
+      linear-gradient(150deg, #150b33 0%, #221252 60%, #2a1660 100%);
+  }
+
+  .brandCompact :global(.brand-lockup__wordmark) {
+    width: 9.5rem;
+    height: auto;
+  }
+
+  .brandCompact :global(.brand-lockup__tagline) {
+    color: #c4b5fd;
+    font-size: 0.64rem;
+  }
+
+  .brandCompact p {
+    margin: 0;
+    color: rgba(227, 229, 245, 0.85);
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+
+  .panel {
+    align-items: flex-start;
+    padding: clamp(0.9rem, 3vw, 1.4rem);
+  }
+
+  .card {
+    padding: 1.1rem;
+    border-radius: 1.15rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .card {
+    padding: 1rem;
+  }
+
+  .segmentedButton {
+    font-size: 0.78rem;
+  }
+
+  .googleBtn,
+  .primaryBtn {
+    min-height: 3.2rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation: none;
+  }
+}

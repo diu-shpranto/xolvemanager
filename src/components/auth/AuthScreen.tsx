@@ -44,6 +44,7 @@ import {
   signInLocally,
   signInWithDemoAccount,
 } from '../../services/localAuthService';
+import styles from './AuthScreen.module.css';
 
 type AuthMode = 'login' | 'signup' | 'forgot-password';
 type Language = 'en' | 'bn';
@@ -118,6 +119,13 @@ const copy = {
     google: 'Continue with Google',
     googleLoading: 'Connecting to Google…',
     googleNote: 'Any Google account works — no extra setup needed.',
+    brandTitle: 'Manage customers, subscriptions & sales — on any device.',
+    brandDesc: 'One cloud account for your whole business. Sign in anywhere and your customers, sales and payments follow you.',
+    brandPoint1: 'Any Google account or email',
+    brandPoint2: 'Your data follows your account',
+    brandPoint3: 'Every account sees only its own data',
+    brandFoot: 'Your data is yours — it syncs only when you choose.',
+    brandTagline: 'Manage your business — on any device.',
     language: 'বাংলা',
     demoLogin: 'Try the demo',
     demoLoginSubtitle: 'Sample data — nothing is saved to your account.',
@@ -206,6 +214,13 @@ const copy = {
     google: 'Google দিয়ে চালিয়ে যান',
     googleLoading: 'Google-এ সংযোগ হচ্ছে…',
     googleNote: 'যেকোনো Google অ্যাকাউন্ট চলবে — আলাদা কিছু করতে হবে না।',
+    brandTitle: 'গ্রাহক, সাবস্ক্রিপশন ও বিক্রয় পরিচালনা করুন — যেকোনো ডিভাইসে।',
+    brandDesc: 'পুরো ব্যবসার জন্য একটি ক্লাউড অ্যাকাউন্ট। যেকোনো জায়গা থেকে সাইন ইন করুন — গ্রাহক, বিক্রয় ও পেমেন্ট আপনার সাথেই থাকবে।',
+    brandPoint1: 'যেকোনো Google অ্যাকাউন্ট বা ইমেইল',
+    brandPoint2: 'আপনার ডেটা আপনার অ্যাকাউন্টের সাথেই যায়',
+    brandPoint3: 'প্রতিটি অ্যাকাউন্ট শুধু নিজের ডেটাই দেখে',
+    brandFoot: 'আপনার ডেটা আপনারই — আপনি চাইলেই সিঙ্ক হবে।',
+    brandTagline: 'আপনার ব্যবসা পরিচালনা করুন — যেকোনো ডিভাইসে।',
     language: 'English',
     demoLogin: 'ডেমো দেখুন',
     demoLoginSubtitle: 'নমুনা ডেটা — আপনার অ্যাকাউন্টে কিছু সংরক্ষিত হবে না।',
@@ -683,12 +698,28 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   ) : null;
 
   return (
-    <main className="auth-page" data-auth-language={language} data-auth-mode={mode}>
-      <div className="auth-frame">
-        <section className="auth-panel" aria-labelledby="auth-heading">
-          <div className="auth-card">
-            <div className="auth-panel-header">
-              <ProductLogo size="compact" showTagline className="auth-card-brand" />
+    <main className={`auth-page ${styles.shell}`} data-auth-language={language} data-auth-mode={mode}>
+      <div className={styles.frame}>
+        <aside className={styles.brand} aria-label="About XolveManager">
+          <ProductLogo size="compact" tone="inverse" showTagline className={styles.brandLogo} />
+          <div className={styles.brandBody}>
+            <h1 className={styles.brandTitle}>{text.brandTitle}</h1>
+            <p className={styles.brandDesc}>{text.brandDesc}</p>
+            <ul className={styles.brandPoints}>
+              <li><span className={styles.brandPointIcon}><Mail aria-hidden="true" /></span>{text.brandPoint1}</li>
+              <li><span className={styles.brandPointIcon}><Cloud aria-hidden="true" /></span>{text.brandPoint2}</li>
+              <li><span className={styles.brandPointIcon}><ShieldCheck aria-hidden="true" /></span>{text.brandPoint3}</li>
+            </ul>
+          </div>
+          <p className={styles.brandFoot}>{text.brandFoot}</p>
+        </aside>
+        <div className={styles.brandCompact}>
+          <ProductLogo size="compact" tone="inverse" showTagline className={styles.brandLogo} />
+          <p>{text.brandTagline}</p>
+        </div>
+        <section className={styles.panel} aria-labelledby="auth-heading">
+          <div className={styles.card}>
+            <div className="auth-panel-header" style={{ justifyContent: 'flex-end' }}>
               <button type="button" onClick={updateLanguage} className="auth-language" aria-label={language === 'en' ? 'Switch language to Bangla' : 'Switch language to English'}><Globe2 aria-hidden="true" />{text.language}<ChevronRight aria-hidden="true" /></button>
             </div>
 
@@ -701,7 +732,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                   <div className="auth-recovery-key" aria-label={text.recoveryKey}>{resultKey}</div>
                   <button type="button" onClick={handleCopyKey} className="auth-secondary-button">{copied ? text.copied : text.copyKey}</button>
                   {mode === 'signup' && <p className="auth-policy-note">{text.singleOwnerPolicy}</p>}
-                  <button type="button" onClick={() => navigate('/login')} className="auth-primary-button">{text.continue}</button>
+                  <button type="button" onClick={() => navigate('/login')} className={styles.primaryBtn} style={{ marginTop: '1.2rem' }}>{text.continue}</button>
                 </div>
               ) : (
                 <>
@@ -710,6 +741,13 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                     <h2 id="auth-heading">{title}</h2>
                     <p className="auth-intro">{intro}</p>
                   </div>
+
+                  {(mode === 'login' || mode === 'signup') && cloudResetView === 'none' && (
+                    <div className={styles.segmented} aria-label={language === 'bn' ? 'সাইন ইন বা অ্যাকাউন্ট তৈরি করুন' : 'Sign in or create an account'}>
+                      <button type="button" onClick={() => navigate('/login')} className={mode === 'login' ? `${styles.segmentedButton} ${styles.segmentedActive}` : styles.segmentedButton} aria-current={mode === 'login' ? 'page' : undefined} disabled={busy || oauthBusy}>{text.signIn}</button>
+                      <button type="button" onClick={() => navigate('/signup')} className={mode === 'signup' ? `${styles.segmentedButton} ${styles.segmentedActive}` : styles.segmentedButton} aria-current={mode === 'signup' ? 'page' : undefined} disabled={busy || oauthBusy}>{text.createNewAccount}</button>
+                    </div>
+                  )}
 
                   {error && <div role="alert" aria-live="assertive" className="auth-alert auth-alert--error">{error}</div>}
                   {cloudResetView === 'request' && resetLinkFailed && <div role="alert" className="auth-alert auth-alert--warning">{text.cloudResetLinkInvalid}</div>}
@@ -723,7 +761,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
 
                   {cloudAvailable && authProvider === 'cloud' && mode !== 'forgot-password' && cloudResetView === 'none' && (
                     <>
-                      <button type="button" onClick={() => void handleGoogleLogin()} disabled={busy || oauthBusy || !googleEnabled} className="auth-account-button" title={googleEnabled ? undefined : 'Google sign-in is not configured yet.'}>
+                      <button type="button" onClick={() => void handleGoogleLogin()} disabled={busy || oauthBusy || !googleEnabled} className={styles.googleBtn} title={googleEnabled ? undefined : 'Google sign-in is not configured yet.'}>
                         {oauthBusy ? <LoaderCircle className="auth-spinner" aria-hidden="true" /> : <GoogleMark />}
                         <span>{oauthBusy ? text.googleLoading : text.google}</span>
                         <ChevronRight aria-hidden="true" />
@@ -830,28 +868,13 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                       </div>
                     )}
 
-                    <button type="submit" disabled={busy || oauthBusy || (mode === 'signup' && hasAccount && authProvider === 'local')} className="auth-primary-button">{busy && <LoaderCircle className="auth-spinner" aria-hidden="true" />}{busy ? text.loading : cloudResetView === 'request' ? text.cloudResetSend : cloudResetView === 'reset' ? text.recover : mode === 'login' ? <>{text.signIn}<ArrowRight aria-hidden="true" /></> : mode === 'signup' ? text.create : text.recover}</button>
+                    <button type="submit" disabled={busy || oauthBusy || (mode === 'signup' && hasAccount && authProvider === 'local')} className={styles.primaryBtn}>{busy && <LoaderCircle className="auth-spinner" aria-hidden="true" />}{busy ? text.loading : cloudResetView === 'request' ? text.cloudResetSend : cloudResetView === 'reset' ? text.recover : mode === 'login' ? <>{text.signIn}<ArrowRight aria-hidden="true" /></> : mode === 'signup' ? text.create : text.recover}</button>
                   </form>
                   )}
 
                   {cloudResetView !== 'none' && cloudResetView !== 'sent' && (
                     <div className="auth-links">
                       <button type="button" onClick={closeCloudReset} className="auth-text-link">{text.loginLink}</button>
-                    </div>
-                  )}
-
-                  {mode === 'login' && cloudResetView === 'none' && (
-                    <button type="button" onClick={() => navigate('/signup')} className="auth-account-button" style={{ marginTop: '0.9rem' }}>
-                      <UserRound aria-hidden="true" />
-                      <span>{text.createAccountPrompt} {text.createNewAccount}</span>
-                      <ChevronRight aria-hidden="true" />
-                    </button>
-                  )}
-
-                  {mode === 'signup' && (
-                    <div className="auth-links">
-                      <span>{text.signInPrompt}</span>
-                      <button type="button" onClick={() => navigate('/login')} className="auth-text-link">{text.signIn}</button>
                     </div>
                   )}
 
