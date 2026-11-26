@@ -1532,9 +1532,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   };
 
   const active = sections.find(section => section.id === activeSection)!;
-  return <main className="mx-auto max-w-[1400px] space-y-5 px-4 py-6 sm:px-6 lg:px-8">
+  return <main className="section-layout-shell mx-auto max-w-[1600px] space-y-5 px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
     <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div><div className="flex items-center gap-2"><Settings className="h-6 w-6 text-emerald-600" /><h1 className="text-2xl font-bold text-slate-900 dark:text-white">Settings</h1></div><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Manage your business, workflows, and data.</p></div>
+      <div><div className="flex items-center gap-2"><Settings className="h-6 w-6 text-emerald-600" /><h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Settings</h1></div><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Manage your business, workflows, and data.</p></div>
       <div className="flex flex-wrap items-center gap-2">
         {!['data', 'about'].includes(activeSection) && <button form="settings-form" type="submit" className="settings-save-button inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"><Save className="h-4 w-4" /> Save changes</button>}
       </div>

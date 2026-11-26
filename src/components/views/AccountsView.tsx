@@ -772,7 +772,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
             <p className="account-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em]">
               {language === 'bn' ? 'অ্যাকাউন্ট ব্যবস্থাপনা' : 'Accounts'}
             </p>
-            <h1 className="text-2xl font-bold tracking-tight sm:text-[30px]">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">
               Accounts
             </h1>
             <p className="mt-0.5 max-w-[28rem] text-sm leading-5">
@@ -1301,7 +1301,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
 
                 {/* Profiles for this account */}
                 {isExpanded && (
-                  <div className="account-profiles-panel bg-slate-50/70 dark:bg-[#101622] border-t border-slate-200/70 dark:border-slate-800/90 p-3.5 sm:p-4">
+                  <div className="account-profiles-panel bg-slate-50/70 dark:bg-slate-900 border-t border-slate-200/70 dark:border-slate-800/90 p-3.5 sm:p-4">
                     {/* Profile Section Header Strip */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                       <div>
@@ -1356,7 +1356,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                             key={prof.id}
                             className={`p-3.5 rounded-xl text-xs space-y-2.5 flex flex-col justify-between transition-all ${
                               isAssigned
-                                ? 'bg-white dark:bg-[#151C28] border border-slate-200/90 dark:border-slate-800 shadow-2xs'
+                                ? 'bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs'
                                 : 'bg-emerald-50/20 dark:bg-emerald-950/10 border border-dashed border-emerald-300 dark:border-emerald-800/80 hover:border-emerald-400 dark:hover:border-emerald-700 shadow-2xs'
                             }`}
                           >

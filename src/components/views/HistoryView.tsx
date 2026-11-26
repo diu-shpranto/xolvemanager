@@ -331,10 +331,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onViewRelated }) => {
   };
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 px-3 py-5 sm:px-6 lg:px-8">
+    <div className="section-layout-shell mx-auto max-w-[1600px] space-y-6 px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+          <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-purple-200/60 bg-purple-50 text-purple-700 dark:border-purple-800/40 dark:bg-purple-950/50 dark:text-purple-300"><Activity className="h-5 w-5" /></span>
             History
           </h1>

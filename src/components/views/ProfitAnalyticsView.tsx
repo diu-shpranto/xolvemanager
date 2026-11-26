@@ -39,7 +39,7 @@ const rangeLabels: Record<ProfitDatePreset, string> = {
   custom: 'Custom',
 };
 
-const cardClass = 'min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-[#151C28]';
+const cardClass = 'min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900';
 
 function dateBounds(preset: ProfitDatePreset, today: string, customStart: string, customEnd: string) {
   if (preset === 'custom') return { start: customStart, end: customEnd };
@@ -205,7 +205,7 @@ export const ProfitAnalyticsView: React.FC<ProfitAnalyticsViewProps> = ({ onView
           link.download = `profit-analytics-${bounds.start}-${bounds.end}.csv`;
           link.click();
           URL.revokeObjectURL(link.href);
-        }} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-violet-300 hover:bg-violet-50 dark:border-slate-700 dark:bg-[#151C28] dark:text-slate-200"><Download className="h-4 w-4" />Export CSV</button>}
+        }} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-violet-300 hover:bg-violet-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><Download className="h-4 w-4" />Export CSV</button>}
       </header>
 
       <section aria-label="Profit report filters" className={`${cardClass} space-y-3`}>
@@ -270,7 +270,7 @@ export const ProfitAnalyticsView: React.FC<ProfitAnalyticsViewProps> = ({ onView
 
         <section className={`${cardClass} min-w-0 space-y-4`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h2 className="text-base font-bold text-slate-900 dark:text-white">Profitability breakdown</h2><p className="mt-1 text-xs text-slate-500">One calculation and date range drives this table and both charts.</p></div>
+            <div><h2 className="section-title">Profitability breakdown</h2><p className="mt-1 text-xs text-slate-500">One calculation and date range drives this table and both charts.</p></div>
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Profit breakdown grouping">
               {([
                 ['service', 'Service'],
@@ -286,7 +286,7 @@ export const ProfitAnalyticsView: React.FC<ProfitAnalyticsViewProps> = ({ onView
         </section>
 
         <section className={`${cardClass} min-w-0 space-y-3`}>
-          <div><h2 className="text-base font-bold text-slate-900 dark:text-white">Sale detail</h2><p className="mt-1 text-xs text-slate-500">Refunds are reported separately and do not count customer payment balances as costs. A missing snapshot is never replaced with the current account cost.</p></div>
+          <div><h2 className="section-title">Sale detail</h2><p className="mt-1 text-xs text-slate-500">Refunds are reported separately and do not count customer payment balances as costs. A missing snapshot is never replaced with the current account cost.</p></div>
           <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700" role="region" aria-label="Profit analytics sale detail table; scroll horizontally to view all columns" tabIndex={0}>
             <table className="w-full min-w-[980px] text-left text-xs">
               <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/70 dark:text-slate-400"><tr><th className="px-3 py-3">Sale / date</th><th className="px-3 py-3">Customer type</th><th className="px-3 py-3">Service / plan</th><th className="px-3 py-3">Selling unit</th><th className="px-3 py-3 text-right">Gross sales</th><th className="px-3 py-3 text-right">Actual cost</th><th className="px-3 py-3 text-right">Gross profit</th><th className="px-3 py-3 text-right">Refunds</th><th className="px-3 py-3">Details</th></tr></thead>

@@ -6,8 +6,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthScreen } from '../src/components/auth/AuthScreen';
 import { productBrand } from '../src/config/brand';
 import type { LocalAuthUser } from '../src/services/localAuthService';
-import { getSupabaseSessionUser, signOutFromSupabase } from '../src/services/supabase/auth';
+import { getSupabaseSessionUser, isCloudSession, signOutFromSupabase } from '../src/services/supabase/auth';
 import { isSupabaseConfigured } from '../src/services/supabase/config';
+import { LOCAL_WORKSPACE_ID, setActiveWorkspaceId } from '../src/services/localStorageStore';
 import {
   AUTH_ACCOUNTS_KEY,
   AUTH_LOGOUT_SIGNAL_KEY,
@@ -75,6 +76,10 @@ export default function ClientAppShell() {
       try {
         const cloudUser = await getSupabaseSessionUser();
         if (cloudUser) {
+          // The workspace is the cloud account's own from here on; the app
+          // shell resolves this before the workspace mounts, so its first
+          // read already loads this account's data.
+          setActiveWorkspaceId(cloudUser.uid);
           setHasAccount(true);
           setUser(cloudUser);
           setStatus('authenticated');
@@ -92,6 +97,7 @@ export default function ClientAppShell() {
     try {
       const restoredUser = restoreLocalSession();
       const accountExists = hasLocalAccount();
+      setActiveWorkspaceId(LOCAL_WORKSPACE_ID);
       setHasAccount(accountExists);
       setUser(restoredUser);
       setStatus(restoredUser ? 'authenticated' : 'anonymous');
@@ -106,6 +112,7 @@ export default function ClientAppShell() {
       }
     } catch (error) {
       console.error('Local authentication could not be initialized.', error);
+      setActiveWorkspaceId(LOCAL_WORKSPACE_ID);
       setUser(null);
       setStatus('error');
       setAuthError('XolveManager could not verify this local session. Your business records were not cleared. Check browser storage availability and try again.');
@@ -159,6 +166,12 @@ export default function ClientAppShell() {
   }, [refreshSession, status]);
 
   const handleAuthenticated = (authenticatedUser: LocalAuthUser) => {
+    // Cloud sign-ins use the account's workspace; local sign-ins use the
+    // shared local workspace. Set before the app mounts so its first
+    // read already loads the right data.
+    setActiveWorkspaceId(
+      isCloudSession() && authenticatedUser.uid ? authenticatedUser.uid : LOCAL_WORKSPACE_ID
+    );
     setHasAccount(true);
     setUser(authenticatedUser);
     setStatus('authenticated');
@@ -177,6 +190,9 @@ export default function ClientAppShell() {
         console.error('Cloud sign-out did not complete.', error);
       });
       signOutLocally();
+      // Back to the shared local workspace (signOutFromSupabase also
+      // resets it; this covers the local-only path too).
+      setActiveWorkspaceId(LOCAL_WORKSPACE_ID);
     } catch (error) {
       logoutError = error instanceof Error ? error.message : 'The local session could not be fully cleared.';
     } finally {

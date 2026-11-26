@@ -357,7 +357,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
 
       <section className={`${cardClass} !p-0`}>
         <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800 sm:px-5">
-          <div><h2 className="text-base font-bold text-slate-900 dark:text-white">Expense records</h2><p className="mt-0.5 text-xs text-slate-500">{filteredExpenses.length} matching record{filteredExpenses.length === 1 ? '' : 's'}</p></div>
+          <div><h2 className="section-title">Expense records</h2><p className="mt-0.5 text-xs text-slate-500">{filteredExpenses.length} matching record{filteredExpenses.length === 1 ? '' : 's'}</p></div>
           <button type="button" onClick={() => onNavigate('cashbook')} className="text-xs font-semibold text-violet-700 hover:underline dark:text-violet-300">Open Cashbook</button>
         </div>
         {filteredExpenses.length === 0 ? <div className="px-5 py-12 text-center">

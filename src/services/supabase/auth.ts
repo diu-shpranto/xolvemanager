@@ -18,6 +18,10 @@ import {
   isGoogleOAuthEnabled,
   isSupabaseConfigured,
 } from './config';
+import {
+  LOCAL_WORKSPACE_ID,
+  setActiveWorkspaceId,
+} from '../localStorageStore';
 
 export interface CloudAuthUser {
   uid: string;
@@ -73,6 +77,48 @@ export const clearCloudSessionFlag = (): void => {
   }
 };
 
+/**
+ * Password-recovery marker. Set only when the Supabase client emits the
+ * PASSWORD_RECOVERY event (a reset link's code was exchanged), and mirrored
+ * to sessionStorage so it survives a reload of the same tab. It is advisory
+ * only: it never authorizes anything, it only tells AuthScreen to show the
+ * set-new-password form instead of the sign-in form.
+ *
+ * The in-memory flag is the part tests and non-browser runtimes use;
+ * sessionStorage is the part that survives reloads. Both are always set and
+ * cleared together.
+ */
+const CLOUD_PASSWORD_RECOVERY_KEY = 'xolvemanager.cloud-password-recovery.v1';
+let cloudPasswordRecoveryPending = false;
+
+const markCloudPasswordRecoveryPending = (): void => {
+  cloudPasswordRecoveryPending = true;
+  try {
+    if (typeof window !== 'undefined') window.sessionStorage.setItem(CLOUD_PASSWORD_RECOVERY_KEY, '1');
+  } catch {
+    // The in-memory flag still carries the marker for this page load.
+  }
+};
+
+const clearCloudPasswordRecoveryPending = (): void => {
+  cloudPasswordRecoveryPending = false;
+  try {
+    if (typeof window !== 'undefined') window.sessionStorage.removeItem(CLOUD_PASSWORD_RECOVERY_KEY);
+  } catch {
+    // The in-memory flag is already cleared.
+  }
+};
+
+/** True when this tab arrived from a cloud password-reset link and the new password has not been set yet. */
+export const isCloudPasswordRecoveryPending = (): boolean => {
+  if (cloudPasswordRecoveryPending) return true;
+  try {
+    return typeof window !== 'undefined' && window.sessionStorage.getItem(CLOUD_PASSWORD_RECOVERY_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
 export const isCloudSession = (): boolean => {
   try {
     return window.localStorage.getItem(CLOUD_SESSION_KEY) === '1';
@@ -95,7 +141,9 @@ export const signUpWithSupabase = async (
   });
   if (error) throw new SupabaseAuthError('SIGNUP_FAILED', error.message);
   if (!data.user) throw new SupabaseAuthError('SIGNUP_FAILED', 'Cloud sign-up did not return an account.');
+  clearCloudPasswordRecoveryPending();
   markCloudSession();
+  setActiveWorkspaceId(data.user.id);
   return toCloudUser(data.user);
 };
 
@@ -111,7 +159,9 @@ export const signInWithSupabase = async (
   });
   if (error) throw new SupabaseAuthError('INVALID_CREDENTIALS', error.message);
   if (!data.user) throw new SupabaseAuthError('INVALID_CREDENTIALS', 'Email or password is incorrect.');
+  clearCloudPasswordRecoveryPending();
   markCloudSession();
+  setActiveWorkspaceId(data.user.id);
   return toCloudUser(data.user);
 };
 
@@ -119,6 +169,8 @@ export const signInWithSupabase = async (
 export const signOutFromSupabase = async (): Promise<void> => {
   const client = getSupabaseBrowserClient();
   clearCloudSessionFlag();
+  clearCloudPasswordRecoveryPending();
+  setActiveWorkspaceId(LOCAL_WORKSPACE_ID);
   if (client) await client.auth.signOut();
 };
 
@@ -149,11 +201,147 @@ export const signInWithGoogle = async (): Promise<void> => {
   if (error) throw new SupabaseAuthError('GOOGLE_FAILED', error.message);
 };
 
-/** Current Supabase session user, or null (offline mode, signed out, expired). */
-export const getSupabaseSessionUser = async (): Promise<CloudAuthUser | null> => {
-  const client = getSupabaseBrowserClient();
-  if (!client) return null;
-  const { data, error } = await client.auth.getUser();
-  if (error || !data.user) return null;
+/** Minimal auth-client surface the password-reset functions need (real client or a test fake). */
+export interface SupabasePasswordResetClient {
+  auth: {
+    resetPasswordForEmail: (email: string, options?: { redirectTo?: string }) => Promise<{ data: unknown; error: { message: string } | null }>;
+    updateUser: (attributes: { password: string }) => Promise<{ data: { user: User | null }; error: { message: string } | null }>;
+    getSession: () => Promise<{ data: { session: unknown } }>;
+    getUser: () => Promise<{ data: { user: User | null }; error: { message: string } | null }>;
+    onAuthStateChange: SupabaseAuthStateClient['auth']['onAuthStateChange'];
+  };
+}
+
+/**
+ * Where a password-reset link returns to. Always `/login` — the route is
+ * already allowed in the Supabase redirect list. The localhost fallback
+ * only applies outside a browser (tests, SSR); the real call sites are
+ * browser-only.
+ */
+const getPasswordResetRedirect = (): string =>
+  typeof window === 'undefined' ? 'http://localhost:3000/login' : `${window.location.origin}/login`;
+
+/**
+ * Cloud password reset, step 1 — email the user a reset link.
+ *
+ * Supabase sends a link back to `/login` (already an allowed redirect).
+ * The link carries a PKCE code; the browser client exchanges it
+ * automatically and emits the PASSWORD_RECOVERY event, which marks this
+ * tab as a recovery session. The code only works in the browser where the
+ * reset was requested — the verifier lives in that browser's storage.
+ *
+ * Supabase answers the same way whether or not the email has an account,
+ * so callers must not reveal the distinction either.
+ */
+export const requestCloudPasswordReset = async (
+  email: string,
+  clientOverride?: SupabasePasswordResetClient | null
+): Promise<void> => {
+  const client = clientOverride ?? requireClient();
+  const { error } = await client.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+    redirectTo: getPasswordResetRedirect(),
+  });
+  if (error) throw new SupabaseAuthError('RESET_REQUEST_FAILED', error.message);
+};
+
+/**
+ * Cloud password reset, step 2 — set the new password on the recovery
+ * session from the email link. Only valid while that recovery session is
+ * active. On success the session becomes an ordinary signed-in session:
+ * the recovery marker is cleared, the cloud session is marked, and the
+ * account workspace is activated.
+ */
+export const setCloudPassword = async (
+  newPassword: string,
+  clientOverride?: SupabasePasswordResetClient | null
+): Promise<CloudAuthUser> => {
+  const client = clientOverride ?? requireClient();
+  const { data, error } = await client.auth.updateUser({ password: newPassword });
+  if (error) throw new SupabaseAuthError('PASSWORD_UPDATE_FAILED', error.message);
+  if (!data.user) {
+    throw new SupabaseAuthError(
+      'PASSWORD_UPDATE_FAILED',
+      'The password could not be changed. Request a new reset link and try again.'
+    );
+  }
+  clearCloudPasswordRecoveryPending();
+  markCloudSession();
+  setActiveWorkspaceId(data.user.id);
   return toCloudUser(data.user);
+};
+
+/**
+ * True when the current browser session came from a cloud password-reset
+ * link. The recovery marker is the signal; the live session is the proof
+ * a session still exists. A marker with no live session is stale (link
+ * expired, already used, or the session was replaced) and is cleared.
+ */
+export const hasCloudPasswordRecoverySession = async (
+  clientOverride?: SupabasePasswordResetClient | null
+): Promise<boolean> => {
+  const client = clientOverride ?? getSupabaseBrowserClient();
+  if (!client) return false;
+  const { data } = await client.auth.getSession();
+  if (!data.session) {
+    clearCloudPasswordRecoveryPending();
+    return false;
+  }
+  return isCloudPasswordRecoveryPending();
+};
+
+/** Current Supabase session user, or null (offline mode, signed out, expired). */
+export const getSupabaseSessionUser = async (
+  clientOverride?: SupabasePasswordResetClient | null
+): Promise<CloudAuthUser | null> => {
+  const client = clientOverride ?? getSupabaseBrowserClient();
+  if (!client) return null;
+  // A password-reset link lands here with a recovery session. That session
+  // must NOT sign the user in — the app shell would send them straight to
+  // the dashboard with no way to set a new password. Catch the
+  // PASSWORD_RECOVERY event, which the client emits while exchanging the
+  // link's code: the listener is registered before getUser() awaits
+  // initialization, and the event is delivered before getUser() returns.
+  const unsubscribe = subscribeToSupabaseAuthChanges((event) => {
+    if (event === 'PASSWORD_RECOVERY') markCloudPasswordRecoveryPending();
+  }, clientOverride ?? undefined);
+  const { data, error } = await client.auth.getUser();
+  unsubscribe?.();
+  if (error || !data.user) return null;
+  // Recovery session: not a sign-in. AuthScreen shows the set-new-password
+  // form instead (see hasCloudPasswordRecoverySession).
+  if (isCloudPasswordRecoveryPending()) return null;
+  // A valid session IS a cloud session — including Google OAuth, whose
+  // redirect returns to a fresh page load where no sign-in function ran.
+  // Without this, Google users were never marked as cloud users.
+  markCloudSession();
+  return toCloudUser(data.user);
+};
+
+/**
+ * Subscribes to Supabase auth state changes (sign-in, sign-out, account
+ * switch, token refresh, session expiry). The listener also fires once
+ * with INITIAL_SESSION when a session already exists. Returns an
+ * unsubscribe function, or null when Supabase is not configured.
+ *
+ * `clientOverride` exists only so tests can pass a fake auth client; the
+ * real browser client is used otherwise.
+ */
+export interface SupabaseAuthStateClient {
+  auth: {
+    onAuthStateChange: (
+      callback: (event: string, session: { user: User } | null) => void
+    ) => { data: { subscription: { unsubscribe: () => void } } };
+  };
+}
+
+export const subscribeToSupabaseAuthChanges = (
+  listener: (event: string, user: CloudAuthUser | null) => void,
+  clientOverride?: SupabaseAuthStateClient | null
+): (() => void) | null => {
+  const client = clientOverride ?? getSupabaseBrowserClient();
+  if (!client) return null;
+  const { data } = client.auth.onAuthStateChange((event, session) => {
+    listener(event, session?.user ? toCloudUser(session.user) : null);
+  });
+  return () => data.subscription.unsubscribe();
 };

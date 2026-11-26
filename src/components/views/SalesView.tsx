@@ -631,7 +631,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
             onClick={exportCSV}
             aria-label={t('exportCSV')}
             title={t('exportCSV')}
-            className="sales-export-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-[#151C28] dark:text-slate-200 dark:hover:bg-slate-800"
+            className="sales-export-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             <Download className="h-4 w-4 shrink-0" />
             <span>{t('exportCSV')}</span>
@@ -658,7 +658,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
           { label: 'Outstanding', amounts: salesStats.due, context: 'Balance due', icon: DollarSign, tone: 'rose' },
           { label: 'Refunded', amounts: salesStats.refunded, context: 'Recorded refunds', icon: RefreshCw, tone: 'slate' },
         ].map(item => (
-          <article key={item.label} className={`sales-summary-card sales-summary-card--${item.tone} flex min-h-[86px] min-w-0 flex-col justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-[#151C28] sm:p-3.5`}>
+          <article key={item.label} className={`sales-summary-card sales-summary-card--${item.tone} flex min-h-[86px] min-w-0 flex-col justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:p-3.5`}>
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
                 <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${item.tone === 'violet' ? 'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300' : item.tone === 'emerald' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : item.tone === 'amber' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' : item.tone === 'rose' ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
@@ -723,7 +723,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
         </section>
       )}
 
-      <section className="sales-quick-followup rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-[#151C28]">
+      <section className="sales-quick-followup rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900">
         <div className="mb-2 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-bold text-slate-800 dark:text-slate-100">Quick follow-up</p>
@@ -765,7 +765,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       </section>
 
       {/* Filters Strip */}
-      <div className="sales-filter-toolbar rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:p-3">
+      <div className="sales-filter-toolbar rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-3">
         <div className="grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center xl:gap-3">
         <div className="relative min-w-0">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -901,7 +901,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       </div>
 
       {businessSales.length === 0 ? (
-        <div className="sales-empty-state rounded-xl border border-dashed border-slate-300 bg-white px-5 py-8 text-center dark:border-slate-700 dark:bg-[#151C28]">
+        <div className="sales-empty-state rounded-xl border border-dashed border-slate-300 bg-white px-5 py-8 text-center dark:border-slate-700 dark:bg-slate-900">
           <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
             <Receipt className="h-5 w-5" />
           </span>
@@ -915,7 +915,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       <>
       <div className="space-y-3 xl:hidden">
         {filteredSales.length === 0 ? (
-          <div className="sales-empty-state rounded-xl border border-dashed border-slate-300 bg-white p-7 text-center dark:border-slate-700 dark:bg-[#151C28]">
+          <div className="sales-empty-state rounded-xl border border-dashed border-slate-300 bg-white p-7 text-center dark:border-slate-700 dark:bg-slate-900">
             <Search className="mx-auto h-5 w-5 text-slate-400" />
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">No sales found</p>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Try a different search or filter.</p>
@@ -932,7 +932,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
           const status = getSalePaymentStatus(sale, businessPayments);
           const canVoid = !getSaleVoidBlockedReason(sale, businessPayments, subscriptions, invoices);
           return (
-            <article key={sale.id} className="sales-order-card min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs transition-colors hover:border-violet-200 dark:border-slate-800 dark:bg-[#151C28] dark:hover:border-violet-900 sm:p-4">
+            <article key={sale.id} className="sales-order-card min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs transition-colors hover:border-violet-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-violet-900 sm:p-4">
               <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5">
                 <div className="min-w-0">
                   {saleItems.map((item, index) => (

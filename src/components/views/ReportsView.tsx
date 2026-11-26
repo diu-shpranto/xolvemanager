@@ -163,7 +163,7 @@ function Section({
   return (
     <section className={`${cardClass} min-w-0 space-y-4`}>
       <div>
-        <h2 className="text-base font-bold text-slate-900 dark:text-white">{title}</h2>
+        <h2 className="section-title">{title}</h2>
         {description && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{description}</p>}
       </div>
       {children}
@@ -1599,7 +1599,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   serviceId: expense.profitabilityServiceId || '',
                   allocationMethod: expense.profitabilityAllocationMethod || 'none',
                 }));
-              }} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+              }} className="control-field w-full px-3 py-2.5">
                 <option value="">New profitability-only cost</option>
                 {unclassifiedProfitabilityExpenses.map(expense => <option key={expense.id} value={expense.id}>{expense.date} · {expense.categoryId} · {formatCurrency(expense.amount, expense.currency)} · {expense.description}</option>)}
               </select>
@@ -1610,7 +1610,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   ...previous,
                   costType: event.target.value as ProfitabilityCostType,
                   serviceId: event.target.value === 'shared' ? '' : previous.serviceId,
-                }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                }))} className="control-field w-full px-3 py-2.5">
                   <option value="direct">Direct cost</option><option value="shared">Shared cost</option><option value="operating">Operating cost</option><option value="adjustment">Adjustment</option>
                 </select>
               </label>
@@ -1633,7 +1633,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               </label>
               {!profitabilityDraft.serviceId && (profitabilityDraft.costType === 'shared' || profitabilityDraft.costType === 'operating') && (
                 <label className="space-y-1 text-xs font-medium">Allocation method
-                  <select value={profitabilityDraft.allocationMethod} onChange={event => setProfitabilityDraft(previous => ({ ...previous, allocationMethod: event.target.value as ProfitabilityAllocationMethod }))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                  <select value={profitabilityDraft.allocationMethod} onChange={event => setProfitabilityDraft(previous => ({ ...previous, allocationMethod: event.target.value as ProfitabilityAllocationMethod }))} className="control-field w-full px-3 py-2.5">
                     <option value="none">Choose allocation</option><option value="equal">Equal across services</option><option value="revenue">By revenue</option><option value="sales">By sales count</option><option value="subscriptions">By active subscriptions</option>
                   </select>
                 </label>
@@ -1691,7 +1691,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       <section aria-label="Resource utilization" className={`${cardClass} space-y-4`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-white">Resource Utilization</h2>
+            <h2 className="section-title">Resource Utilization</h2>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Account, profile and available-capacity totals by service.</p>
           </div>
           <div className="flex gap-2">

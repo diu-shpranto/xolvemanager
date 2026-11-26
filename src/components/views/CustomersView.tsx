@@ -1103,7 +1103,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           <details className="customer-page-actions relative">
             <summary
               aria-label={language === 'bn' ? 'আরও কাস্টমার অ্যাকশন' : 'More customer actions'}
-              className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-[#151C28] dark:text-slate-200 dark:hover:bg-slate-800"
+              className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <MoreVertical className="h-5 w-5" />
             </summary>
@@ -1184,7 +1184,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             isCurrency: false,
           },
         ].map((metric, index) => (
-          <div key={metric.label} className={`customer-kpi customer-kpi--${index} flex min-h-[100px] min-w-0 flex-col justify-between rounded-xl border p-3 transition-colors sm:min-h-[100px] sm:p-4 ${index === 0 ? 'border-violet-200 bg-violet-50/70 dark:border-violet-900/60 dark:bg-violet-950/25' : index === 3 ? 'border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-[#151C28]'}`}>
+          <div key={metric.label} className={`customer-kpi customer-kpi--${index} flex min-h-[100px] min-w-0 flex-col justify-between rounded-xl border p-3 transition-colors sm:min-h-[100px] sm:p-4 ${index === 0 ? 'border-violet-200 bg-violet-50/70 dark:border-violet-900/60 dark:bg-violet-950/25' : index === 3 ? 'border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'}`}>
             <div className="flex min-w-0 items-center gap-2.5">
               <span className={`customer-kpi-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${index === 0 ? 'bg-violet-100 dark:bg-violet-900/50' : index === 1 ? 'bg-emerald-50 dark:bg-emerald-950/50' : index === 2 ? 'bg-rose-50 dark:bg-rose-950/50' : 'bg-amber-50 dark:bg-amber-950/50'}`}>
                 <metric.icon className={`h-4 w-4 ${metric.color}`} />
@@ -1203,7 +1203,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       </div>
 
       {/* 2. SEARCH + FILTER TOOLBAR */}
-      <div className="customer-toolbar grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center xl:gap-3 xl:p-3 dark:border-slate-800 dark:bg-[#151C28]">
+      <div className="customer-toolbar grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center xl:gap-3 xl:p-3 dark:border-slate-800 dark:bg-slate-900">
         {/* Search input (Name, Phone, Email, Facebook ID) */}
         <div className="relative min-w-0">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -1298,7 +1298,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               setCurrentPage(1);
             }}
             aria-label="Filter by service"
-            className="h-11 max-w-full px-3 bg-white dark:bg-[#151C28] border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
+            className="h-11 max-w-full px-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
           >
             <option value="all">{language === 'bn' ? 'সকল সার্ভিস' : 'All Services'}</option>
             {services.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}
@@ -1311,7 +1311,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               setCurrentPage(1);
             }}
             aria-label={language === 'bn' ? 'নবায়নের প্রয়োজন অনুযায়ী ফিল্টার' : 'Filter by renewal need'}
-            className="h-11 max-w-full px-3 bg-white dark:bg-[#151C28] border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
+            className="h-11 max-w-full px-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
           >
             <option value="all">{language === 'bn' ? 'সব নবায়নের অবস্থা' : 'All renewal needs'}</option>
             <option value="due">{language === 'bn' ? 'নবায়ন বাকি' : 'Renewal due'}</option>
@@ -1323,7 +1323,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             value={filterSubscription}
             onChange={event => { setFilterSubscription(event.target.value as typeof filterSubscription); setCurrentPage(1); }}
             aria-label={language === 'bn' ? 'সাবস্ক্রিপশনের অবস্থা অনুযায়ী ফিল্টার' : 'Filter by current subscription state'}
-            className="h-11 max-w-full rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs focus:border-emerald-500 focus:outline-hidden dark:border-slate-800 dark:bg-[#151C28] dark:text-slate-300"
+            className="h-11 max-w-full rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs focus:border-emerald-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
           >
             <option value="all">Any subscription state</option>
             <option value="active">Has active subscription</option>
@@ -1335,7 +1335,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             value={filterPayment}
             onChange={event => { setFilterPayment(event.target.value as typeof filterPayment); setCurrentPage(1); }}
             aria-label="Filter by payment status"
-            className="h-11 max-w-full rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs focus:border-emerald-500 focus:outline-hidden dark:border-slate-800 dark:bg-[#151C28] dark:text-slate-300"
+            className="h-11 max-w-full rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs focus:border-emerald-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
           >
             <option value="all">All payments</option>
             <option value="paid">Fully paid</option>
@@ -1346,14 +1346,14 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             value={filterActivity}
             onChange={event => { setFilterActivity(event.target.value as typeof filterActivity); setCurrentPage(1); }}
             aria-label="Filter by customer activity"
-            className="h-11 max-w-full rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs focus:border-emerald-500 focus:outline-hidden dark:border-slate-800 dark:bg-[#151C28] dark:text-slate-300"
+            className="h-11 max-w-full rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs focus:border-emerald-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
           >
             <option value="all">All activity</option>
             <option value="new">New customers</option>
             <option value="recent">Recently active</option>
           </select>
           <details className="relative">
-            <summary className="flex h-11 cursor-pointer list-none items-center gap-2 rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:bg-[#151C28] dark:text-slate-300">
+            <summary className="flex h-11 cursor-pointer list-none items-center gap-2 rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
               <Calendar className="h-3.5 w-3.5" />
               Date filters
               <ChevronDown className="h-3.5 w-3.5" />
@@ -1383,7 +1383,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 setPageSize(Number(e.target.value));
                 setCurrentPage(1);
               }}
-              className="h-11 px-3 bg-white dark:bg-[#151C28] border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-mono text-slate-600 dark:text-slate-400 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
+              className="h-11 px-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-mono text-slate-600 dark:text-slate-400 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
             >
               <option value={10}>10 / page</option>
               <option value={25}>25 / page</option>
@@ -1453,7 +1453,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       </div>
       <div className="customer-list-section space-y-3">
         {/* Customer cards are used at every screen size. */}
-        <div className="data-table-scroll customer-desktop-table hidden overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#151C28]" aria-hidden="true">
+        <div className="data-table-scroll customer-desktop-table hidden overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" aria-hidden="true">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -1715,7 +1715,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           {customersLoading && customers.length === 0 ? (
             <div className="contents" aria-label="Loading customers">
               {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="animate-pulse rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-[#151C28]">
+                <div key={index} className="animate-pulse rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-xl bg-slate-200 dark:bg-slate-800" />
                     <div className="flex-1 space-y-2">
@@ -1729,7 +1729,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               ))}
             </div>
           ) : paginatedCustomers.length === 0 ? (
-            <div className="col-span-full flex min-h-64 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-4 py-12 text-center dark:border-slate-700 dark:bg-[#151C28]">
+            <div className="col-span-full flex min-h-64 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-4 py-12 text-center dark:border-slate-700 dark:bg-slate-900">
               <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                   <Users className="h-5 w-5" />
@@ -1813,7 +1813,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       openCustomerDetails(cust.id);
                     }
                   }}
-                  className="customer-card group min-w-0 cursor-pointer rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-800 dark:bg-[#151C28]"
+                  className="customer-card group min-w-0 cursor-pointer rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-800 dark:bg-slate-900"
                   style={{ '--customer-card-accent': cardAccent } as React.CSSProperties & { '--customer-card-accent': string }}
                 >
                   <div className="customer-card-header flex min-w-0 items-start justify-between gap-3">
@@ -1931,7 +1931,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <section className="rounded-xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-[#151C28]">
+        <section className="rounded-xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-bold text-slate-900 dark:text-white">Renewal Opportunities</h2>
@@ -1958,7 +1958,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           )}
         </section>
 
-        <section className="rounded-xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-[#151C28]">
+        <section className="rounded-xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-bold text-slate-900 dark:text-white">Outstanding Balance</h2>
@@ -1998,7 +1998,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             <div className="h-40 rounded-xl bg-slate-100 dark:bg-slate-800" />
           </div>
         ) : detailsLoadError ? (
-          <div className="mx-auto w-full max-w-[1400px] rounded-xl border border-slate-200 bg-white p-8 text-center dark:border-slate-800 dark:bg-[#151C28]">
+          <div className="mx-auto w-full max-w-[1400px] rounded-xl border border-slate-200 bg-white p-8 text-center dark:border-slate-800 dark:bg-slate-900">
             <p className="text-sm text-slate-600 dark:text-slate-300">Could not load this information.</p>
             <button
               type="button"
@@ -2009,7 +2009,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </button>
           </div>
         ) : !detailedCustomer ? (
-          <div className="mx-auto w-full max-w-[1400px] rounded-xl border border-slate-200 bg-white p-8 text-center dark:border-slate-800 dark:bg-[#151C28]">
+          <div className="mx-auto w-full max-w-[1400px] rounded-xl border border-slate-200 bg-white p-8 text-center dark:border-slate-800 dark:bg-slate-900">
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Customer not found.</p>
             <button
               type="button"
@@ -2045,7 +2045,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           </button>
           <div className="customer-detail-content space-y-5">
             {/* Header info card */}
-            <section className="customer-profile-header flex min-w-0 flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6 xl:flex-row xl:items-center xl:justify-between dark:border-slate-800 dark:bg-[#171622]">
+            <section className="customer-profile-header flex min-w-0 flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6 xl:flex-row xl:items-center xl:justify-between dark:border-slate-800 dark:bg-slate-900">
               <div className="customer-profile-identity flex min-w-0 items-start gap-4 sm:items-center">
                 <div
                   className={`customer-profile-avatar mt-0.5 flex h-[4.25rem] w-[4.25rem] shrink-0 items-center justify-center rounded-[1.125rem] border text-lg font-bold sm:mt-0 ${getAvatarColorClass(
@@ -2157,7 +2157,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               </div>
             </section>
 
-            <nav aria-label="Customer sections" className="customer-detail-nav flex min-w-0 gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-[#171622]">
+            <nav aria-label="Customer sections" className="customer-detail-nav flex min-w-0 gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-slate-900">
               <a href="#customer-overview" className="customer-detail-nav-link">{language === 'bn' ? 'সারসংক্ষেপ' : 'Overview'}</a>
               <a href="#customer-financial-statement" className="customer-detail-nav-link">Financial statement</a>
               <a href="#customer-subscriptions" className="customer-detail-nav-link">{language === 'bn' ? 'সাবস্ক্রিপশন' : 'Subscriptions'} <span>{detailedSubs.length}</span></a>
@@ -2398,7 +2398,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               )}
             </section>
 
-            {canContact(detailedCustomer.id) && <details className="customer-message-templates rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#171622]">
+            {canContact(detailedCustomer.id) && <details className="customer-message-templates rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
               <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-4 text-sm font-semibold text-slate-800 dark:text-slate-100">
                 <span className="inline-flex items-center gap-2"><MessageCircle className="h-4 w-4 text-violet-600 dark:text-violet-300" />{language === 'bn' ? 'হোয়াটসঅ্যাপ মেসেজ টেমপ্লেট' : 'WhatsApp message templates'}</span>
                 <ChevronDown className="h-4 w-4 text-slate-500" />

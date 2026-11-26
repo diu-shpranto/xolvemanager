@@ -1099,7 +1099,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             disabled={subscriptions.length === 0}
             aria-label={language === 'bn' ? 'সাবস্ক্রিপশন CSV রপ্তানি' : 'Export subscriptions CSV'}
             title={language === 'bn' ? 'সাবস্ক্রিপশন CSV রপ্তানি' : 'Export subscriptions CSV'}
-            className="subscription-export-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-[#151C28] dark:text-slate-200 dark:hover:bg-slate-800"
+            className="subscription-export-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             <Download className="h-4 w-4 shrink-0" />
             <span>Export CSV</span>
@@ -1124,7 +1124,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             violet: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300',
           }[item.tone];
           return (
-          <div key={item.label} className={`subscription-summary-card flex min-h-[68px] min-w-0 items-center justify-between gap-2 rounded-xl border p-3 transition-colors ${item.tone === 'slate' ? 'border-violet-200 bg-violet-50/70 dark:border-violet-900/60 dark:bg-violet-950/25' : 'border-slate-200/80 bg-white dark:border-slate-800 dark:bg-[#151C28]'}`}>
+          <div key={item.label} className={`subscription-summary-card flex min-h-[68px] min-w-0 items-center justify-between gap-2 rounded-xl border p-3 transition-colors ${item.tone === 'slate' ? 'border-violet-200 bg-violet-50/70 dark:border-violet-900/60 dark:bg-violet-950/25' : 'border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900'}`}>
             <div className="min-w-0">
               <p className="text-[11px] font-semibold leading-tight text-slate-500 dark:text-slate-400">{item.label}</p>
               <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-slate-950 dark:text-white">{item.value}</p>

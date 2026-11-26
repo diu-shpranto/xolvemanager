@@ -32,7 +32,7 @@ export const RecoveryScreen: FC<RecoveryScreenProps> = ({
     <div className="grid min-h-[min(76vh,48rem)] w-full place-items-center px-4 py-10 sm:px-6">
       <section
         role={isNotFound ? undefined : 'alert'}
-        className="w-full max-w-xl rounded-2xl border border-violet-200/80 bg-white p-6 text-center shadow-sm dark:border-violet-900/70 dark:bg-[#15121f] sm:p-10"
+        className="w-full max-w-xl rounded-2xl border border-violet-200/80 bg-white p-6 text-center shadow-sm dark:border-violet-900/70 dark:bg-slate-900 sm:p-10"
       >
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 dark:bg-violet-950/70 dark:text-violet-300">
           {isNotFound ? <Compass className="h-6 w-6" aria-hidden="true" /> : <TriangleAlert className="h-6 w-6" aria-hidden="true" />}

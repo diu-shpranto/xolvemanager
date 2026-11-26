@@ -111,10 +111,10 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onNavigate
     ? "You're all caught up."
     : 'Try changing your search or filters.';
 
-  return <main className="mx-auto max-w-[1400px] space-y-5 px-4 py-6 sm:px-6 lg:px-8">
+  return <main className="section-layout-shell mx-auto max-w-[1600px] space-y-5 px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
     <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <div className="flex items-center gap-2"><Bell className="h-6 w-6 text-emerald-600" /><h1 className="text-2xl font-bold text-slate-900 dark:text-white">Notifications</h1></div>
+        <div className="flex items-center gap-2"><Bell className="h-6 w-6 text-emerald-600" /><h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Notifications</h1></div>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Stay updated with important business activity.</p>
       </div>
       {unreadCount > 0 && <button type="button" onClick={markAllNotificationsAsRead} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><CheckCheck className="h-4 w-4" /> Mark all as read</button>}

@@ -1188,7 +1188,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   }, [catalogServices, servicePerformanceById, sales, payments, currency, currentMonthPrefix]);
 
   return (
-    <div className="services-view mx-auto max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8" data-section="services">
+    <div className="services-view section-layout-shell mx-auto max-w-[1600px] px-3 py-3 sm:px-6 sm:py-6 lg:px-8" data-section="services">
       {!detailedService && (
         <div className="service-list-page space-y-5">
       {/* 1. PAGE HEADER */}
@@ -1243,7 +1243,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           ].map(({ label, value, icon: SummaryIcon, iconTone, currency: isCurrency }) => (
             <div
               key={label}
-              className="service-summary-card min-w-0 rounded-xl border border-slate-200/80 bg-white px-3.5 py-3 shadow-2xs dark:border-slate-800 dark:bg-[#111726]"
+              className="service-summary-card min-w-0 rounded-xl border border-slate-200/80 bg-white px-3.5 py-3 shadow-2xs dark:border-slate-800 dark:bg-slate-900"
             >
               <div className="flex items-start justify-between gap-2">
                 <span className="line-clamp-2 min-h-7 text-[10px] font-semibold uppercase leading-3.5 tracking-wide text-slate-500 dark:text-slate-400">
@@ -1287,7 +1287,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             aria-label="Search services by name, ID, description, plan or internal code"
-            className="w-full h-10 pl-9.5 pr-9 bg-white dark:bg-[#111726] border border-slate-200/90 dark:border-slate-800 rounded-lg text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-2xs transition-all"
+            className="w-full h-10 pl-9.5 pr-9 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-lg text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-2xs transition-all"
           />
           {searchQuery && (
             <button
@@ -1308,7 +1308,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               value={statusFilter}
               aria-label="Filter services by status"
               onChange={e => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
-              className="h-10 shrink-0 px-3 bg-white dark:bg-[#111726] border border-slate-200/90 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
+              className="h-10 shrink-0 px-3 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
             >
               <option value="all">{language === 'bn' ? 'সব সার্ভিস' : 'All Services'}</option>
               <option value="active">{language === 'bn' ? 'সক্রিয়' : 'Active'}</option>
@@ -1322,7 +1322,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               value={sortBy}
               aria-label="Sort services"
               onChange={e => setSortBy(e.target.value as typeof sortBy)}
-              className="h-10 shrink-0 px-3 bg-white dark:bg-[#111726] border border-slate-200/90 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
+              className="h-10 shrink-0 px-3 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
             >
               <option value="popular">
                 {language === 'bn' ? 'জনপ্রিয় (সাবস্ক্রিপশন)' : 'Most Plans'}
@@ -1363,13 +1363,13 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
             </summary>
             <div className="service-advanced-filter-panel">
-              <select aria-label="Filter services by active plans" value={planFilter} onChange={event => setPlanFilter(event.target.value as typeof planFilter)} className="h-10 max-w-full rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-violet-500 dark:border-slate-800 dark:bg-[#111726] dark:text-slate-300">
+              <select aria-label="Filter services by active plans" value={planFilter} onChange={event => setPlanFilter(event.target.value as typeof planFilter)} className="h-10 max-w-full rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-violet-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
                 <option value="all">All plans</option><option value="has_active">Has active plans</option><option value="none_active">No active plans</option>
               </select>
-              <select aria-label="Filter services by active subscriptions" value={subscriptionFilter} onChange={event => setSubscriptionFilter(event.target.value as typeof subscriptionFilter)} className="h-10 max-w-full rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-violet-500 dark:border-slate-800 dark:bg-[#111726] dark:text-slate-300">
+              <select aria-label="Filter services by active subscriptions" value={subscriptionFilter} onChange={event => setSubscriptionFilter(event.target.value as typeof subscriptionFilter)} className="h-10 max-w-full rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-violet-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
                 <option value="all">All subscriptions</option><option value="has_active">Has active subscriptions</option><option value="none_active">No active subscriptions</option>
               </select>
-              <select aria-label="Filter services by resource type" value={resourceFilter} onChange={event => setResourceFilter(event.target.value as typeof resourceFilter)} className="h-10 max-w-full rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-violet-500 dark:border-slate-800 dark:bg-[#111726] dark:text-slate-300">
+              <select aria-label="Filter services by resource type" value={resourceFilter} onChange={event => setResourceFilter(event.target.value as typeof resourceFilter)} className="h-10 max-w-full rounded-lg border border-slate-200/90 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-violet-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
                 <option value="all">All resources</option><option value="accounts">Uses accounts</option><option value="profiles">Uses profiles</option><option value="none">No resource assignment</option>
               </select>
             </div>
@@ -1460,7 +1460,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="p-5 bg-white dark:bg-[#111726] rounded-2xl border border-slate-200/80 dark:border-slate-800 animate-pulse space-y-4"
+              className="p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 animate-pulse space-y-4"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800" />
@@ -1476,7 +1476,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         </div>
       ) : filteredServices.length === 0 ? (
         /* Empty State */
-        <div className="service-empty-state rounded-xl border border-slate-200/80 bg-white p-6 py-9 text-center text-slate-400 shadow-xs dark:border-slate-800 dark:bg-[#111726]">
+        <div className="service-empty-state rounded-xl border border-slate-200/80 bg-white p-6 py-9 text-center text-slate-400 shadow-xs dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-col items-center justify-center gap-3 max-w-md mx-auto">
             <div className="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400">
               <Layers className="w-5 h-5 stroke-[1.5]" />
@@ -1513,7 +1513,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             return (
               <div
                 key={srv.id}
-                className={`service-card group flex flex-col justify-between rounded-xl border border-slate-200/80 border-t-2 bg-white p-4 shadow-2xs transition-[border-color,box-shadow] hover:border-slate-300 hover:shadow-xs dark:border-slate-800/90 dark:bg-[#111726] dark:hover:border-slate-700 ${openServiceActionsId === srv.id ? 'is-actions-open' : ''}`}
+                className={`service-card group flex flex-col justify-between rounded-xl border border-slate-200/80 border-t-2 bg-white p-4 shadow-2xs transition-[border-color,box-shadow] hover:border-slate-300 hover:shadow-xs dark:border-slate-800/90 dark:bg-slate-900 dark:hover:border-slate-700 ${openServiceActionsId === srv.id ? 'is-actions-open' : ''}`}
               >
                 <div className="service-card-content space-y-3">
                   {/* HEADER: Icon + Service Name + Category + Status */}
@@ -1776,7 +1776,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         </div>
       ) : (
         /* PREMIUM TABLE VIEW */
-        <div className="service-table overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xs dark:border-slate-800/90 dark:bg-[#111726]">
+        <div className="service-table overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xs dark:border-slate-800/90 dark:bg-slate-900">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -1983,7 +1983,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               </button>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="max-w-full truncate text-2xl font-bold text-slate-900 dark:text-white">{detailedService.name}</h1>
+                  <h1 className="max-w-full truncate text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">{detailedService.name}</h1>
                   <span className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${detailedService.status === 'active' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>{detailedService.status === 'active' ? 'Active' : 'Inactive'}</span>
                 </div>
                 <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{detailedService.advanced?.internalCode ? `Code ${detailedService.advanced.internalCode} · ` : ''}Service details, plans, subscriptions, accounts, and sales.</p>
@@ -2529,7 +2529,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             {formTab === 'Basic Information' && (
               <section className="space-y-4" aria-labelledby="service-basic-title">
                 <div>
-                  <h4 id="service-basic-title" className="text-base font-bold text-slate-900 dark:text-white">Basic Information</h4>
+                  <h4 id="service-basic-title" className="section-title">Basic Information</h4>
                   <p className="mt-1 text-xs text-slate-500">Set the name, category, description, and availability of this service.</p>
                 </div>
                 <label className="block space-y-1.5">
@@ -2572,7 +2572,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 
             {formTab === 'Branding' && (
               <section className="space-y-4">
-                <div><h4 className="text-base font-bold text-slate-900 dark:text-white">Branding</h4><p className="mt-1 text-xs text-slate-500">Customize how the service appears in your workspace.</p></div>
+                <div><h4 className="section-title">Branding</h4><p className="mt-1 text-xs text-slate-500">Customize how the service appears in your workspace.</p></div>
                 <div className="flex items-center gap-4 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
                   <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl text-xl font-bold text-white" style={{ backgroundColor: formColor }}>
                     {formLogoUrl && !logoPreviewFailed && !formErrors.logoUrl ? <img src={formLogoUrl} alt={`${formName || 'Service'} logo preview`} className="h-full w-full object-cover" onError={() => setLogoPreviewFailed(true)} /> : (formName.trim().charAt(0).toUpperCase() || '?')}
@@ -2596,7 +2596,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 
             {formTab === 'Plans & Pricing' && (
               <section className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="text-base font-bold text-slate-900 dark:text-white">Plans & Pricing</h4><p className="mt-1 text-xs text-slate-500">Add one or more sale plans. Plans can also be added later.</p></div><button type="button" onClick={() => { setFormPlanDraft({ name: '', price: '', currency, duration: settings.serviceDefaults?.durationDays ?? 30, durationUnit: 'Days', status: 'active' }); setFormErrors(previous => ({ ...previous, planDraft: '' })); }} className="rounded-lg bg-emerald-600 px-3.5 py-2.5 text-xs font-semibold text-white hover:bg-emerald-500">+ Add Plan</button></div>
+                <div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="section-title">Plans & Pricing</h4><p className="mt-1 text-xs text-slate-500">Add one or more sale plans. Plans can also be added later.</p></div><button type="button" onClick={() => { setFormPlanDraft({ name: '', price: '', currency, duration: settings.serviceDefaults?.durationDays ?? 30, durationUnit: 'Days', status: 'active' }); setFormErrors(previous => ({ ...previous, planDraft: '' })); }} className="rounded-lg bg-emerald-600 px-3.5 py-2.5 text-xs font-semibold text-white hover:bg-emerald-500">+ Add Plan</button></div>
                 <div className="grid gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-800 sm:grid-cols-2">
                   <label className="block space-y-1"><span className="text-xs font-semibold">Service default direct cost</span><select aria-label="Service default direct cost type" value={formDefaultDirectCostType} onChange={event => setFormDefaultDirectCostType(event.target.value as NonNullable<Service['defaultDirectCostType']>)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="none">None</option><option value="fixed_per_sale">Fixed per sale</option><option value="fixed_per_cycle">Fixed per cycle</option><option value="percentage_of_sale">Percentage of sale</option></select></label>
                   {formDefaultDirectCostType !== 'none' && <label className="block space-y-1"><span className="text-xs font-semibold">{formDefaultDirectCostType === 'percentage_of_sale' ? 'Cost percentage (%)' : 'Cost amount'}</span><input aria-label="Service default direct cost amount" type="number" min="0" step="any" value={formDefaultDirectCostAmount} onChange={event => setFormDefaultDirectCostAmount(event.target.value === '' ? '' : Number(event.target.value))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>}
@@ -2604,12 +2604,12 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                 </div>
                 {formErrors.plans && <p role="alert" className="text-xs text-rose-600">{formErrors.plans}</p>}
                 {formPlans.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">No plans yet. Add plans now or later from service details.</div> : <div className="space-y-2">{formPlans.map(plan => <div key={plan.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-800"><div className="min-w-0"><p className="truncate font-semibold text-slate-900 dark:text-white">{plan.name}</p><p className="text-xs text-slate-500">{formatCurrency(plan.price, plan.currency)} · {plan.duration || plan.durationDays} {plan.durationUnit || 'Days'} · {plan.status === 'active' ? 'Active' : 'Inactive'}</p></div><div className="flex gap-2"><button type="button" onClick={() => setFormPlanDraft({ ...plan, duration: plan.duration ?? plan.durationDays, durationUnit: plan.durationUnit || 'Days' })} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Edit</button><button type="button" onClick={() => setFormPlans(previous => previous.map(item => item.id === plan.id ? { ...item, status: item.status === 'active' ? 'inactive' : 'active' } : item))} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">{plan.status === 'active' ? 'Deactivate' : 'Activate'}</button></div></div>)}</div>}
-                {formPlanDraft && <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20"><h5 className="font-semibold text-slate-900 dark:text-white">{formPlanDraft.id ? 'Edit Plan' : 'Add Plan'}</h5><label className="block space-y-1"><span className="text-xs font-medium">Plan Name *</span><input autoFocus maxLength={80} value={formPlanDraft.name} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, name: event.target.value } : previous)} placeholder="Enter plan name" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label><div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1"><span className="text-xs font-medium">Price *</span><input type="number" min="0.01" step="any" value={formPlanDraft.price} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, price: event.target.value === '' ? '' : Number(event.target.value) } : previous)} placeholder="Enter price" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label><label className="block space-y-1"><span className="text-xs font-medium">Currency</span><select value={formPlanDraft.currency} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, currency: event.target.value as AppCurrency } : previous)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value={currency}>{currency} (Business currency)</option><option value={currency === 'BDT' ? 'USD' : 'BDT'}>{currency === 'BDT' ? 'USD' : 'BDT'}</option></select></label><label className="block space-y-1"><span className="text-xs font-medium">Duration *</span><input type="number" min="1" step="1" value={formPlanDraft.duration} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, duration: event.target.value === '' ? '' : Number(event.target.value) } : previous)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label><label className="block space-y-1"><span className="text-xs font-medium">Duration Unit</span><select value={formPlanDraft.durationUnit} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, durationUnit: event.target.value as DurationUnit } : previous)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{(['Days', 'Weeks', 'Months', 'Years'] as const).map(unit => <option key={unit}>{unit}</option>)}</select></label><label className="block space-y-1"><span className="text-xs font-medium">Status</span><select value={formPlanDraft.status} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, status: event.target.value as 'active' | 'inactive' } : previous)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="active">Active</option><option value="inactive">Inactive</option></select></label></div><div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1"><span className="text-xs font-medium">Plan direct cost override</span><select aria-label="Plan direct cost override type" value={formPlanDraft.directCostType || ''} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, directCostType: event.target.value ? event.target.value as NonNullable<ServicePlan['directCostType']> : undefined } : previous)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Use service default</option><option value="none">No expected cost</option><option value="fixed_per_sale">Fixed per sale</option><option value="fixed_per_cycle">Fixed per cycle</option><option value="percentage_of_sale">Percentage of sale</option></select></label>{formPlanDraft.directCostType && formPlanDraft.directCostType !== 'none' && <label className="block space-y-1"><span className="text-xs font-medium">{formPlanDraft.directCostType === 'percentage_of_sale' ? 'Cost percentage (%)' : 'Cost amount'}</span><input aria-label="Plan direct cost amount" type="number" min="0" step="any" value={formPlanDraft.directCostAmount ?? ''} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, directCostAmount: event.target.value === '' ? undefined : Number(event.target.value) } : previous)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>}</div>{formErrors.planDraft && <p role="alert" className="text-xs text-rose-600">{formErrors.planDraft}</p>}<div className="flex justify-end gap-2"><button type="button" onClick={() => setFormPlanDraft(null)} className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-600">Cancel</button><button type="button" onClick={saveFormPlan} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Save Plan</button></div></div>}
+                {formPlanDraft && <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20"><h5 className="font-semibold text-slate-900 dark:text-white">{formPlanDraft.id ? 'Edit Plan' : 'Add Plan'}</h5><label className="block space-y-1"><span className="text-xs font-medium">Plan Name *</span><input autoFocus maxLength={80} value={formPlanDraft.name} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, name: event.target.value } : previous)} placeholder="Enter plan name" className="control-field w-full px-3 py-2.5" /></label><div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1"><span className="text-xs font-medium">Price *</span><input type="number" min="0.01" step="any" value={formPlanDraft.price} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, price: event.target.value === '' ? '' : Number(event.target.value) } : previous)} placeholder="Enter price" className="control-field w-full px-3 py-2.5" /></label><label className="block space-y-1"><span className="text-xs font-medium">Currency</span><select value={formPlanDraft.currency} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, currency: event.target.value as AppCurrency } : previous)} className="control-field w-full px-3 py-2.5"><option value={currency}>{currency} (Business currency)</option><option value={currency === 'BDT' ? 'USD' : 'BDT'}>{currency === 'BDT' ? 'USD' : 'BDT'}</option></select></label><label className="block space-y-1"><span className="text-xs font-medium">Duration *</span><input type="number" min="1" step="1" value={formPlanDraft.duration} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, duration: event.target.value === '' ? '' : Number(event.target.value) } : previous)} className="control-field w-full px-3 py-2.5" /></label><label className="block space-y-1"><span className="text-xs font-medium">Duration Unit</span><select value={formPlanDraft.durationUnit} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, durationUnit: event.target.value as DurationUnit } : previous)} className="control-field w-full px-3 py-2.5">{(['Days', 'Weeks', 'Months', 'Years'] as const).map(unit => <option key={unit}>{unit}</option>)}</select></label><label className="block space-y-1"><span className="text-xs font-medium">Status</span><select value={formPlanDraft.status} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, status: event.target.value as 'active' | 'inactive' } : previous)} className="control-field w-full px-3 py-2.5"><option value="active">Active</option><option value="inactive">Inactive</option></select></label></div><div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1"><span className="text-xs font-medium">Plan direct cost override</span><select aria-label="Plan direct cost override type" value={formPlanDraft.directCostType || ''} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, directCostType: event.target.value ? event.target.value as NonNullable<ServicePlan['directCostType']> : undefined } : previous)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Use service default</option><option value="none">No expected cost</option><option value="fixed_per_sale">Fixed per sale</option><option value="fixed_per_cycle">Fixed per cycle</option><option value="percentage_of_sale">Percentage of sale</option></select></label>{formPlanDraft.directCostType && formPlanDraft.directCostType !== 'none' && <label className="block space-y-1"><span className="text-xs font-medium">{formPlanDraft.directCostType === 'percentage_of_sale' ? 'Cost percentage (%)' : 'Cost amount'}</span><input aria-label="Plan direct cost amount" type="number" min="0" step="any" value={formPlanDraft.directCostAmount ?? ''} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, directCostAmount: event.target.value === '' ? undefined : Number(event.target.value) } : previous)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>}</div>{formErrors.planDraft && <p role="alert" className="text-xs text-rose-600">{formErrors.planDraft}</p>}<div className="flex justify-end gap-2"><button type="button" onClick={() => setFormPlanDraft(null)} className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-600">Cancel</button><button type="button" onClick={saveFormPlan} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Save Plan</button></div></div>}
               </section>
             )}
 
             {formTab === 'Subscription Settings' && (
-              <section className="space-y-4"><div><h4 className="text-base font-bold text-slate-900 dark:text-white">Subscription Settings</h4><p className="mt-1 text-xs text-slate-500">Define expiry and renewal behavior for this service.</p></div>
+              <section className="space-y-4"><div><h4 className="section-title">Subscription Settings</h4><p className="mt-1 text-xs text-slate-500">Define expiry and renewal behavior for this service.</p></div>
                 {([
                   ['subscriptionEnabled', 'Subscription Enabled'],
                   ['renewalEnabled', 'Renewal Enabled'],
@@ -2621,14 +2621,14 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             )}
 
             {formTab === 'Account & Profile Settings' && (
-              <section className="space-y-4"><div><h4 className="text-base font-bold text-slate-900 dark:text-white">Account & Profile Settings</h4><p className="mt-1 text-xs text-slate-500">Choose whether sales for this service use managed accounts and profiles.</p></div>
+              <section className="space-y-4"><div><h4 className="section-title">Account & Profile Settings</h4><p className="mt-1 text-xs text-slate-500">Choose whether sales for this service use managed accounts and profiles.</p></div>
                 <label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span>Uses Accounts</span><input type="checkbox" checked={formSettings.usesAccounts} onChange={event => setFormSettings(previous => ({ ...previous, usesAccounts: event.target.checked, usesProfiles: event.target.checked ? previous.usesProfiles : false }))} className="h-4 w-4 accent-emerald-600" /></label>
                 {formSettings.usesAccounts && <><label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span>Uses Profiles</span><input type="checkbox" checked={formSettings.usesProfiles} onChange={event => setFormSettings(previous => ({ ...previous, usesProfiles: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>{formSettings.usesProfiles && <label className="block max-w-xs space-y-1.5"><span>Default Profiles Per Account *</span><input type="number" min="1" step="1" value={formSettings.profileCapacity} onChange={event => setFormSettings(previous => ({ ...previous, profileCapacity: event.target.value === '' ? 0 : Number(event.target.value) }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />{formErrors.profileCapacity && <span role="alert" className="text-xs text-rose-600">{formErrors.profileCapacity}</span>}</label>}<label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span>Allow Account Sharing</span><input type="checkbox" checked={formSettings.allowAccountSharing} onChange={event => setFormSettings(previous => ({ ...previous, allowAccountSharing: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label><label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span>Profile Assignment Required</span><input type="checkbox" checked={formSettings.profileAssignmentRequired} onChange={event => setFormSettings(previous => ({ ...previous, profileAssignmentRequired: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label></>}
               </section>
             )}
 
             {formTab === 'Customer Settings' && (
-              <section className="space-y-4"><div><h4 className="text-base font-bold text-slate-900 dark:text-white">Customer Settings</h4><p className="mt-1 text-xs text-slate-500">Control customer details and subscription rules.</p></div>
+              <section className="space-y-4"><div><h4 className="section-title">Customer Settings</h4><p className="mt-1 text-xs text-slate-500">Control customer details and subscription rules.</p></div>
                 {([
                   ['customerRequired', 'Customer Required'],
                   ['emailRequired', 'Email Required'],
@@ -2641,14 +2641,14 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             )}
 
             {formTab === 'Renewal Message' && (
-              <section className="space-y-4"><div><h4 className="text-base font-bold text-slate-900 dark:text-white">Renewal Message</h4><p className="mt-1 text-xs text-slate-500">Set an optional reusable message for renewals.</p></div>
+              <section className="space-y-4"><div><h4 className="section-title">Renewal Message</h4><p className="mt-1 text-xs text-slate-500">Set an optional reusable message for renewals.</p></div>
                 <label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span>Enable Renewal Message</span><input type="checkbox" checked={formRenewalMessage.enabled} onChange={event => setFormRenewalMessage(previous => ({ ...previous, enabled: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>
                 {formRenewalMessage.enabled && <><label className="block space-y-1.5"><span className="font-semibold">Message Template</span><textarea rows={6} value={formRenewalMessage.template} onChange={event => setFormRenewalMessage(previous => ({ ...previous, template: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label><div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800"><p className="mb-2 font-semibold">Available Variables</p><p className="break-words text-xs leading-6 text-slate-500">{['customerName', 'customerPhone', 'customerEmail', 'serviceName', 'planName', 'startDate', 'expiryDate', 'invoiceNumber', 'amount', 'currency'].map(variable => `{${variable}}`).join('  ')}</p></div></>}
               </section>
             )}
 
             {formTab === 'Invoice Settings' && (
-              <section className="space-y-4"><div><h4 className="text-base font-bold text-slate-900 dark:text-white">Invoice Settings</h4><p className="mt-1 text-xs text-slate-500">Select which non-sensitive service and customer details may appear on invoices.</p></div>
+              <section className="space-y-4"><div><h4 className="section-title">Invoice Settings</h4><p className="mt-1 text-xs text-slate-500">Select which non-sensitive service and customer details may appear on invoices.</p></div>
                 {([
                   ['showLogo', 'Show Service Logo'],
                   ['showDescription', 'Show Service Description'],
@@ -2663,7 +2663,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             )}
 
             {formTab === 'Advanced Settings' && (
-              <section className="space-y-4"><div><h4 className="text-base font-bold text-slate-900 dark:text-white">Advanced Settings</h4><p className="mt-1 text-xs text-slate-500">Optional display and internal workflow settings.</p></div>
+              <section className="space-y-4"><div><h4 className="section-title">Advanced Settings</h4><p className="mt-1 text-xs text-slate-500">Optional display and internal workflow settings.</p></div>
                 <details className="rounded-xl border border-slate-200 p-4 dark:border-slate-800"><summary className="cursor-pointer font-semibold">Show advanced options</summary><div className="mt-4 space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2"><label className="block space-y-1.5"><span>Internal Service Code</span><input value={formAdvanced.internalCode} onChange={event => setFormAdvanced(previous => ({ ...previous, internalCode: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label><label className="block space-y-1.5"><span>Sort Order</span><input type="number" value={formAdvanced.sortOrder} onChange={event => setFormAdvanced(previous => ({ ...previous, sortOrder: Number(event.target.value) }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label></div>
                   {([
@@ -2702,7 +2702,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               />
             </div>
-            <label className="block space-y-1.5"><span className="text-sm font-medium text-slate-700 dark:text-slate-300">Internal Code</span><input value={planInternalCode} onChange={event => setPlanInternalCode(event.target.value)} maxLength={80} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+            <label className="block space-y-1.5"><span className="text-sm font-medium text-slate-700 dark:text-slate-300">Internal Code</span><input value={planInternalCode} onChange={event => setPlanInternalCode(event.target.value)} maxLength={80} className="control-field w-full px-3 py-2.5 text-sm" /></label>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Price *</label>
@@ -2740,7 +2740,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 />
                 </div>
-                <label className="block"><span className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Unit</span><select value={planDurationUnit} onChange={event => setPlanDurationUnit(event.target.value as DurationUnit)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white">{(['Days', 'Weeks', 'Months', 'Years'] as const).map(unit => <option key={unit}>{unit}</option>)}</select></label>
+                <label className="block"><span className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Unit</span><select value={planDurationUnit} onChange={event => setPlanDurationUnit(event.target.value as DurationUnit)} className="control-field w-full px-3 py-2.5 text-sm">{(['Days', 'Weeks', 'Months', 'Years'] as const).map(unit => <option key={unit}>{unit}</option>)}</select></label>
               </div>
             </div>
             <div>
@@ -2756,18 +2756,18 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Description</label>
-              <textarea rows={3} maxLength={500} value={planDescription} onChange={event => setPlanDescription(event.target.value)} placeholder="Describe this plan (optional)" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+              <textarea rows={3} maxLength={500} value={planDescription} onChange={event => setPlanDescription(event.target.value)} placeholder="Describe this plan (optional)" className="control-field w-full px-3 py-2.5 text-sm" />
               <p className="mt-1 text-right text-xs text-slate-400">{planDescription.length}/500</p>
             </div>
             <div className="grid gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700 sm:grid-cols-2">
-              <label className="block space-y-1.5"><span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Expected direct cost override</span><select aria-label="Plan direct cost override type" value={planDirectCostType} onChange={event => setPlanDirectCostType(event.target.value as NonNullable<ServicePlan['directCostType']>)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="none">No expected cost</option><option value="fixed_per_sale">Fixed per sale</option><option value="fixed_per_cycle">Fixed per cycle</option><option value="percentage_of_sale">Percentage of sale</option></select></label>
-              {planDirectCostType !== 'none' && <label className="block space-y-1.5"><span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{planDirectCostType === 'percentage_of_sale' ? 'Cost percentage (%)' : 'Cost amount'}</span><input aria-label="Plan direct cost amount" type="number" min="0" step="any" value={planDirectCostAmount} onChange={event => setPlanDirectCostAmount(event.target.value === '' ? '' : Number(event.target.value))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>}
+              <label className="block space-y-1.5"><span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Expected direct cost override</span><select aria-label="Plan direct cost override type" value={planDirectCostType} onChange={event => setPlanDirectCostType(event.target.value as NonNullable<ServicePlan['directCostType']>)} className="control-field w-full px-3 py-2.5 text-sm"><option value="none">No expected cost</option><option value="fixed_per_sale">Fixed per sale</option><option value="fixed_per_cycle">Fixed per cycle</option><option value="percentage_of_sale">Percentage of sale</option></select></label>
+              {planDirectCostType !== 'none' && <label className="block space-y-1.5"><span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{planDirectCostType === 'percentage_of_sale' ? 'Cost percentage (%)' : 'Cost amount'}</span><input aria-label="Plan direct cost amount" type="number" min="0" step="any" value={planDirectCostAmount} onChange={event => setPlanDirectCostAmount(event.target.value === '' ? '' : Number(event.target.value))} className="control-field w-full px-3 py-2.5 text-sm" /></label>}
               <p className="text-xs text-slate-500 sm:col-span-2">Overrides the service default cost for this plan. This is an estimate, separate from actual costs.</p>
             </div>
             {(detailedService.settings?.usesProfiles || detailedService.settings?.usesAccounts) && (
               <div className="grid gap-3 sm:grid-cols-2">
-                {detailedService.settings.usesProfiles && <label className="block space-y-1.5"><span className="text-sm font-medium text-slate-700 dark:text-slate-300">Profiles per account</span><input type="number" min="1" step="1" value={planProfileCapacity} onChange={event => setPlanProfileCapacity(event.target.value === '' ? '' : Number(event.target.value))} placeholder={`${detailedService.settings.profileCapacity || 1}`} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>}
-                {detailedService.settings.usesAccounts && <label className="block space-y-1.5"><span className="text-sm font-medium text-slate-700 dark:text-slate-300">Account capacity (optional)</span><input type="number" min="1" step="1" value={planAccountCapacity} onChange={event => setPlanAccountCapacity(event.target.value === '' ? '' : Number(event.target.value))} placeholder="No plan-specific limit" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>}
+                {detailedService.settings.usesProfiles && <label className="block space-y-1.5"><span className="text-sm font-medium text-slate-700 dark:text-slate-300">Profiles per account</span><input type="number" min="1" step="1" value={planProfileCapacity} onChange={event => setPlanProfileCapacity(event.target.value === '' ? '' : Number(event.target.value))} placeholder={`${detailedService.settings.profileCapacity || 1}`} className="control-field w-full px-3 py-2.5 text-sm" /></label>}
+                {detailedService.settings.usesAccounts && <label className="block space-y-1.5"><span className="text-sm font-medium text-slate-700 dark:text-slate-300">Account capacity (optional)</span><input type="number" min="1" step="1" value={planAccountCapacity} onChange={event => setPlanAccountCapacity(event.target.value === '' ? '' : Number(event.target.value))} placeholder="No plan-specific limit" className="control-field w-full px-3 py-2.5 text-sm" /></label>}
               </div>
             )}
             <div className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
@@ -2776,7 +2776,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               {planRenewalEnabled && <label className="flex min-h-10 items-center justify-between gap-3"><span>Renewal Reminder</span><input type="checkbox" checked={planReminderEnabled} onChange={event => setPlanReminderEnabled(event.target.checked)} className="h-4 w-4 accent-emerald-600" /></label>}
               {planRenewalEnabled && planReminderEnabled && <label className="block max-w-xs space-y-1.5"><span>Reminder days before expiry</span><select value={planReminderDays} onChange={event => setPlanReminderDays(Number(event.target.value))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{[3, 5, 7, 14, 30].map(days => <option key={days} value={days}>{formatDurationDays(days)}</option>)}</select></label>}
             </div>
-            <label className="block max-w-xs space-y-1.5"><span className="text-sm font-medium text-slate-700 dark:text-slate-300">Sort Order</span><input type="number" value={planSortOrder} onChange={event => setPlanSortOrder(Number(event.target.value))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+            <label className="block max-w-xs space-y-1.5"><span className="text-sm font-medium text-slate-700 dark:text-slate-300">Sort Order</span><input type="number" value={planSortOrder} onChange={event => setPlanSortOrder(Number(event.target.value))} className="control-field w-full px-3 py-2.5 text-sm" /></label>
             {planFormError && <p role="alert" className="text-sm text-rose-600">{planFormError}</p>}
             <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
               <button

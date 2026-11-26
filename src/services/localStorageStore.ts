@@ -80,11 +80,85 @@ export const setActiveDataEnvironment = (environment: DataEnvironment): void => 
   }
 };
 
-export const getStorageKey = (key: string): string => {
-  if (getActiveDataEnvironment() !== 'demo'
-    || key === STORAGE_KEYS.THEME
-    || key === STORAGE_KEYS.LANG) return key;
-  return `xolvemanager.demo.v1.${key}`;
+/**
+ * Per-account workspaces.
+ *
+ * Business data belongs to a workspace, not to the browser:
+ * - 'local' — the offline / local-login workspace. It uses the historic
+ *   un-namespaced keys, so data saved before workspaces existed is
+ *   preserved here untouched.
+ * - A Supabase user id — the cloud account's workspace. Its data lives
+ *   under `xolvemanager.workspace.v1.<uid>.` prefixed keys.
+ *
+ * Theme and language stay unscoped (shared across workspaces), exactly
+ * like the existing demo rule. In Demo Mode the demo prefix applies
+ * instead and the workspace is ignored: demo data is shared sample data
+ * that is never uploaded.
+ *
+ * The active workspace is stored in plain localStorage (never through
+ * getStorageKey, which would recurse) and read on every call, so the
+ * value is always the persisted one — no stale in-memory copy, and it
+ * stays correct when another tab changes it.
+ */
+export const LOCAL_WORKSPACE_ID = 'local';
+export const WORKSPACE_SCOPE_KEY = 'xolvemanager.workspace.v1';
+export const WORKSPACE_KEY_PREFIX = 'xolvemanager.workspace.v1.';
+
+export const getActiveWorkspaceId = (): string => {
+  if (typeof window === 'undefined') return LOCAL_WORKSPACE_ID;
+  try {
+    const stored = window.localStorage.getItem(WORKSPACE_SCOPE_KEY);
+    return stored && stored.trim() ? stored : LOCAL_WORKSPACE_ID;
+  } catch (error) {
+    console.error('Could not read the active workspace.', error);
+    return LOCAL_WORKSPACE_ID;
+  }
+};
+
+export const setActiveWorkspaceId = (workspaceId: string): void => {
+  const next = workspaceId && workspaceId.trim() ? workspaceId.trim() : LOCAL_WORKSPACE_ID;
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(WORKSPACE_SCOPE_KEY, next);
+  } catch (error) {
+    console.error('Could not save the active workspace.', error);
+  }
+};
+
+export const getWorkspaceKeyPrefix = (workspaceId: string): string =>
+  workspaceId === LOCAL_WORKSPACE_ID
+    ? ''
+    : `${WORKSPACE_KEY_PREFIX}${encodeURIComponent(workspaceId)}.`;
+
+/** Storage key for `key` as it is stored under an explicit workspace. */
+export const getStorageKeyForWorkspace = (key: string, workspaceId: string): string => {
+  // Demo Mode keeps its own shared sample-data keys; the workspace is ignored there.
+  if (getActiveDataEnvironment() === 'demo') {
+    if (key === STORAGE_KEYS.THEME || key === STORAGE_KEYS.LANG) return key;
+    return `xolvemanager.demo.v1.${key}`;
+  }
+  if (key === STORAGE_KEYS.THEME || key === STORAGE_KEYS.LANG) return key;
+  return `${getWorkspaceKeyPrefix(workspaceId)}${key}`;
+};
+
+export const getStorageKey = (key: string): string =>
+  getStorageKeyForWorkspace(key, getActiveWorkspaceId());
+
+/**
+ * Runs `fn` with a different workspace active, then restores the previous
+ * one — even when `fn` throws. `fn` must be synchronous: the workspace is
+ * process-wide mutable state, so an awaited gap would leak the switch to
+ * other code.
+ */
+export const withWorkspace = <T>(workspaceId: string, fn: () => T): T => {
+  const previous = getActiveWorkspaceId();
+  if (previous === workspaceId) return fn();
+  setActiveWorkspaceId(workspaceId);
+  try {
+    return fn();
+  } finally {
+    setActiveWorkspaceId(previous);
+  }
 };
 
 const storageWarnings = new Map<string, string>();

@@ -70,7 +70,7 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
   };
 
   return (
-    <main className="mx-auto w-full max-w-[1440px] space-y-5 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+    <main className="section-layout-shell mx-auto w-full max-w-[1600px] space-y-5 px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
       <header className="overflow-hidden rounded-3xl border border-violet-200/80 bg-gradient-to-br from-white via-violet-50 to-indigo-50 p-5 shadow-sm dark:border-violet-900/60 dark:from-slate-900 dark:via-violet-950/30 dark:to-slate-900 sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-3xl">
@@ -175,7 +175,7 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
               )}
 
               <section className="mt-6" aria-labelledby="help-steps-heading">
-                <h2 id="help-steps-heading" className="text-base font-bold text-slate-900 dark:text-white">{labels?.stepsHeading || 'Step by step'}</h2>
+                <h2 id="help-steps-heading" className="section-title">{labels?.stepsHeading || 'Step by step'}</h2>
                 <ol className="mt-4 space-y-3">
                   {article.steps.map((step, index) => (
                     <li key={`${article.id}-step-${index}`} className="flex min-w-0 gap-3">

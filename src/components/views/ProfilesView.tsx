@@ -226,7 +226,7 @@ function getServiceAccent(name?: string, category?: ServiceCategory, customColor
     default:
       return {
         leftBorder: 'border-l-slate-400 dark:border-l-slate-600',
-        bgTint: 'bg-white dark:bg-[#151C28]',
+        bgTint: 'bg-white dark:bg-slate-900',
         border: 'border-slate-200/80 dark:border-slate-800',
         iconBg: 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700',
         badge: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700',
@@ -447,7 +447,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
             <p className="profile-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em]">
               {language === 'bn' ? 'প্রোফাইল ব্যবস্থাপনা' : 'Profile management'}
             </p>
-            <h1 className="text-2xl font-bold tracking-tight sm:text-[30px]">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">
               {language === 'bn' ? 'প্রোফাইলসমূহ' : 'Profiles'}
             </h1>
             <p className="profile-page-description mt-0.5 max-w-[28rem] text-sm leading-5">
@@ -656,7 +656,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
           <div className="profile-empty-icon w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 mx-auto mb-3">
             <UserCheck className="w-6 h-6" />
           </div>
-          <h3 className="text-base font-bold text-slate-900 dark:text-white">
+          <h3 className="section-title">
             {totalProfilesCount === 0 ? 'No profiles yet.' : 'No matching profiles found.'}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">

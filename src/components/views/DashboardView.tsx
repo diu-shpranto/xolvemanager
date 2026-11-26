@@ -2194,7 +2194,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const gettingStartedCompletedCount = gettingStartedSteps.filter(step => step.completed).length;
 
   return (
-    <div className="dashboard-view mx-auto flex max-w-[1600px] flex-col gap-5 px-4 py-5 sm:gap-6 sm:px-6 sm:py-6 xl:px-8">
+    <div className="dashboard-view section-layout-shell mx-auto flex max-w-[1600px] flex-col gap-5 px-3 py-3 sm:gap-6 sm:px-6 sm:py-6 xl:px-8">
       <header className="dashboard-page-header flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-sm font-bold tracking-wide text-violet-700 dark:text-violet-300">{dashboardCopy.overview}</p>
@@ -2325,7 +2325,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <section aria-labelledby="getting-started-title" className={`${dashboardPanelClass} space-y-3`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 id="getting-started-title" className="text-base font-bold text-slate-900 dark:text-white">
+              <h2 id="getting-started-title" className="section-title">
                 {language === 'bn' ? 'XolveManager শুরু করুন' : 'Get started with XolveManager'}
               </h2>
               <p className="mt-1 text-sm leading-5 text-slate-600 dark:text-slate-300">
@@ -2931,7 +2931,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-[28px] font-bold tracking-tight text-slate-900 dark:text-white">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">
             {language === 'bn' ? 'ড্যাশবোর্ড' : 'Dashboard'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -2959,7 +2959,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Total Customers */}
         <div
           onClick={() => onNavigate('customers')}
-          className="min-h-[112px] p-3 sm:p-3.5 bg-white dark:bg-[#111726] rounded-xl border border-slate-200/80 dark:border-slate-800/90 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition-all cursor-pointer group flex flex-col justify-between"
+          className="min-h-[112px] p-3 sm:p-3.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800/90 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition-all cursor-pointer group flex flex-col justify-between"
         >
           <div className="flex items-center justify-between text-slate-500 gap-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
@@ -2978,7 +2978,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Active Subscriptions */}
         <div
           onClick={() => onNavigate('subscriptions')}
-          className="min-h-[120px] sm:min-h-[124px] p-4 bg-white dark:bg-[#111726] rounded-xl border border-slate-200/80 dark:border-slate-800/90 shadow-2xs hover:border-emerald-300 dark:hover:border-emerald-800/60 transition-all cursor-pointer group flex flex-col justify-between"
+          className="min-h-[120px] sm:min-h-[124px] p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800/90 shadow-2xs hover:border-emerald-300 dark:hover:border-emerald-800/60 transition-all cursor-pointer group flex flex-col justify-between"
         >
           <div className="flex items-center justify-between text-slate-500 gap-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
@@ -2997,7 +2997,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Expiring Soon */}
         <div
           onClick={() => onNavigate('subscriptions')}
-          className="min-h-[120px] sm:min-h-[124px] p-4 bg-white dark:bg-[#111726] rounded-xl border border-slate-200/80 dark:border-slate-800/90 shadow-2xs hover:border-amber-300 dark:hover:border-amber-800/60 transition-all cursor-pointer group flex flex-col justify-between"
+          className="min-h-[120px] sm:min-h-[124px] p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800/90 shadow-2xs hover:border-amber-300 dark:hover:border-amber-800/60 transition-all cursor-pointer group flex flex-col justify-between"
         >
           <div className="flex items-center justify-between text-slate-500 gap-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400 truncate">
@@ -3016,7 +3016,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Expired */}
         <div
           onClick={() => onNavigate('subscriptions')}
-          className="min-h-[120px] sm:min-h-[124px] p-4 bg-white dark:bg-[#111726] rounded-xl border border-slate-200/80 dark:border-slate-800/90 shadow-2xs hover:border-rose-300 dark:hover:border-rose-800/60 transition-all cursor-pointer group flex flex-col justify-between"
+          className="min-h-[120px] sm:min-h-[124px] p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800/90 shadow-2xs hover:border-rose-300 dark:hover:border-rose-800/60 transition-all cursor-pointer group flex flex-col justify-between"
         >
           <div className="flex items-center justify-between text-slate-500 gap-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-700 dark:text-rose-400 truncate">
@@ -3033,7 +3033,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Current Monthly Run-rate (MRR) */}
-        <div className="min-h-[120px] sm:min-h-[124px] p-4 bg-white dark:bg-[#111726] rounded-xl border border-slate-200/80 dark:border-slate-800/90 shadow-2xs hover:border-emerald-300 dark:hover:border-emerald-800/60 transition-all cursor-pointer group flex flex-col justify-between">
+        <div className="min-h-[120px] sm:min-h-[124px] p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800/90 shadow-2xs hover:border-emerald-300 dark:hover:border-emerald-800/60 transition-all cursor-pointer group flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-500 gap-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 truncate">
               {t('monthlyRunRate')}
@@ -3051,7 +3051,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Total Accounts in Inventory */}
         <div
           onClick={() => onNavigate('accounts')}
-          className="min-h-[120px] sm:min-h-[124px] p-4 bg-white dark:bg-[#111726] rounded-xl border border-slate-200/80 dark:border-slate-800/90 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition-all cursor-pointer group flex flex-col justify-between"
+          className="min-h-[120px] sm:min-h-[124px] p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800/90 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition-all cursor-pointer group flex flex-col justify-between"
         >
           <div className="flex items-center justify-between text-slate-500 gap-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
@@ -3078,14 +3078,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Row 2: Recharts Visualizations (MRR Trends & Subscription Distribution by Service) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
         {/* Visualization 1: Monthly Recurring Revenue (MRR) Trends (7 cols - Primary Focus) */}
-        <div className="lg:col-span-7 p-5 sm:p-6 bg-white dark:bg-[#111726] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
+        <div className="lg:col-span-7 p-5 sm:p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
           <div>
             {/* Header & Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800/80">
               <div>
                 <div className="flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <h2 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
+                  <h2 className="section-title tracking-tight">
                     {t('mrrTrends')}
                   </h2>
                 </div>
@@ -3273,7 +3273,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       if (active && payload && payload.length) {
                         const data = payload[0].payload;
                         return (
-                          <div className="bg-white/95 dark:bg-[#0B0F17]/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 p-3 rounded-xl shadow-xl text-xs space-y-1.5 min-w-[160px]">
+                          <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 p-3 rounded-xl shadow-xl text-xs space-y-1.5 min-w-[160px]">
                             <div className="font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-1 flex items-center justify-between">
                               <span>{data.label}</span>
                               <span className="text-slate-400 font-normal text-[11px]">{data.month}</span>
@@ -3362,14 +3362,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Visualization 2: Active Subscription Distribution by Service Type (5 cols) */}
-        <div className="lg:col-span-5 p-5 sm:p-6 bg-white dark:bg-[#111726] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
+        <div className="lg:col-span-5 p-5 sm:p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
           <div>
             {/* Header & Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <div className="flex items-center gap-2">
                   <PieIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <h2 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
+                  <h2 className="section-title tracking-tight">
                     {t('subscriptionDistribution')}
                   </h2>
                 </div>
@@ -3486,7 +3486,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           if (active && payload && payload.length) {
                             const data = payload[0].payload;
                             return (
-                              <div className="bg-white/95 dark:bg-[#0B0F17]/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 p-2.5 rounded-xl shadow-lg text-xs space-y-1 min-w-[130px]">
+                              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 p-2.5 rounded-xl shadow-lg text-xs space-y-1 min-w-[130px]">
                                 <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white">
                                   <span
                                     className="w-2 h-2 rounded-full shrink-0"
@@ -4481,7 +4481,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </details>
 
       <section className="hidden" aria-label="Dashboard priorities and quick actions">
-        <div className="lg:col-span-8 rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-2xs dark:border-slate-800 dark:bg-[#111726]">
+        <div className="lg:col-span-8 rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-2xs dark:border-slate-800 dark:bg-slate-900">
           <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-500" />
@@ -4535,7 +4535,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           )}
         </div>
 
-        <div className="lg:col-span-4 rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-2xs dark:border-slate-800 dark:bg-[#111726]">
+        <div className="lg:col-span-4 rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-2xs dark:border-slate-800 dark:bg-slate-900">
           <div className="mb-3 border-b border-slate-100 pb-3 dark:border-slate-800">
             <h2 className="text-base font-bold tracking-tight text-slate-900 dark:text-white">
               {language === 'bn' ? 'দ্রুত কাজ' : 'Quick actions'}
@@ -4577,12 +4577,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Upcoming Expiry & Recent Sales */}
       <div className="hidden">
         {/* Upcoming Expiry Card */}
-        <div className="p-5 sm:p-6 bg-white dark:bg-[#111726] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
+        <div className="p-5 sm:p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-amber-500" />
-                <h2 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
+                <h2 className="section-title tracking-tight">
                   {t('upcomingExpiry')}
                 </h2>
               </div>
@@ -4670,12 +4670,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Recent Sales Card */}
-        <div className="p-5 sm:p-6 bg-white dark:bg-[#111726] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
+        <div className="p-5 sm:p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <CreditCard className="w-4 h-4 text-emerald-600" />
-                <h2 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
+                <h2 className="section-title tracking-tight">
                   {t('recentSales')}
                 </h2>
               </div>

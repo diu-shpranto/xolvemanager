@@ -21,7 +21,7 @@ import {
   snapshotToImportJSON,
   type MergeResult,
 } from '../../services/supabase/sync';
-import { getActiveDataEnvironment } from '../../services/localStorageStore';
+import { getActiveDataEnvironment, getActiveWorkspaceId } from '../../services/localStorageStore';
 
 type PanelState =
   | 'checking'
@@ -85,7 +85,7 @@ const storeLastDownload = (summary: LastDownload): void => {
  *   Merge stays available in that case — it never deletes local records.
  */
 export function CloudSyncPanel() {
-  const { exportDataJSON, importDataJSON } = useApp();
+  const { exportDataJSON, importDataJSON, workspaceId } = useApp();
   const [state, setState] = useState<PanelState>('checking');
   const [userId, setUserId] = useState('');
   const [message, setMessage] = useState('');
@@ -126,7 +126,7 @@ export function CloudSyncPanel() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [workspaceId]);
 
   const resetToIdle = () => {
     setFetched(null);
@@ -138,6 +138,13 @@ export function CloudSyncPanel() {
   };
 
   const applySnapshot = (json: string, summary: LastDownload): boolean => {
+    // The cloud copy belongs to the signed-in account. Never apply it
+    // into another workspace (e.g. after an account switch).
+    if (getActiveWorkspaceId() !== userId) {
+      setMessage('This browser is not on your account\u2019s workspace, so the cloud data was not applied. Sign in again and try downloading.');
+      setState('error');
+      return false;
+    }
     const result = importDataJSON(json);
     if (!result.success) {
       setMessage(`The cloud data could not be applied: ${result.error ?? 'unknown error'}. Your browser data was not changed.`);

@@ -231,7 +231,7 @@ export const ReceivingAccountSelector: React.FC<ReceivingAccountSelectorProps> =
           >
             <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-4 dark:border-slate-800">
               <div>
-                <h2 className="text-base font-bold text-slate-900 dark:text-white">Choose receiving account</h2>
+                <h2 className="section-title">Choose receiving account</h2>
                 <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{currency} · {accounts.length} available</p>
               </div>
               <button

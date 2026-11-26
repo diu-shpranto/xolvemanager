@@ -1127,10 +1127,10 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           </div>
         </div>
         <div className="customer-header-actions payments-header-actions flex shrink-0 items-center gap-1.5">
-          <button type="button" onClick={exportPayments} disabled={!visiblePayments.length} aria-label="Export payments" title="Export payments" className="payments-header-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-[#151C28] dark:text-slate-200 dark:hover:bg-slate-800">
+          <button type="button" onClick={exportPayments} disabled={!visiblePayments.length} aria-label="Export payments" title="Export payments" className="payments-header-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
             <ArrowDownToLine className="h-4 w-4" /><span>Export</span>
           </button>
-          <button type="button" onClick={() => { openAddPayment(); setNewPaymentMode('advance'); }} disabled={!activePaymentMethods.length || !customers.length} aria-label="Record advance" title="Record advance" className="payments-header-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-violet-200 bg-white px-3 text-sm font-semibold text-violet-700 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-900 dark:bg-[#151C28] dark:text-violet-300 dark:hover:bg-violet-950/40">
+          <button type="button" onClick={() => { openAddPayment(); setNewPaymentMode('advance'); }} disabled={!activePaymentMethods.length || !customers.length} aria-label="Record advance" title="Record advance" className="payments-header-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-violet-200 bg-white px-3 text-sm font-semibold text-violet-700 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-900 dark:bg-slate-900 dark:text-violet-300 dark:hover:bg-violet-950/40">
             <Wallet className="h-4 w-4" /><span>Record Advance</span>
           </button>
           <button type="button" onClick={() => openCustomerCollection()} disabled={!activePaymentMethods.length || !customers.length} aria-label="Collect customer payment" title="Collect customer payment" className="customer-primary-action payments-header-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-violet-700 px-3 text-sm font-semibold text-white hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-50">
@@ -1139,7 +1139,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </div>
       </header>
 
-      <div className="payment-tabs flex w-full items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-[#151C28]">
+      <div className="payment-tabs flex w-full items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-slate-900">
         <TabButton active={activeTab === 'payments'} onClick={() => setActiveTab('payments')}>Payment history <span>{payments.length}</span></TabButton>
         <TabButton active={activeTab === 'outstanding'} onClick={() => setActiveTab('outstanding')}>Money Due <span>{outstandingSales.length}</span></TabButton>
         <TabButton active={activeTab === 'due-collection'} onClick={() => setActiveTab('due-collection')}>Collect Payments <span>{dueCollectionSummary.customers.length}</span></TabButton>
@@ -1154,7 +1154,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             <Metric label="Paid Sales" value={String(dueCollectionSummary.fullyPaidTransactions)} tone="emerald" icon={CheckCircle2} />
             <Metric label={`Payments Received · ${currency}`} value={formatCurrency(dueCollectionSummary.paymentsCollected, currency)} tone="emerald" icon={HandCoins} />
           </section>
-          <section className="dashboard-panel flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:flex-row sm:items-center sm:justify-between sm:p-4">
+          <section className="dashboard-panel flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between sm:p-4">
             <div className="min-w-0">
               <h2 className="text-sm font-bold text-slate-900 dark:text-white">Customer and reseller payments</h2>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -1175,7 +1175,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               </select>
             </label>
           </section>
-          <section aria-label="Due collection filters" className="dashboard-panel grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:grid-cols-2 lg:grid-cols-4">
+          <section aria-label="Due collection filters" className="dashboard-panel grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:grid-cols-2 lg:grid-cols-4">
             <label className="relative min-w-0">
               <span className="sr-only">Search due customers</span>
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
@@ -1353,7 +1353,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         <Metric label="Failed" value={String(failedCount)} tone="rose" icon={AlertCircle} />
       </section>
 
-      <section className="payment-followup dashboard-panel rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:p-4">
+      <section className="payment-followup dashboard-panel rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-3">
           <div><p className="text-xs font-bold text-slate-800 dark:text-slate-100">Payment follow-up</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">Jump to payments that need attention</p></div>
           <button
@@ -1387,7 +1387,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </div>
       </section>
 
-      <section aria-label="Payment methods summary" className="payment-method-summary dashboard-panel space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:p-4">
+      <section aria-label="Payment methods summary" className="payment-method-summary dashboard-panel space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div><h2 className="text-sm font-bold text-slate-900 dark:text-white">Received by method</h2><p className="text-xs text-slate-500">Received and partial payments matching the current filters.</p></div>
           {selectedMethod !== 'all' && <span className="text-xs text-slate-500">Filtered to {selectedMethod}</span>}
@@ -1407,7 +1407,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </div> : <p className="payment-method-empty rounded-lg border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-slate-700">No received payments match the current filters.</p>}
       </section>
 
-      <section className="payment-filter-panel dashboard-panel space-y-3 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-[#151C28] sm:p-3">
+      <section className="payment-filter-panel dashboard-panel space-y-3 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-3">
         <div className="flex flex-col gap-2 lg:flex-row">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">Search payments and receivables</span>
@@ -2242,7 +2242,7 @@ function Metric({ label, value, tone = 'slate', icon: Icon }: {
     amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
     rose: 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
   };
-  return <article className="payment-metric min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-[#151C28] sm:p-3.5"><div className="flex min-w-0 items-center gap-2"><span className={`payment-metric-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}><Icon className="h-3.5 w-3.5" /></span><p className="min-w-0 text-[11px] font-semibold leading-tight text-slate-600 dark:text-slate-300">{label}</p></div><div className="payment-metric-value mt-2 min-w-0 break-words font-mono text-lg font-bold tabular-nums text-slate-950 dark:text-white sm:text-xl">{value}</div></article>;
+  return <article className="payment-metric min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:p-3.5"><div className="flex min-w-0 items-center gap-2"><span className={`payment-metric-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}><Icon className="h-3.5 w-3.5" /></span><p className="min-w-0 text-[11px] font-semibold leading-tight text-slate-600 dark:text-slate-300">{label}</p></div><div className="payment-metric-value mt-2 min-w-0 break-words font-mono text-lg font-bold tabular-nums text-slate-950 dark:text-white sm:text-xl">{value}</div></article>;
 }
 
 function CurrencyAmounts({ amounts, field }: {

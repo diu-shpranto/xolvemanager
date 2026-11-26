@@ -420,7 +420,7 @@ export const TopNav: React.FC<TopNavProps> = ({
               >
                 <header className="flex items-center justify-between border-b border-slate-200 px-4 py-4 dark:border-slate-800 sm:px-5">
                   <div>
-                    <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                    <h2 className="section-title">
                       {language === 'bn' ? 'নোটিফিকেশন' : 'Notifications'}
                     </h2>
                     <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400" aria-live="polite">

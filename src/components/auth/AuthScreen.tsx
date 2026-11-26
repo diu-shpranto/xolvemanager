@@ -1,36 +1,36 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { CSSProperties, FormEvent } from 'react';
 import {
   ArrowRight,
-  ChartNoAxesCombined,
   ChevronRight,
-  CreditCard,
+  Cloud,
   Eye,
   EyeOff,
   Globe2,
+  HardDrive,
   Headset,
   KeyRound,
   LoaderCircle,
   LockKeyhole,
   Mail,
-  MessageCircleMore,
-  RefreshCw,
   Scale,
   ShieldCheck,
   UserRound,
-  UsersRound,
-  WalletCards,
 } from 'lucide-react';
 import type { LocalAuthUser } from '../../services/localAuthService';
 import { ProductLogo } from '../common/BrandLockup';
 import { LocalAuthError } from '../../services/localAuthService';
 import {
   clearCloudSessionFlag,
+  hasCloudPasswordRecoverySession,
+  requestCloudPasswordReset,
+  setCloudPassword,
   signInWithGoogle,
   signInWithSupabase,
   signUpWithSupabase,
+  subscribeToSupabaseAuthChanges,
   SupabaseAuthError,
 } from '../../services/supabase/auth';
 import { isGoogleOAuthEnabled, isSupabaseConfigured } from '../../services/supabase/config';
@@ -59,28 +59,47 @@ interface AuthScreenProps {
 const copy = {
   en: {
     loginTitle: 'Sign in',
-    loginIntro: 'Use the account created in this browser. Your business records stay here and do not sync between devices.',
-    signupTitle: 'Create your account',
-    signupIntro: 'Create an account on this browser.',
-    recoveryTitle: 'Reset your password',
-    recoveryIntro: 'Use the recovery key you saved when you created your account.',
+    loginIntroCloud: 'Your cloud account keeps your business data in sync across devices. Sign in with Google, or with your email and password.',
+    loginIntroLocal: 'Sign in to the account on this device. Your business data stays in this browser and never syncs.',
+    signupTitleCloud: 'Create your cloud account',
+    signupTitleLocal: 'Create an account on this device',
+    signupIntroCloud: 'One account for every device. Your customers, sales and payments sync to the cloud.',
+    signupIntroLocal: 'Create an account that lives only in this browser. Its data never leaves this device.',
+    recoveryTitle: 'Reset your device password',
+    recoveryIntro: 'This resets the password of the account on this device. Use the recovery key you saved when you created the account.',
     fullName: 'Full name',
     email: 'Email address',
     password: 'Password',
     confirmPassword: 'Enter password again',
     recoveryKey: 'Recovery code',
     persistentSession: 'You will stay signed in on this device until you sign out.',
-    welcomeEyebrow: 'WELCOME BACK',
+    cloudSessionNote: 'Your cloud session is kept in this browser until you sign out.',
+    welcomeEyebrow: 'CLOUD ACCOUNT',
+    localEyebrow: 'THIS DEVICE ONLY',
+    setupEyebrow: 'NEW ACCOUNT',
+    recoveryEyebrow: 'RESET PASSWORD',
+    savedEyebrow: 'ACCOUNT SAVED',
     signIn: 'Sign in',
     create: 'Create account',
     createNewAccount: 'Create an account',
+    createAccountPrompt: 'New to XolveManager?',
+    signInPrompt: 'Already have an account?',
     divider: 'or',
+    emailDivider: 'or continue with email',
     recover: 'Set new password',
     forgot: 'Forgot password?',
-    createLink: 'Create Account',
+    cloudForgot: 'Forgot password?',
+    cloudResetTitle: 'Reset your cloud password',
+    cloudResetIntro: 'Enter the email address of your cloud account. We will send you a link to set a new password.',
+    cloudResetSend: 'Send reset link',
+    cloudResetSentTitle: 'Check your inbox',
+    cloudResetSentBody: 'We sent a password reset link to {email}. It only works in this browser — open the link here.',
+    cloudResetResend: 'Resend the link',
+    cloudResetResent: 'A new link was sent.',
+    cloudResetLinkInvalid: 'That reset link did not work — it may have expired, already been used, or been opened in another browser. Request a new link below.',
+    cloudResetSetTitle: 'Set a new password',
+    cloudResetSetIntro: 'Choose a new password for your cloud account. You will stay signed in after this.',
     loginLink: 'Back to sign in',
-    haveAccount: 'Already set up?',
-    noAccount: 'First time here?',
     show: 'Show password',
     hide: 'Hide password',
     strength: ['Add more variety', 'Weak', 'Fair', 'Good', 'Strong'],
@@ -92,61 +111,83 @@ const copy = {
     copyKey: 'Copy recovery code',
     copied: 'Copied',
     continue: 'Continue to sign in',
-    localTitle: 'Account on this device',
-    termsLabel: 'I acknowledge the draft Terms & Conditions and Privacy & Data Notice for this local-only app.',
-    termsLink: 'View draft terms',
+    termsLabel: 'I acknowledge the Terms & Conditions and Privacy & Data Notice.',
+    termsLink: 'View terms',
     singleOwnerPolicy: localAuthMessages.singleOwnerPolicy,
-    brandHeadline: 'Manage your',
-    brandHeadlineSecond: 'Business',
-    brandHeadlineAccent: 'with ease.',
-    brandDescription: 'Manage customers, plans, sales, and payments in one place.',
-    brandFootnote: 'Your business records are stored in this browser.',
-    featureCustomers: 'Customers',
-    featureSubscriptions: 'Plans and Renewals',
-    featureSales: 'Sales & Payments',
-    featureAccounts: 'Accounts and Profiles',
-    featureWhatsApp: 'WhatsApp Messages',
-    featureReports: 'Reports',
-    previewLabel: 'APP PREVIEW',
-    previewTitle: 'Business Summary',
-    previewCustomers: 'Customers',
-    previewSubscriptions: 'Subscriptions',
-    previewPayments: 'Payments',
-    previewActivity: 'Recent activity',
-    previewIllustration: 'Example only · no business data',
-    workspaceEyebrow: 'XolveManager workspace',
-    setupEyebrow: 'First-time setup',
-    recoveryEyebrow: 'Reset password',
     loading: 'Working…',
+    google: 'Continue with Google',
+    googleLoading: 'Connecting to Google…',
+    googleNote: 'Any Google account works — no extra setup needed.',
     language: 'বাংলা',
-    demoLogin: 'Try the Demo',
-    demoLoginSubtitle: 'Explore XolveManager with sample data.',
+    demoLogin: 'Try the demo',
+    demoLoginSubtitle: 'Sample data — nothing is saved to your account.',
     demoLoading: 'Loading demo…',
+    deviceBoxTitle: 'Prefer to stay on this device?',
+    deviceBoxBody: 'No cloud account, no sync. Your business data stays in this browser only.',
+    deviceBoxButton: 'Continue on this device',
+    backToCloud: 'Back to cloud sign-in',
+    deviceActiveNote: 'You are using the account on this device. Data stays in this browser and never syncs.',
+    errName: 'Enter your full name.',
+    errNameLong: 'Name must be 100 characters or fewer.',
+    errEmail: 'Enter a valid email address.',
+    errPasswordRequired: 'Enter your password.',
+    errPasswordChoose: 'Choose a password.',
+    errPasswordWeak: 'Choose a stronger password — at least 10 characters, with a mix of letters, numbers and symbols.',
+    errConfirmRequired: 'Enter your password again.',
+    errConfirmMismatch: 'The passwords do not match.',
+    errRecoveryKey: 'Enter the recovery key you saved.',
+    errTerms: 'Please acknowledge the terms and privacy notice to create your account.',
+    errWrongCredentials: 'Email or password is incorrect. Check them and try again.',
+    errAccountExists: 'An account with this email already exists. Try signing in instead.',
+    errEmailNotConfirmed: 'Please confirm your email first — check your inbox for the confirmation link.',
+    errPasswordTooShort: 'Your password must be at least 6 characters.',
+    errNetwork: 'Could not reach the server. Check your connection and try again.',
+    errTooManyAttempts: 'Too many attempts. Please wait a moment and try again.',
+    errGeneric: 'Something went wrong. Please try again.',
   },
   bn: {
     loginTitle: 'সাইন ইন করুন',
-    loginIntro: 'এই ব্রাউজারে তৈরি করা অ্যাকাউন্ট দিয়ে সাইন ইন করুন। ব্যবসার তথ্য এখানেই থাকে, অন্য ডিভাইসে সিঙ্ক হয় না।',
-    signupTitle: 'মালিকের অ্যাকাউন্ট তৈরি করুন',
-    signupIntro: 'এই ব্রাউজারের জন্য একটিমাত্র স্থানীয় মালিক অ্যাকাউন্ট তৈরি করুন।',
-    recoveryTitle: 'অ্যাকাউন্ট পুনরুদ্ধার',
-    recoveryIntro: 'অ্যাকাউন্ট তৈরির সময় সংরক্ষিত রিকভারি কী ব্যবহার করুন।',
+    loginIntroCloud: 'ক্লাউড অ্যাকাউন্টে আপনার ব্যবসার ডেটা সব ডিভাইসে সিঙ্ক হয়। Google দিয়ে, অথবা ইমেইল ও পাসওয়ার্ড দিয়ে সাইন ইন করুন।',
+    loginIntroLocal: 'এই ডিভাইসের অ্যাকাউন্টে সাইন ইন করুন। আপনার ব্যবসার ডেটা এই ব্রাউজারেই থাকবে, সিঙ্ক হবে না।',
+    signupTitleCloud: 'ক্লাউড অ্যাকাউন্ট তৈরি করুন',
+    signupTitleLocal: 'এই ডিভাইসে অ্যাকাউন্ট তৈরি করুন',
+    signupIntroCloud: 'সব ডিভাইসের জন্য একটি অ্যাকাউন্ট। গ্রাহক, বিক্রয় ও পেমেন্ট ক্লাউডে সিঙ্ক হবে।',
+    signupIntroLocal: 'শুধু এই ব্রাউজারে থাকে এমন একটি অ্যাকাউন্ট তৈরি করুন। এর ডেটা এই ডিভাইস ছাড়বে না।',
+    recoveryTitle: 'ডিভাইসের পাসওয়ার্ড রিসেট করুন',
+    recoveryIntro: 'এটি এই ডিভাইসের অ্যাকাউন্টের পাসওয়ার্ড রিসেট করবে। অ্যাকাউন্ট তৈরির সময় সংরক্ষিত রিকভারি কী ব্যবহার করুন।',
     fullName: 'পূর্ণ নাম',
     email: 'ইমেইল ঠিকানা',
     password: 'পাসওয়ার্ড',
     confirmPassword: 'পাসওয়ার্ড নিশ্চিত করুন',
     recoveryKey: 'রিকভারি কী',
     persistentSession: 'সাইন আউট না করা পর্যন্ত এই ডিভাইসে সাইন ইন থাকবে।',
-    welcomeEyebrow: 'আবার স্বাগতম',
+    cloudSessionNote: 'সাইন আউট না করা পর্যন্ত এই ব্রাউজারে আপনার ক্লাউড সেশন সংরক্ষিত থাকবে।',
+    welcomeEyebrow: 'ক্লাউড অ্যাকাউন্ট',
+    localEyebrow: 'শুধু এই ডিভাইসে',
+    setupEyebrow: 'নতুন অ্যাকাউন্ট',
+    recoveryEyebrow: 'পাসওয়ার্ড রিসেট',
+    savedEyebrow: 'অ্যাকাউন্ট সংরক্ষিত',
     signIn: 'সাইন ইন',
     create: 'অ্যাকাউন্ট তৈরি করুন',
-    createNewAccount: 'নতুন অ্যাকাউন্ট তৈরি করুন',
+    createNewAccount: 'অ্যাকাউন্ট তৈরি করুন',
+    createAccountPrompt: 'XolveManager-এ নতুন?',
+    signInPrompt: 'আগে থেকেই অ্যাকাউন্ট আছে?',
     divider: 'অথবা',
+    emailDivider: 'অথবা ইমেইল দিয়ে',
     recover: 'নতুন পাসওয়ার্ড সেট করুন',
     forgot: 'পাসওয়ার্ড ভুলে গেছেন?',
-    createLink: 'অ্যাকাউন্ট তৈরি করুন',
+    cloudForgot: 'পাসওয়ার্ড ভুলে গেছেন?',
+    cloudResetTitle: 'ক্লাউড পাসওয়ার্ড রিসেট করুন',
+    cloudResetIntro: 'ক্লাউড অ্যাকাউন্টের ইমেইল ঠিকানা লিখুন। নতুন পাসওয়ার্ড সেট করার লিংক পাঠানো হবে।',
+    cloudResetSend: 'রিসেট লিংক পাঠান',
+    cloudResetSentTitle: 'ইনবক্স দেখুন',
+    cloudResetSentBody: '{email} ঠিকানায় পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে। এটি শুধু এই ব্রাউজারেই কাজ করবে — লিংকটি এখানেই খুলুন।',
+    cloudResetResend: 'লিংকটি আবার পাঠান',
+    cloudResetResent: 'নতুন লিংক পাঠানো হয়েছে।',
+    cloudResetLinkInvalid: 'রিসেট লিংকটি কাজ করেনি — হয়তো মেয়াদ শেষ হয়ে গেছে, ইতিমধ্যে ব্যবহৃত হয়েছে, অথবা অন্য ব্রাউজারে খোলা হয়েছে। নিচে নতুন লিংক চেয়ে নিন।',
+    cloudResetSetTitle: 'নতুন পাসওয়ার্ড সেট করুন',
+    cloudResetSetIntro: 'ক্লাউড অ্যাকাউন্টের জন্য নতুন পাসওয়ার্ড বেছে নিন। এরপর সাইন ইন থাকবে।',
     loginLink: 'সাইন ইন-এ ফিরে যান',
-    haveAccount: 'আগে থেকেই সেট আপ করেছেন?',
-    noAccount: 'প্রথমবার ব্যবহার করছেন?',
     show: 'পাসওয়ার্ড দেখান',
     hide: 'পাসওয়ার্ড লুকান',
     strength: ['আরও বৈচিত্র্য যোগ করুন', 'দুর্বল', 'মোটামুটি', 'ভালো', 'শক্তিশালী'],
@@ -158,43 +199,124 @@ const copy = {
     copyKey: 'রিকভারি কী কপি করুন',
     copied: 'কপি হয়েছে',
     continue: 'সাইন ইন করতে এগিয়ে যান',
-    localTitle: 'শুধু স্থানীয় অ্যাকাউন্ট',
-    termsLabel: 'আমি এই স্থানীয়-শুধু অ্যাপের জন্য ড্রাফ্ট টার্মস ও প্রাইভেসি নোটিশ বুঝে নিশ্চিত করছি।',
-    termsLink: 'ড্রাফ্ট শর্ত দেখুন',
+    termsLabel: 'আমি টার্মস ও প্রাইভেসি নোটিশ পড়ে সম্মত হচ্ছি।',
+    termsLink: 'শর্ত দেখুন',
     singleOwnerPolicy: 'এই অ্যাপ প্রতি ব্রাউজার প্রোফাইলে একটি মালিক অ্যাকাউন্ট সমর্থন করে। প্রথম অ্যাকাউন্টটি মালিক হবে; পরবর্তী নিবন্ধন বন্ধ থাকবে।',
-    brandEyebrow: 'সহজ হোক আপনার ব্যবসা।',
-    brandHeadline: 'আরও বুদ্ধিমত্তার সাথে',
-    brandHeadlineSecond: 'ব্যবসা',
-    brandHeadlineAccent: 'পরিচালনা করুন।',
-    brandDescription: 'গ্রাহক, সাবস্ক্রিপশন, বিক্রয়, পেমেন্ট এবং আরও অনেক কিছু — সব এক শক্তিশালী কর্মক্ষেত্রে।',
-    brandFootnote: 'আপনার ব্যবসার তথ্য এই ব্রাউজারেই সংরক্ষিত।',
-    featureCustomers: 'গ্রাহক ব্যবস্থাপনা',
-    featureSubscriptions: 'সাবস্ক্রিপশন ও নবায়ন',
-    featureSales: 'বিক্রয় ও পেমেন্ট',
-    featureAccounts: 'অ্যাকাউন্ট ও প্রোফাইল',
-    featureWhatsApp: 'হোয়াটসঅ্যাপ সংযোগ',
-    featureReports: 'রিপোর্ট ও বিশ্লেষণ',
-    previewLabel: 'কর্মক্ষেত্রের নমুনা',
-    previewTitle: 'ব্যবসার সারসংক্ষেপ',
-    previewCustomers: 'গ্রাহক',
-    previewSubscriptions: 'সাবস্ক্রিপশন',
-    previewPayments: 'পেমেন্ট',
-    previewActivity: 'সাম্প্রতিক কার্যকলাপ',
-    previewIllustration: 'শুধু নমুনা · ব্যবসার তথ্য নয়',
-    workspaceEyebrow: 'XolveManager কর্মক্ষেত্র',
-    setupEyebrow: 'প্রথমবার সেটআপ',
-    recoveryEyebrow: 'অ্যাকাউন্ট পুনরুদ্ধার',
     loading: 'অপেক্ষা করুন…',
+    google: 'Google দিয়ে চালিয়ে যান',
+    googleLoading: 'Google-এ সংযোগ হচ্ছে…',
+    googleNote: 'যেকোনো Google অ্যাকাউন্ট চলবে — আলাদা কিছু করতে হবে না।',
     language: 'English',
-    demoLogin: 'ডেমো অ্যাকাউন্ট দেখুন',
-    demoLoginSubtitle: 'নমুনা তথ্য দিয়ে XolveManager ঘুরে দেখুন।',
+    demoLogin: 'ডেমো দেখুন',
+    demoLoginSubtitle: 'নমুনা ডেটা — আপনার অ্যাকাউন্টে কিছু সংরক্ষিত হবে না।',
     demoLoading: 'ডেমো ওয়ার্কস্পেস প্রস্তুত হচ্ছে…',
+    deviceBoxTitle: 'শুধু এই ডিভাইসেই থাকতে চান?',
+    deviceBoxBody: 'ক্লাউড অ্যাকাউন্ট নয়, সিঙ্ক নয়। আপনার ব্যবসার ডেটা শুধু এই ব্রাউজারেই থাকবে।',
+    deviceBoxButton: 'এই ডিভাইসেই চালিয়ে যান',
+    backToCloud: 'ক্লাউড সাইন-ইনে ফিরে যান',
+    deviceActiveNote: 'আপনি এই ডিভাইসের অ্যাকাউন্ট ব্যবহার করছেন। ডেটা এই ব্রাউজারেই থাকবে, সিঙ্ক হবে না।',
+    errName: 'আপনার পূর্ণ নাম লিখুন।',
+    errNameLong: 'নাম সর্বোচ্চ ১০০ অক্ষরের মধ্যে হতে হবে।',
+    errEmail: 'সঠিক ইমেইল ঠিকানা লিখুন।',
+    errPasswordRequired: 'পাসওয়ার্ড লিখুন।',
+    errPasswordChoose: 'একটি পাসওয়ার্ড বেছে নিন।',
+    errPasswordWeak: 'আরও শক্তিশালী পাসওয়ার্ড বেছে নিন — কমপক্ষে ১০ অক্ষর, অক্ষর, সংখ্যা ও চিহ্নের মিশ্রণ।',
+    errConfirmRequired: 'পাসওয়ার্ড আবার লিখুন।',
+    errConfirmMismatch: 'পাসওয়ার্ড দুটি মিলছে না।',
+    errRecoveryKey: 'সংরক্ষিত রিকভারি কী লিখুন।',
+    errTerms: 'অ্যাকাউন্ট তৈরি করতে টার্মস ও প্রাইভেসি নোটিশে সম্মত হোন।',
+    errWrongCredentials: 'ইমেইল বা পাসওয়ার্ড সঠিক নয়। যাচাই করে আবার চেষ্টা করুন।',
+    errAccountExists: 'এই ইমেইল দিয়ে ইতিমধ্যে অ্যাকাউন্ট আছে। সাইন ইন করে দেখুন।',
+    errEmailNotConfirmed: 'আগে আপনার ইমেইল নিশ্চিত করুন — ইনবক্সে পাঠানো নিশ্চিতকরণ লিংকটি দেখুন।',
+    errPasswordTooShort: 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।',
+    errNetwork: 'সার্ভারের সাথে সংযোগ হচ্ছে না। ইন্টারনেট দেখে আবার চেষ্টা করুন।',
+    errTooManyAttempts: 'অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন।',
+    errGeneric: 'কিছু একটা ভুল হয়েছে। আবার চেষ্টা করুন।',
   },
 } as const;
 
+/** The multicolour Google "G" mark, drawn inline so the button is recognisable at a glance. */
+const GoogleMark = () => (
+  <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+    <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.654 32.657 29.223 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z" />
+    <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z" />
+    <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z" />
+    <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571.001-.001.002-.001.003-.002l6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z" />
+  </svg>
+);
+
+const fieldErrorStyle: CSSProperties = {
+  color: '#a02c3c',
+  fontSize: '0.72rem',
+  fontWeight: 500,
+  lineHeight: 1.45,
+};
+
+const deviceBoxStyle: CSSProperties = {
+  marginTop: '0.4rem',
+  padding: '0.9rem',
+  border: '1px solid #e4e2f0',
+  borderRadius: '0.9rem',
+  background: '#faf9fd',
+};
+
+const deviceBoxTitleStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.45rem',
+  margin: 0,
+  color: '#292d45',
+  fontSize: '0.85rem',
+  fontWeight: 700,
+};
+
+const deviceBoxBodyStyle: CSSProperties = {
+  margin: '0.4rem 0 0.75rem',
+  color: '#66718b',
+  fontSize: '0.78rem',
+  lineHeight: 1.55,
+};
+
+type FieldName = 'name' | 'email' | 'password' | 'confirmation' | 'recoveryKey' | 'terms';
+type FieldErrors = Partial<Record<FieldName, string>>;
+
+/** Cloud password reset, inside the cloud login mode: ask for the email ('request'), confirm the link was sent ('sent'), or set the new password on the recovery session from the email link ('reset'). */
+type CloudResetView = 'none' | 'request' | 'sent' | 'reset';
+
+const getSupabaseFriendlyMessage = (error: SupabaseAuthError, language: Language): string | null => {
+  const message = error.message.toLowerCase();
+  const t = (en: string, bn: string) => (language === 'bn' ? bn : en);
+  if (message.includes('invalid login credentials')) {
+    return t('Email or password is incorrect. Check them and try again.', 'ইমেইল বা পাসওয়ার্ড সঠিক নয়। যাচাই করে আবার চেষ্টা করুন।');
+  }
+  if (message.includes('user already registered') || message.includes('already registered')) {
+    return t('An account with this email already exists. Try signing in instead.', 'এই ইমেইল দিয়ে ইতিমধ্যে অ্যাকাউন্ট আছে। সাইন ইন করে দেখুন।');
+  }
+  if (message.includes('email not confirmed')) {
+    return t('Please confirm your email first — check your inbox for the confirmation link.', 'আগে আপনার ইমেইল নিশ্চিত করুন — ইনবক্সে পাঠানো নিশ্চিতকরণ লিংকটি দেখুন।');
+  }
+  if (message.includes('password should be at least')) {
+    return t('Your password must be at least 6 characters.', 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+  }
+  if (message.includes('session missing') || message.includes('not signed in') || message.includes('invalid token')) {
+    return t('Your reset link has expired or was already used. Request a new link and try again.', 'রিসেট লিংকটির মেয়াদ শেষ হয়ে গেছে অথবা ইতিমধ্যে ব্যবহৃত হয়েছে। নতুন লিংক চেয়ে আবার চেষ্টা করুন।');
+  }
+  if (message.includes('too many requests') || message.includes('rate limit')) {
+    return t('Too many attempts. Please wait a moment and try again.', 'অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন।');
+  }
+  if (message.includes('failed to fetch') || message.includes('fetch failed') || message.includes('network')) {
+    return t('Could not reach the server. Check your connection and try again.', 'সার্ভারের সাথে সংযোগ হচ্ছে না। ইন্টারনেট দেখে আবার চেষ্টা করুন।');
+  }
+  return null;
+};
+
 const getErrorMessage = (error: unknown, language: Language): string => {
-  if (!(error instanceof Error)) return 'Local authentication failed. Please try again.';
-  if (error instanceof SupabaseAuthError) return error.message;
+  if (!(error instanceof Error)) {
+    return language === 'bn' ? 'সাইন-ইন ব্যর্থ হয়েছে। আবার চেষ্টা করুন।' : 'Sign-in failed. Please try again.';
+  }
+  if (error instanceof SupabaseAuthError) {
+    return getSupabaseFriendlyMessage(error, language) ?? error.message;
+  }
   if (language !== 'bn' || !(error instanceof LocalAuthError)) return error.message;
   const messages: Partial<Record<LocalAuthError['code'], string>> = {
     AUTH_UNAVAILABLE: 'এই পরিবেশে নিরাপদ স্থানীয় সাইন-ইন উপলভ্য নয়।',
@@ -226,16 +348,22 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState(initialError || '');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [busy, setBusy] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState(false);
   const [resultKey, setResultKey] = useState('');
   const [copied, setCopied] = useState(false);
   const text = copy[language];
   // Cloud (Supabase) sign-in is the primary path when configured; the local
-  // account on this device stays available as a fallback. When Supabase is
-  // not configured the screen behaves exactly as before (local only).
+  // account on this device stays available as a clearly secondary option.
+  // When Supabase is not configured the screen behaves exactly as before
+  // (device account only).
   const cloudAvailable = isSupabaseConfigured();
   const [authProvider, setAuthProvider] = useState<'cloud' | 'local'>(cloudAvailable ? 'cloud' : 'local');
   const googleEnabled = isGoogleOAuthEnabled();
+  const [cloudResetView, setCloudResetView] = useState<CloudResetView>('none');
+  const [resetLinkFailed, setResetLinkFailed] = useState(false);
+  const [resent, setResent] = useState(false);
 
   useEffect(() => {
     try {
@@ -243,6 +371,42 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     } catch {
       setLanguage('en');
     }
+  }, []);
+
+  // Detect a cloud password-reset landing. The app shell's session check
+  // runs before this screen mounts, so a recovery session is already marked
+  // by then; the subscription covers the event arriving after mount.
+  useEffect(() => {
+    if (!cloudAvailable) return;
+    let cancelled = false;
+    const unsubscribe = subscribeToSupabaseAuthChanges((event) => {
+      if (event === 'PASSWORD_RECOVERY' && !cancelled) {
+        setAuthProvider('cloud');
+        setCloudResetView('reset');
+      }
+    });
+    void hasCloudPasswordRecoverySession().then((isRecovery) => {
+      if (cancelled) return;
+      if (isRecovery) {
+        setAuthProvider('cloud');
+        setCloudResetView('reset');
+        return;
+      }
+      // A reset link that could not be used (expired, already used, or
+      // opened in another browser) still leaves its code/error in the URL.
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('code') || params.has('error')) {
+        setAuthProvider('cloud');
+        setCloudResetView('request');
+        setResetLinkFailed(true);
+      }
+    }).catch(() => {
+      // Detection failure: stay on the normal sign-in form.
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -282,10 +446,82 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
 
   const navigate = (path: string) => {
     setError('');
+    setFieldErrors({});
     setResultKey('');
     setCopied(false);
     setAcceptedTerms(false);
+    setCloudResetView('none');
+    setResetLinkFailed(false);
+    setResent(false);
     onNavigate(path);
+  };
+
+  const switchProvider = (provider: 'cloud' | 'local') => {
+    setAuthProvider(provider);
+    setError('');
+    setFieldErrors({});
+    setCloudResetView('none');
+    setResetLinkFailed(false);
+    setResent(false);
+  };
+
+  /** Leave the cloud reset flow and return to the normal sign-in form. */
+  const closeCloudReset = () => {
+    setCloudResetView('none');
+    setResetLinkFailed(false);
+    setResent(false);
+    setError('');
+    setFieldErrors({});
+    setPassword('');
+    setConfirmation('');
+  };
+
+  const clearFieldError = (field: FieldName) => {
+    setFieldErrors(previous => {
+      if (!previous[field]) return previous;
+      const next = { ...previous };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const validateForm = (): FieldErrors => {
+    const errors: FieldErrors = {};
+    if (mode === 'signup') {
+      if (name.trim().length === 0) errors.name = text.errName;
+      else if (name.trim().length > 100) errors.name = text.errNameLong;
+    }
+    if (!isValidAuthEmail(email)) errors.email = text.errEmail;
+    if (mode === 'forgot-password' && recoveryKey.trim().length === 0) {
+      errors.recoveryKey = text.errRecoveryKey;
+    }
+    if (mode === 'login') {
+      if (password.length === 0) errors.password = text.errPasswordRequired;
+    } else if (password.length === 0) {
+      errors.password = text.errPasswordChoose;
+    } else if (getPasswordStrength(password) < 3) {
+      errors.password = text.errPasswordWeak;
+    }
+    if (mode !== 'login') {
+      if (confirmation.length === 0) errors.confirmation = text.errConfirmRequired;
+      else if (confirmation !== password) errors.confirmation = text.errConfirmMismatch;
+    }
+    if (mode === 'signup' && !acceptedTerms) errors.terms = text.errTerms;
+    return errors;
+  };
+
+  const validateCloudResetForm = (): FieldErrors => {
+    const errors: FieldErrors = {};
+    if (cloudResetView === 'request') {
+      if (!isValidAuthEmail(email)) errors.email = text.errEmail;
+    }
+    if (cloudResetView === 'reset') {
+      if (password.length === 0) errors.password = text.errPasswordChoose;
+      else if (getPasswordStrength(password) < 3) errors.password = text.errPasswordWeak;
+      if (confirmation.length === 0) errors.confirmation = text.errConfirmRequired;
+      else if (confirmation !== password) errors.confirmation = text.errConfirmMismatch;
+    }
+    return errors;
   };
 
   const updateLanguage = () => {
@@ -301,18 +537,33 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
-    if (!isValidAuthEmail(email)) {
-      setError(language === 'bn' ? 'সঠিক ইমেইল ঠিকানা লিখুন।' : 'Enter a valid email address.');
+    // Cloud password reset, inside the cloud login mode: request a link, or
+    // set the new password on the recovery session from the email link.
+    if (cloudResetView === 'request' || cloudResetView === 'reset') {
+      const errors = validateCloudResetForm();
+      setFieldErrors(errors);
+      if (Object.keys(errors).length > 0) return;
+      setBusy(true);
+      try {
+        if (cloudResetView === 'request') {
+          await requestCloudPasswordReset(email);
+          setResetLinkFailed(false);
+          setResent(false);
+          setCloudResetView('sent');
+        } else {
+          const user = await setCloudPassword(password);
+          onAuthenticated(user);
+        }
+      } catch (caught) {
+        setError(getErrorMessage(caught, language));
+      } finally {
+        setBusy(false);
+      }
       return;
     }
-    if (mode === 'signup' && !acceptedTerms) {
-      setError(language === 'bn' ? 'অ্যাকাউন্ট তৈরি করতে ড্রাফ্ট টার্মস ও প্রাইভেসি নোটিশ মেনে নিতে হবে।' : 'Please acknowledge the draft terms and privacy notice before creating your account.');
-      return;
-    }
-    if (mode !== 'login' && password !== confirmation) {
-      setError(language === 'bn' ? 'পাসওয়ার্ড দুটি মিলছে না।' : 'The passwords do not match.');
-      return;
-    }
+    const errors = validateForm();
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
     setBusy(true);
     try {
       if (mode === 'login' && authProvider === 'cloud') {
@@ -350,9 +601,22 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
 
   const handleGoogleLogin = async () => {
     setError('');
-    setBusy(true);
+    setOauthBusy(true);
     try {
       await signInWithGoogle();
+    } catch (caught) {
+      setError(getErrorMessage(caught, language));
+    } finally {
+      setOauthBusy(false);
+    }
+  };
+
+  const handleResendResetLink = async () => {
+    setError('');
+    setBusy(true);
+    try {
+      await requestCloudPasswordReset(email);
+      setResent(true);
     } catch (caught) {
       setError(getErrorMessage(caught, language));
     } finally {
@@ -384,20 +648,39 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   };
 
   const strength = getPasswordStrength(password);
-  const title = mode === 'login' ? text.loginTitle : mode === 'signup' ? text.signupTitle : text.recoveryTitle;
-  const intro = authProvider === 'cloud' && mode !== 'forgot-password'
-    ? (mode === 'login'
-      ? (language === 'bn' ? 'ক্লাউড অ্যাকাউন্টে সাইন ইন করুন। আপনার ডেটা সব ডিভাইসে সিঙ্ক হবে।' : 'Sign in to your cloud account. Your data syncs across devices.')
-      : (language === 'bn' ? 'ক্লাউড অ্যাকাউন্ট তৈরি করুন — ডেটা সব ডিভাইসে সিঙ্ক হবে।' : 'Create a cloud account — your data will sync across devices.'))
-    : mode === 'login' ? text.loginIntro : mode === 'signup' ? text.signupIntro : text.recoveryIntro;
-  const featureItems = [
-    { Icon: UsersRound, label: text.featureCustomers },
-    { Icon: RefreshCw, label: text.featureSubscriptions },
-    { Icon: CreditCard, label: text.featureSales },
-    { Icon: WalletCards, label: text.featureAccounts },
-    { Icon: MessageCircleMore, label: text.featureWhatsApp },
-    { Icon: ChartNoAxesCombined, label: text.featureReports },
-  ];
+  const title = cloudResetView === 'sent'
+    ? text.cloudResetSentTitle
+    : cloudResetView === 'reset'
+      ? text.cloudResetSetTitle
+      : cloudResetView !== 'none'
+        ? text.cloudResetTitle
+        : mode === 'login'
+          ? text.loginTitle
+          : mode === 'signup'
+            ? (authProvider === 'cloud' ? text.signupTitleCloud : text.signupTitleLocal)
+            : text.recoveryTitle;
+  const eyebrow = cloudResetView !== 'none'
+    ? text.recoveryEyebrow
+    : mode === 'forgot-password'
+      ? text.recoveryEyebrow
+      : mode === 'signup'
+        ? text.setupEyebrow
+        : authProvider === 'cloud' ? text.welcomeEyebrow : text.localEyebrow;
+  const intro = cloudResetView === 'sent'
+    ? text.cloudResetSentBody.replace('{email}', email)
+    : cloudResetView === 'reset'
+      ? text.cloudResetSetIntro
+      : cloudResetView !== 'none'
+        ? text.cloudResetIntro
+        : mode === 'forgot-password'
+          ? text.recoveryIntro
+          : authProvider === 'cloud'
+            ? (mode === 'login' ? text.loginIntroCloud : text.signupIntroCloud)
+            : (mode === 'login' ? text.loginIntroLocal : text.signupIntroLocal);
+
+  const fieldError = (field: FieldName) => fieldErrors[field] ? (
+    <span id={`${field}-error`} role="alert" style={fieldErrorStyle}>{fieldErrors[field]}</span>
+  ) : null;
 
   return (
     <main className="auth-page" data-auth-language={language} data-auth-mode={mode}>
@@ -412,7 +695,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
               {resultKey ? (
                 <div className="auth-success">
                   <div className="auth-success-mark"><KeyRound aria-hidden="true" /></div>
-                  <p className="auth-eyebrow">{text.localTitle}</p>
+                  <p className="auth-eyebrow">{text.savedEyebrow}</p>
                   <h2 id="auth-heading">{mode === 'signup' ? text.accountSavedTitle : text.recoverySavedTitle}</h2>
                   <p className="auth-intro">{mode === 'signup' ? text.accountSaved : text.recoverySaved}</p>
                   <div className="auth-recovery-key" aria-label={text.recoveryKey}>{resultKey}</div>
@@ -423,64 +706,90 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
               ) : (
                 <>
                   <div className="auth-heading">
-                    <p className="auth-eyebrow">{mode === 'login' ? text.welcomeEyebrow : mode === 'signup' ? text.setupEyebrow : text.recoveryEyebrow}</p>
+                    <p className="auth-eyebrow">{eyebrow}</p>
                     <h2 id="auth-heading">{title}</h2>
                     <p className="auth-intro">{intro}</p>
                   </div>
 
                   {error && <div role="alert" aria-live="assertive" className="auth-alert auth-alert--error">{error}</div>}
+                  {cloudResetView === 'request' && resetLinkFailed && <div role="alert" className="auth-alert auth-alert--warning">{text.cloudResetLinkInvalid}</div>}
                   {mode === 'signup' && hasAccount && authProvider === 'local' && <div role="alert" className="auth-alert auth-alert--warning">{text.setupDisabled}</div>}
-                  {cloudAvailable && mode !== 'forgot-password' && (
-                    <div role="note" className="auth-alert" style={{ borderColor: '#c4b5fd', background: '#f5f3ff', color: '#4c1d95' }}>
-                      {authProvider === 'cloud'
-                        ? (language === 'bn' ? 'ক্লাউড সাইন-ইন চালু আছে।' : 'Cloud sign-in is on.')
-                        : (language === 'bn' ? 'এই ব্রাউজারের স্থানীয় অ্যাকাউন্ট ব্যবহার করছেন।' : 'Using the local account on this device.')}
-                      {' '}
-                      <button type="button" onClick={() => setAuthProvider(authProvider === 'cloud' ? 'local' : 'cloud')} className="auth-text-link">
-                        {authProvider === 'cloud'
-                          ? (language === 'bn' ? 'স্থানীয় অ্যাকাউন্ট ব্যবহার করুন' : 'Use the account on this device instead')
-                          : (language === 'bn' ? 'ক্লাউড সাইন-ইন ব্যবহার করুন' : 'Use cloud sign-in instead')}
-                      </button>
-                    </div>
+
+                  {cloudAvailable && authProvider === 'local' && mode !== 'forgot-password' && (
+                    <button type="button" onClick={() => switchProvider('cloud')} className="auth-text-link" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.2rem' }}>
+                      <Cloud aria-hidden="true" style={{ width: '0.9rem', height: '0.9rem' }} />{text.backToCloud}
+                    </button>
                   )}
 
-                  <form onSubmit={handleSubmit} className="auth-form" aria-busy={busy}>
+                  {cloudAvailable && authProvider === 'cloud' && mode !== 'forgot-password' && cloudResetView === 'none' && (
+                    <>
+                      <button type="button" onClick={() => void handleGoogleLogin()} disabled={busy || oauthBusy || !googleEnabled} className="auth-account-button" title={googleEnabled ? undefined : 'Google sign-in is not configured yet.'}>
+                        {oauthBusy ? <LoaderCircle className="auth-spinner" aria-hidden="true" /> : <GoogleMark />}
+                        <span>{oauthBusy ? text.googleLoading : text.google}</span>
+                        <ChevronRight aria-hidden="true" />
+                      </button>
+                      {googleEnabled
+                        ? <p className="auth-session-note" style={{ marginTop: '0.5rem' }}>{text.googleNote}</p>
+                        : <p className="auth-session-note" style={{ marginTop: '0.5rem' }}>{language === 'bn' ? 'Google সাইন-ইন এখনও চালু হয়নি — ইমেইল ও পাসওয়ার্ড ব্যবহার করুন।' : 'Google sign-in is not configured yet — use email and password.'}</p>}
+                      <div className="auth-divider"><span />{text.emailDivider}<span /></div>
+                    </>
+                  )}
+
+                  {cloudResetView === 'sent' ? (
+                    <>
+                      {resent && <p className="auth-session-note" role="status">{text.cloudResetResent}</p>}
+                      <button type="button" onClick={() => void handleResendResetLink()} disabled={busy || oauthBusy} className="auth-secondary-button" style={{ width: '100%' }}>{busy ? text.loading : text.cloudResetResend}</button>
+                      <div className="auth-links">
+                        <button type="button" onClick={closeCloudReset} className="auth-text-link">{text.loginLink}</button>
+                      </div>
+                    </>
+                  ) : (
+                  <form onSubmit={handleSubmit} className="auth-form" aria-busy={busy} noValidate>
                     {mode === 'signup' && (
                       <label className="auth-field">{text.fullName}
-                        <span className="auth-input-wrap"><UserRound aria-hidden="true" /><input autoComplete="name" required maxLength={100} value={name} onChange={event => setName(event.target.value)} className={`${inputClass} auth-input--with-icon`} /></span>
+                        <span className="auth-input-wrap"><UserRound aria-hidden="true" /><input autoComplete="name" required maxLength={100} value={name} onChange={event => { setName(event.target.value); clearFieldError('name'); }} className={`${inputClass} auth-input--with-icon`} aria-invalid={!!fieldErrors.name} aria-describedby={fieldErrors.name ? 'name-error' : undefined} /></span>
+                        {fieldError('name')}
                       </label>
                     )}
+                    {cloudResetView !== 'reset' && (
                     <label className="auth-field">{text.email}
-                      <span className="auth-input-wrap"><Mail aria-hidden="true" /><input type="email" autoComplete={mode === 'login' ? 'off' : 'email'} required value={email} onChange={event => setEmail(event.target.value)} className={`${inputClass} auth-input--with-icon`} /></span>
+                      <span className="auth-input-wrap"><Mail aria-hidden="true" /><input type="email" autoComplete={mode === 'login' ? 'off' : 'email'} required value={email} onChange={event => { setEmail(event.target.value); clearFieldError('email'); }} className={`${inputClass} auth-input--with-icon`} aria-invalid={!!fieldErrors.email} aria-describedby={fieldErrors.email ? 'email-error' : undefined} /></span>
+                      {fieldError('email')}
                     </label>
+                    )}
 
                     {mode === 'forgot-password' && (
                       <label className="auth-field">{text.recoveryKey}
-                        <input autoComplete="off" required value={recoveryKey} onChange={event => setRecoveryKey(event.target.value)} className={`${inputClass} auth-input--mono`} />
+                        <input autoComplete="off" required value={recoveryKey} onChange={event => { setRecoveryKey(event.target.value); clearFieldError('recoveryKey'); }} className={`${inputClass} auth-input--mono`} aria-invalid={!!fieldErrors.recoveryKey} aria-describedby={fieldErrors.recoveryKey ? 'recoveryKey-error' : undefined} />
+                        {fieldError('recoveryKey')}
                       </label>
                     )}
 
+                    {cloudResetView !== 'request' && (
                     <label className="auth-field">{text.password}
                       <span className="auth-password-wrap">
                         <LockKeyhole aria-hidden="true" />
-                        <input type={showPassword ? 'text' : 'password'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required value={password} onChange={event => setPassword(event.target.value)} className={`${inputClass} auth-input--password auth-input--with-icon`} />
+                        <input type={showPassword ? 'text' : 'password'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required value={password} onChange={event => { setPassword(event.target.value); clearFieldError('password'); }} className={`${inputClass} auth-input--password auth-input--with-icon`} aria-invalid={!!fieldErrors.password} aria-describedby={fieldErrors.password ? 'password-error' : undefined} />
                         <button type="button" onClick={() => setShowPassword(value => !value)} className="auth-visibility-button" aria-label={showPassword ? text.hide : text.show} aria-pressed={showPassword}>{showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}</button>
                       </span>
+                      {fieldError('password')}
                     </label>
-                    {mode !== 'login' && password.length > 0 && (
+                    )}
+                    {(mode !== 'login' || cloudResetView === 'reset') && password.length > 0 && (
                       <div aria-live="polite" className="auth-strength">
                         <div className="auth-strength-bars" aria-hidden="true">{[1, 2, 3, 4].map(level => <span key={level} className={strength >= level ? `is-active strength-${strength}` : ''} />)}</div>
                         <span>{text.strength[strength]}</span>
                       </div>
                     )}
 
-                    {mode !== 'login' && (
+                    {(mode !== 'login' || cloudResetView === 'reset') && (
                       <label className="auth-field">{text.confirmPassword}
                         <span className="auth-password-wrap">
                           <LockKeyhole aria-hidden="true" />
-                          <input type={showConfirmation ? 'text' : 'password'} autoComplete="new-password" required value={confirmation} onChange={event => setConfirmation(event.target.value)} className={`${inputClass} auth-input--password auth-input--with-icon`} />
+                          <input type={showConfirmation ? 'text' : 'password'} autoComplete="new-password" required value={confirmation} onChange={event => { setConfirmation(event.target.value); clearFieldError('confirmation'); }} className={`${inputClass} auth-input--password auth-input--with-icon`} aria-invalid={!!fieldErrors.confirmation} aria-describedby={fieldErrors.confirmation ? 'confirmation-error' : undefined} />
                           <button type="button" onClick={() => setShowConfirmation(value => !value)} className="auth-visibility-button" aria-label={showConfirmation ? text.hide : text.show} aria-pressed={showConfirmation}>{showConfirmation ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}</button>
                         </span>
+                        {fieldError('confirmation')}
                       </label>
                     )}
 
@@ -490,47 +799,80 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                         <button type="button" onClick={() => navigate('/forgot-password')} className="auth-text-link">{text.forgot}</button>
                       </div>
                     )}
-                    {mode === 'login' && authProvider === 'cloud' && (
+                    {mode === 'login' && authProvider === 'cloud' && cloudResetView === 'none' && (
                       <div className="auth-login-options">
-                        <p className="auth-session-note">{language === 'bn' ? 'ক্লাউড সেশন এই ব্রাউজারে সংরক্ষিত থাকে।' : 'Your cloud session is kept in this browser until you sign out.'}</p>
+                        <p className="auth-session-note">{text.cloudSessionNote}</p>
+                        <button type="button" onClick={() => { setError(''); setFieldErrors({}); setCloudResetView('request'); }} className="auth-text-link">{text.cloudForgot}</button>
                       </div>
+                    )}
+                    {mode === 'forgot-password' && (
+                      <p className="auth-session-note">{text.deviceActiveNote}</p>
                     )}
 
                     {mode === 'signup' && (
-                      <label className="auth-terms">
-                        <input
-                          type="checkbox"
-                          checked={acceptedTerms}
-                          onChange={event => setAcceptedTerms(event.target.checked)}
-                          aria-label="Acknowledge the draft terms and privacy notice"
-                          required
-                        />
-                        <span>
-                          {text.termsLabel}{' '}
-                          <a href="/legal/terms" className="auth-inline-link">{text.termsLink}</a>
-                        </span>
-                      </label>
+                      <div>
+                        <label className="auth-terms">
+                          <input
+                            type="checkbox"
+                            checked={acceptedTerms}
+                            onChange={event => { setAcceptedTerms(event.target.checked); clearFieldError('terms'); }}
+                            aria-label="Acknowledge the terms and privacy notice"
+                            aria-invalid={!!fieldErrors.terms}
+                            aria-describedby={fieldErrors.terms ? 'terms-error' : undefined}
+                            required
+                          />
+                          <span>
+                            {text.termsLabel}{' '}
+                            <a href="/legal/terms" className="auth-inline-link">{text.termsLink}</a>
+                          </span>
+                        </label>
+                        {fieldError('terms')}
+                      </div>
                     )}
 
-                    <button type="submit" disabled={busy || (mode === 'signup' && hasAccount && authProvider === 'local')} className="auth-primary-button">{busy && <LoaderCircle className="auth-spinner" aria-hidden="true" />}{busy ? text.loading : mode === 'login' ? <>{text.signIn}<ArrowRight aria-hidden="true" /></> : mode === 'signup' ? text.create : text.recover}</button>
+                    <button type="submit" disabled={busy || oauthBusy || (mode === 'signup' && hasAccount && authProvider === 'local')} className="auth-primary-button">{busy && <LoaderCircle className="auth-spinner" aria-hidden="true" />}{busy ? text.loading : cloudResetView === 'request' ? text.cloudResetSend : cloudResetView === 'reset' ? text.recover : mode === 'login' ? <>{text.signIn}<ArrowRight aria-hidden="true" /></> : mode === 'signup' ? text.create : text.recover}</button>
                   </form>
-
-                  {mode === 'login' && authProvider === 'cloud' && (
-                    <>
-                      <div className="auth-divider"><span />{text.divider}<span /></div>
-                      <button type="button" onClick={() => void handleGoogleLogin()} disabled={busy || !googleEnabled} className="auth-account-button" title={googleEnabled ? undefined : 'Google sign-in is not configured yet.'}>
-                        <Globe2 aria-hidden="true" />
-                        <span>{language === 'bn' ? 'Google দিয়ে সাইন ইন' : 'Continue with Google'}</span>
-                        <ChevronRight aria-hidden="true" />
-                      </button>
-                      {!googleEnabled && <p className="auth-session-note">{language === 'bn' ? 'Google সাইন-ইন এখনও চালু হয়নি — ইমেইল ও পাসওয়ার্ড ব্যবহার করুন।' : 'Google sign-in is not configured yet — use email and password.'}</p>}
-                    </>
                   )}
 
-                  {mode === 'login' && (
+                  {cloudResetView !== 'none' && cloudResetView !== 'sent' && (
+                    <div className="auth-links">
+                      <button type="button" onClick={closeCloudReset} className="auth-text-link">{text.loginLink}</button>
+                    </div>
+                  )}
+
+                  {mode === 'login' && cloudResetView === 'none' && (
+                    <button type="button" onClick={() => navigate('/signup')} className="auth-account-button" style={{ marginTop: '0.9rem' }}>
+                      <UserRound aria-hidden="true" />
+                      <span>{text.createAccountPrompt} {text.createNewAccount}</span>
+                      <ChevronRight aria-hidden="true" />
+                    </button>
+                  )}
+
+                  {mode === 'signup' && (
+                    <div className="auth-links">
+                      <span>{text.signInPrompt}</span>
+                      <button type="button" onClick={() => navigate('/login')} className="auth-text-link">{text.signIn}</button>
+                    </div>
+                  )}
+
+                  {mode === 'forgot-password' && (
+                    <div className="auth-links">
+                      <button type="button" onClick={() => navigate('/login')} className="auth-text-link">{text.loginLink}</button>
+                    </div>
+                  )}
+
+                  {cloudAvailable && authProvider === 'cloud' && mode !== 'forgot-password' && cloudResetView === 'none' && (
+                    <section aria-label={text.deviceBoxTitle} style={deviceBoxStyle}>
+                      <p style={deviceBoxTitleStyle}><HardDrive aria-hidden="true" style={{ width: '0.95rem', height: '0.95rem' }} />{text.deviceBoxTitle}</p>
+                      <p style={deviceBoxBodyStyle}>{text.deviceBoxBody}</p>
+                      <button type="button" onClick={() => switchProvider('local')} disabled={busy || oauthBusy} className="auth-secondary-button" style={{ width: '100%' }}>{text.deviceBoxButton}</button>
+                    </section>
+                  )}
+
+                  {mode === 'login' && cloudResetView === 'none' && (
                     <>
                       <div className="auth-divider"><span />{text.divider}<span /></div>
-                      <button type="button" onClick={handleDemoLogin} disabled={busy} className="auth-account-button auth-demo-button">
+                      <button type="button" onClick={() => void handleDemoLogin()} disabled={busy || oauthBusy} className="auth-account-button auth-demo-button">
                         {busy ? <LoaderCircle className="auth-spinner" aria-hidden="true" /> : <ShieldCheck aria-hidden="true" />}
                         <span>
                           <strong>{busy ? text.demoLoading : text.demoLogin}</strong>
@@ -538,15 +880,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                         </span>
                         <ChevronRight aria-hidden="true" />
                       </button>
-                      <button type="button" onClick={() => navigate('/signup')} className="auth-account-button"><UserRound aria-hidden="true" /><span>{text.createNewAccount}</span><ChevronRight aria-hidden="true" /></button>
                     </>
-                  )}
-
-                  {mode !== 'login' && (
-                    <div className="auth-links">
-                      <span>{mode === 'signup' ? text.haveAccount : text.loginLink}</span>
-                      <button type="button" onClick={() => navigate('/login')} className="auth-text-link">{text.signIn}</button>
-                    </div>
                   )}
 
                 </>

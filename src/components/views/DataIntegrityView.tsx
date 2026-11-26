@@ -126,11 +126,11 @@ export const DataIntegrityView: React.FC<DataIntegrityViewProps> = ({ onOpenBack
   }, [result, search, selectedCategory]);
   const checkedDate = result ? formatDateTime(result.checkedAt) : '';
 
-  return <div className="mx-auto w-full max-w-screen-2xl space-y-5 px-4 py-4 sm:px-6 lg:px-8">
+  return <div className="section-layout-shell mx-auto w-full max-w-[1600px] space-y-5 px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
     <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">Business safeguards</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-3xl">Check and Fix Data</h1>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Check and Fix Data</h1>
         <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-400">Inspect business records, financial relationships, local storage warnings, and recovery options without changing your data.</p>
       </div>
       <button type="button" onClick={() => void check()} disabled={isChecking} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60">

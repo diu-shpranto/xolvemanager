@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useLayoutEffect, useRef, ReactNode, useMemo } from 'react';
+import React, { createContext, useCallback, useContext, useState, useEffect, useLayoutEffect, useRef, ReactNode, useMemo } from 'react';
 import {
   Customer,
   Service,
@@ -111,8 +111,11 @@ import {
 import {
   createRecordId,
   getActiveDataEnvironment,
+  getActiveWorkspaceId,
   getStorageKey,
   getStorageWarnings,
+  LOCAL_WORKSPACE_ID,
+  setActiveWorkspaceId,
   getAccounts,
   getCustomers,
   getHistory,
@@ -183,6 +186,7 @@ import {
   type ReminderCandidate,
 } from '../services/reminderEngine';
 import { createManualReminderRecord, updateReminderRecord } from '../services/followUpService';
+import { subscribeToSupabaseAuthChanges } from '../services/supabase/auth';
 
 export interface NewSalePayload {
   customerId: string;
@@ -447,6 +451,10 @@ interface AppContextType {
   clearBusinessData: () => void;
   exportDataJSON: () => string;
   importDataJSON: (jsonStr: string) => DataImportResult;
+  /** Re-reads every data slice from the ACTIVE workspace into state. */
+  reloadWorkspaceData: () => void;
+  /** The active per-account workspace id ('local' or a cloud user id). */
+  workspaceId: string;
 
   // Computed Metrics
   stats: {
@@ -905,6 +913,100 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       return false;
     }
   };
+
+  // Per-account workspaces: reload every data slice from the ACTIVE
+  // workspace. Theme, language and currency are shared across workspaces
+  // and are deliberately left alone here. Runs when the workspace
+  // switches (auth state change) and after the first-sign-in move copies
+  // local data into the account. Mirrors the mount-time initializers.
+  const [workspaceId, setWorkspaceId] = useState<string>(() => getActiveWorkspaceId());
+
+  const reloadWorkspaceData = useCallback((): void => {
+    const business = getCurrentBusiness();
+    const businessId = business?.businessId;
+    const normalized = normalizeBusinessData(
+      getCustomers(),
+      getServices(),
+      getAccounts(),
+      getSubscriptions(),
+      getSales(),
+      getPayments(),
+      getHistory(),
+      businessId
+    );
+    const freshLogs = normalizeActivityLogs(normalized.activityLogs, normalized.accounts);
+    setCurrentBusiness(business);
+    setCurrentBusinessName(business?.name ?? '');
+    setCustomers(normalized.customers);
+    setServices(normalized.services);
+    setAccounts(normalized.accounts);
+    setSubscriptions(normalized.subscriptions);
+    setSales(normalized.sales);
+    setPayments(normalized.payments);
+    setActivityLogs(freshLogs);
+    setOrders(getOrders().filter(item => !businessId || !item.businessId || item.businessId === businessId));
+    setFinancialAccounts(getFinancialAccounts().filter(item => !businessId || !item.businessId || item.businessId === businessId));
+    setExpenses(getExpenses().filter(item => !businessId || !item.businessId || item.businessId === businessId));
+    setOtherIncome(getOtherIncome().filter(item => !businessId || !item.businessId || item.businessId === businessId));
+    setFinancialTransfers(getFinancialTransfers().filter(item => !businessId || !item.businessId || item.businessId === businessId));
+    setFinancialAdjustments(getFinancialAdjustments().filter(item => !businessId || !item.businessId || item.businessId === businessId));
+    setDailyClosings(getDailyClosings().filter(item => !businessId || item.businessId === businessId));
+    setFinancialReconciliations(getFinancialReconciliations().filter(item => !businessId || !item.businessId || item.businessId === businessId));
+    setFinancialPeriods(getFinancialPeriods().filter(item => !businessId || !item.businessId || item.businessId === businessId));
+    setReminders(getReminders().filter(item => !businessId || !item.businessId || item.businessId === businessId));
+    setProfitabilityCosts(getProfitabilityCosts().filter(item => !businessId || !item.businessId || item.businessId === businessId));
+    setInvoices(normalizeInvoices(getInvoices(), normalized.sales, normalized.payments, businessId));
+    setNotifications(getNotifications());
+    setSettings(normalizeSettings(getSettings() || {}));
+    setStorageWarning(getStorageWarnings()[0] || null);
+    loggedAdvanceCreditPaymentIds.current = new Set(
+      freshLogs
+        .filter(log => log.type === 'advance_credit_created')
+        .map(log => log.paymentId || log.entityId)
+        .filter((id): id is string => Boolean(id))
+    );
+    loggedAdvanceCreditApplicationIds.current = new Set(
+      freshLogs
+        .filter(log => log.type === 'advance_credit_applied')
+        .map(log => String(log.metadata?.advanceApplicationId || ''))
+        .filter(Boolean)
+    );
+    loggedInvoiceEntityIds.current = new Set(
+      freshLogs.flatMap(log =>
+        log.type === 'invoice_generated' && log.entityId
+          ? [log.entityId]
+          : log.type === 'invoice_created' && log.invoiceId
+            ? [log.invoiceId]
+            : []
+      )
+    );
+    evaluatedReminderKeys.current = new Set();
+  }, []);
+
+  // Switch workspaces when the Supabase auth state changes mid-session
+  // (sign-in, sign-out, account switch, session expiry). The listener also
+  // fires once with INITIAL_SESSION, which corrects the workspace if the
+  // persisted scope is stale. Switching never deletes any workspace's data.
+  useEffect(() => {
+    const unsubscribe = subscribeToSupabaseAuthChanges((event, user) => {
+      const nextWorkspace = event === 'SIGNED_OUT' || !user ? LOCAL_WORKSPACE_ID : user.uid;
+      if (nextWorkspace === getActiveWorkspaceId()) return;
+      setActiveWorkspaceId(nextWorkspace);
+      setWorkspaceId(nextWorkspace);
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+
+  const isFirstWorkspaceRender = useRef(true);
+  useEffect(() => {
+    if (isFirstWorkspaceRender.current) {
+      isFirstWorkspaceRender.current = false;
+      return;
+    }
+    reloadWorkspaceData();
+  }, [workspaceId, reloadWorkspaceData]);
   const persistRelatedRecordsAtomically = (records: {
     accounts?: Account[];
     subscriptions?: Subscription[];
@@ -7272,6 +7374,8 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         clearBusinessData,
         exportDataJSON,
         importDataJSON,
+        reloadWorkspaceData,
+        workspaceId,
         stats,
       }}
     >

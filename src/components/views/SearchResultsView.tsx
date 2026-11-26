@@ -128,10 +128,10 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({ query, onS
   }, {} as Record<SearchEntity, number>), [results]);
 
   const filterClass = 'min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200';
-  return <div className="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
+  return <div className="section-layout-shell mx-auto max-w-6xl space-y-5 px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
     <header className="flex items-start gap-3">
       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><Search className="h-5 w-5" /></span>
-      <div><h1 className="text-2xl font-bold text-slate-900 dark:text-white">{copy.title}</h1><p className="mt-1 text-sm text-slate-500">{copy.forQuery} <span className="font-semibold text-slate-800 dark:text-slate-200">{query || '—'}</span></p></div>
+      <div><h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">{copy.title}</h1><p className="mt-1 text-sm text-slate-500">{copy.forQuery} <span className="font-semibold text-slate-800 dark:text-slate-200">{query || '—'}</span></p></div>
       <div className="ml-auto rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"><strong>{results.length.toLocaleString(isBangla ? 'bn-BD' : 'en-US')}</strong><span className="ml-1 text-slate-500">{copy.total}</span></div>
     </header>
 
