@@ -390,8 +390,12 @@ export function buildCustomerStatement({
   );
   const salesSummary = calculateSalesFinancialSummary(validSales, customerPayments, currency);
   const statusForTimeZone = getSubscriptionStatusForTimeZone(timeZone);
+  // Evaluate subscription status against the statement's `today` (noon UTC keeps
+  // the date stable across time zones) instead of the real clock, so a statement
+  // for a past date reports the status as of that date.
+  const todayDate = new Date(`${today}T12:00:00.000Z`);
   const activeSubscriptions = customerSubscriptions.filter(subscription =>
-    statusForTimeZone(subscription, serviceById.get(subscription.serviceId), reminderNoticeDays) === 'active'
+    statusForTimeZone(subscription, serviceById.get(subscription.serviceId), reminderNoticeDays, todayDate) === 'active'
   ).length;
   const overdueInvoices = customerInvoices.filter(invoice => {
     if (invoice.paymentStatus === 'voided') return false;

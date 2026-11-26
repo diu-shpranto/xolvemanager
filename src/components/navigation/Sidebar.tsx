@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { productBrand } from '../../config/brand';
+import { advancedNavSections, coreNavSections, moneySubSections } from '../../utils/appRoutes';
 import { ProductLogo } from '../common/BrandLockup';
 
 export type NavSection =
@@ -136,19 +137,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'cashbook' as NavSection,
-      label: language === 'bn' ? 'ক্যাশবুক' : 'Money',
+      label: language === 'bn' ? 'ক্যাশবুক' : 'Cashbook',
       icon: Landmark,
       badge: null,
+      subItem: true,
     },
     {
       id: 'financial-control' as NavSection,
-      label: language === 'bn' ? 'আর্থিক নিয়ন্ত্রণ' : 'Money Records',
+      label: language === 'bn' ? 'আর্থিক নিয়ন্ত্রণ' : 'Financial Control',
       icon: ShieldCheck,
       badge: null,
+      subItem: true,
     },
     {
       id: 'data-integrity' as NavSection,
-      label: language === 'bn' ? 'ডেটা সুরক্ষা' : 'Data Check',
+      label: language === 'bn' ? 'ডেটা সুরক্ষা' : 'Data Safety',
       icon: Database,
       badge: null,
     },
@@ -157,22 +160,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: language === 'bn' ? 'খরচ' : 'Expenses',
       icon: CircleDollarSign,
       badge: null,
+      subItem: true,
     },
     {
       id: 'daily-closing' as NavSection,
       label: language === 'bn' ? 'দৈনিক সমাপ্তি' : 'Daily Closing',
       icon: CalendarCheck,
       badge: null,
+      subItem: true,
     },
     {
       id: 'invoices' as NavSection,
       label: language === 'bn' ? 'ইনভয়েস' : 'Invoices',
       icon: FileText,
       badge: null,
+      subItem: true,
     },
     {
       id: 'history' as NavSection,
-      label: language === 'bn' ? t('nav_history') : 'Activity & Audit Trail',
+      label: language === 'bn' ? t('nav_history') : 'History',
       icon: History,
       badge: null,
     },
@@ -196,7 +202,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'reminders' as NavSection,
-      label: language === 'bn' ? 'স্মার্ট রিমাইন্ডার' : 'Follow-up Center',
+      label: language === 'bn' ? 'স্মার্ট রিমাইন্ডার' : 'Reminders',
       icon: BellRing,
       badge: null,
     },
@@ -352,28 +358,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           {[
             {
-              label: language === 'bn' ? 'ওভারভিউ' : 'Overview',
-              items: navItems.filter(item => item.id === 'dashboard'),
+              // Core: the eight sections a business uses every day.
+              label: language === 'bn' ? 'প্রধান' : 'Main',
+              items: navItems.filter(item => coreNavSections.includes(item.id)),
             },
             {
-              label: language === 'bn' ? 'পরিচালনা' : 'Manage',
-              items: navItems.filter(item =>
-                ['customers', 'services', 'accounts', 'profiles'].includes(item.id)
-              ),
+              // Money details live under Payments: one money entry point, with
+              // Cashbook, Financial Control, Invoices, Expenses and Daily Closing
+              // as indented sub-items instead of duplicate top-level labels.
+              label: language === 'bn' ? 'পেমেন্ট ও টাকা' : 'Payments & Money',
+              items: navItems.filter(item => moneySubSections.includes(item.id)),
             },
             {
-              label: language === 'bn' ? 'বিক্রয় ও অর্থ' : 'Sales and Money',
-              items: navItems.filter(item =>
-                ['subscriptions', 'sales', 'payments', 'cashbook', 'expenses', 'daily-closing', 'financial-control', 'invoices'].includes(item.id)
-              ),
-            },
-            {
-              label: language === 'bn' ? 'বিশ্লেষণ' : 'Reports',
-              items: navItems.filter(item => ['history', 'profitability', 'reports', 'notifications', 'reminders', 'data-integrity'].includes(item.id)),
-            },
-            {
-              label: language === 'bn' ? 'সহায়তা ও পছন্দসমূহ' : 'Help & Settings',
-              items: navItems.filter(item => item.id === 'help' || item.id === 'settings'),
+              // Everything else stays reachable, but out of the first-time path.
+              label: language === 'bn' ? 'অ্যাডভান্সড' : 'Advanced',
+              items: navItems.filter(item => advancedNavSections.includes(item.id)),
             },
           ].map(group => (
             <section key={group.label} aria-label={group.label}>
@@ -392,7 +391,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onClick={() => handleNav(item.id)}
                 className={`app-nav-item relative flex h-11 w-full cursor-pointer items-center justify-between rounded-[10px] border border-transparent px-3 py-2 text-[13px] font-medium transition-all duration-200 group lg:rounded-xl lg:py-2.5 ${
                   isCollapsedDesktop ? 'lg:justify-center lg:px-0' : ''
-                } ${
+                } ${item.subItem ? 'pl-9 text-xs' : ''} ${
                   isActive
                     ? 'is-active bg-violet-50/90 font-semibold text-violet-900 dark:bg-violet-950/40 dark:text-violet-300 lg:border-violet-200/60 lg:shadow-2xs dark:lg:border-violet-800/50'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800/50'

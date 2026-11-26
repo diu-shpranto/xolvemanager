@@ -6,6 +6,8 @@
 'use client';
 
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { OfflineModeBanner } from './components/common/OfflineModeBanner';
+import { CloudMigrationOffer } from './components/supabase/CloudMigrationOffer';
 import { AppProvider } from './context/AppContext';
 import { ToastProvider } from './components/common/Toast';
 import { Sidebar, NavSection } from './components/navigation/Sidebar';
@@ -138,19 +140,19 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       case 'subscriptions': return t('nav_subscriptions');
       case 'sales': return language === 'bn' ? t('nav_sales') : 'Sales';
       case 'payments': return t('nav_payments');
-      case 'cashbook': return language === 'bn' ? 'ক্যাশবুক' : 'Money';
-      case 'financial-control': return language === 'bn' ? 'আর্থিক নিয়ন্ত্রণ' : 'Money Records';
-      case 'data-integrity': return language === 'bn' ? 'ডেটা সুরক্ষা' : 'Data Check';
+      case 'cashbook': return language === 'bn' ? 'ক্যাশবুক' : 'Cashbook';
+      case 'financial-control': return language === 'bn' ? 'আর্থিক নিয়ন্ত্রণ' : 'Financial Control';
+      case 'data-integrity': return language === 'bn' ? 'ডেটা সুরক্ষা' : 'Data Safety';
       case 'expenses': return language === 'bn' ? 'খরচ' : 'Expenses';
       case 'daily-closing': return language === 'bn' ? 'দৈনিক সমাপ্তি' : 'Daily Closing';
       case 'invoices': return language === 'bn' ? 'ইনভয়েস' : 'Invoices';
-      case 'history': return language === 'bn' ? t('nav_history') : 'Activity & Audit Trail';
+      case 'history': return language === 'bn' ? t('nav_history') : 'History';
       case 'profitability': return language === 'bn' ? 'লাভ বিশ্লেষণ' : 'Profit Report';
       case 'reports': return t('nav_reports');
       case 'settings': return t('nav_settings');
       case 'help': return language === 'bn' ? 'সহায়তা কেন্দ্র' : 'Help Center';
       case 'notifications': return language === 'bn' ? 'নোটিফিকেশন' : 'Notifications';
-      case 'reminders': return language === 'bn' ? 'স্মার্ট রিমাইন্ডার' : 'Follow-up Center';
+      case 'reminders': return language === 'bn' ? 'স্মার্ট রিমাইন্ডার' : 'Reminders';
       case 'search': return language === 'bn' ? 'সার্চ ফলাফল' : 'Search results';
     }
   })();
@@ -477,6 +479,8 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       <div className="app-main-area min-w-0" inert={isMobileSidebarOpen}>
         {/* View Content */}
         <main id="main-content" className="app-main flex-1" tabIndex={-1}>
+          <OfflineModeBanner />
+          <CloudMigrationOffer />
           {isNotFound ? (
             <RecoveryScreen
               variant="not-found"

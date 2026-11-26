@@ -105,6 +105,10 @@ export function generateReminderCandidates(
 ): ReminderCandidate[] {
   const preferences = getReminderPreferences(data.settings);
   if (!preferences.enabled || !parseDate(today)) return [];
+  // Evaluate every date difference against the supplied `today` (noon UTC keeps
+  // the date stable across business time zones) instead of the real clock, so
+  // reminders are deterministic for the day being evaluated.
+  const todayDate = new Date(`${today}T12:00:00.000Z`);
   const scopedData: ReminderEngineData = {
     ...data,
     customers: forBusiness(data.customers, data.businessId),
@@ -124,7 +128,7 @@ export function generateReminderCandidates(
 
   scopedData.subscriptions.forEach(subscription => {
     if (subscription.status === 'cancelled' || subscription.cancelledAt || !parseDate(subscription.expiryDate)) return;
-    const daysRemaining = getDaysDifferenceInTimeZone(subscription.expiryDate, data.settings.businessProfile?.timeZone);
+    const daysRemaining = getDaysDifferenceInTimeZone(subscription.expiryDate, data.settings.businessProfile?.timeZone, todayDate);
     const service = servicesById.get(subscription.serviceId);
     const customerName = customersById.get(subscription.customerId)?.name || 'Customer';
     const serviceName = service?.name || 'subscription';
@@ -183,7 +187,7 @@ export function generateReminderCandidates(
       || (sale ? getSaleExpectedPaymentDate(sale, scopedData.payments) : undefined)
       || invoice.invoiceDate;
     if (!parseDate(expectedPaymentDate)) return;
-    const daysOverdue = Math.max(0, -getDaysDifferenceInTimeZone(expectedPaymentDate, data.settings.businessProfile?.timeZone));
+    const daysOverdue = Math.max(0, -getDaysDifferenceInTimeZone(expectedPaymentDate, data.settings.businessProfile?.timeZone, todayDate));
     const stage = pickStage(daysOverdue, preferences.invoiceOverdueDays);
     if (stage === undefined) return;
     const overdue = daysOverdue > 0;
@@ -222,7 +226,7 @@ export function generateReminderCandidates(
     if (due <= 0) return;
     const expectedPaymentDate = getSaleExpectedPaymentDate(sale, scopedData.payments) || sale.date;
     if (!parseDate(expectedPaymentDate)) return;
-    const daysOverdue = Math.max(0, -getDaysDifferenceInTimeZone(expectedPaymentDate, data.settings.businessProfile?.timeZone));
+    const daysOverdue = Math.max(0, -getDaysDifferenceInTimeZone(expectedPaymentDate, data.settings.businessProfile?.timeZone, todayDate));
     const stage = pickStage(daysOverdue, preferences.paymentOverdueDays);
     if (stage === undefined) return;
     const paid = getSalePaidAmount(sale, scopedData.payments);

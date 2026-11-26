@@ -235,7 +235,7 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
     <div className="mx-auto max-w-[1500px] space-y-5 px-4 py-6 sm:px-6 lg:px-8">
       <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <div className="flex items-center gap-2"><BellRing className="h-6 w-6 text-violet-600" /><h1 className="text-2xl font-bold text-slate-900 dark:text-white">Follow-up Center</h1></div>
+          <div className="flex items-center gap-2"><BellRing className="h-6 w-6 text-violet-600" /><h1 className="text-2xl font-bold text-slate-900 dark:text-white">Reminders</h1></div>
         </div>
         <button type="button" onClick={() => openCreate()} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
           <Plus className="h-4 w-4" /> New Follow-up

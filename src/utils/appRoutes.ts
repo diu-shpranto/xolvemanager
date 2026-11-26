@@ -28,6 +28,19 @@ export const sectionPaths: Record<NavSection, string> = {
   help: '/help',
 };
 
+// Simplified navigation groups (Phase 2): eight core sections for everyday use,
+// money details as sub-items under Payments, and everything else under Advanced.
+// Every section keeps its route above — grouping is presentation only.
+export const coreNavSections: NavSection[] = [
+  'dashboard', 'customers', 'services', 'subscriptions', 'sales', 'payments', 'reports', 'settings',
+];
+export const moneySubSections: NavSection[] = [
+  'cashbook', 'financial-control', 'invoices', 'expenses', 'daily-closing',
+];
+export const advancedNavSections: NavSection[] = [
+  'accounts', 'profiles', 'history', 'profitability', 'data-integrity', 'notifications', 'reminders', 'help',
+];
+
 const recordSections: Record<RecordSection, NavSection> = {
   customers: 'customers',
   services: 'services',

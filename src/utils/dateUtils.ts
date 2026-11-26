@@ -218,19 +218,26 @@ export function getSubscriptionStatus(
   subscription: Pick<Subscription, 'expiryDate' | 'status' | 'planId' | 'cancelledAt'>,
   service?: Service,
   defaultDays?: number,
-  timeZone?: string
+  timeZone?: string,
+  now?: Date
 ): SubscriptionStatus;
 export function getSubscriptionStatus(
   expiryDateStr: string,
   warningDays?: number,
-  timeZone?: string
+  timeZone?: string,
+  now?: Date
 ): Exclude<SubscriptionStatus, 'cancelled'>;
 export function getSubscriptionStatus(
   subscriptionOrExpiry: string | Pick<Subscription, 'expiryDate' | 'status' | 'planId' | 'cancelledAt'>,
   serviceOrWarningDays?: Service | number,
   defaultDaysOrTimeZone: number | string = 7,
-  timeZone?: string
+  timeZone?: string | Date,
+  now: Date = new Date()
 ): SubscriptionStatus {
+  // The string overload passes the time zone as the 3rd argument and `now` as
+  // the 4th; normalize so `resolvedTimeZone` is always a string below.
+  const resolvedNow = timeZone instanceof Date ? timeZone : now;
+  const resolvedTimeZone = timeZone instanceof Date ? undefined : timeZone;
   if (typeof subscriptionOrExpiry !== 'string'
     && (subscriptionOrExpiry.status === 'cancelled' || subscriptionOrExpiry.cancelledAt)) return 'cancelled';
   const expiryDateStr = typeof subscriptionOrExpiry === 'string' ? subscriptionOrExpiry : subscriptionOrExpiry.expiryDate;
@@ -244,10 +251,10 @@ export function getSubscriptionStatus(
     );
   const effectiveTimeZone = typeof subscriptionOrExpiry === 'string'
     ? typeof serviceOrWarningDays === 'number'
-      ? timeZone
+      ? resolvedTimeZone
       : typeof defaultDaysOrTimeZone === 'string' ? defaultDaysOrTimeZone : undefined
-    : timeZone || (typeof defaultDaysOrTimeZone === 'string' ? defaultDaysOrTimeZone : undefined);
-  const daysDiff = getDaysDifference(expiryDateStr, effectiveTimeZone);
+    : resolvedTimeZone || (typeof defaultDaysOrTimeZone === 'string' ? defaultDaysOrTimeZone : undefined);
+  const daysDiff = getDaysDifference(expiryDateStr, effectiveTimeZone, resolvedNow);
   if (daysDiff < 0) {
     return 'expired';
   }
@@ -261,35 +268,44 @@ export function getSubscriptionStatusForTimeZone(timeZone?: string): {
   (
     subscription: Pick<Subscription, 'expiryDate' | 'status' | 'planId' | 'cancelledAt'>,
     service?: Service,
-    defaultDays?: number
+    defaultDays?: number,
+    now?: Date
   ): SubscriptionStatus;
-  (expiryDateStr: string, warningDays?: number): Exclude<SubscriptionStatus, 'cancelled'>;
+  (expiryDateStr: string, warningDays?: number, now?: Date): Exclude<SubscriptionStatus, 'cancelled'>;
 } {
   function getStatus(
     subscription: Pick<Subscription, 'expiryDate' | 'status' | 'planId' | 'cancelledAt'>,
     service?: Service,
-    defaultDays?: number
+    defaultDays?: number,
+    now?: Date
   ): SubscriptionStatus;
   function getStatus(
     expiryDateStr: string,
-    warningDays?: number
+    warningDays?: number,
+    now?: Date
   ): Exclude<SubscriptionStatus, 'cancelled'>;
   function getStatus(
     subscriptionOrExpiry: string | Pick<Subscription, 'expiryDate' | 'status' | 'planId' | 'cancelledAt'>,
     serviceOrWarningDays?: Service | number,
-    defaultDays = 7
+    defaultDaysOrNow: number | Date = 7,
+    now: Date = new Date()
   ): SubscriptionStatus {
+    // The string overload passes `now` as the 3rd argument.
+    const resolvedNow = defaultDaysOrNow instanceof Date ? defaultDaysOrNow : now;
+    const resolvedDefaultDays = defaultDaysOrNow instanceof Date ? 7 : defaultDaysOrNow;
     return typeof subscriptionOrExpiry === 'string'
       ? getSubscriptionStatus(
         subscriptionOrExpiry,
         typeof serviceOrWarningDays === 'number' ? serviceOrWarningDays : undefined,
-        timeZone
+        timeZone,
+        resolvedNow
       )
       : getSubscriptionStatus(
         subscriptionOrExpiry,
         typeof serviceOrWarningDays === 'object' ? serviceOrWarningDays : undefined,
-        defaultDays,
-        timeZone
+        resolvedDefaultDays,
+        timeZone,
+        resolvedNow
       );
   }
   return getStatus;

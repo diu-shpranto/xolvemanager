@@ -6,6 +6,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthScreen } from '../src/components/auth/AuthScreen';
 import { productBrand } from '../src/config/brand';
 import type { LocalAuthUser } from '../src/services/localAuthService';
+import { getSupabaseSessionUser, signOutFromSupabase } from '../src/services/supabase/auth';
+import { isSupabaseConfigured } from '../src/services/supabase/config';
 import {
   AUTH_ACCOUNTS_KEY,
   AUTH_LOGOUT_SIGNAL_KEY,
@@ -65,7 +67,28 @@ export default function ClientAppShell() {
   const [authError, setAuthError] = useState('');
   const returnPath = useRef('/dashboard');
 
-  const refreshSession = useCallback((currentPath: string) => {
+  const refreshSession = useCallback(async (currentPath: string) => {
+    // Cloud first when configured: a Supabase session signs the user in
+    // without touching the local account. Falls through to local auth when
+    // there is no cloud session (or Supabase is not configured).
+    if (isSupabaseConfigured()) {
+      try {
+        const cloudUser = await getSupabaseSessionUser();
+        if (cloudUser) {
+          setHasAccount(true);
+          setUser(cloudUser);
+          setStatus('authenticated');
+          setAuthError('');
+          if (getAuthMode(currentPath)) {
+            navigateTo('/dashboard', true);
+            setPathname('/dashboard');
+          }
+          return;
+        }
+      } catch (error) {
+        console.error('Cloud session could not be verified; using the local session instead.', error);
+      }
+    }
     try {
       const restoredUser = restoreLocalSession();
       const accountExists = hasLocalAccount();
@@ -148,6 +171,11 @@ export default function ClientAppShell() {
   const handleLogout = () => {
     let logoutError = '';
     try {
+      // Clears the cloud session (flag synchronously, cookies async) when
+      // one exists; harmless when the user signed in locally.
+      void signOutFromSupabase().catch(error => {
+        console.error('Cloud sign-out did not complete.', error);
+      });
       signOutLocally();
     } catch (error) {
       logoutError = error instanceof Error ? error.message : 'The local session could not be fully cleared.';

@@ -29,6 +29,7 @@ import {
   UserPlus,
   PackagePlus,
   ShoppingCart,
+  Building2,
   Check,
   Download,
   Wallet,
@@ -1689,7 +1690,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const reportCopy = language === 'bn' ? {
     moneySummary: 'আর্থিক সারসংক্ষেপ',
     currentBalances: 'বর্তমান ব্যালেন্স · নির্বাচিত সময়ের আয় ও ব্যয়',
-    moneyRecords: 'আর্থিক রেকর্ড',
+    moneyRecords: 'আর্থিক নিয়ন্ত্রণ',
     totalBalance: 'মোট ব্যালেন্স',
     allAccountBalances: 'সব অ্যাকাউন্টের অর্থ',
     moneyIn: 'অর্থ জমা',
@@ -1823,7 +1824,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   } : {
     moneySummary: 'Money Summary',
     currentBalances: 'Current balances · Money in and out',
-    moneyRecords: 'Money Records',
+    moneyRecords: 'Financial Control',
     totalBalance: 'Total Balance',
     allAccountBalances: 'Money in all accounts',
     moneyIn: 'Money In',
@@ -2119,6 +2120,79 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     ),
   };
 
+  // First-run checklist: the six steps a new business needs, in order. Completion
+  // is derived from live data, so a step ticks itself off as soon as the
+  // underlying record exists. It reuses the existing getting-started open /
+  // dismissed state; there is no separate onboarding page.
+  const gettingStartedSteps = [
+    {
+      title: language === 'bn' ? 'ব্যবসার প্রোফাইল সেট করুন' : 'Set up your business profile',
+      description: language === 'bn'
+        ? 'ব্যবসার নাম ও তথ্য দিন, যাতে ইনভয়েসে ঠিকভাবে দেখায়।'
+        : 'Add your business name and details so they show correctly on invoices.',
+      action: language === 'bn' ? 'প্রোফাইল সেট করুন' : 'Set up profile',
+      completed: (currentBusinessName || settings.storeName || '').trim().length > 0,
+      icon: Building2,
+      onClick: () => onNavigate('settings'),
+    },
+    {
+      title: language === 'bn' ? 'প্রথম কাস্টমার যোগ করুন' : 'Add your first customer',
+      description: language === 'bn'
+        ? 'কাস্টমারের তথ্য সংরক্ষণ করুন, সব রেকর্ড এক জায়গায় পাবেন।'
+        : 'Save customer details and find their records in one place.',
+      action: language === 'bn' ? 'কাস্টমার যোগ করুন' : 'Add customer',
+      completed: scopedCustomers.length > 0,
+      icon: UserPlus,
+      onClick: () => onRequestCreate('customers'),
+    },
+    {
+      title: language === 'bn' ? 'প্রথম সার্ভিস তৈরি করুন' : 'Create your first service',
+      description: language === 'bn'
+        ? 'সার্ভিসের প্ল্যান, দাম ও মেয়াদ ঠিক করুন।'
+        : 'Set service plans, prices, durations, and availability.',
+      action: language === 'bn' ? 'সার্ভিস তৈরি করুন' : 'Create service',
+      completed: scopedServices.length > 0,
+      icon: PackagePlus,
+      onClick: () => onRequestCreate('services'),
+    },
+    {
+      title: language === 'bn' ? 'টাকা নেওয়ার অ্যাকাউন্ট সেট করুন' : 'Configure a receiving account',
+      description: language === 'bn'
+        ? 'পেমেন্ট কোন অ্যাকাউন্টে জমা হবে, সেটা ঠিক করুন।'
+        : 'Choose where recorded payments will be received.',
+      action: language === 'bn' ? 'অ্যাকাউন্ট সেট করুন' : 'Set up account',
+      completed: scopedFinancialAccounts.some(account =>
+        account.enabled && account.currency === currency
+      ),
+      icon: Wallet,
+      onClick: () => onCreateReceivingAccount(currency),
+    },
+    {
+      title: language === 'bn' ? 'প্রথম বিক্রয় লিখুন' : 'Record your first sale',
+      description: language === 'bn'
+        ? 'বিক্রয় তৈরি করুন, ইনভয়েস হবে; পেমেন্ট আলাদাভাবে লিখবেন।'
+        : 'Create a sale and its invoice; record payment separately.',
+      action: language === 'bn' ? 'বিক্রয় লিখুন' : 'Record sale',
+      completed: scopedSales.length > 0,
+      icon: ShoppingCart,
+      onClick: () => onOpenNewSale(),
+    },
+    {
+      title: language === 'bn' ? 'প্রথম পেমেন্ট লিখুন' : 'Record your first payment',
+      description: language === 'bn'
+        ? 'বাকি থাকা বিক্রয়ের বিপরীতে টাকা পাওয়া লিখুন।'
+        : 'Record money received against an outstanding sale.',
+      action: language === 'bn' ? 'পেমেন্ট লিখুন' : 'Record payment',
+      completed: scopedPayments.some(payment =>
+        payment.amount > 0
+        && (payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial')
+      ),
+      icon: CreditCard,
+      onClick: () => onRequestCreate('payments'),
+    },
+  ];
+  const gettingStartedCompletedCount = gettingStartedSteps.filter(step => step.completed).length;
+
   return (
     <div className="dashboard-view mx-auto flex max-w-[1600px] flex-col gap-5 px-4 py-5 sm:gap-6 sm:px-6 sm:py-6 xl:px-8">
       <header className="dashboard-page-header flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -2252,62 +2326,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 id="getting-started-title" className="text-base font-bold text-slate-900 dark:text-white">
-                Get started with XolveManager
+                {language === 'bn' ? 'XolveManager শুরু করুন' : 'Get started with XolveManager'}
               </h2>
               <p className="mt-1 text-sm leading-5 text-slate-600 dark:text-slate-300">
-                Set up your workspace in a few simple steps.
+                {language === 'bn'
+                  ? `${formatNumber(gettingStartedCompletedCount)} / ৬টি ধাপ শেষ হয়েছে। অল্প কয়েকটি ধাপে আপনার কাজের জায়গা সাজান।`
+                  : `${gettingStartedCompletedCount} of 6 steps done. Set up your workspace in a few simple steps.`}
               </p>
             </div>
           </div>
 
-          <ol className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-            {[
-              {
-                title: 'Add your first customer',
-                description: 'Save customer details and find their records in one place.',
-                action: 'Add customer',
-                completed: scopedCustomers.length > 0,
-                icon: UserPlus,
-                onClick: () => onRequestCreate('customers'),
-              },
-              {
-                title: 'Create your first service',
-                description: 'Set service plans, prices, durations, and availability.',
-                action: 'Create service',
-                completed: scopedServices.length > 0,
-                icon: PackagePlus,
-                onClick: () => onRequestCreate('services'),
-              },
-              {
-                title: 'Configure a receiving account',
-                description: 'Choose where recorded payments will be received.',
-                action: 'Set up account',
-                completed: scopedFinancialAccounts.some(account =>
-                  account.enabled && account.currency === currency
-                ),
-                icon: Wallet,
-                onClick: () => onCreateReceivingAccount(currency),
-              },
-              {
-                title: 'Record your first sale',
-                description: 'Create a sale and its invoice; record payment separately.',
-                action: 'Record sale',
-                completed: scopedSales.length > 0,
-                icon: ShoppingCart,
-                onClick: () => onOpenNewSale(),
-              },
-              {
-                title: 'Record your first payment',
-                description: 'Record money received against an outstanding sale.',
-                action: 'Record payment',
-                completed: scopedPayments.some(payment =>
-                  payment.amount > 0
-                  && (payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial')
-                ),
-                icon: CreditCard,
-                onClick: () => onRequestCreate('payments'),
-              },
-            ].map((step, index) => (
+          <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {gettingStartedSteps.map((step, index) => (
               <li key={step.title} className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
                 <div className="flex min-w-0 items-start gap-2.5">
                   <span
@@ -2343,14 +2373,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               onClick={() => finishGettingStarted(false)}
               className="min-h-9 rounded-lg px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-800"
             >
-              Skip for now
+              {language === 'bn' ? 'পরে করব' : 'Skip for now'}
             </button>
             <button
               type="button"
               onClick={() => finishGettingStarted(true)}
               className="min-h-9 rounded-lg bg-violet-700 px-3 text-xs font-semibold text-white transition-colors hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
             >
-              Complete setup
+              {language === 'bn' ? 'সেটআপ শেষ করুন' : 'Complete setup'}
             </button>
           </div>
         </section>

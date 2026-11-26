@@ -27,6 +27,14 @@ import type { LocalAuthUser } from '../../services/localAuthService';
 import { ProductLogo } from '../common/BrandLockup';
 import { LocalAuthError } from '../../services/localAuthService';
 import {
+  clearCloudSessionFlag,
+  signInWithGoogle,
+  signInWithSupabase,
+  signUpWithSupabase,
+  SupabaseAuthError,
+} from '../../services/supabase/auth';
+import { isGoogleOAuthEnabled, isSupabaseConfigured } from '../../services/supabase/config';
+import {
   createOwnerAccount,
   getPasswordStrength,
   hasLocalAccount,
@@ -186,6 +194,7 @@ const copy = {
 
 const getErrorMessage = (error: unknown, language: Language): string => {
   if (!(error instanceof Error)) return 'Local authentication failed. Please try again.';
+  if (error instanceof SupabaseAuthError) return error.message;
   if (language !== 'bn' || !(error instanceof LocalAuthError)) return error.message;
   const messages: Partial<Record<LocalAuthError['code'], string>> = {
     AUTH_UNAVAILABLE: 'এই পরিবেশে নিরাপদ স্থানীয় সাইন-ইন উপলভ্য নয়।',
@@ -221,6 +230,12 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   const [resultKey, setResultKey] = useState('');
   const [copied, setCopied] = useState(false);
   const text = copy[language];
+  // Cloud (Supabase) sign-in is the primary path when configured; the local
+  // account on this device stays available as a fallback. When Supabase is
+  // not configured the screen behaves exactly as before (local only).
+  const cloudAvailable = isSupabaseConfigured();
+  const [authProvider, setAuthProvider] = useState<'cloud' | 'local'>(cloudAvailable ? 'cloud' : 'local');
+  const googleEnabled = isGoogleOAuthEnabled();
 
   useEffect(() => {
     try {
@@ -300,7 +315,18 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     }
     setBusy(true);
     try {
+      if (mode === 'login' && authProvider === 'cloud') {
+        const user = await signInWithSupabase(email, password);
+        onAuthenticated(user);
+        return;
+      }
+      if (mode === 'signup' && authProvider === 'cloud') {
+        const user = await signUpWithSupabase(name, email, password);
+        onAuthenticated(user);
+        return;
+      }
       if (mode === 'login') {
+        clearCloudSessionFlag();
         const user = await signInLocally(email, password);
         onAuthenticated(user);
       } else if (mode === 'signup') {
@@ -308,6 +334,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
           setError(text.setupDisabled);
           return;
         }
+        clearCloudSessionFlag();
         const result = await createOwnerAccount(name, email, password, confirmation);
         setResultKey(result.recoveryKey);
       } else {
@@ -321,10 +348,23 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     }
   };
 
+  const handleGoogleLogin = async () => {
+    setError('');
+    setBusy(true);
+    try {
+      await signInWithGoogle();
+    } catch (caught) {
+      setError(getErrorMessage(caught, language));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleDemoLogin = async () => {
     setError('');
     setBusy(true);
     try {
+      clearCloudSessionFlag();
       const user = await signInWithDemoAccount();
       onAuthenticated(user);
     } catch (caught) {
@@ -345,7 +385,11 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
 
   const strength = getPasswordStrength(password);
   const title = mode === 'login' ? text.loginTitle : mode === 'signup' ? text.signupTitle : text.recoveryTitle;
-  const intro = mode === 'login' ? text.loginIntro : mode === 'signup' ? text.signupIntro : text.recoveryIntro;
+  const intro = authProvider === 'cloud' && mode !== 'forgot-password'
+    ? (mode === 'login'
+      ? (language === 'bn' ? 'ক্লাউড অ্যাকাউন্টে সাইন ইন করুন। আপনার ডেটা সব ডিভাইসে সিঙ্ক হবে।' : 'Sign in to your cloud account. Your data syncs across devices.')
+      : (language === 'bn' ? 'ক্লাউড অ্যাকাউন্ট তৈরি করুন — ডেটা সব ডিভাইসে সিঙ্ক হবে।' : 'Create a cloud account — your data will sync across devices.'))
+    : mode === 'login' ? text.loginIntro : mode === 'signup' ? text.signupIntro : text.recoveryIntro;
   const featureItems = [
     { Icon: UsersRound, label: text.featureCustomers },
     { Icon: RefreshCw, label: text.featureSubscriptions },
@@ -385,7 +429,20 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                   </div>
 
                   {error && <div role="alert" aria-live="assertive" className="auth-alert auth-alert--error">{error}</div>}
-                  {mode === 'signup' && hasAccount && <div role="alert" className="auth-alert auth-alert--warning">{text.setupDisabled}</div>}
+                  {mode === 'signup' && hasAccount && authProvider === 'local' && <div role="alert" className="auth-alert auth-alert--warning">{text.setupDisabled}</div>}
+                  {cloudAvailable && mode !== 'forgot-password' && (
+                    <div role="note" className="auth-alert" style={{ borderColor: '#c4b5fd', background: '#f5f3ff', color: '#4c1d95' }}>
+                      {authProvider === 'cloud'
+                        ? (language === 'bn' ? 'ক্লাউড সাইন-ইন চালু আছে।' : 'Cloud sign-in is on.')
+                        : (language === 'bn' ? 'এই ব্রাউজারের স্থানীয় অ্যাকাউন্ট ব্যবহার করছেন।' : 'Using the local account on this device.')}
+                      {' '}
+                      <button type="button" onClick={() => setAuthProvider(authProvider === 'cloud' ? 'local' : 'cloud')} className="auth-text-link">
+                        {authProvider === 'cloud'
+                          ? (language === 'bn' ? 'স্থানীয় অ্যাকাউন্ট ব্যবহার করুন' : 'Use the account on this device instead')
+                          : (language === 'bn' ? 'ক্লাউড সাইন-ইন ব্যবহার করুন' : 'Use cloud sign-in instead')}
+                      </button>
+                    </div>
+                  )}
 
                   <form onSubmit={handleSubmit} className="auth-form" aria-busy={busy}>
                     {mode === 'signup' && (
@@ -427,10 +484,15 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                       </label>
                     )}
 
-                    {mode === 'login' && (
+                    {mode === 'login' && authProvider === 'local' && (
                       <div className="auth-login-options">
                         <p className="auth-session-note">{text.persistentSession}</p>
                         <button type="button" onClick={() => navigate('/forgot-password')} className="auth-text-link">{text.forgot}</button>
+                      </div>
+                    )}
+                    {mode === 'login' && authProvider === 'cloud' && (
+                      <div className="auth-login-options">
+                        <p className="auth-session-note">{language === 'bn' ? 'ক্লাউড সেশন এই ব্রাউজারে সংরক্ষিত থাকে।' : 'Your cloud session is kept in this browser until you sign out.'}</p>
                       </div>
                     )}
 
@@ -450,8 +512,20 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                       </label>
                     )}
 
-                    <button type="submit" disabled={busy || (mode === 'signup' && hasAccount)} className="auth-primary-button">{busy && <LoaderCircle className="auth-spinner" aria-hidden="true" />}{busy ? text.loading : mode === 'login' ? <>{text.signIn}<ArrowRight aria-hidden="true" /></> : mode === 'signup' ? text.create : text.recover}</button>
+                    <button type="submit" disabled={busy || (mode === 'signup' && hasAccount && authProvider === 'local')} className="auth-primary-button">{busy && <LoaderCircle className="auth-spinner" aria-hidden="true" />}{busy ? text.loading : mode === 'login' ? <>{text.signIn}<ArrowRight aria-hidden="true" /></> : mode === 'signup' ? text.create : text.recover}</button>
                   </form>
+
+                  {mode === 'login' && authProvider === 'cloud' && (
+                    <>
+                      <div className="auth-divider"><span />{text.divider}<span /></div>
+                      <button type="button" onClick={() => void handleGoogleLogin()} disabled={busy || !googleEnabled} className="auth-account-button" title={googleEnabled ? undefined : 'Google sign-in is not configured yet.'}>
+                        <Globe2 aria-hidden="true" />
+                        <span>{language === 'bn' ? 'Google দিয়ে সাইন ইন' : 'Continue with Google'}</span>
+                        <ChevronRight aria-hidden="true" />
+                      </button>
+                      {!googleEnabled && <p className="auth-session-note">{language === 'bn' ? 'Google সাইন-ইন এখনও চালু হয়নি — ইমেইল ও পাসওয়ার্ড ব্যবহার করুন।' : 'Google sign-in is not configured yet — use email and password.'}</p>}
+                    </>
+                  )}
 
                   {mode === 'login' && (
                     <>

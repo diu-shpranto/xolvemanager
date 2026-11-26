@@ -1515,9 +1515,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           </div>
           {pagePayments.length === 0 && <EmptyState
             title={payments.length ? selectedStatus === 'failed' ? 'No failed payments' : 'No payments found' : 'No payments yet'}
-            description={payments.length ? 'Try changing your search or filters.' : 'Payments appear after transactions are recorded. Open sales to create a sale or record a payment against one.'}
-            action={!payments.length && onNavigateSection
-              ? { label: 'Open sales', onClick: () => onNavigateSection('sales') }
+            description={payments.length ? 'Try changing your search or filters.' : 'Payments appear after transactions are recorded. Record a payment against an outstanding sale.'}
+            action={!payments.length
+              ? { label: 'Record payment', onClick: () => openAddPayment() }
               : undefined}
           />}
         </section>
