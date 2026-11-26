@@ -54,3 +54,6 @@ export const CLOUD_MIGRATED_KEY = 'xolvemanager.cloud-migrated.v1';
 
 /** localStorage key marking that the user dismissed the cloud-upload offer. */
 export const CLOUD_MIGRATION_DISMISSED_KEY = 'xolvemanager.cloud-migration-dismissed.v1';
+
+/** localStorage key holding the last successful cloud download summary (JSON). */
+export const CLOUD_LAST_DOWNLOAD_KEY = 'xolvemanager.cloud-last-download.v1';

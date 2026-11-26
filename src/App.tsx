@@ -8,6 +8,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { OfflineModeBanner } from './components/common/OfflineModeBanner';
 import { CloudMigrationOffer } from './components/supabase/CloudMigrationOffer';
+import { CloudSyncPanel } from './components/supabase/CloudSyncPanel';
 import { AppProvider } from './context/AppContext';
 import { ToastProvider } from './components/common/Toast';
 import { Sidebar, NavSection } from './components/navigation/Sidebar';
@@ -481,6 +482,7 @@ const MainAppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         <main id="main-content" className="app-main flex-1" tabIndex={-1}>
           <OfflineModeBanner />
           <CloudMigrationOffer />
+          <CloudSyncPanel />
           {isNotFound ? (
             <RecoveryScreen
               variant="not-found"
