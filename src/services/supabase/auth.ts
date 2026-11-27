@@ -265,6 +265,7 @@ export const signInWithGoogle = async (): Promise<void> => {
 export interface SupabasePasswordResetClient {
   auth: {
     resetPasswordForEmail: (email: string, options?: { redirectTo?: string }) => Promise<{ data: unknown; error: { message: string } | null }>;
+    verifyOtp: (params: { email: string; token: string; type: 'recovery' }) => Promise<{ data: { user: User | null; session: unknown }; error: { message: string } | null }>;
     updateUser: (attributes: { password: string }) => Promise<{ data: { user: User | null }; error: { message: string } | null }>;
     getSession: () => Promise<{ data: { session: unknown } }>;
     getUser: () => Promise<{ data: { user: User | null }; error: { message: string } | null }>;
@@ -282,13 +283,14 @@ const getPasswordResetRedirect = (): string =>
   typeof window === 'undefined' ? 'http://localhost:3000/login' : `${window.location.origin}/login`;
 
 /**
- * Cloud password reset, step 1 — email the user a reset link.
+ * Cloud password reset, step 1 — email the user a reset code (and link).
  *
- * Supabase sends a link back to `/login` (already an allowed redirect).
- * The link carries its token in the URL, so it works in any browser —
- * the Gmail app, another browser, another device. The browser client
- * reads the token on load and emits the PASSWORD_RECOVERY event, which
- * marks this tab as a recovery session.
+ * Supabase sends the reset email back to `/login` (already an allowed
+ * redirect). The email carries a 6-digit code ({{ .Token }} in the
+ * "Reset password" template) and the reset link: the code is verified in
+ * the app with `verifyCloudPasswordResetCode`, while the link still works
+ * on its own in any browser — the Gmail app, another browser, another
+ * device — and opens a recovery session the same way.
  *
  * Supabase answers the same way whether or not the email has an account,
  * so callers must not reveal the distinction either.
@@ -305,8 +307,38 @@ export const requestCloudPasswordReset = async (
 };
 
 /**
- * Cloud password reset, step 2 — set the new password on the recovery
- * session from the email link. Only valid while that recovery session is
+ * Cloud password reset, step 2 — verify the 6-digit code from the reset
+ * email. Verifying the code opens a recovery session: the client emits
+ * PASSWORD_RECOVERY for a recovery verification, so this tab is marked
+ * as a recovery session — a refresh still shows the new-password form
+ * instead of signing straight in. Returns the account the code belongs
+ * to; the caller then collects the new password with setCloudPassword.
+ */
+export const verifyCloudPasswordResetCode = async (
+  email: string,
+  code: string,
+  clientOverride?: SupabasePasswordResetClient | null
+): Promise<CloudAuthUser> => {
+  const client = clientOverride ?? requireClient();
+  const { data, error } = await client.auth.verifyOtp({
+    email: email.trim().toLowerCase(),
+    token: code.trim(),
+    type: 'recovery',
+  });
+  if (error) throw new SupabaseAuthError('RESET_CODE_FAILED', error.message);
+  if (!data.session || !data.user) {
+    throw new SupabaseAuthError(
+      'RESET_CODE_FAILED',
+      'That code did not work. Request a new code and try again.'
+    );
+  }
+  markCloudPasswordRecoveryPending();
+  return toCloudUser(data.user);
+};
+
+/**
+ * Cloud password reset, step 3 — set the new password on the recovery
+ * session from the email link or code. Only valid while that recovery session is
  * active. On success the session becomes an ordinary signed-in session:
  * the recovery marker is cleared, the cloud session is marked, and the
  * account workspace is activated.

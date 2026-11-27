@@ -26,6 +26,7 @@ import {
   hasCloudPasswordRecoverySession,
   requestCloudPasswordReset,
   setCloudPassword,
+  verifyCloudPasswordResetCode,
   signInWithEmailLink,
   signInWithGoogle,
   signInWithSupabase,
@@ -89,12 +90,14 @@ const copy = {
     forgot: 'Forgot password?',
     cloudForgot: 'Forgot password?',
     cloudResetTitle: 'Reset your password',
-    cloudResetIntro: 'Enter your email address. We will send you a link to set a new password.',
-    cloudResetSend: 'Send reset link',
-    cloudResetSentTitle: 'Check your inbox',
-    cloudResetSentBody: 'We sent a password reset link to {email}. You can open it in any browser.',
-    cloudResetResend: 'Resend the link',
-    cloudResetResent: 'A new link was sent.',
+    cloudResetIntro: 'Enter your email address. We will send you a 6-digit code to set a new password.',
+    cloudResetSend: 'Send reset code',
+    cloudResetCodeTitle: 'Enter the code',
+    cloudResetCodeIntro: 'We sent a 6-digit code to {email}. Enter it below — or click the reset link in the email instead.',
+    cloudResetCodeLabel: '6-digit code',
+    cloudResetVerify: 'Verify code',
+    cloudResetResend: 'Resend the code',
+    cloudResetResent: 'A new code was sent.',
     accountConfirmationNotice: 'Check your email — we sent a confirmation link to {email}. Open it, then sign in.',
     useEmailLink: 'Sign in with an email link instead',
     usePassword: 'Back to password sign-in',
@@ -145,6 +148,7 @@ const copy = {
     errPasswordTooShort: 'Your password must be at least 6 characters.',
     errNetwork: 'Could not reach the server. Check your connection and try again.',
     errTooManyAttempts: 'Too many attempts. Please wait a moment and try again.',
+    errCode: 'Enter the 6-digit code.',
     errGeneric: 'Something went wrong. Please try again.',
   },
   bn: {
@@ -179,12 +183,14 @@ const copy = {
     forgot: 'পাসওয়ার্ড ভুলে গেছেন?',
     cloudForgot: 'পাসওয়ার্ড ভুলে গেছেন?',
     cloudResetTitle: 'পাসওয়ার্ড রিসেট করুন',
-    cloudResetIntro: 'আপনার ইমেইল ঠিকানা লিখুন। নতুন পাসওয়ার্ড সেট করার লিংক পাঠানো হবে।',
-    cloudResetSend: 'রিসেট লিংক পাঠান',
-    cloudResetSentTitle: 'ইনবক্স দেখুন',
-    cloudResetSentBody: '{email} ঠিকানায় পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে। যেকোনো ব্রাউজারেই খুলতে পারবেন।',
-    cloudResetResend: 'লিংকটি আবার পাঠান',
-    cloudResetResent: 'নতুন লিংক পাঠানো হয়েছে।',
+    cloudResetIntro: 'আপনার ইমেইল ঠিকানা লিখুন। নতুন পাসওয়ার্ড সেট করার ৬ ডিজিটের কোড পাঠানো হবে।',
+    cloudResetSend: 'রিসেট কোড পাঠান',
+    cloudResetCodeTitle: 'কোডটি লিখুন',
+    cloudResetCodeIntro: '{email}-এ ৬ ডিজিটের কোড পাঠানো হয়েছে। নিচে কোডটি লিখুন — অথবা ইমেইলের রিসেট লিংকে ক্লিক করুন।',
+    cloudResetCodeLabel: '৬ ডিজিটের কোড',
+    cloudResetVerify: 'কোড যাচাই করুন',
+    cloudResetResend: 'কোডটি আবার পাঠান',
+    cloudResetResent: 'নতুন কোড পাঠানো হয়েছে।',
     accountConfirmationNotice: 'ইমেইল দেখুন — {email}-এ কনফার্মেশন লিংক পাঠানো হয়েছে। লিংকটি খুলে তারপর সাইন ইন করুন।',
     useEmailLink: 'ইমেইল লিংক দিয়ে সাইন ইন করুন',
     usePassword: 'পাসওয়ার্ড দিয়ে সাইন ইনে ফিরুন',
@@ -235,6 +241,7 @@ const copy = {
     errPasswordTooShort: 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।',
     errNetwork: 'সার্ভারের সাথে সংযোগ হচ্ছে না। ইন্টারনেট দেখে আবার চেষ্টা করুন।',
     errTooManyAttempts: 'অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন।',
+    errCode: '৬ ডিজিটের কোডটি লিখুন।',
     errGeneric: 'কিছু একটা ভুল হয়েছে। আবার চেষ্টা করুন।',
   },
 } as const;
@@ -256,11 +263,11 @@ const fieldErrorStyle: CSSProperties = {
   lineHeight: 1.45,
 };
 
-type FieldName = 'name' | 'email' | 'password' | 'confirmation' | 'recoveryKey' | 'terms';
+type FieldName = 'name' | 'email' | 'password' | 'confirmation' | 'recoveryKey' | 'terms' | 'resetCode';
 type FieldErrors = Partial<Record<FieldName, string>>;
 
-/** Cloud password reset, inside the cloud login mode: ask for the email ('request'), confirm the link was sent ('sent'), or set the new password on the recovery session from the email link ('reset'). */
-type CloudResetView = 'none' | 'request' | 'sent' | 'reset';
+/** Cloud password reset, inside the cloud login mode: ask for the email ('request'), enter the 6-digit code from the email ('code'), or set the new password on the recovery session ('reset'). The email also keeps the reset link, which opens the 'reset' view directly. */
+type CloudResetView = 'none' | 'request' | 'code' | 'reset';
 
 const getSupabaseFriendlyMessage = (error: SupabaseAuthError, language: Language): string | null => {
   const message = error.message.toLowerCase();
@@ -279,6 +286,9 @@ const getSupabaseFriendlyMessage = (error: SupabaseAuthError, language: Language
   }
   if (message.includes('password should be at least')) {
     return t('Your password must be at least 6 characters.', 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+  }
+  if (message.includes('expired or is invalid') || message.includes('otp expired')) {
+    return t('That code did not work — it may have expired. Request a new code and try again.', 'কোডটি কাজ করেনি — হয়তো মেয়াদ শেষ হয়ে গেছে। নতুন কোড চেয়ে আবার চেষ্টা করুন।');
   }
   if (message.includes('session missing') || message.includes('not signed in') || message.includes('invalid token')) {
     return t('Your reset link has expired or was already used. Request a new link and try again.', 'রিসেট লিংকটির মেয়াদ শেষ হয়ে গেছে অথবা ইতিমধ্যে ব্যবহৃত হয়েছে। নতুন লিংক চেয়ে আবার চেষ্টা করুন।');
@@ -353,6 +363,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   const googleEnabled = isGoogleOAuthEnabled();
   const [cloudResetView, setCloudResetView] = useState<CloudResetView>('none');
   const [resetLinkFailed, setResetLinkFailed] = useState(false);
+  const [resetCode, setResetCode] = useState('');
   const [resent, setResent] = useState(false);
 
   // Dark mode follows the operating system (prefers-color-scheme), so the
@@ -481,6 +492,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     setAcceptedTerms(false);
     setCloudResetView('none');
     setResetLinkFailed(false);
+    setResetCode('');
     setResent(false);
     onNavigate(path);
   };
@@ -493,6 +505,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     setLinkSent(false);
     setCloudResetView('none');
     setResetLinkFailed(false);
+    setResetCode('');
     setResent(false);
   };
 
@@ -500,6 +513,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   const closeCloudReset = () => {
     setCloudResetView('none');
     setResetLinkFailed(false);
+    setResetCode('');
     setResent(false);
     setError('');
     setFieldErrors({});
@@ -551,6 +565,9 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     if (cloudResetView === 'request') {
       if (!isValidAuthEmail(email)) errors.email = text.errEmail;
     }
+    if (cloudResetView === 'code') {
+      if (!/^\d{6}$/.test(resetCode)) errors.resetCode = text.errCode;
+    }
     if (cloudResetView === 'reset') {
       if (password.length === 0) errors.password = text.errPasswordChoose;
       else if (getPasswordStrength(password) < 3) errors.password = text.errPasswordWeak;
@@ -573,9 +590,10 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
-    // Cloud password reset, inside the cloud login mode: request a link, or
-    // set the new password on the recovery session from the email link.
-    if (cloudResetView === 'request' || cloudResetView === 'reset') {
+    // Cloud password reset, inside the cloud login mode: ask for the email
+    // and send a code, verify the 6-digit code, or set the new password
+    // on the recovery session.
+    if (cloudResetView === 'request' || cloudResetView === 'code' || cloudResetView === 'reset') {
       const errors = validateCloudResetForm();
       setFieldErrors(errors);
       if (Object.keys(errors).length > 0) return;
@@ -585,7 +603,12 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
           await requestCloudPasswordReset(email);
           setResetLinkFailed(false);
           setResent(false);
-          setCloudResetView('sent');
+          setResetCode('');
+          setCloudResetView('code');
+        } else if (cloudResetView === 'code') {
+          await verifyCloudPasswordResetCode(email, resetCode);
+          setResetCode('');
+          setCloudResetView('reset');
         } else {
           const user = await setCloudPassword(password);
           onAuthenticated(user);
@@ -694,8 +717,8 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   };
 
   const strength = getPasswordStrength(password);
-  const title = cloudResetView === 'sent'
-    ? text.cloudResetSentTitle
+  const title = cloudResetView === 'code'
+    ? text.cloudResetCodeTitle
     : cloudResetView === 'reset'
       ? text.cloudResetSetTitle
       : cloudResetView !== 'none'
@@ -705,8 +728,8 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
           : mode === 'signup'
             ? (authProvider === 'cloud' ? text.signupTitleCloud : text.signupTitleLocal)
             : text.recoveryTitle;
-  const intro = cloudResetView === 'sent'
-    ? text.cloudResetSentBody.replace('{email}', email)
+  const intro = cloudResetView === 'code'
+    ? text.cloudResetCodeIntro.replace('{email}', email)
     : cloudResetView === 'reset'
       ? text.cloudResetSetIntro
       : cloudResetView !== 'none'
@@ -763,15 +786,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                     </button>
                   )}
 
-                  {cloudResetView === 'sent' ? (
-                    <>
-                      {resent && <p className="auth-session-note" role="status">{text.cloudResetResent}</p>}
-                      <button type="button" onClick={() => void handleResendResetLink()} disabled={busy || oauthBusy} className="auth-secondary-button" style={{ width: '100%' }}>{busy ? text.loading : text.cloudResetResend}</button>
-                      <div className="auth-links">
-                        <button type="button" onClick={closeCloudReset} className="auth-text-link">{text.loginLink}</button>
-                      </div>
-                    </>
-                  ) : linkSent ? (
+                  {linkSent ? (
                     <>
                       <p className="auth-session-note" role="status">{text.emailLinkSent.replace('{email}', email)}</p>
                       <button type="button" onClick={() => void handleResendEmailLink()} disabled={busy || oauthBusy} className="auth-secondary-button" style={{ width: '100%' }}>{busy ? text.loading : text.emailLinkResend}</button>
@@ -787,10 +802,17 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                         {fieldError('name')}
                       </label>
                     )}
-                    {cloudResetView !== 'reset' && (
+                    {cloudResetView !== 'reset' && cloudResetView !== 'code' && (
                     <label className="auth-field">{text.email}
                       <span className="auth-input-wrap"><Mail aria-hidden="true" /><input type="email" autoComplete={mode === 'login' ? 'off' : 'email'} required value={email} onChange={event => { setEmail(event.target.value); clearFieldError('email'); }} className={`${inputClass} auth-input--with-icon`} aria-invalid={!!fieldErrors.email} aria-describedby={fieldErrors.email ? 'email-error' : undefined} /></span>
                       {fieldError('email')}
+                    </label>
+                    )}
+
+                    {cloudResetView === 'code' && (
+                    <label className="auth-field">{text.cloudResetCodeLabel}
+                      <span className="auth-input-wrap"><KeyRound aria-hidden="true" /><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} required value={resetCode} onChange={event => { setResetCode(event.target.value.replace(/\D/g, '').slice(0, 6)); clearFieldError('resetCode'); }} className={`${inputClass} auth-input--with-icon auth-input--mono`} aria-invalid={!!fieldErrors.resetCode} aria-describedby={fieldErrors.resetCode ? 'resetCode-error' : undefined} /></span>
+                      {fieldError('resetCode')}
                     </label>
                     )}
 
@@ -801,7 +823,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                       </label>
                     )}
 
-                    {cloudResetView !== 'request' && loginMethod !== 'link' && (
+                    {cloudResetView !== 'request' && cloudResetView !== 'code' && loginMethod !== 'link' && (
                     <label className="auth-field">{text.password}
                       <span className="auth-password-wrap">
                         <LockKeyhole aria-hidden="true" />
@@ -866,7 +888,14 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                       </div>
                     )}
 
-                    <button type="submit" disabled={busy || oauthBusy || (mode === 'signup' && hasAccount && authProvider === 'local')} className={styles.primaryBtn}>{busy && <LoaderCircle className="auth-spinner" aria-hidden="true" />}{busy ? text.loading : cloudResetView === 'request' ? text.cloudResetSend : cloudResetView === 'reset' ? text.recover : mode === 'login' && authProvider === 'cloud' && loginMethod === 'link' ? text.sendEmailLink : mode === 'login' ? <>{text.signIn}<ArrowRight aria-hidden="true" /></> : mode === 'signup' ? text.create : text.recover}</button>
+                    <button type="submit" disabled={busy || oauthBusy || (mode === 'signup' && hasAccount && authProvider === 'local')} className={styles.primaryBtn}>{busy && <LoaderCircle className="auth-spinner" aria-hidden="true" />}{busy ? text.loading : cloudResetView === 'request' ? text.cloudResetSend : cloudResetView === 'code' ? text.cloudResetVerify : cloudResetView === 'reset' ? text.recover : mode === 'login' && authProvider === 'cloud' && loginMethod === 'link' ? text.sendEmailLink : mode === 'login' ? <>{text.signIn}<ArrowRight aria-hidden="true" /></> : mode === 'signup' ? text.create : text.recover}</button>
+
+                    {cloudResetView === 'code' && (
+                      <div style={{ textAlign: 'center' }}>
+                        {resent && <p className="auth-session-note" role="status">{text.cloudResetResent}</p>}
+                        <button type="button" onClick={() => void handleResendResetLink()} disabled={busy || oauthBusy} className="auth-text-link">{text.cloudResetResend}</button>
+                      </div>
+                    )}
 
                     {mode === 'login' && authProvider === 'cloud' && cloudResetView === 'none' && (
                       <div style={{ textAlign: 'center' }}>
@@ -893,7 +922,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                     </>
                   )}
 
-                  {cloudResetView !== 'none' && cloudResetView !== 'sent' && (
+                  {cloudResetView !== 'none' && (
                     <div className="auth-links">
                       <button type="button" onClick={closeCloudReset} className="auth-text-link">{text.loginLink}</button>
                     </div>

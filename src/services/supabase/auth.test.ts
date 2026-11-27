@@ -7,6 +7,7 @@ import {
   isCloudPasswordRecoveryPending,
   requestCloudPasswordReset,
   setCloudPassword,
+  verifyCloudPasswordResetCode,
   signOutFromSupabase,
   SupabaseAuthError,
 } from './auth.ts';
@@ -24,6 +25,7 @@ const fakeUser = (overrides: Partial<User> = {}): User => ({
 
 interface FakeCalls {
   reset: { email: string; options?: { redirectTo?: string } }[];
+  verify: { email: string; token: string; type: string }[];
   update: { password: string }[];
 }
 
@@ -32,16 +34,29 @@ const makeFakeClient = (options: {
   user?: User | null;
   userError?: { message: string } | null;
   resetError?: { message: string } | null;
+  verifyError?: { message: string } | null;
+  verifySession?: unknown;
+  verifyUser?: User | null;
   updateError?: { message: string } | null;
   updateUser?: User | null;
   fireRecoveryEvent?: boolean;
 } = {}): { calls: FakeCalls; client: SupabasePasswordResetClient } => {
-  const calls: FakeCalls = { reset: [], update: [] };
+  const calls: FakeCalls = { reset: [], verify: [], update: [] };
   const client: SupabasePasswordResetClient = {
     auth: {
       resetPasswordForEmail: async (email, opts) => {
         calls.reset.push({ email, options: opts });
         return { data: {}, error: options.resetError ?? null };
+      },
+      verifyOtp: async (params) => {
+        calls.verify.push({ email: params.email, token: params.token, type: params.type });
+        return {
+          data: {
+            user: options.verifyUser === undefined ? fakeUser() : options.verifyUser,
+            session: options.verifySession === undefined ? { access_token: 'token' } : options.verifySession,
+          },
+          error: options.verifyError ?? null,
+        };
       },
       updateUser: async (attributes) => {
         calls.update.push(attributes);
@@ -104,6 +119,32 @@ test('setCloudPassword throws when no user is returned', async () => {
   await assert.rejects(
     () => setCloudPassword('NewPass123!@#', client),
     (error: unknown) => error instanceof SupabaseAuthError && error.code === 'PASSWORD_UPDATE_FAILED'
+  );
+});
+
+test('verifyCloudPasswordResetCode verifies a recovery OTP and marks the recovery session', async () => {
+  const { calls, client } = makeFakeClient();
+  const user = await verifyCloudPasswordResetCode('  Rina@Example.Test ', ' 123456 ', client);
+  assert.deepEqual(calls.verify, [{ email: 'rina@example.test', token: '123456', type: 'recovery' }]);
+  assert.deepEqual(user, { uid: 'user-1', email: 'rina@example.test', name: 'Rina Akter', role: 'owner' });
+  assert.equal(isCloudPasswordRecoveryPending(), true);
+  await signOutFromSupabase();
+  assert.equal(isCloudPasswordRecoveryPending(), false);
+});
+
+test('verifyCloudPasswordResetCode throws a coded error when the code is rejected', async () => {
+  const { client } = makeFakeClient({ verifyError: { message: 'Token has expired or is invalid' } });
+  await assert.rejects(
+    () => verifyCloudPasswordResetCode('rina@example.test', '123456', client),
+    (error: unknown) => error instanceof SupabaseAuthError && error.code === 'RESET_CODE_FAILED'
+  );
+});
+
+test('verifyCloudPasswordResetCode throws when no recovery session is returned', async () => {
+  const { client } = makeFakeClient({ verifySession: null });
+  await assert.rejects(
+    () => verifyCloudPasswordResetCode('rina@example.test', '123456', client),
+    (error: unknown) => error instanceof SupabaseAuthError && error.code === 'RESET_CODE_FAILED'
   );
 });
 
