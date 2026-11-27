@@ -39,7 +39,7 @@ const rangeLabels: Record<ProfitDatePreset, string> = {
   custom: 'Custom',
 };
 
-const cardClass = 'min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900';
+const cardClass = 'profit-panel--v2 min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900';
 
 function dateBounds(preset: ProfitDatePreset, today: string, customStart: string, customEnd: string) {
   if (preset === 'custom') return { start: customStart, end: customEnd };
@@ -71,14 +71,21 @@ function Metric({
     emerald: 'text-emerald-700 dark:text-emerald-300',
     rose: 'text-rose-700 dark:text-rose-300',
   };
+  const toneChipClasses = {
+    slate: 'profit-kpi-icon--slate',
+    violet: 'profit-kpi-icon--violet',
+    amber: 'profit-kpi-icon--amber',
+    emerald: 'profit-kpi-icon--green',
+    rose: 'profit-kpi-icon--rose',
+  };
   return (
-    <article className={cardClass}>
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</p>
-        <Icon className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+    <article className={`${cardClass} profit-kpi--v2`}>
+      <div className="profit-kpi-head">
+        <span className={`profit-kpi-icon ${toneChipClasses[tone]}`}><Icon className="h-4 w-4 shrink-0" aria-hidden="true" /></span>
+        <p className="profit-kpi-label">{label}</p>
       </div>
-      <p className={`mt-2 break-words font-mono text-xl font-bold tabular-nums ${toneClasses[tone]}`}>{value}</p>
-      <p className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400">{detail}</p>
+      <p className={`profit-kpi-value mt-2 break-words font-mono text-xl font-bold tabular-nums ${toneClasses[tone]}`}>{value}</p>
+      <p className="profit-kpi-hint mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400">{detail}</p>
     </article>
   );
 }
@@ -95,7 +102,7 @@ function ProfitTable({
   onViewSales: (saleIds: string[]) => void;
 }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700" role="region" aria-label="Profit breakdown table; scroll horizontally to view all columns" tabIndex={0}>
+    <div className="profit-table-wrap--v2 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700" role="region" aria-label="Profit breakdown table; scroll horizontally to view all columns" tabIndex={0}>
       <table className="w-full min-w-[760px] text-left text-xs">
         <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
           <tr>
@@ -112,11 +119,11 @@ function ProfitTable({
               <td className="px-3 py-3 text-right tabular-nums">{row.salesCount}</td>
               <td className="px-3 py-3 text-right font-mono tabular-nums">{formatCurrency(row.grossSales, currency)}</td>
               <td className="px-3 py-3 text-right font-mono tabular-nums">{formatCurrency(row.allocatedCost, currency)}</td>
-              <td className="px-3 py-3 text-right font-mono font-semibold tabular-nums">{row.grossProfit === null ? 'Incomplete cost data' : formatCurrency(row.grossProfit, currency)}</td>
-              <td className="px-3 py-3 text-right tabular-nums">{row.margin === null ? '—' : `${row.margin.toFixed(1)}%`}</td>
+              <td className={`px-3 py-3 text-right font-mono font-semibold tabular-nums ${row.grossProfit === null ? 'profit-cell--unknown' : row.grossProfit < 0 ? 'profit-cell--loss' : 'profit-cell--profit'}`}>{row.grossProfit === null ? 'Incomplete cost data' : formatCurrency(row.grossProfit, currency)}</td>
+              <td className={`px-3 py-3 text-right tabular-nums ${row.margin === null ? '' : row.margin < 0 ? 'profit-cell--loss' : 'profit-cell--profit'}`}>{row.margin === null ? '—' : `${row.margin.toFixed(1)}%`}</td>
               <td className="px-3 py-3 text-right tabular-nums">{row.unknownCostSales}</td>
               <td className="px-3 py-3">
-                {row.salesCount > 0 && <button type="button" onClick={() => onViewSales(row.saleIds)} className="min-h-8 rounded-lg border border-violet-200 px-2.5 font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-900 dark:text-violet-300 dark:hover:bg-violet-950/30">Sales list</button>}
+                {row.salesCount > 0 && <button type="button" onClick={() => onViewSales(row.saleIds)} className="profit-row-btn--v2 min-h-8 rounded-lg border border-violet-200 px-2.5 font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-900 dark:text-violet-300 dark:hover:bg-violet-950/30">Sales list</button>}
               </td>
             </tr>
           ))}
@@ -179,17 +186,17 @@ export const ProfitAnalyticsView: React.FC<ProfitAnalyticsViewProps> = ({ onView
   const presetOptions: ProfitDatePreset[] = ['today', 'last_7_days', 'last_30_days', 'month', 'custom'];
 
   return (
-    <div className="section-layout-shell mx-auto flex w-full max-w-[1600px] min-w-0 flex-col gap-4 px-3 py-3 pb-10 sm:px-6 sm:py-6 lg:px-8">
-      <header className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300"><TrendingUp className="h-5 w-5" /></div>
-          <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">Financial performance</p>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Profit Report</h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Account purchase costs are snapshotted to sales; customer payments are not treated as revenue again.</p>
+    <div data-section="profitability" className="profit-view--v2 section-layout-shell mx-auto flex w-full max-w-[1600px] min-w-0 flex-col gap-4 px-3 py-3 pb-10 sm:px-6 sm:py-6 lg:px-8">
+      <header className="profit-page-header--v2">
+        <div className="profit-page-header-inner">
+          <div className="profit-page-icon"><TrendingUp className="h-5 w-5" /></div>
+          <div className="profit-page-titles">
+            <p className="profit-page-eyebrow">Financial performance</p>
+            <h1>Profit Report</h1>
+            <p>Account purchase costs are snapshotted to sales; customer payments are not treated as revenue again.</p>
           </div>
         </div>
-        {analytics && <button type="button" onClick={() => {
+        {analytics && <div className="profit-page-actions"><button type="button" onClick={() => {
           const lines = [
             ['Date', 'Sale ID', 'Customer', 'Customer Type', 'Service', 'Unit', 'Gross Sales', 'Actual Allocated Cost', 'Cost Source', 'Gross Profit', 'Unknown Cost'],
             ...analytics.rows.map(row => [
@@ -205,25 +212,28 @@ export const ProfitAnalyticsView: React.FC<ProfitAnalyticsViewProps> = ({ onView
           link.download = `profit-analytics-${bounds.start}-${bounds.end}.csv`;
           link.click();
           URL.revokeObjectURL(link.href);
-        }} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-violet-300 hover:bg-violet-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><Download className="h-4 w-4" />Export CSV</button>}
+        }} className="profit-export--v2 inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm font-semibold"><Download className="h-4 w-4" />Export CSV</button></div>}
       </header>
 
-      <section aria-label="Profit report filters" className={`${cardClass} space-y-3`}>
+      <section aria-label="Profit report filters" className={`${cardClass} profit-filters--v2 space-y-3`}>
+        <div className="profit-filters-head">
+          <p className="profit-filters-title">Date range</p>
+          <span className="profit-range-label ml-auto self-center text-xs text-slate-500">{bounds.start} – {bounds.end}</span>
+        </div>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Profit date range">
           {presetOptions.map(preset => (
-            <button key={preset} type="button" aria-pressed={datePreset === preset} onClick={() => setDatePreset(preset)} className={`min-h-9 rounded-lg px-3 text-xs font-semibold ${datePreset === preset ? 'bg-violet-700 text-white' : 'border border-slate-200 text-slate-600 hover:border-violet-300 dark:border-slate-700 dark:text-slate-300'}`}>{rangeLabels[preset]}</button>
+            <button key={preset} type="button" aria-pressed={datePreset === preset} onClick={() => setDatePreset(preset)} className="profit-preset--v2 min-h-9 rounded-lg px-3 text-xs font-semibold">{rangeLabels[preset]}</button>
           ))}
-          <span className="ml-auto self-center text-xs text-slate-500">{bounds.start} – {bounds.end}</span>
         </div>
         {datePreset === 'custom' && <div className="grid gap-2 sm:grid-cols-2">
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Start date<input type="date" value={customStart} onChange={event => setCustomStart(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">End date<input type="date" value={customEnd} onChange={event => setCustomEnd(event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Start date<input type="date" value={customStart} onChange={event => setCustomStart(event.target.value)} className="profit-date-input--v2 mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">End date<input type="date" value={customEnd} onChange={event => setCustomEnd(event.target.value)} className="profit-date-input--v2 mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
         </div>}
-        {!validBounds && <p role="alert" className="text-xs font-semibold text-rose-600">Choose a valid date range with an end date on or after the start date.</p>}
+        {!validBounds && <p role="alert" className="profit-alert--v2 text-xs font-semibold text-rose-600">Choose a valid date range with an end date on or after the start date.</p>}
       </section>
 
       {analytics && <>
-        <section aria-label="Profit summary" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <section aria-label="Profit summary" className="profit-kpi-grid--v2 grid grid-cols-2 gap-3 xl:grid-cols-3">
           <Metric label="Gross Sales" value={formatCurrency(analytics.grossSales, currency)} detail="Eligible sale totals for the selected sale dates; not payment receipts." icon={Coins} tone="violet" />
           <Metric label="Actual Allocated Cost" value={formatCurrency(analytics.actualAllocatedCost, currency)} detail={`Account snapshots and sale-linked actual costs; ${analytics.unknownCostSales} unknown-cost sale(s) excluded.`} icon={ArrowDownRight} tone="amber" />
           <Metric label="Gross Profit" value={analytics.grossProfit === null ? 'Unavailable' : formatCurrency(analytics.grossProfit, currency)} detail={analytics.unknownCostSales ? `${analytics.unknownCostSales} sale(s) have unknown cost; total gross profit is withheld.` : 'Gross sales less actual allocated costs, before refunds and adjustments.'} icon={Activity} tone={analytics.grossProfit === null ? 'amber' : 'emerald'} />
@@ -234,7 +244,7 @@ export const ProfitAnalyticsView: React.FC<ProfitAnalyticsViewProps> = ({ onView
 
         <section className="grid min-w-0 gap-4 xl:grid-cols-2">
           <article className={`${cardClass} min-h-72`}>
-            <div className="mb-3"><h2 className="text-sm font-bold text-slate-900 dark:text-white">Sales and allocated cost trend</h2><p className="mt-1 text-xs text-slate-500">Sale-date trend; gross profit appears only for dates where every sale has known actual cost.</p></div>
+            <div className="profit-panel-head mb-3"><h2 className="profit-panel-title text-sm font-bold text-slate-900 dark:text-white">Sales and allocated cost trend</h2><p className="profit-panel-sub mt-1 text-xs text-slate-500">Sale-date trend; gross profit appears only for dates where every sale has known actual cost.</p></div>
             <div className="h-64 min-w-0">
               {trendData.length ? <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={trendData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
@@ -251,7 +261,7 @@ export const ProfitAnalyticsView: React.FC<ProfitAnalyticsViewProps> = ({ onView
             </div>
           </article>
           <article className={`${cardClass} min-h-72`}>
-            <div className="mb-3"><h2 className="text-sm font-bold text-slate-900 dark:text-white">Sales vs actual allocated cost</h2><p className="mt-1 text-xs text-slate-500">Top 8 entries in the selected breakdown. Incomplete cost groups remain visibly incomplete.</p></div>
+            <div className="profit-panel-head mb-3"><h2 className="profit-panel-title text-sm font-bold text-slate-900 dark:text-white">Sales vs actual allocated cost</h2><p className="profit-panel-sub mt-1 text-xs text-slate-500">Top 8 entries in the selected breakdown. Incomplete cost groups remain visibly incomplete.</p></div>
             <div className="h-64 min-w-0">
               {breakdownChartData.length ? <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={breakdownChartData} margin={{ top: 8, right: 8, bottom: 32, left: 0 }}>
@@ -269,8 +279,8 @@ export const ProfitAnalyticsView: React.FC<ProfitAnalyticsViewProps> = ({ onView
         </section>
 
         <section className={`${cardClass} min-w-0 space-y-4`}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h2 className="section-title">Profitability breakdown</h2><p className="mt-1 text-xs text-slate-500">One calculation and date range drives this table and both charts.</p></div>
+          <div className="profit-panel-head flex flex-wrap items-center justify-between gap-3">
+            <div><h2 className="profit-panel-title section-title">Profitability breakdown</h2><p className="profit-panel-sub mt-1 text-xs text-slate-500">One calculation and date range drives this table and both charts.</p></div>
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Profit breakdown grouping">
               {([
                 ['service', 'Service'],
@@ -278,7 +288,7 @@ export const ProfitAnalyticsView: React.FC<ProfitAnalyticsViewProps> = ({ onView
                 ['unit', 'Selling unit'],
                 ['customer_type', 'Customer vs reseller'],
               ] as const).map(([value, label]) => (
-                <button key={value} type="button" aria-pressed={breakdown === value} onClick={() => setBreakdown(value)} className={`min-h-9 rounded-lg px-3 text-xs font-semibold ${breakdown === value ? 'bg-violet-700 text-white' : 'border border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}>{label}</button>
+                <button key={value} type="button" aria-pressed={breakdown === value} onClick={() => setBreakdown(value)} className="profit-toggle--v2 min-h-9 rounded-lg px-3 text-xs font-semibold">{label}</button>
               ))}
             </div>
           </div>
@@ -286,28 +296,28 @@ export const ProfitAnalyticsView: React.FC<ProfitAnalyticsViewProps> = ({ onView
         </section>
 
         <section className={`${cardClass} min-w-0 space-y-3`}>
-          <div><h2 className="section-title">Sale detail</h2><p className="mt-1 text-xs text-slate-500">Refunds are reported separately and do not count customer payment balances as costs. A missing snapshot is never replaced with the current account cost.</p></div>
-          <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700" role="region" aria-label="Profit analytics sale detail table; scroll horizontally to view all columns" tabIndex={0}>
+          <div className="profit-panel-head"><h2 className="profit-panel-title section-title">Sale detail</h2><p className="profit-panel-sub mt-1 text-xs text-slate-500">Refunds are reported separately and do not count customer payment balances as costs. A missing snapshot is never replaced with the current account cost.</p></div>
+          <div className="profit-table-wrap--v2 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700" role="region" aria-label="Profit analytics sale detail table; scroll horizontally to view all columns" tabIndex={0}>
             <table className="w-full min-w-[980px] text-left text-xs">
               <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/70 dark:text-slate-400"><tr><th className="px-3 py-3">Sale / date</th><th className="px-3 py-3">Customer type</th><th className="px-3 py-3">Service / plan</th><th className="px-3 py-3">Selling unit</th><th className="px-3 py-3 text-right">Gross sales</th><th className="px-3 py-3 text-right">Actual cost</th><th className="px-3 py-3 text-right">Gross profit</th><th className="px-3 py-3 text-right">Refunds</th><th className="px-3 py-3">Details</th></tr></thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {analytics.rows.map(row => <tr key={row.sale.id}>
                   <td className="px-3 py-3"><span className="font-mono font-semibold">{row.sale.invoiceNo}</span><span className="mt-1 block text-[10px] text-slate-500">{formatBusinessDate(row.sale.date)}</span></td>
-                  <td className="px-3 py-3"><span className={row.customerType === 'Reseller' ? 'rounded-full bg-violet-100 px-2 py-1 text-violet-800 dark:bg-violet-950 dark:text-violet-200' : 'rounded-full bg-slate-100 px-2 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-200'}>{row.customerType}</span><span className="mt-1 block">{row.customerName}</span></td>
+                  <td className="px-3 py-3"><span className={row.customerType === 'Reseller' ? 'profit-type-pill--reseller rounded-full bg-violet-100 px-2 py-1 text-violet-800 dark:bg-violet-950 dark:text-violet-200' : 'profit-type-pill--customer rounded-full bg-slate-100 px-2 py-1 text-slate-700 dark:bg-slate-800 dark:text-slate-200'}>{row.customerType}</span><span className="mt-1 block">{row.customerName}</span></td>
                   <td className="px-3 py-3">{row.serviceName}<span className="mt-1 block text-slate-500">{row.sale.plan}</span></td>
                   <td className="px-3 py-3">{row.unit}<span className="mt-1 block text-[10px] text-slate-500">{row.costSource === 'account_snapshot' ? row.sale.actualCostAllocation?.replace('_', ' ') || 'Account cost snapshot' : row.costSource === 'sale_cost_record' ? 'Sale-linked direct cost' : 'Unknown actual cost'}</span></td>
                   <td className="px-3 py-3 text-right font-mono">{formatCurrency(row.grossSales, currency)}</td>
-                  <td className="px-3 py-3 text-right font-mono">{row.allocatedCost === null ? <span className="font-sans font-semibold text-amber-700 dark:text-amber-300">Unknown</span> : formatCurrency(row.allocatedCost, currency)}</td>
-                  <td className="px-3 py-3 text-right font-mono">{row.grossProfit === null ? '—' : formatCurrency(row.grossProfit, currency)}</td>
+                  <td className="px-3 py-3 text-right font-mono">{row.allocatedCost === null ? <span className="profit-unknown--v2 font-sans font-semibold text-amber-700 dark:text-amber-300">Unknown</span> : formatCurrency(row.allocatedCost, currency)}</td>
+                  <td className={`px-3 py-3 text-right font-mono ${row.grossProfit === null ? '' : row.grossProfit < 0 ? 'profit-cell--loss' : 'profit-cell--profit'}`}>{row.grossProfit === null ? '—' : formatCurrency(row.grossProfit, currency)}</td>
                   <td className="px-3 py-3 text-right font-mono">{formatCurrency(row.refunded, currency)}</td>
-                  <td className="px-3 py-3"><button type="button" onClick={() => onViewSale(row.sale.id)} className="min-h-8 rounded-lg border border-violet-200 px-2.5 font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-900 dark:text-violet-300">Open sale</button></td>
+                  <td className="px-3 py-3"><button type="button" onClick={() => onViewSale(row.sale.id)} className="profit-row-btn--v2 min-h-8 rounded-lg border border-violet-200 px-2.5 font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-900 dark:text-violet-300">Open sale</button></td>
                 </tr>)}
                 {!analytics.rows.length && <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-500">No eligible sales in this date range.</td></tr>}
               </tbody>
             </table>
           </div>
         </section>
-        <p className="text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+        <p className="profit-note--v2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
           New sales capture account costs at completion. For a profile/family-slot sale the saved account cost is divided by its configured profile capacity; a full-account sale uses the full saved cost. An explicit sale-linked direct cost record is used only when no account snapshot exists. Sales without either source remain unknown. Net profit is withheld because operating expenses and all adjustment sources are not fully attributable to these sales.
         </p>
       </>}

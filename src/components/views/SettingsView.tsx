@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import NextImage from 'next/image';
 import {
   Bell, BellRing, Building2, Check, CreditCard, Database, FileText, Image, Palette,
-  Save, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, Download,
+  Layers, Save, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, Download, Users,
   AlertTriangle, FileSpreadsheet, RotateCcw, Trash2, Image as ImageIcon, ChevronDown, ChevronUp, MessageCircle,
 } from 'lucide-react';
 import { useApp, type DataImportResult } from '../../context/AppContext';
@@ -68,8 +68,8 @@ const notificationCategories: [NotificationCategory, string][] = [
   ['service', 'Service notifications'],
   ['system', 'System notifications'],
 ];
-const inputClass = 'w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white';
-const cardClass = 'rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-6';
+const inputClass = 'w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white';
+const cardClass = 'settings-panel--v2 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-6';
 const labelClass = 'mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300';
 
 const sections: { id: SettingsSection; label: string; icon: React.FC<{ className?: string }> }[] = [
@@ -788,8 +788,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
           </section>
           <section className={cardClass}>
             <SectionHeading title="Business branding" description={`These details identify the current business on invoices and in the workspace. They do not change the ${productBrand.name} product identity.`} />
-            <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-900 dark:bg-emerald-950/30">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">Current Business</div>
+            <div className="settings-current-business mb-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 dark:border-violet-900 dark:bg-violet-950/30">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">Current Business</div>
               <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">{currentBusinessName || draft.storeName || 'Not set'}</div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -857,7 +857,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
           </div>
           <div className="mt-4 flex gap-2">
             <input className={inputClass} maxLength={30} placeholder="Add another payment method" value={customMethod} onChange={e => setCustomMethod(e.target.value)} />
-            <button type="button" className="shrink-0 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white dark:bg-emerald-600" onClick={() => {
+            <button type="button" className="shrink-0 rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-600 dark:bg-violet-600" onClick={() => {
               const method = customMethod.trim();
               if (!method) return;
               if (paymentMethods.some(item => item.name.toLowerCase() === method.toLowerCase())) {
@@ -900,7 +900,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
                   </div>
                   <div className="mt-3 flex gap-2">
                     <input className={inputClass} maxLength={50} placeholder={`New ${kind} category`} value={value} onChange={event => setValue(event.target.value)} />
-                    <button type="button" className="rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white dark:bg-emerald-600" onClick={() => {
+                    <button type="button" className="rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-600 dark:bg-violet-600" onClick={() => {
                       const name = value.trim();
                       if (!name) return;
                       if (categories.some(item => item.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase())) {
@@ -974,7 +974,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
               <CheckSetting label="Enable WhatsApp actions" checked={draft.whatsappPreferences?.enabled !== false} onChange={checked => updateWhatsAppPreferences({ enabled: checked })} />
               <CheckSetting label="Show WhatsApp buttons where available" checked={draft.whatsappPreferences?.showButtons !== false} onChange={checked => updateWhatsAppPreferences({ showButtons: checked })} />
             </div>
-            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
+            <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-3 text-xs leading-5 text-violet-900 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-200">
               <strong>Current mode: WhatsApp link.</strong> XolveManager opens WhatsApp with a prepared message. It does not track delivery. Messages are never sent automatically.
             </div>
           </section>
@@ -1000,10 +1000,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
             <div className="mt-4 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
               <h3 className="text-xs font-bold text-slate-700 dark:text-slate-200">Available variables — select to insert</h3>
               <div className="mt-2 flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
-                {supportedWhatsAppVariables.map(variable => <button key={variable} type="button" onClick={() => updateWhatsAppTemplate(selectedWhatsAppTemplate.templateId, { message: `${selectedWhatsAppTemplate.message}{${variable}}` })} className="rounded-lg border border-slate-200 px-2 py-1 font-mono text-[10px] text-slate-600 hover:border-emerald-400 hover:text-emerald-700 dark:border-slate-700 dark:text-slate-300">{`{${variable}}`}</button>)}
+                {supportedWhatsAppVariables.map(variable => <button key={variable} type="button" onClick={() => updateWhatsAppTemplate(selectedWhatsAppTemplate.templateId, { message: `${selectedWhatsAppTemplate.message}{${variable}}` })} className="rounded-lg border border-slate-200 px-2 py-1 font-mono text-[10px] text-slate-600 hover:border-violet-400 hover:text-violet-700 dark:border-slate-700 dark:text-slate-300">{`{${variable}}`}</button>)}
               </div>
             </div>
-            <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50/60 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+            <div className="mt-4 rounded-xl border border-violet-100 bg-violet-50/60 p-4 dark:border-violet-900/50 dark:bg-violet-950/20">
               <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100">Template preview</h3>
               <p className="mt-2 whitespace-pre-wrap break-words rounded-xl bg-[#d9fdd3] p-3 text-sm leading-6 text-slate-800 dark:bg-[#005c4b] dark:text-slate-100">{selectedWhatsAppTemplate.message || 'Empty message template'}</p>
             </div>
@@ -1021,7 +1021,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
         return <div className={cardClass}>
           <SectionHeading title="Appearance" description="Choose a light or dark workspace theme." />
           <div className="grid gap-3 sm:grid-cols-2">
-            {(['light', 'dark'] as const).map(theme => <button key={theme} type="button" onClick={() => updateDraft({ appearance: { ...draft.appearance, theme } })} className={`rounded-xl border p-4 text-left capitalize ${draft.appearance?.theme === theme || (!draft.appearance?.theme && theme === (isDark ? 'dark' : 'light')) ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30' : 'border-slate-200 dark:border-slate-700'}`}>{theme}<span className="mt-1 block text-xs text-slate-500">Use {theme} colors</span></button>)}
+            {(['light', 'dark'] as const).map(theme => <button key={theme} type="button" onClick={() => updateDraft({ appearance: { ...draft.appearance, theme } })} className={`settings-theme-option rounded-xl border p-4 text-left capitalize ${draft.appearance?.theme === theme || (!draft.appearance?.theme && theme === (isDark ? 'dark' : 'light')) ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30' : 'border-slate-200 dark:border-slate-700'}`}>{theme}<span className="mt-1 block text-xs text-slate-500">Use {theme} colors</span></button>)}
           </div>
         </div>;
       case 'notifications':
@@ -1145,7 +1145,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
                   type="button"
                   disabled={isRequestingStoragePersistence}
                   onClick={() => void requestPersistentStorage()}
-                  className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60"
+                  className="shrink-0 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-600 disabled:cursor-wait disabled:opacity-60"
                 >
                   {isRequestingStoragePersistence ? 'Requesting…' : 'Protect local data'}
                 </button>}
@@ -1333,7 +1333,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
             {customerCsvRows && <div className="mt-4 space-y-3">
               <p className="text-sm">Total: <strong>{customerCsvRows.length}</strong> · Valid new: <strong>{customerCsvRows.filter(row => !row.reason && !row.duplicate).length}</strong> · Invalid: <strong>{customerCsvRows.filter(row => row.reason).length}</strong> · Duplicates skipped: <strong>{customerCsvRows.filter(row => row.duplicate).length}</strong></p>
               <div className="max-h-64 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700"><table className="w-full min-w-[560px] text-left text-xs"><thead className="sticky top-0 bg-slate-100 dark:bg-slate-800"><tr><th className="p-2">Row</th><th className="p-2">Name</th><th className="p-2">Phone</th><th className="p-2">Email</th><th className="p-2">Result</th></tr></thead><tbody>{customerCsvRows.map(row => <tr key={row.row} className="border-t border-slate-100 dark:border-slate-800"><td className="p-2">{row.row}</td><td className="p-2">{row.customer.name || '—'}</td><td className="p-2">{row.customer.phone || '—'}</td><td className="p-2">{row.customer.email || '—'}</td><td className="p-2">{row.reason ?? (row.duplicate ? `Duplicate of ${row.duplicate.name}; skipped` : 'Ready')}</td></tr>)}</tbody></table></div>
-              <div className="flex gap-2"><button type="button" onClick={() => void importCustomersCsv()} disabled={!customerCsvRows.some(row => !row.reason && !row.duplicate)} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Import valid new rows</button><button type="button" onClick={() => setCustomerCsvRows(null)} className="rounded-xl border px-4 py-2.5 text-sm">Cancel</button></div>
+              <div className="flex gap-2"><button type="button" onClick={() => void importCustomersCsv()} disabled={!customerCsvRows.some(row => !row.reason && !row.duplicate)} className="rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-600 disabled:opacity-50">Import valid new rows</button><button type="button" onClick={() => setCustomerCsvRows(null)} className="rounded-xl border px-4 py-2.5 text-sm">Cancel</button></div>
             </div>}
             <div className="mt-5 border-t border-slate-100 pt-4 dark:border-slate-800"><CsvImportUtility /></div>
           </section>
@@ -1350,7 +1350,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
             </div>
           </section>
 
-          <section className="min-w-0 rounded-2xl border-2 border-rose-300 bg-rose-50 p-5 dark:border-rose-900/70 dark:bg-rose-950/20 sm:p-6">
+          <section className="settings-danger--v2 min-w-0 rounded-2xl border-2 border-rose-300 bg-rose-50 p-5 dark:border-rose-900/70 dark:bg-rose-950/20 sm:p-6">
             <div className="mb-4 flex items-center gap-2 text-rose-800 dark:text-rose-300"><AlertTriangle className="h-5 w-5" /><h2 className="font-bold">Danger Zone</h2></div>
             <p className="text-sm text-rose-800 dark:text-rose-200">Clearing business data permanently removes financial and historical records; a downloadable safety backup is required first.</p>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -1384,30 +1384,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   };
 
   const active = sections.find(section => section.id === activeSection)!;
-  return <main className="section-layout-shell mx-auto max-w-[1600px] space-y-5 px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
-    <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div><div className="flex items-center gap-2"><Settings className="h-6 w-6 text-emerald-600" /><h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Settings</h1></div><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Manage your business, workflows, and data.</p></div>
-      <div className="flex flex-wrap items-center gap-2">
-        {!['data', 'about'].includes(activeSection) && <button form="settings-form" type="submit" className="settings-save-button inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"><Save className="h-4 w-4" /> Save changes</button>}
+  const summaryCards = [
+    { icon: Database, label: 'Total records', value: totalRecords, hint: 'Customers, sales, payments & more', tone: 'violet' },
+    { icon: Users, label: 'Customers', value: customers.length, hint: 'In this business', tone: 'emerald' },
+    { icon: Layers, label: 'Services', value: services.length, hint: 'In the service catalogue', tone: 'amber' },
+    { icon: SlidersHorizontal, label: 'Subscriptions', value: subscriptions.length, hint: 'All statuses', tone: 'sky' },
+  ] as const;
+  return <main data-section="settings" className="settings-view--v2 section-layout-shell mx-auto max-w-[1600px] space-y-5 px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
+    <header className="settings-page-header--v2">
+      <div className="settings-page-header-inner">
+        <div className="settings-page-icon"><Settings className="h-6 w-6" /></div>
+        <div className="settings-page-titles">
+          <p className="settings-page-eyebrow">Workspace</p>
+          <h1>Settings</h1>
+          <p>Manage your business, workflows, and data.</p>
+        </div>
+      </div>
+      <div className="settings-page-actions">
+        {!['data', 'about'].includes(activeSection) && <button form="settings-form" type="submit" className="settings-save-button settings-save--v2 inline-flex items-center justify-center gap-2 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-600"><Save className="h-4 w-4" /> Save changes</button>}
       </div>
     </header>
-    <div className="grid gap-5 lg:grid-cols-[230px_minmax(0,1fr)]">
-      <nav aria-label="Settings sections" className="settings-section-nav flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
-        {sections.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => { setValidationError(''); setActiveSection(id); }} aria-current={activeSection === id ? 'page' : undefined} className={`flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors ${activeSection === id ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'}`}><Icon className="h-4 w-4" />{label}</button>)}
+    <div className="settings-kpi-row--v2" aria-label="Business summary">
+      {summaryCards.map(({ icon: Icon, label, value, hint, tone }) => <div key={label} className={`settings-kpi--v2 settings-kpi--${tone}`}>
+        <div className="settings-kpi-top"><span className="settings-kpi-icon"><Icon className="h-4 w-4" /></span><span className="settings-kpi-label">{label}</span></div>
+        <div className="settings-kpi-value">{value}</div>
+        <div className="settings-kpi-hint">{hint}</div>
+      </div>)}
+    </div>
+    <div className="settings-layout--v2 grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
+      <nav aria-label="Settings sections" className="settings-section-nav settings-nav--v2 flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
+        {sections.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => { setValidationError(''); setActiveSection(id); }} aria-current={activeSection === id ? 'page' : undefined} className={`settings-nav-item flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors ${activeSection === id ? 'bg-violet-700 text-white' : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'}`}><Icon className="h-4 w-4" />{label}</button>)}
       </nav>
       <form id="settings-form" onSubmit={saveSettings} onInputCapture={() => setValidationError('')} className="settings-form min-w-0 space-y-4">
         {validationError && <p ref={validationErrorRef} tabIndex={-1} role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 outline-none focus-visible:ring-2 focus-visible:ring-rose-500 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">{validationError}</p>}
-        <div className="flex items-center gap-2 text-xs text-slate-500"><Check className="h-4 w-4 text-emerald-600" />{active.label}</div>
+        <div className="settings-crumb--v2 flex items-center gap-2 text-xs text-slate-500"><Check className="h-4 w-4 text-violet-600" />{active.label}</div>
         {renderContent()}
       </form>
     </div>
   </main>;
 };
 
-const SectionHeading: React.FC<{ title: string; description: string }> = ({ title, description }) => <div className="mb-5 border-b border-slate-100 pb-4 dark:border-slate-800"><h2 className="text-base font-semibold text-slate-900 dark:text-white">{title}</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{description}</p></div>;
+const SectionHeading: React.FC<{ title: string; description: string }> = ({ title, description }) => <div className="settings-section-heading mb-5 border-b border-slate-100 pb-4 dark:border-slate-800"><h2 className="text-base font-semibold text-slate-900 dark:text-white">{title}</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{description}</p></div>;
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => <label className="block"><span className={labelClass}>{label}</span>{children}</label>;
-const CheckSetting: React.FC<{ label: string; checked: boolean; onChange: (checked: boolean) => void }> = ({ label, checked, onChange }) => <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700"><input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="h-4 w-4 accent-emerald-600" /><span>{label}</span></label>;
-const Metric: React.FC<{ label: string; count: number }> = ({ label, count }) => <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70"><div className="text-lg font-bold text-slate-900 dark:text-white">{count}</div><div className="text-xs text-slate-500">{label}</div></div>;
+const CheckSetting: React.FC<{ label: string; checked: boolean; onChange: (checked: boolean) => void }> = ({ label, checked, onChange }) => <label className="settings-check--v2 flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700"><input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="h-4 w-4 accent-violet-600" /><span>{label}</span></label>;
+const Metric: React.FC<{ label: string; count: number }> = ({ label, count }) => <div className="settings-metric--v2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/70"><div className="text-lg font-bold text-slate-900 dark:text-white">{count}</div><div className="text-xs text-slate-500">{label}</div></div>;
 const AboutItem: React.FC<{ label: string; value: string }> = ({ label, value }) => <div><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 text-sm font-medium text-slate-900 dark:text-white">{value}</dd></div>;
 
 const formatMetadataDate = (value?: string, language: 'en' | 'bn' = 'en', timeZone?: string): string => {
@@ -1433,7 +1453,7 @@ const CountPreview: React.FC<{ title: string; counts: Record<string, number> }> 
 );
 
 const CsvButton: React.FC<{ label: string; onClick: () => void }> = ({ label, onClick }) => (
-  <button type="button" onClick={onClick} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-left text-sm font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
-    <Download className="h-4 w-4 text-emerald-600" />{label}
+  <button type="button" onClick={onClick} className="settings-csv-button flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-left text-sm font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
+    <Download className="h-4 w-4 text-violet-600" />{label}
   </button>
 );

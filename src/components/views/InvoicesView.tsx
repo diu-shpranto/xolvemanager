@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Download, Eye, FilePlus2, FileText, Search, Share2, MessageCircle } from 'lucide-react';
+import { AlertTriangle, Banknote, Clock3, Copy, Download, Eye, FilePlus2, FileText, Receipt, Search, Share2, MessageCircle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { getCustomerOptionLabel } from '../../utils/relationships';
@@ -337,7 +337,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
   };
 
   const filters = (
-    <div className="invoice-filter-toolbar grid min-w-0 grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 sm:gap-3 sm:p-4 lg:grid-cols-4">
+    <div className="invoice-filter-toolbar invoice-filter-toolbar--v2 grid min-w-0 grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 sm:gap-3 sm:p-4 lg:grid-cols-4">
       <label className="relative sm:col-span-2 lg:col-span-1">
         <span className="sr-only">Search invoices</span>
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -386,8 +386,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
   );
 
   return (
-    <div className="finance-responsive-page section-layout-shell customer-list-page mx-auto flex w-full max-w-[1600px] flex-col gap-3 px-3 py-3 pb-10 sm:gap-4 sm:px-6 sm:py-6 lg:px-8">
-      <header className="finance-responsive-header customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:pb-4">
+    <div data-section="invoices" className="invoices-view finance-responsive-page section-layout-shell customer-list-page mx-auto flex w-full max-w-[1600px] flex-col gap-3 px-3 py-3 pb-10 sm:gap-4 sm:px-6 sm:py-6 lg:px-8">
+      <header className="invoice-page-header--v2 finance-responsive-header customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:pb-4">
         <div className="customer-heading flex min-w-0 items-start gap-3">
           <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11"><FileText className="h-5 w-5" /></div>
           <div className="min-w-0">
@@ -397,34 +397,34 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
           </div>
         </div>
         <div className="finance-responsive-actions customer-header-actions flex w-full items-center justify-end gap-2 sm:w-auto">
-          <button type="button" onClick={() => setIsCreateOpen(true)} disabled={!availableSales.length} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+          <button type="button" onClick={() => setIsCreateOpen(true)} disabled={!availableSales.length} className="invoice-header-action inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
             <FilePlus2 className="h-4 w-4" />Create for sale
           </button>
-          <button type="button" onClick={exportRows} disabled={!rows.length} className="customer-primary-action inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-700 px-3 text-sm font-semibold text-white hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" onClick={exportRows} disabled={!rows.length} className="invoice-header-action customer-primary-action inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-700 px-3 text-sm font-semibold text-white hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-50">
             <Download className="h-4 w-4" />Export CSV
           </button>
         </div>
       </header>
 
-      <section className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5" aria-label="Invoice summary">
+      <section className="invoice-summary--v2 grid min-w-0 grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5" aria-label="Invoice summary">
         {[
-          ['Invoices', validInvoices.length, null],
-          ['Outstanding', summary.outstandingCount, null],
-          ['Billed', null, summary.billed],
-          ['Collected', null, summary.paid],
-          ['Balance due', null, summary.due],
-        ].map(([label, count, amount]) => (
-          <div key={String(label)} className={`min-w-0 rounded-xl border p-3 transition-colors sm:p-4 ${label === 'Balance due' ? 'border-violet-200 bg-violet-50/60 dark:border-violet-900/60 dark:bg-violet-950/20' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'}`}>
-            <div className="truncate text-[11px] font-semibold text-slate-600 dark:text-slate-400">{label}</div>
-            <div className="mt-1 truncate font-mono text-lg font-bold tabular-nums tracking-tight text-slate-950 dark:text-white sm:text-xl">
-              {typeof amount === 'number' ? formatCurrency(amount, currency) : count}
-            </div>
+          { label: 'Invoices', icon: FileText, tone: 'bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300', value: String(validInvoices.length), hint: language === 'bn' ? `${summary.paidCount}টি সম্পূর্ণ পরিশোধিত` : `${summary.paidCount} paid in full` },
+          { label: 'Outstanding', icon: Clock3, tone: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300', value: String(summary.outstandingCount), hint: language === 'bn' ? 'পরিশোধের অপেক্ষায়' : 'awaiting payment' },
+          { label: 'Billed', icon: Receipt, tone: 'bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300', value: formatCurrency(summary.billed, currency), hint: language === 'bn' ? `${validInvoices.length}টি ইনভয়েস` : `${validInvoices.length} invoices` },
+          { label: 'Collected', icon: Banknote, tone: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300', value: formatCurrency(summary.paid, currency), hint: language === 'bn' ? 'এ পর্যন্ত প্রাপ্ত' : 'received so far' },
+          { label: 'Balance due', icon: AlertTriangle, tone: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300', value: formatCurrency(summary.due, currency), hint: language === 'bn' ? `${summary.outstandingCount}টি বাকি` : `${summary.outstandingCount} outstanding` },
+        ].map(({ label, icon: Icon, tone, value, hint }) => (
+          <div key={label} className={`invoice-metric min-w-0 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 sm:p-4 ${label === 'Balance due' ? 'invoice-metric--due' : ''}`}>
+            <div className={`invoice-metric-icon flex h-8 w-8 items-center justify-center rounded-lg ${tone}`}><Icon className="h-4 w-4" /></div>
+            <div className="invoice-metric-label mt-2 truncate text-xs font-semibold text-slate-600 dark:text-slate-400">{label}</div>
+            <div className="invoice-metric-value mt-0.5 truncate font-mono text-lg font-bold tabular-nums tracking-tight text-slate-950 dark:text-white sm:text-xl">{value}</div>
+            <div className="invoice-metric-hint mt-0.5 truncate text-[11px] font-medium text-slate-400 dark:text-slate-500">{hint}</div>
           </div>
         ))}
       </section>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-lg bg-slate-100 p-1 dark:bg-slate-800" role="group" aria-label="Invoice view">
+        <div className="invoice-tabs--v2 inline-flex rounded-lg bg-slate-100 p-1 dark:bg-slate-800" role="group" aria-label="Invoice view">
           {(['all', 'outstanding'] as const).map(tab => (
             <button key={tab} type="button" aria-pressed={activeTab === tab} onClick={() => setActiveTab(tab)}
               className={`rounded-md px-3 py-2 text-xs font-semibold capitalize ${activeTab === tab ? 'bg-white text-violet-800 shadow-sm dark:bg-slate-900 dark:text-violet-300' : 'text-slate-600 dark:text-slate-300'}`}>
@@ -437,7 +437,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
       {filters}
 
       {rows.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center dark:border-slate-700 dark:bg-slate-900">
+        <div className="invoice-empty--v2 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center dark:border-slate-700 dark:bg-slate-900">
           <FileText className="mx-auto h-9 w-9 text-slate-300 dark:text-slate-600" />
           <h2 className="mt-3 text-base font-semibold text-slate-800 dark:text-slate-200">{validInvoices.length === 0 ? 'No invoices yet.' : 'No invoices match these filters.'}</h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -462,7 +462,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
         </div>
       ) : (
         <>
-          <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 lg:block">
+          <div className="invoice-table-panel--v2 hidden overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 lg:block">
             <div className="data-table-scroll overflow-x-auto" role="region" aria-label="Invoices table; scroll horizontally to view all columns" tabIndex={0}>
               <table className="w-full min-w-[1180px] text-left text-xs">
                 <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
@@ -484,15 +484,15 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                       <td className="whitespace-nowrap px-3 py-3 tabular-nums">{formatCurrency(paid, sale.currency)}</td>
                       <td className="whitespace-nowrap px-3 py-3 font-semibold tabular-nums">{formatCurrency(due, sale.currency)}</td>
                       <td className="px-3 py-3">{due > 0 ? getOutstandingAgingBucket(agingDays) : '—'}</td>
-                      <td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${statusClass[status]}`}>{statusLabel[status]}</span></td>
+                      <td className="px-3 py-3"><span className={`invoice-status-badge--v2 rounded-full px-2 py-1 text-[10px] font-semibold ${statusClass[status]}`}>{statusLabel[status]}</span></td>
                       <td className="px-3 py-3"><div className="flex items-center gap-1">
-                        <button type="button" title="View invoice" aria-label={`View ${invoice.invoiceNumber}`} onClick={() => handleView(invoice, sale)} className="rounded-md p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Eye className="h-4 w-4" /></button>
-                        <button type="button" title="Download PNG" aria-label={`Download ${invoice.invoiceNumber} PNG`} onClick={() => void handleDownload(invoice, sale)} className="rounded-md p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Download className="h-4 w-4" /></button>
-                        <button type="button" title="Share" aria-label={`Share ${invoice.invoiceNumber}`} onClick={() => void handleShare(invoice, sale)} className="rounded-md p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Share2 className="h-4 w-4" /></button>
-                        {customer && canContact(customer.id) && <button type="button" title="WhatsApp invoice" aria-label={`Compose WhatsApp message for invoice ${invoice.invoiceNumber}`} onClick={() => openMessage({ customerId: customer.id, invoiceId: invoice.invoiceId, saleId: sale.id, templateId: 'invoice_ready' })} className="rounded-md p-2 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30"><MessageCircle className="h-4 w-4" /></button>}
-                        {countActiveInvoiceReminders(reminders, invoice.invoiceId, sale.id) > 0 && <button type="button" onClick={() => onNavigateSection?.('reminders')} className="whitespace-nowrap rounded-md px-2 py-1.5 font-semibold text-amber-700 hover:bg-amber-50 dark:text-amber-300">Reminders ({countActiveInvoiceReminders(reminders, invoice.invoiceId, sale.id)})</button>}
-                        {due > 0 && <button type="button" onClick={() => onAddPayment(sale.id, customer?.id)} className="whitespace-nowrap rounded-md px-2 py-1.5 font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/40">Add payment</button>}
-                        <button type="button" onClick={() => onViewSale(sale.id)} className="whitespace-nowrap rounded-md px-2 py-1.5 font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Sale</button>
+                        <button type="button" title="View invoice" aria-label={`View ${invoice.invoiceNumber}`} onClick={() => handleView(invoice, sale)} className="invoice-table-action rounded-md p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Eye className="h-4 w-4" /></button>
+                        <button type="button" title="Download PNG" aria-label={`Download ${invoice.invoiceNumber} PNG`} onClick={() => void handleDownload(invoice, sale)} className="invoice-table-action rounded-md p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Download className="h-4 w-4" /></button>
+                        <button type="button" title="Share" aria-label={`Share ${invoice.invoiceNumber}`} onClick={() => void handleShare(invoice, sale)} className="invoice-table-action rounded-md p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"><Share2 className="h-4 w-4" /></button>
+                        {customer && canContact(customer.id) && <button type="button" title="WhatsApp invoice" aria-label={`Compose WhatsApp message for invoice ${invoice.invoiceNumber}`} onClick={() => openMessage({ customerId: customer.id, invoiceId: invoice.invoiceId, saleId: sale.id, templateId: 'invoice_ready' })} className="invoice-table-action rounded-md p-2 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30"><MessageCircle className="h-4 w-4" /></button>}
+                        {countActiveInvoiceReminders(reminders, invoice.invoiceId, sale.id) > 0 && <button type="button" onClick={() => onNavigateSection?.('reminders')} className="invoice-row-action whitespace-nowrap rounded-md px-2 py-1.5 font-semibold text-amber-700 hover:bg-amber-50 dark:text-amber-300">Reminders ({countActiveInvoiceReminders(reminders, invoice.invoiceId, sale.id)})</button>}
+                        {due > 0 && <button type="button" onClick={() => onAddPayment(sale.id, customer?.id)} className="invoice-row-action whitespace-nowrap rounded-md px-2 py-1.5 font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/40">Add payment</button>}
+                        <button type="button" onClick={() => onViewSale(sale.id)} className="invoice-row-action whitespace-nowrap rounded-md px-2 py-1.5 font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Sale</button>
                       </div></td>
                     </tr>
                   ))}
@@ -502,7 +502,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
           </div>
           <div className="grid gap-3 lg:hidden">
             {pageRows.map(({ invoice, sale, customer, service, paid, due, status, agingDays }) => (
-              <article key={invoice.invoiceId} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 sm:p-4">
+              <article key={invoice.invoiceId} data-status={status} className={`invoice-mobile-card--v2 min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 sm:p-4 ${due > 0 ? 'invoice-mobile-card--due' : ''}`}>
                 <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
                   <div className="flex min-w-0 items-start gap-1.5">
                     <div className="min-w-0 flex-1">
@@ -513,15 +513,15 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                       <Copy className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${statusClass[status]}`}>{statusLabel[status]}</span>
+                  <span className={`invoice-status-badge--v2 shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${statusClass[status]}`}>{statusLabel[status]}</span>
                 </div>
                 <button type="button" onClick={() => customer && onViewCustomer(customer.id)} disabled={!customer} className="mt-3 text-left text-sm font-semibold text-slate-800 disabled:cursor-default dark:text-slate-200"><CustomerNameWithType customer={customer} /></button>
                 <div className="mt-1 break-words text-xs text-slate-500">{getSaleLineItems(sale).map((item, index) => <span key={`${item.id}-${index}`} className="block">{servicesById.get(item.serviceId)?.name || 'Service unavailable'} · {item.plan}{item.quantity > 1 ? ` × ${item.quantity}` : ''}</span>)}</div>
                 <div className="mt-3 grid min-w-0 grid-cols-3 gap-1.5 text-[11px] sm:gap-3 sm:text-xs">
-                  <div className="min-w-0 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70"><div className="text-slate-500 dark:text-slate-400">Total</div><div title={formatCurrency(sale.amount, sale.currency)} className="mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[clamp(0.625rem,3vw,0.75rem)] font-semibold tabular-nums tracking-tight">{formatCurrency(sale.amount, sale.currency)}</div></div>
-                  <div className="min-w-0 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70"><div className="text-slate-500 dark:text-slate-400">Paid</div><div title={formatCurrency(paid, sale.currency)} className="mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[clamp(0.625rem,3vw,0.75rem)] font-semibold tabular-nums tracking-tight">{formatCurrency(paid, sale.currency)}</div></div>
-                  <div className="min-w-0 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70"><div className="text-slate-500 dark:text-slate-400">Due</div><div title={formatCurrency(due, sale.currency)} className="mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[clamp(0.625rem,3vw,0.75rem)] font-semibold tabular-nums tracking-tight">{formatCurrency(due, sale.currency)}</div></div>
-                  {due > 0 && <div className="col-span-3 text-slate-500">Outstanding {getOutstandingAgingBucket(agingDays)}</div>}
+                  <div className="invoice-money-cell min-w-0 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70"><div className="invoice-money-label text-slate-500 dark:text-slate-400">Total</div><div title={formatCurrency(sale.amount, sale.currency)} className="invoice-money-value mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[clamp(0.625rem,3vw,0.75rem)] font-semibold tabular-nums tracking-tight">{formatCurrency(sale.amount, sale.currency)}</div></div>
+                  <div className="invoice-money-cell min-w-0 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70"><div className="invoice-money-label text-slate-500 dark:text-slate-400">Paid</div><div title={formatCurrency(paid, sale.currency)} className="invoice-money-value mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[clamp(0.625rem,3vw,0.75rem)] font-semibold tabular-nums tracking-tight">{formatCurrency(paid, sale.currency)}</div></div>
+                  <div className="invoice-money-cell min-w-0 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70"><div className="invoice-money-label text-slate-500 dark:text-slate-400">Due</div><div title={formatCurrency(due, sale.currency)} className="invoice-money-value mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[clamp(0.625rem,3vw,0.75rem)] font-semibold tabular-nums tracking-tight">{formatCurrency(due, sale.currency)}</div></div>
+                  {due > 0 && <div className="invoice-aging-line col-span-3 text-slate-500">Outstanding {getOutstandingAgingBucket(agingDays)}</div>}
                 </div>
                 <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                   <div className="grid grid-cols-2 gap-2">
@@ -539,7 +539,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
               </article>
             ))}
           </div>
-          <nav className="flex items-center justify-between gap-3 text-xs" aria-label="Invoice pages">
+          <nav className="invoice-pagination--v2 flex items-center justify-between gap-3 text-xs" aria-label="Invoice pages">
             <span className="text-slate-500">Page {page} of {pageCount}</span>
             <div className="flex gap-2">
               <button type="button" disabled={page <= 1} onClick={() => setPage(value => value - 1)} className="rounded-lg border border-slate-200 px-3 py-2 font-semibold disabled:opacity-40 dark:border-slate-700">Previous</button>
@@ -561,7 +561,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
       />}
 
       <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Create invoice from sale" subtitle="Invoices must be connected to an existing sale." maxWidth="lg">
-        <div className="space-y-4">
+        <div className="invoice-create-form--v2 space-y-4">
           {availableSales.length ? (
             <>
               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200" htmlFor="invoice-sale-select">Sale

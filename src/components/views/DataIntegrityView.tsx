@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, AlertTriangle, ArrowRight, CheckCircle2, Database, Download,
-  FileClock, RefreshCw, Search, ShieldAlert, ShieldCheck,
+  FileClock, Info, RefreshCw, Search, ShieldAlert, ShieldCheck,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
@@ -38,13 +38,8 @@ const categoryLabels: Record<DataIntegrityCategory, string> = {
   AUDIT_HISTORY: 'Audit history',
   RESOURCES: 'Accounts and profiles',
 };
-const sectionClass = 'rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-6';
+const severityOrder: DataIntegrityIssue['severity'][] = ['ERROR', 'WARNING', 'INFO'];
 
-const getSeverityStyle = (severity: DataIntegrityIssue['severity']): string => {
-  if (severity === 'ERROR') return 'border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900/70 dark:bg-rose-950/30 dark:text-rose-200';
-  if (severity === 'WARNING') return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200';
-  return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300';
-};
 const formatCheckedBalance = (amount: number, currency: string, language: 'en' | 'bn'): string =>
   Number.isFinite(amount) ? formatCurrency(amount, currency, language) : 'Unavailable — invalid ledger amount';
 
@@ -124,124 +119,161 @@ export const DataIntegrityView: React.FC<DataIntegrityViewProps> = ({ onOpenBack
       ].some(value => value?.toLocaleLowerCase().includes(query)))
     );
   }, [result, search, selectedCategory]);
+  const groupedIssues = useMemo(() => severityOrder
+    .map(severity => ({ severity, issues: visibleIssues.filter(issue => issue.severity === severity) }))
+    .filter(group => group.issues.length > 0), [visibleIssues]);
+  const totalIssues = result ? result.errors.length + result.warnings.length + result.info.length : 0;
   const checkedDate = result ? formatDateTime(result.checkedAt) : '';
+  const statusTone = result?.status === 'ERROR' ? 'error' : result?.status === 'WARNING' ? 'warning' : 'ok';
 
-  return <div className="section-layout-shell mx-auto w-full max-w-[1600px] space-y-5 px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
-    <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">Business safeguards</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Check and Fix Data</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-400">Inspect business records, financial relationships, local storage warnings, and recovery options without changing your data.</p>
+  return <div className="data-integrity-view--v2 section-layout-shell mx-auto w-full max-w-[1600px] space-y-5 px-3 py-3 sm:px-6 sm:py-6 lg:px-8" data-section="data-integrity">
+    <header className="di-page-header--v2">
+      <div className="di-page-header-inner">
+        <span className="di-page-icon"><ShieldCheck className="h-5 w-5" aria-hidden="true" /></span>
+        <div className="di-page-titles">
+          <p className="di-page-eyebrow">Business safeguards</p>
+          <h1>Check and Fix Data</h1>
+          <p>Inspect business records, financial relationships, local storage warnings, and recovery options without changing your data.</p>
+        </div>
       </div>
-      <button type="button" onClick={() => void check()} disabled={isChecking} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60">
-        {isChecking ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4" />}
-        {isChecking ? 'Checking records…' : 'Run integrity check'}
-      </button>
+      <div className="di-page-actions">
+        <button type="button" onClick={() => void check()} disabled={isChecking} className="di-run--v2">
+          {isChecking ? <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Activity className="h-4 w-4" aria-hidden="true" />}
+          {isChecking ? 'Checking records…' : 'Run integrity check'}
+        </button>
+      </div>
     </header>
 
-    {checkError && <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200">{checkError}</div>}
+    {checkError && <div role="alert" className="di-alert--v2">{checkError}</div>}
 
     {result ? <>
-      <section className={`${sectionClass} ${result.status === 'ERROR' ? 'border-rose-300 dark:border-rose-900' : result.status === 'WARNING' ? 'border-amber-300 dark:border-amber-900' : 'border-emerald-300 dark:border-emerald-900'}`} aria-label="Data check summary">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
+      <section className={`di-status--v2 di-status--${statusTone}`} aria-label="Data check summary">
+        <div className="di-status-inner">
+          <span className={`di-status-icon di-status-icon--${statusTone}`} aria-hidden="true">
             {result.status === 'ERROR'
-              ? <ShieldAlert className="mt-0.5 h-6 w-6 shrink-0 text-rose-600" />
+              ? <ShieldAlert className="h-5 w-5" />
               : result.status === 'WARNING'
-                ? <AlertTriangle className="mt-0.5 h-6 w-6 shrink-0 text-amber-600" />
-                : <ShieldCheck className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" />}
-            <div>
-              <h2 className="text-lg font-bold text-slate-950 dark:text-white">
-                {result.status === 'ERROR' ? 'Errors need review' : result.status === 'WARNING' ? 'Review recommended' : 'No critical issues found'}
-              </h2>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Checked {formatNumber(result.summary.recordsChecked)} records · {checkedDate}</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-2 sm:min-w-[330px]">
-            <CountCard label="Errors" count={result.summary.errors} tone="rose" />
-            <CountCard label="Warnings" count={result.summary.warnings} tone="amber" />
-            <CountCard label="Info" count={result.summary.info} tone="slate" />
+                ? <AlertTriangle className="h-5 w-5" />
+                : <ShieldCheck className="h-5 w-5" />}
+          </span>
+          <div className="di-status-copy">
+            <h2>
+              {result.status === 'ERROR' ? 'Errors need review' : result.status === 'WARNING' ? 'Review recommended' : 'No critical issues found'}
+            </h2>
+            <p>Checked {formatNumber(result.summary.recordsChecked)} records · {checkedDate}</p>
           </div>
         </div>
       </section>
 
-      <section className={sectionClass}>
-        <div className="flex items-center gap-2">
-          <Database className="h-5 w-5 text-emerald-700 dark:text-emerald-300" />
-          <h2 className="text-base font-bold">Financial balance overview</h2>
-        </div>
-        <p className="mt-1 text-xs text-slate-500">Balances are calculated from the opening balances and existing ledger. This check does not rewrite financial history.</p>
-        {result.summary.accountBalances.length ? <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {result.summary.accountBalances.map(account => <div key={account.accountId} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-            <div className="truncate text-xs font-semibold text-slate-700 dark:text-slate-200">{account.accountName}</div>
-            <div className="mt-1 font-mono text-base font-bold">{formatCheckedBalance(account.calculatedBalance, account.currency, language)}</div>
-          </div>)}
-        </div> : <p className="mt-3 rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700">No financial accounts are configured.</p>}
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Total business balance</span>
-          <span className="font-mono text-sm font-bold">{formatCheckedBalance(result.summary.businessBalance, settings.currency, language)}</span>
-        </div>
+      <section aria-label="Check summary" className="di-kpi-row--v2 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <SummaryMetric label="Records checked" value={result.summary.recordsChecked} hint="Across all record types" tone="violet" icon={Database} formatNumber={formatNumber} />
+        <SummaryMetric label="Errors" value={result.summary.errors} hint={result.summary.errors === 0 ? 'Nothing blocking' : 'Need review first'} tone="rose" icon={ShieldAlert} formatNumber={formatNumber} />
+        <SummaryMetric label="Warnings" value={result.summary.warnings} hint={result.summary.warnings === 0 ? 'Nothing to review' : 'Review recommended'} tone="amber" icon={AlertTriangle} formatNumber={formatNumber} />
+        <SummaryMetric label="Info" value={result.summary.info} hint="Notes, not problems" tone="slate" icon={Info} formatNumber={formatNumber} />
       </section>
 
-      <section className={sectionClass}>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <section className="di-panel--v2" aria-label="Financial balance overview">
+        <div className="di-panel-head">
+          <span className="di-panel-icon di-panel-icon--violet" aria-hidden="true"><Database className="h-5 w-5" /></span>
           <div>
-            <h2 className="text-base font-bold">Findings</h2>
-            <p className="mt-1 text-xs text-slate-500">All checks are read-only. No automatic repair is offered for records that may affect accounting history.</p>
+            <h2 className="di-panel-title">Financial balance overview</h2>
+            <p className="di-panel-subtitle">Balances are calculated from the opening balances and existing ledger. This check does not rewrite financial history.</p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-[minmax(180px,1fr)_minmax(200px,1fr)]">
-            <label className="relative">
+        </div>
+        {result.summary.accountBalances.length ? <div className="di-balance-grid mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {result.summary.accountBalances.map(account => <div key={account.accountId} className="di-balance-tile">
+            <div className="di-balance-name">{account.accountName}</div>
+            <div className="di-balance-value">{formatCheckedBalance(account.calculatedBalance, account.currency, language)}</div>
+          </div>)}
+        </div> : <p className="di-empty-note mt-4">No financial accounts are configured.</p>}
+        <div className="di-balance-total">
+          <span>Total business balance</span>
+          <span className="di-balance-total-value">{formatCheckedBalance(result.summary.businessBalance, settings.currency, language)}</span>
+        </div>
+      </section>
+
+      <section className="di-panel--v2" aria-label="Findings">
+        <div className="di-findings-head">
+          <div>
+            <h2 className="di-panel-title">Findings</h2>
+            <p className="di-panel-subtitle">All checks are read-only. No automatic repair is offered for records that may affect accounting history.</p>
+          </div>
+          <div className="di-findings-filters">
+            <label className="di-search-wrap">
               <span className="sr-only">Search findings</span>
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={search} onChange={event => setSearch(event.target.value)} className="min-h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-800" placeholder="Search findings" />
+              <Search className="di-search-icon" aria-hidden="true" />
+              <input value={search} onChange={event => setSearch(event.target.value)} className="di-input--v2 di-search-input" placeholder="Search findings" />
             </label>
             <label>
               <span className="sr-only">Filter by category</span>
-              <select value={selectedCategory} onChange={event => setSelectedCategory(event.target.value as DataIntegrityCategory | 'ALL')} className="min-h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-800">
+              <select value={selectedCategory} onChange={event => setSelectedCategory(event.target.value as DataIntegrityCategory | 'ALL')} className="di-input--v2 di-select-input">
                 <option value="ALL">All categories</option>
                 {categories.map(category => <option key={category} value={category}>{categoryLabels[category]}</option>)}
               </select>
             </label>
           </div>
         </div>
-        <div className="mt-4 space-y-2">
-          {visibleIssues.length ? visibleIssues.map((issue, index) => <article key={`${issue.category}:${issue.entityType}:${issue.entityId || index}:${index}`} className={`rounded-xl border p-3 ${getSeverityStyle(issue.severity)}`}>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-bold">{issue.severity}</span>
-              <span className="text-xs font-semibold">{categoryLabels[issue.category]}</span>
-              {issue.entityId && <code className="max-w-full break-all rounded bg-black/5 px-1.5 py-0.5 text-[10px] dark:bg-white/10">{issue.entityType} · {issue.entityId}</code>}
+        <p aria-live="polite" className="di-findings-count">{formatNumber(visibleIssues.length)} of {formatNumber(totalIssues)} findings</p>
+        <div className="di-findings-list">
+          {groupedIssues.length ? groupedIssues.map(group => <div key={group.severity} className="di-severity-group">
+            <div className="di-severity-head">
+              <span className={`di-severity-chip di-severity-chip--${group.severity.toLowerCase()}`}>{group.severity}</span>
+              <span className="di-severity-count">{formatNumber(group.issues.length)} {group.issues.length === 1 ? 'finding' : 'findings'}</span>
             </div>
-            <p className="mt-2 text-sm font-medium">{issue.message}</p>
-            {issue.suggestedFix && <p className="mt-1 text-xs opacity-80">Suggested next step: {issue.suggestedFix}</p>}
-          </article>) : <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">
-            {result.errors.length + result.warnings.length + result.info.length ? 'No findings match the selected filters.' : <span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-600" />No findings were reported.</span>}
+            <div className="di-issue-list">
+              {group.issues.map((issue, index) => <article key={`${issue.category}:${issue.entityType}:${issue.entityId || index}:${index}`} className={`di-issue--v2 di-issue--${issue.severity.toLowerCase()}`}>
+                <div className="di-issue-top">
+                  <span className={`di-severity-chip di-severity-chip--${issue.severity.toLowerCase()}`}>{issue.severity}</span>
+                  <span className="di-issue-category">{categoryLabels[issue.category]}</span>
+                  {issue.entityId && <code className="di-issue-entity">{issue.entityType} · {issue.entityId}</code>}
+                </div>
+                <p className="di-issue-message">{issue.message}</p>
+                {issue.suggestedFix && <p className="di-issue-fix">Suggested next step: {issue.suggestedFix}</p>}
+              </article>)}
+            </div>
+          </div>) : <div className="di-empty--v2">
+            {totalIssues ? 'No findings match the selected filters.' : <span className="di-empty-clean"><CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />No findings were reported.</span>}
           </div>}
         </div>
       </section>
-    </> : <section className={`${sectionClass} text-center`}>
-      <ShieldCheck className="mx-auto h-9 w-9 text-emerald-600" />
-      <h2 className="mt-3 font-bold">No check has been run for this business yet</h2>
-      <p className="mx-auto mt-1 max-w-xl text-sm text-slate-500">Run an on-demand check to review business relationships, duplicate IDs, financial consistency, and storage warnings. It will not change saved records.</p>
+    </> : <section className="di-panel--v2 di-empty-state--v2">
+      <span className="di-empty-icon" aria-hidden="true"><ShieldCheck className="h-9 w-9" /></span>
+      <h2 className="di-panel-title">No check has been run for this business yet</h2>
+      <p className="di-panel-subtitle">Run an on-demand check to review business relationships, duplicate IDs, financial consistency, and storage warnings. It will not change saved records.</p>
     </section>}
 
-    <section className={sectionClass}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2"><FileClock className="h-5 w-5 text-slate-600 dark:text-slate-300" /><h2 className="font-bold">Recovery options</h2></div>
-          <p className="mt-1 text-sm text-slate-500">Create a versioned safety backup or restore a previously validated backup from the existing Settings workflow.</p>
+    <section className="di-panel--v2" aria-label="Recovery options">
+      <div className="di-recovery-inner">
+        <div className="di-panel-head">
+          <span className="di-panel-icon di-panel-icon--slate" aria-hidden="true"><FileClock className="h-5 w-5" /></span>
+          <div>
+            <h2 className="di-panel-title">Recovery options</h2>
+            <p className="di-panel-subtitle">Create a versioned safety backup or restore a previously validated backup from the existing Settings workflow.</p>
+          </div>
         </div>
-        <button type="button" onClick={onOpenBackupSettings} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold hover:border-emerald-500 dark:border-slate-700">
-          <Download className="h-4 w-4" /> Backup & restore settings <ArrowRight className="h-4 w-4" />
+        <button type="button" onClick={onOpenBackupSettings} className="di-backup--v2">
+          <Download className="h-4 w-4" aria-hidden="true" /> Backup &amp; restore settings <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
-      <p className="mt-3 flex items-start gap-2 text-xs text-slate-500"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Do not clear browser storage or automatically repair financial records. Back up first and use the validated restore preview when recovery is needed.</p>
+      <p className="di-recovery-warning"><AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />Do not clear browser storage or automatically repair financial records. Back up first and use the validated restore preview when recovery is needed.</p>
     </section>
   </div>;
 };
 
-const CountCard: React.FC<{ label: string; count: number; tone: 'rose' | 'amber' | 'slate' }> = ({ label, count, tone }) => {
-  const toneClass = tone === 'rose'
-    ? 'text-rose-700 dark:text-rose-300'
-    : tone === 'amber' ? 'text-amber-700 dark:text-amber-300' : 'text-slate-700 dark:text-slate-300';
-  return <div className="rounded-xl border border-slate-200 px-3 py-2 text-center dark:border-slate-700"><span className="block text-[10px] font-semibold text-slate-500">{label}</span><span className={`text-lg font-bold ${toneClass}`}>{count}</span></div>;
-};
+const SummaryMetric: React.FC<{
+  label: string;
+  value: number;
+  hint: string;
+  tone: 'violet' | 'rose' | 'amber' | 'slate';
+  icon: React.ComponentType<{ className?: string }>;
+  formatNumber: (value: number) => string;
+}> = ({ label, value, hint, tone, icon: Icon, formatNumber }) => (
+  <div className={`di-kpi--v2 di-kpi--${tone}`}>
+    <div className="di-kpi-top">
+      <span className="di-kpi-label">{label}</span>
+      <span className={`di-kpi-icon di-kpi-icon--${tone}`} aria-hidden="true"><Icon className="h-4 w-4" /></span>
+    </div>
+    <span className="di-kpi-value">{formatNumber(value)}</span>
+    <span className="di-kpi-hint">{hint}</span>
+  </div>
+);

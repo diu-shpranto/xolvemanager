@@ -17,6 +17,7 @@ import {
   ChevronRight,
   PieChart as PieIcon,
   Layers,
+  LayoutGrid,
   ArrowUp,
   Percent,
   MessageCircle,
@@ -146,6 +147,7 @@ function DashboardPanel({
   title,
   description,
   action,
+  badge,
   children,
   className = '',
   style,
@@ -153,6 +155,7 @@ function DashboardPanel({
   title: string;
   description?: string;
   action?: { label: string; onClick: () => void };
+  badge?: { text: string; tone?: 'amber' | 'violet' };
   children: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
@@ -164,6 +167,9 @@ function DashboardPanel({
           <h2 className="text-sm font-bold text-slate-900 dark:text-white">{title}</h2>
           {description && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{description}</p>}
         </div>
+        {badge && (
+          <span className={`dashboard-panel-badge dashboard-panel-badge--${badge.tone ?? 'violet'}`}>{badge.text}</span>
+        )}
         {action && (
           <button type="button" onClick={action.onClick} className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300 dark:hover:bg-violet-950/40">
             {action.label}<ChevronRight className="h-3.5 w-3.5" />
@@ -1595,6 +1601,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const dashboardCopy = language === 'bn' ? {
     overview: 'ব্যবসার সারসংক্ষেপ',
     title: 'ড্যাশবোর্ড',
+    subtitle: 'স্টোরের পারফরম্যান্স, সাবস্ক্রিপশন ও অগ্রাধিকার এক নজরে।',
     dateRange: 'তারিখের সীমা',
     addSale: 'নতুন বিক্রয়',
     receivedRevenue: 'প্রাপ্ত আয়',
@@ -1643,6 +1650,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   } : {
     overview: 'YOUR BUSINESS',
     title: 'Dashboard',
+    subtitle: 'Store performance, subscriptions, and priorities at a glance.',
     dateRange: 'Date range',
     addSale: 'Add Sale',
     receivedRevenue: 'Money received',
@@ -2212,12 +2220,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="dashboard-view section-layout-shell mx-auto flex max-w-[1600px] flex-col gap-4 px-3 py-3 sm:gap-5 sm:px-6 sm:py-6 xl:px-8">
-      <header className="dashboard-page-header flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-xs font-bold tracking-wide text-violet-700 dark:text-violet-300">{dashboardCopy.overview}</p>
-          <h1 className="mt-1 whitespace-nowrap text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[1.75rem]">
-            {dashboardCopy.title}
-          </h1>
+      <header className="dashboard-page-header dashboard-page-header--v2 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="dashboard-page-header-copy min-w-0">
+          <span className="dashboard-page-header-icon" aria-hidden="true"><LayoutGrid /></span>
+          <div className="min-w-0">
+            <p className="dashboard-page-header-eyebrow">{dashboardCopy.overview}</p>
+            <h1 className="mt-1 whitespace-nowrap text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[1.75rem]">
+              {dashboardCopy.title}
+            </h1>
+            <p className="dashboard-page-header-subtitle">
+              {currentBusiness?.name ? `${currentBusiness.name} · ` : ''}{dashboardCopy.subtitle}
+            </p>
+          </div>
         </div>
         <div className="grid w-full grid-cols-1 items-end gap-2 sm:w-auto sm:flex sm:flex-wrap sm:justify-end">
           <label className="min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-200 sm:min-w-44">
@@ -2430,6 +2444,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
         <div className="dashboard-quick-actions-list">
+          <button type="button" onClick={() => onOpenNewSale()} className="dashboard-quick-action dashboard-quick-action--primary"><Plus aria-hidden="true" /> {dashboardCopy.addSale}</button>
           <button type="button" onClick={() => onRequestCreate('customers')} className="dashboard-quick-action"><UserPlus aria-hidden="true" /> {dashboardCopy.addCustomer}</button>
           <button type="button" onClick={() => onRequestCreate('payments')} className="dashboard-quick-action"><Wallet aria-hidden="true" /> {dashboardCopy.receivePayment}</button>
           <button type="button" onClick={() => endingSoonSubscriptions[0] ? onRenewSubscription(endingSoonSubscriptions[0]) : onNavigate('subscriptions')} className="dashboard-quick-action"><RefreshCw aria-hidden="true" /> {dashboardCopy.renewSubscription}</button>
@@ -2440,6 +2455,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {isPanelVisible('attention') && <DashboardPanel
           title={dashboardCopy.actionRequired}
           description={dashboardCopy.actionDescription}
+          badge={attentionCount > 0 ? { text: formatNumber(attentionCount), tone: 'amber' } : undefined}
           className="dashboard-attention-panel"
           style={getPanelLayoutStyle('attention')}
         >

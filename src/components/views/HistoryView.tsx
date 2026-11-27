@@ -109,13 +109,39 @@ function findFirstRelatedCustomer<T extends { id: string }>(
   return firstCustomer;
 }
 
-function ActivityMetric({ label, value, icon: Icon, language }: { label: string; value: number; icon: React.ElementType; language: Language }) {
+type HistoryTone = 'positive' | 'neutral' | 'warning' | 'danger';
+
+function actionTone(action: ActivityAction): HistoryTone {
+  switch (action) {
+    case 'created':
+    case 'activated':
+    case 'paid':
+    case 'completed':
+    case 'renewed':
+    case 'restored':
+      return 'positive';
+    case 'cancelled':
+    case 'expired':
+    case 'deactivated':
+    case 'refunded':
+      return 'warning';
+    case 'deleted':
+    case 'failed':
+      return 'danger';
+    default:
+      return 'neutral';
+  }
+}
+
+function ActivityMetric({ label, value, hint, tone, icon: Icon, language }: { label: string; value: number; hint: string; tone: HistoryTone; icon: React.ElementType; language: Language }) {
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-        {label}<Icon className="h-4 w-4 text-purple-600 dark:text-purple-400" aria-hidden="true" />
+    <div className={`history-kpi--v2 history-kpi--${tone} rounded-2xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-900`}>
+      <div className="history-kpi-top flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
+        <span className="history-kpi-label">{label}</span>
+        <span className="history-kpi-icon"><Icon className="h-4 w-4" aria-hidden="true" /></span>
       </div>
-      <div className="mt-2 font-mono text-2xl font-bold text-slate-900 dark:text-white">{formatAppNumber(value, language)}</div>
+      <div className="history-kpi-value mt-2 font-mono text-2xl font-bold text-slate-900 dark:text-white">{formatAppNumber(value, language)}</div>
+      <div className="history-kpi-hint">{hint}</div>
     </div>
   );
 }
@@ -283,43 +309,44 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onViewRelated }) => {
       : `User ID: ${createdBy}`;
   const renderActivity = (log: ActivityLog) => {
     const customer = relatedRecordsById.customers.get(log.customerId || '');
+    const tone = actionTone(getActivityAction(log));
     return (
-      <article key={log.id} className="relative rounded-xl border border-slate-200/80 border-l-4 border-l-purple-500 bg-white p-4 dark:border-slate-800 dark:border-l-purple-400 dark:bg-slate-900">
+      <article key={log.id} className={`history-entry--v2 history-entry--${tone} relative rounded-xl border border-slate-200/80 border-l-4 border-l-purple-500 bg-white p-4 dark:border-slate-800 dark:border-l-purple-400 dark:bg-slate-900`}>
         <div className="flex items-start gap-3">
-          <span className="relative z-10 mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300">
+          <span className="history-entry-icon relative z-10 mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300">
             <Activity className="h-4 w-4" aria-hidden="true" />
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <h2 className="text-sm font-semibold text-slate-900 dark:text-white">{log.title}</h2>
-                <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">{log.description}</p>
+                <h2 className="history-entry-title text-sm font-semibold text-slate-900 dark:text-white">{log.title}</h2>
+                <p className="history-entry-desc mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">{log.description}</p>
               </div>
-              <time dateTime={log.timestamp} className="inline-flex shrink-0 items-center gap-1 text-[11px] text-slate-500">
+              <time dateTime={log.timestamp} className="history-entry-time inline-flex shrink-0 items-center gap-1 text-[11px] text-slate-500">
               <Clock3 className="h-3 w-3" aria-hidden="true" />{formatHistoryTimestamp(log.timestamp)}
               </time>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
-              <span className="rounded-full bg-purple-50 px-2 py-1 font-semibold text-purple-700 dark:bg-purple-950/50 dark:text-purple-200">
+              <span className="history-chip history-chip--category rounded-full bg-purple-50 px-2 py-1 font-semibold text-purple-700 dark:bg-purple-950/50 dark:text-purple-200">
                 {categories.find(item => item.value === getActivityCategory(log))?.label || 'System'}
               </span>
-              <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold capitalize text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+              <span className={`history-chip history-chip--action history-chip--${tone} rounded-full bg-slate-100 px-2 py-1 font-semibold capitalize text-slate-700 dark:bg-slate-800 dark:text-slate-200`}>
                 {getActivityAction(log)}
               </span>
-              <span className="text-slate-500">{relatedText(log)}</span>
+              <span className="history-entry-related text-slate-500">{relatedText(log)}</span>
             </div>
             {(log.entityId || log.createdBy) && (
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+              <div className="history-entry-meta mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
                 {log.entityId && <span className="break-all font-mono">Record ID: {log.entityId}</span>}
                 {log.createdBy && <span>{formatActor(log.createdBy)}</span>}
               </div>
             )}
             <div className="mt-3 flex flex-wrap gap-2">
-              <button type="button" onClick={() => setSelectedActivity(log)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-purple-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+              <button type="button" onClick={() => setSelectedActivity(log)} className="history-btn history-btn--details rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-purple-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
                 View Details
               </button>
               {(log.customerId || log.serviceId || log.subscriptionId || log.saleId || log.paymentId || log.invoiceId || log.accountId || log.financialAccountId || log.profileId || getActivityEntityType(log) === 'reminder') && (
-                <button type="button" onClick={() => onViewRelated(log)} className="rounded-lg border border-purple-200 px-3 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-purple-600 dark:border-purple-900 dark:text-purple-300 dark:hover:bg-purple-950/40">
+                <button type="button" onClick={() => onViewRelated(log)} className="history-btn history-btn--related rounded-lg border border-purple-200 px-3 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-purple-600 dark:border-purple-900 dark:text-purple-300 dark:hover:bg-purple-950/40">
                   View Related Record{customer ? ` · ${customer.name}` : ''}
                 </button>
               )}
@@ -331,91 +358,97 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onViewRelated }) => {
   };
 
   return (
-    <div className="section-layout-shell mx-auto max-w-[1600px] space-y-6 px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-purple-200/60 bg-purple-50 text-purple-700 dark:border-purple-800/40 dark:bg-purple-950/50 dark:text-purple-300"><Activity className="h-5 w-5" /></span>
-            History
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">A chronological record of business changes, stored locally and not editable from this page.</p>
+    <div className="history-view--v2 section-layout-shell mx-auto max-w-[1600px] space-y-6 px-3 py-3 sm:px-6 sm:py-6 lg:px-8" data-section="history">
+      <header className="history-page-header--v2">
+        <div className="history-page-header-inner">
+          <span className="history-page-icon"><Activity className="h-5 w-5" aria-hidden="true" /></span>
+          <div className="history-page-titles">
+            <p className="history-page-eyebrow">Activity Log</p>
+            <h1>History</h1>
+            <p>A chronological record of business changes, stored locally and not editable from this page.</p>
+          </div>
         </div>
-        <div className="text-xs text-slate-500">{formatAppNumber(businessLogs.length, language)} total activities</div>
+        <div className="history-page-actions">
+          <div className="history-total--v2">
+            <span className="history-total-value">{formatAppNumber(businessLogs.length, language)}</span>
+            <span className="history-total-label">total activities</span>
+          </div>
+        </div>
       </header>
 
-      <section aria-label="Activity summary" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <ActivityMetric label="Total Activities" value={businessLogs.length} icon={Activity} language={language} />
-        <ActivityMetric label="Today" value={todayCount} icon={CalendarDays} language={language} />
-        <ActivityMetric label="This Week" value={weekCount} icon={Clock3} language={language} />
-        <ActivityMetric label="Financial Activities" value={financialCount} icon={FileText} language={language} />
-        <ActivityMetric label="Customer / Subscription" value={customerCount + subscriptionCount} icon={UserRound} language={language} />
+      <section aria-label="Activity summary" className="history-kpi-row--v2 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <ActivityMetric label="Total Activities" value={businessLogs.length} hint="All recorded events" tone="neutral" icon={Activity} language={language} />
+        <ActivityMetric label="Today" value={todayCount} hint="Since midnight" tone="positive" icon={CalendarDays} language={language} />
+        <ActivityMetric label="This Week" value={weekCount} hint="Monday to now" tone="neutral" icon={Clock3} language={language} />
+        <ActivityMetric label="Financial Activities" value={financialCount} hint="Sales, payments & invoices" tone="warning" icon={FileText} language={language} />
+        <ActivityMetric label="Customer / Subscription" value={customerCount + subscriptionCount} hint="Customer & subscription events" tone="neutral" icon={UserRound} language={language} />
       </section>
 
-      <section aria-label="Filter activity" className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+      <section aria-label="Filter activity" className="history-filter--v2 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <label className="relative sm:col-span-2 xl:col-span-1">
             <span className="sr-only">Search activities</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-            <input value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} placeholder="Search activities..." className={`${inputClass} w-full pl-9`} />
+            <input value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} placeholder="Search activities..." className={`${inputClass} history-input--v2 w-full pl-9`} />
           </label>
           <label>
             <span className="sr-only">Filter by category</span>
-            <select value={category} onChange={event => { setCategory(event.target.value as ActivityCategory | 'all'); setPage(1); }} className={`${inputClass} w-full`}>
+            <select value={category} onChange={event => { setCategory(event.target.value as ActivityCategory | 'all'); setPage(1); }} className={`${inputClass} history-input--v2 w-full`}>
               <option value="all">All categories</option>
               {categories.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </label>
           <label>
             <span className="sr-only">Filter by action</span>
-            <select value={action} onChange={event => { setAction(event.target.value as ActivityAction | 'all'); setPage(1); }} className={`${inputClass} w-full`}>
+            <select value={action} onChange={event => { setAction(event.target.value as ActivityAction | 'all'); setPage(1); }} className={`${inputClass} history-input--v2 w-full`}>
               <option value="all">All actions</option>
               {actions.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </label>
           <label>
             <span className="sr-only">Filter by related entity</span>
-            <select value={entity} onChange={event => { setEntity(event.target.value as ActivityEntityType | 'all'); setPage(1); }} className={`${inputClass} w-full`}>
+            <select value={entity} onChange={event => { setEntity(event.target.value as ActivityEntityType | 'all'); setPage(1); }} className={`${inputClass} history-input--v2 w-full`}>
               <option value="all">All entities</option>
               {entities.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </label>
           <label>
             <span className="sr-only">Filter by date</span>
-            <select value={date} onChange={event => { setDate(event.target.value as typeof date); setPage(1); }} className={`${inputClass} w-full`}>
+            <select value={date} onChange={event => { setDate(event.target.value as typeof date); setPage(1); }} className={`${inputClass} history-input--v2 w-full`}>
               {dateOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
           <label>
             <span className="sr-only">Sort activities</span>
-            <select value={sortOrder} onChange={event => { setSortOrder(event.target.value as typeof sortOrder); setPage(1); }} className={`${inputClass} w-full`}>
+            <select value={sortOrder} onChange={event => { setSortOrder(event.target.value as typeof sortOrder); setPage(1); }} className={`${inputClass} history-input--v2 w-full`}>
               {sortOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
         </div>
         {date === 'custom' && (
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">From<input aria-label="Start date" type="date" value={customStart} onChange={event => { setCustomStart(event.target.value); setPage(1); }} className={`${inputClass} mt-1 w-full`} /></label>
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">To<input aria-label="End date" type="date" value={customEnd} onChange={event => { setCustomEnd(event.target.value); setPage(1); }} className={`${inputClass} mt-1 w-full`} /></label>
+            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">From<input aria-label="Start date" type="date" value={customStart} onChange={event => { setCustomStart(event.target.value); setPage(1); }} className={`${inputClass} history-input--v2 mt-1 w-full`} /></label>
+            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">To<input aria-label="End date" type="date" value={customEnd} onChange={event => { setCustomEnd(event.target.value); setPage(1); }} className={`${inputClass} history-input--v2 mt-1 w-full`} /></label>
           </div>
         )}
         <div className="mt-3 flex items-center justify-between gap-3">
-          <p aria-live="polite" className="text-xs text-slate-500"><Filter className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />{formatAppNumber(filtered.length, language)} activities</p>
-          <button type="button" onClick={clearFilters} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-purple-600 dark:hover:text-white"><X className="h-3.5 w-3.5" />Clear filters</button>
+          <p aria-live="polite" className="history-filter-count text-xs text-slate-500"><Filter className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />{formatAppNumber(filtered.length, language)} activities</p>
+          <button type="button" onClick={clearFilters} className="history-clear--v2 inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-purple-600 dark:hover:text-white"><X className="h-3.5 w-3.5" />Clear filters</button>
         </div>
       </section>
 
-      <section aria-label="Activity records" className="relative space-y-3 before:absolute before:bottom-0 before:left-[38px] before:top-0 before:w-px before:bg-purple-200 dark:before:bg-purple-900/70">
+      <section aria-label="Activity records" className="history-timeline--v2 relative space-y-3 before:absolute before:bottom-0 before:left-[38px] before:top-0 before:w-px before:bg-purple-200 dark:before:bg-purple-900/70">
         {pageItems.length ? pageItems.map(renderActivity) : (
-          <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-14 text-center text-sm text-slate-500 dark:border-slate-700">
+          <div className="history-empty--v2 rounded-2xl border border-dashed border-slate-300 px-4 py-14 text-center text-sm text-slate-500 dark:border-slate-700">
             {businessLogs.length === 0 ? 'No activity has been recorded yet.' : 'No activity matches these filters.'}
           </div>
         )}
         {filtered.length > pageSize && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs dark:border-slate-800 dark:bg-slate-900">
+          <div className="history-pagination--v2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs dark:border-slate-800 dark:bg-slate-900">
             <span className="text-slate-500">Page {page} of {totalPages} · Showing {Math.min((page - 1) * pageSize + 1, filtered.length)}–{Math.min(page * pageSize, filtered.length)} of {filtered.length}</span>
             <div className="flex gap-2">
-              <button type="button" aria-label="Previous activity page" disabled={page <= 1} onClick={() => setPage(previous => Math.max(1, previous - 1))} className="rounded-lg border border-slate-200 p-2 disabled:opacity-40 dark:border-slate-700"><ChevronLeft className="h-4 w-4" /></button>
-              <button type="button" aria-label="Next activity page" disabled={page >= totalPages} onClick={() => setPage(previous => Math.min(totalPages, previous + 1))} className="rounded-lg border border-slate-200 p-2 disabled:opacity-40 dark:border-slate-700"><ChevronRight className="h-4 w-4" /></button>
+              <button type="button" aria-label="Previous activity page" disabled={page <= 1} onClick={() => setPage(previous => Math.max(1, previous - 1))} className="history-page-btn rounded-lg border border-slate-200 p-2 disabled:opacity-40 dark:border-slate-700"><ChevronLeft className="h-4 w-4" /></button>
+              <button type="button" aria-label="Next activity page" disabled={page >= totalPages} onClick={() => setPage(previous => Math.min(totalPages, previous + 1))} className="history-page-btn rounded-lg border border-slate-200 p-2 disabled:opacity-40 dark:border-slate-700"><ChevronRight className="h-4 w-4" /></button>
             </div>
           </div>
         )}
@@ -423,7 +456,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onViewRelated }) => {
 
       <Modal isOpen={Boolean(selectedActivity)} onClose={() => setSelectedActivity(null)} title={selectedActivity?.title || 'Activity details'} subtitle={selectedActivity ? formatAppEventDateTime(selectedActivity.timestamp) : undefined} maxWidth="2xl">
         {selectedActivity && (
-          <div className="space-y-5">
+          <div className="history-detail--v2 space-y-5">
             <dl className="grid gap-4 sm:grid-cols-2">
               <div><dt className="text-xs font-medium text-slate-500">Category</dt><dd className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">{categories.find(item => item.value === getActivityCategory(selectedActivity))?.label || 'System'}</dd></div>
               <div><dt className="text-xs font-medium text-slate-500">Action</dt><dd className="mt-1 text-sm font-semibold capitalize text-slate-900 dark:text-white">{getActivityAction(selectedActivity)}</dd></div>
@@ -436,7 +469,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onViewRelated }) => {
               {selectedActivity.entityId && <div className="sm:col-span-2"><dt className="text-xs font-medium text-slate-500">Entity ID</dt><dd className="mt-1 break-all font-mono text-xs text-slate-700 dark:text-slate-300">{selectedActivity.entityId}</dd></div>}
             </dl>
             {selectedActivity.metadata && Object.keys(selectedActivity.metadata).length > 0 && (
-              <section aria-label="Activity metadata" className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+              <section aria-label="Activity metadata" className="history-detail-context rounded-xl border border-slate-200 p-4 dark:border-slate-800">
                 <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Context</h3>
                 <dl className="mt-3 grid gap-3 sm:grid-cols-2">
                   {Object.entries(selectedActivity.metadata).filter(([key]) => !/password|passcode|pin|api.?key|secret|credential|token/i.test(key)).map(([key, value]) => (
@@ -447,7 +480,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ onViewRelated }) => {
             )}
             <div className="flex justify-end">
               {(selectedActivity.customerId || selectedActivity.serviceId || selectedActivity.subscriptionId || selectedActivity.saleId || selectedActivity.paymentId || selectedActivity.invoiceId || selectedActivity.accountId || selectedActivity.financialAccountId || selectedActivity.profileId || getActivityEntityType(selectedActivity) === 'reminder') && (
-                <button type="button" onClick={() => { onViewRelated(selectedActivity); setSelectedActivity(null); }} className="rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600">Open Related Record</button>
+                <button type="button" onClick={() => { onViewRelated(selectedActivity); setSelectedActivity(null); }} className="history-detail-related rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600">Open Related Record</button>
               )}
             </div>
           </div>

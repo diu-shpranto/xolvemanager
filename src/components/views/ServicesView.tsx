@@ -1192,7 +1192,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
       {!detailedService && (
         <div className="service-list-page space-y-5">
       {/* 1. PAGE HEADER */}
-      <div className="service-page-header flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="service-page-header service-page-header--v2 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="service-page-heading flex min-w-0 items-start gap-3">
           <span className="service-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
             <Layers className="h-5 w-5" />
@@ -1225,7 +1225,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             onClick={openAddModal}
             aria-label={t('addService')}
             title={t('addService')}
-            className="service-primary-action inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold transition-colors cursor-pointer"
+            className="service-primary-action service-btn-primary inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
             <span className="service-action-label">{t('addService')}</span>
@@ -1234,13 +1234,15 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
       </div>
 
       {!servicesLoading && !servicesError && (
-        <section aria-label="Service catalog summary" className="service-summary-grid grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
+        <section aria-label="Service catalog summary" className="service-summary-grid service-summary-strip grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
           {[
-            { label: 'Total Services', value: summary.totalServices, icon: Layers, iconTone: 'violet' },
-            { label: 'Active Services', value: summary.activeServices, icon: CheckCircle2, iconTone: 'emerald' },
-            { label: 'Active Plans', value: summary.activePlans, icon: CheckCircle2, iconTone: 'teal' },
-            { label: 'Monthly Revenue', value: summary.monthlyRevenue, icon: DollarSign, iconTone: 'violet', currency: true },
-          ].map(({ label, value, icon: SummaryIcon, iconTone, currency: isCurrency }) => (
+            { label: 'Total Services', value: summary.totalServices, icon: Layers, iconTone: 'violet', hint: `${summary.activeServices} active` },
+            { label: 'Active Services', value: summary.activeServices, icon: CheckCircle2, iconTone: 'emerald', hint: `${summary.totalServices - summary.activeServices} inactive` },
+            { label: 'Total Plans', value: summary.totalPlans, icon: LayoutGrid, iconTone: 'blue', hint: `${summary.activePlans} active` },
+            { label: 'Active Plans', value: summary.activePlans, icon: CheckCircle2, iconTone: 'teal', hint: `${summary.totalPlans} total plans` },
+            { label: 'Active Subscriptions', value: summary.activeSubscriptions, icon: Users, iconTone: 'amber', hint: 'Across all services' },
+            { label: 'Monthly Revenue', value: summary.monthlyRevenue, icon: DollarSign, iconTone: 'violet', currency: true, hint: 'This month' },
+          ].map(({ label, value, icon: SummaryIcon, iconTone, currency: isCurrency, hint }) => (
             <div
               key={label}
               className="service-summary-card min-w-0 rounded-xl border border-slate-200/80 bg-white px-3.5 py-3 shadow-2xs dark:border-slate-800 dark:bg-slate-900"
@@ -1264,20 +1266,14 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                 </span>
               </div>
               <div className="mt-1 truncate text-lg font-bold tabular-nums text-slate-900 dark:text-white">{isCurrency ? formatCurrency(value, currency) : value}</div>
+              <div className="service-summary-hint mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">{hint}</div>
             </div>
           ))}
         </section>
       )}
 
-      {!servicesLoading && !servicesError && (
-        <div className="service-secondary-metrics" aria-label="Additional service metrics">
-          <div><span>Total Plans</span><strong>{summary.totalPlans}</strong></div>
-          <div><span>Active Subscriptions</span><strong>{summary.activeSubscriptions}</strong></div>
-        </div>
-      )}
-
       {/* 2. SEARCH & FILTER TOOLBAR */}
-      <div className="service-toolbar flex flex-col items-stretch justify-between gap-3 lg:flex-row lg:items-center">
+      <div className="service-toolbar service-toolbar--v2 flex flex-col items-stretch justify-between gap-3 lg:flex-row lg:items-center">
         {/* Search input */}
         <div className="service-search relative min-w-0 flex-1 lg:max-w-lg">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -1325,7 +1321,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               className="h-10 shrink-0 px-3 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
             >
               <option value="popular">
-                {language === 'bn' ? 'জনপ্রিয় (সাবস্ক্রিপশন)' : 'Most Plans'}
+                {language === 'bn' ? 'জনপ্রিয় (সাবস্ক্রিপশন)' : 'Most Popular'}
               </option>
               <option value="accounts">
                 {language === 'bn' ? 'অ্যাকাউন্ট পুল' : 'Most Accounts'}
@@ -1438,7 +1434,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         </div>
       )}
 
-      <section className="service-catalog-heading flex flex-wrap items-end justify-between gap-3">
+      <section className="service-catalog-heading service-catalog-heading--v2 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="service-catalog-eyebrow">{language === 'bn' ? 'আপনার ক্যাটালগ' : 'YOUR CATALOG'}</p>
           <h2>{language === 'bn' ? 'সার্ভিস ও প্ল্যান' : 'Services and Plans'}</h2>
@@ -1492,7 +1488,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             {!searchQuery && statusFilter === 'all' && (
               <button
                 onClick={openAddModal}
-                className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-xs cursor-pointer"
+                className="service-btn-primary mt-2 inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-xs cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>+ Add Service</span>
@@ -1513,7 +1509,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             return (
               <div
                 key={srv.id}
-                className={`service-card group flex flex-col justify-between rounded-xl border border-slate-200/80 border-t-2 bg-white p-4 shadow-2xs transition-[border-color,box-shadow] hover:border-slate-300 hover:shadow-xs dark:border-slate-800/90 dark:bg-slate-900 dark:hover:border-slate-700 ${openServiceActionsId === srv.id ? 'is-actions-open' : ''}`}
+                className={`service-card service-card--${isArchivedService ? 'archived' : srv.status === 'active' ? 'active' : 'inactive'} group flex flex-col justify-between rounded-xl border border-slate-200/80 border-t-2 bg-white p-4 shadow-2xs transition-[border-color,box-shadow] hover:border-slate-300 hover:shadow-xs dark:border-slate-800/90 dark:bg-slate-900 dark:hover:border-slate-700 ${openServiceActionsId === srv.id ? 'is-actions-open' : ''}`}
               >
                 <div className="service-card-content space-y-3">
                   {/* HEADER: Icon + Service Name + Category + Status */}
@@ -1776,7 +1772,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         </div>
       ) : (
         /* PREMIUM TABLE VIEW */
-        <div className="service-table overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xs dark:border-slate-800/90 dark:bg-slate-900">
+        <div className="service-table service-table-card--v2 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xs dark:border-slate-800/90 dark:bg-slate-900">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -1821,7 +1817,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                     <tr
                       key={srv.id}
                       onClick={() => setDetailedServiceId(srv.id)}
-                      className="h-16 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group"
+                      className={`service-table-row--${isArchivedService ? 'archived' : srv.status === 'active' ? 'active' : 'inactive'} h-16 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group`}
                     >
                       {/* Service Cell */}
                       <td className="py-3.5 px-5">
@@ -1922,7 +1918,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 
                           <button
                             onClick={() => onOpenNewSaleForService(srv.id)}
-                            className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 rounded-md cursor-pointer"
+                            className="service-table-new-sale p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 rounded-md cursor-pointer"
                             title={t('newSale')}
                           >
                             <Plus className="w-3.5 h-3.5" />
@@ -1994,7 +1990,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           <div className="service-detail-content space-y-6 text-xs">
             {/* Header info banner */}
             <div
-              className="service-detail-hero flex flex-col justify-between gap-4 rounded-xl border border-slate-200/60 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/60 sm:flex-row sm:items-center"
+              className="service-detail-hero service-detail-hero--v2 flex flex-col justify-between gap-4 rounded-xl border border-slate-200/60 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/60 sm:flex-row sm:items-center"
               style={{ '--service-accent-color': detailedService.color || '#10b981' } as React.CSSProperties & { '--service-accent-color': string }}
             >
               <div className="flex items-center gap-3">
@@ -2089,7 +2085,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             )}
 
             {/* Quick KPI stats grid */}
-            <div className="service-detail-kpis grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+            <div className="service-detail-kpis service-detail-kpis--v2 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
               <div className="rounded-xl border border-slate-200/80 bg-white p-3 text-center dark:border-slate-800 dark:bg-slate-800">
                 <div className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Total Plans</div>
                 <div className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white">{detailedService.planDetails?.length || detailedService.plans?.length || 0}</div>
@@ -2161,7 +2157,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               </button>
             </div>
 
-            <nav aria-label="Service detail sections" className="service-detail-nav sticky top-0 z-10 -mx-2 flex gap-1 overflow-x-auto border-y border-slate-200 bg-white/95 px-2 py-2 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+            <nav aria-label="Service detail sections" className="service-detail-nav service-detail-nav--v2 sticky top-0 z-10 -mx-2 flex gap-1 overflow-x-auto border-y border-slate-200 bg-white/95 px-2 py-2 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
               {[
                 ['service-detail-information', 'Service Information'],
                 ['service-detail-plans', 'Plans & Pricing'],
@@ -2199,7 +2195,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                 <button
                   type="button"
                   onClick={() => openAddPlan()}
-                  className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-500"
+                  className="service-btn-primary inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-500"
                 >
                   <Plus className="h-3.5 w-3.5" /> Add Plan
                 </button>
@@ -2507,7 +2503,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           footer={
             <div className="flex items-center justify-end gap-2">
               <button type="button" onClick={() => { setIsAddModalOpen(false); setEditingService(null); setFormErrors({}); setFormDuplicate(null); }} className="min-h-11 rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">{t('cancel')}</button>
-              <button type="submit" form="service-form" disabled={isSubmitting} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60">{isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}<span>{isSubmitting ? 'Saving...' : 'Save Service'}</span></button>
+              <button type="submit" form="service-form" disabled={isSubmitting} className="service-btn-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60">{isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}<span>{isSubmitting ? 'Saving...' : 'Save Service'}</span></button>
             </div>
           }
         >
@@ -2519,7 +2515,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                   key={tab}
                   onClick={() => setFormTab(tab)}
                   aria-current={formTab === tab ? 'step' : undefined}
-                  className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold ${formTab === tab ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                  className={`service-form-tab shrink-0 rounded-lg px-3 py-2 text-xs font-semibold ${formTab === tab ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                 >
                   {tab}
                 </button>
@@ -2596,7 +2592,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 
             {formTab === 'Plans & Pricing' && (
               <section className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="section-title">Plans & Pricing</h4><p className="mt-1 text-xs text-slate-500">Add one or more sale plans. Plans can also be added later.</p></div><button type="button" onClick={() => { setFormPlanDraft({ name: '', price: '', currency, duration: settings.serviceDefaults?.durationDays ?? 30, durationUnit: 'Days', status: 'active' }); setFormErrors(previous => ({ ...previous, planDraft: '' })); }} className="rounded-lg bg-emerald-600 px-3.5 py-2.5 text-xs font-semibold text-white hover:bg-emerald-500">+ Add Plan</button></div>
+                <div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="section-title">Plans & Pricing</h4><p className="mt-1 text-xs text-slate-500">Add one or more sale plans. Plans can also be added later.</p></div><button type="button" onClick={() => { setFormPlanDraft({ name: '', price: '', currency, duration: settings.serviceDefaults?.durationDays ?? 30, durationUnit: 'Days', status: 'active' }); setFormErrors(previous => ({ ...previous, planDraft: '' })); }} className="service-btn-primary rounded-lg bg-emerald-600 px-3.5 py-2.5 text-xs font-semibold text-white hover:bg-emerald-500">+ Add Plan</button></div>
                 <div className="grid gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-800 sm:grid-cols-2">
                   <label className="block space-y-1"><span className="text-xs font-semibold">Service default direct cost</span><select aria-label="Service default direct cost type" value={formDefaultDirectCostType} onChange={event => setFormDefaultDirectCostType(event.target.value as NonNullable<Service['defaultDirectCostType']>)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="none">None</option><option value="fixed_per_sale">Fixed per sale</option><option value="fixed_per_cycle">Fixed per cycle</option><option value="percentage_of_sale">Percentage of sale</option></select></label>
                   {formDefaultDirectCostType !== 'none' && <label className="block space-y-1"><span className="text-xs font-semibold">{formDefaultDirectCostType === 'percentage_of_sale' ? 'Cost percentage (%)' : 'Cost amount'}</span><input aria-label="Service default direct cost amount" type="number" min="0" step="any" value={formDefaultDirectCostAmount} onChange={event => setFormDefaultDirectCostAmount(event.target.value === '' ? '' : Number(event.target.value))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>}
@@ -2604,7 +2600,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                 </div>
                 {formErrors.plans && <p role="alert" className="text-xs text-rose-600">{formErrors.plans}</p>}
                 {formPlans.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">No plans yet. Add plans now or later from service details.</div> : <div className="space-y-2">{formPlans.map(plan => <div key={plan.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-800"><div className="min-w-0"><p className="truncate font-semibold text-slate-900 dark:text-white">{plan.name}</p><p className="text-xs text-slate-500">{formatCurrency(plan.price, plan.currency)} · {plan.duration || plan.durationDays} {plan.durationUnit || 'Days'} · {plan.status === 'active' ? 'Active' : 'Inactive'}</p></div><div className="flex gap-2"><button type="button" onClick={() => setFormPlanDraft({ ...plan, duration: plan.duration ?? plan.durationDays, durationUnit: plan.durationUnit || 'Days' })} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Edit</button><button type="button" onClick={() => setFormPlans(previous => previous.map(item => item.id === plan.id ? { ...item, status: item.status === 'active' ? 'inactive' : 'active' } : item))} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">{plan.status === 'active' ? 'Deactivate' : 'Activate'}</button></div></div>)}</div>}
-                {formPlanDraft && <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20"><h5 className="font-semibold text-slate-900 dark:text-white">{formPlanDraft.id ? 'Edit Plan' : 'Add Plan'}</h5><label className="block space-y-1"><span className="text-xs font-medium">Plan Name *</span><input autoFocus maxLength={80} value={formPlanDraft.name} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, name: event.target.value } : previous)} placeholder="Enter plan name" className="control-field w-full px-3 py-2.5" /></label><div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1"><span className="text-xs font-medium">Price *</span><input type="number" min="0.01" step="any" value={formPlanDraft.price} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, price: event.target.value === '' ? '' : Number(event.target.value) } : previous)} placeholder="Enter price" className="control-field w-full px-3 py-2.5" /></label><label className="block space-y-1"><span className="text-xs font-medium">Currency</span><select value={formPlanDraft.currency} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, currency: event.target.value as AppCurrency } : previous)} className="control-field w-full px-3 py-2.5"><option value={currency}>{currency} (Business currency)</option><option value={currency === 'BDT' ? 'USD' : 'BDT'}>{currency === 'BDT' ? 'USD' : 'BDT'}</option></select></label><label className="block space-y-1"><span className="text-xs font-medium">Duration *</span><input type="number" min="1" step="1" value={formPlanDraft.duration} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, duration: event.target.value === '' ? '' : Number(event.target.value) } : previous)} className="control-field w-full px-3 py-2.5" /></label><label className="block space-y-1"><span className="text-xs font-medium">Duration Unit</span><select value={formPlanDraft.durationUnit} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, durationUnit: event.target.value as DurationUnit } : previous)} className="control-field w-full px-3 py-2.5">{(['Days', 'Weeks', 'Months', 'Years'] as const).map(unit => <option key={unit}>{unit}</option>)}</select></label><label className="block space-y-1"><span className="text-xs font-medium">Status</span><select value={formPlanDraft.status} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, status: event.target.value as 'active' | 'inactive' } : previous)} className="control-field w-full px-3 py-2.5"><option value="active">Active</option><option value="inactive">Inactive</option></select></label></div><div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1"><span className="text-xs font-medium">Plan direct cost override</span><select aria-label="Plan direct cost override type" value={formPlanDraft.directCostType || ''} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, directCostType: event.target.value ? event.target.value as NonNullable<ServicePlan['directCostType']> : undefined } : previous)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Use service default</option><option value="none">No expected cost</option><option value="fixed_per_sale">Fixed per sale</option><option value="fixed_per_cycle">Fixed per cycle</option><option value="percentage_of_sale">Percentage of sale</option></select></label>{formPlanDraft.directCostType && formPlanDraft.directCostType !== 'none' && <label className="block space-y-1"><span className="text-xs font-medium">{formPlanDraft.directCostType === 'percentage_of_sale' ? 'Cost percentage (%)' : 'Cost amount'}</span><input aria-label="Plan direct cost amount" type="number" min="0" step="any" value={formPlanDraft.directCostAmount ?? ''} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, directCostAmount: event.target.value === '' ? undefined : Number(event.target.value) } : previous)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>}</div>{formErrors.planDraft && <p role="alert" className="text-xs text-rose-600">{formErrors.planDraft}</p>}<div className="flex justify-end gap-2"><button type="button" onClick={() => setFormPlanDraft(null)} className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-600">Cancel</button><button type="button" onClick={saveFormPlan} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Save Plan</button></div></div>}
+                {formPlanDraft && <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20"><h5 className="font-semibold text-slate-900 dark:text-white">{formPlanDraft.id ? 'Edit Plan' : 'Add Plan'}</h5><label className="block space-y-1"><span className="text-xs font-medium">Plan Name *</span><input autoFocus maxLength={80} value={formPlanDraft.name} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, name: event.target.value } : previous)} placeholder="Enter plan name" className="control-field w-full px-3 py-2.5" /></label><div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1"><span className="text-xs font-medium">Price *</span><input type="number" min="0.01" step="any" value={formPlanDraft.price} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, price: event.target.value === '' ? '' : Number(event.target.value) } : previous)} placeholder="Enter price" className="control-field w-full px-3 py-2.5" /></label><label className="block space-y-1"><span className="text-xs font-medium">Currency</span><select value={formPlanDraft.currency} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, currency: event.target.value as AppCurrency } : previous)} className="control-field w-full px-3 py-2.5"><option value={currency}>{currency} (Business currency)</option><option value={currency === 'BDT' ? 'USD' : 'BDT'}>{currency === 'BDT' ? 'USD' : 'BDT'}</option></select></label><label className="block space-y-1"><span className="text-xs font-medium">Duration *</span><input type="number" min="1" step="1" value={formPlanDraft.duration} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, duration: event.target.value === '' ? '' : Number(event.target.value) } : previous)} className="control-field w-full px-3 py-2.5" /></label><label className="block space-y-1"><span className="text-xs font-medium">Duration Unit</span><select value={formPlanDraft.durationUnit} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, durationUnit: event.target.value as DurationUnit } : previous)} className="control-field w-full px-3 py-2.5">{(['Days', 'Weeks', 'Months', 'Years'] as const).map(unit => <option key={unit}>{unit}</option>)}</select></label><label className="block space-y-1"><span className="text-xs font-medium">Status</span><select value={formPlanDraft.status} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, status: event.target.value as 'active' | 'inactive' } : previous)} className="control-field w-full px-3 py-2.5"><option value="active">Active</option><option value="inactive">Inactive</option></select></label></div><div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1"><span className="text-xs font-medium">Plan direct cost override</span><select aria-label="Plan direct cost override type" value={formPlanDraft.directCostType || ''} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, directCostType: event.target.value ? event.target.value as NonNullable<ServicePlan['directCostType']> : undefined } : previous)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Use service default</option><option value="none">No expected cost</option><option value="fixed_per_sale">Fixed per sale</option><option value="fixed_per_cycle">Fixed per cycle</option><option value="percentage_of_sale">Percentage of sale</option></select></label>{formPlanDraft.directCostType && formPlanDraft.directCostType !== 'none' && <label className="block space-y-1"><span className="text-xs font-medium">{formPlanDraft.directCostType === 'percentage_of_sale' ? 'Cost percentage (%)' : 'Cost amount'}</span><input aria-label="Plan direct cost amount" type="number" min="0" step="any" value={formPlanDraft.directCostAmount ?? ''} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, directCostAmount: event.target.value === '' ? undefined : Number(event.target.value) } : previous)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>}</div>{formErrors.planDraft && <p role="alert" className="text-xs text-rose-600">{formErrors.planDraft}</p>}<div className="flex justify-end gap-2"><button type="button" onClick={() => setFormPlanDraft(null)} className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-600">Cancel</button><button type="button" onClick={saveFormPlan} className="service-btn-primary rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Save Plan</button></div></div>}
               </section>
             )}
 
@@ -2690,7 +2686,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           title={planEditing ? 'Edit Plan' : 'Add Plan'}
           maxWidth="md"
         >
-          <form onSubmit={handleSavePlan} className="space-y-4">
+          <form onSubmit={handleSavePlan} className="service-plan-form space-y-4">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Plan Name *</label>
               <input
@@ -2786,7 +2782,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               >
                 Cancel
               </button>
-              <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500">
+              <button type="submit" className="service-btn-primary rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500">
                 Save Plan
               </button>
             </div>

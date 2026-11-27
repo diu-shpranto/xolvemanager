@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Download, Eye, Pencil, Plus, ReceiptText, Search, XCircle } from 'lucide-react';
+import { CalendarDays, CalendarRange, Download, Eye, Hash, Pencil, Plus, ReceiptText, Scale, Search, TrendingDown, XCircle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
@@ -303,10 +303,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
   const projectedBalance = draft && formAccount ? balanceAfter(draft.accountId, Number(draft.amount) || 0) : undefined;
 
   return (
-    <div className="finance-responsive-page section-layout-shell customer-list-page mx-auto flex w-full max-w-[1600px] flex-col gap-3 px-3 py-3 pb-10 sm:gap-4 sm:px-6 sm:py-6 lg:px-8">
-      <header className="finance-responsive-header customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:pb-4">
+    <div className="expenses-view finance-responsive-page section-layout-shell customer-list-page mx-auto flex w-full max-w-[1600px] flex-col gap-3 px-3 py-3 pb-10 sm:gap-4 sm:px-6 sm:py-6 lg:px-8" data-section="expenses">
+      <header className="exp-page-header--v2 finance-responsive-header customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:pb-4">
         <div className="customer-heading flex min-w-0 items-start gap-3">
-          <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11"><ReceiptText className="h-5 w-5" /></div>
+          <div className="exp-page-icon customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11"><ReceiptText className="h-5 w-5" /></div>
           <div className="min-w-0">
             <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em]">Finance operations</p>
             <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Expenses</h1>
@@ -314,30 +314,31 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
           </div>
         </div>
         <div className="finance-responsive-actions customer-header-actions flex w-full items-center justify-end gap-2 sm:w-auto">
-          <button type="button" onClick={exportExpenses} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><Download className="h-4 w-4" /><span>Export</span></button>
-          <button type="button" onClick={startCreate} disabled={!scopedAccounts.some(account => account.enabled) || !activeCategories.length} className="customer-primary-action inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed disabled:opacity-50"><Plus className="h-4 w-4" />Add Expense</button>
+          <button type="button" onClick={exportExpenses} className="exp-btn-secondary inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><Download className="h-4 w-4" /><span>Export</span></button>
+          <button type="button" onClick={startCreate} disabled={!scopedAccounts.some(account => account.enabled) || !activeCategories.length} className="exp-btn-primary customer-primary-action inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed disabled:opacity-50"><Plus className="h-4 w-4" />Add Expense</button>
         </div>
       </header>
 
-      {(!scopedAccounts.some(account => account.enabled) || !activeCategories.length) && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+      {(!scopedAccounts.some(account => account.enabled) || !activeCategories.length) && <div className="exp-notice--v2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
         {!scopedAccounts.some(account => account.enabled) ? 'Add an enabled financial account in Cashbook before recording expenses.' : 'Enable or add an expense category in Settings → Payments before recording expenses.'}
       </div>}
 
       <section aria-label="Expense summary" className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 xl:grid-cols-6">
-        {[
-          ['Total Expenses', formatCurrency(totals.total, currency)],
-          ['Today', formatCurrency(totals.today, currency)],
-          ['This Month', formatCurrency(totals.month, currency)],
-          ['Number of Expenses', String(totals.count)],
-          ['Largest Expense', formatCurrency(totals.largest, currency)],
-          ['Average Expense', formatCurrency(totals.average, currency)],
-        ].map(([label, value], index) => <div key={label} className={`${cardClass} min-w-0 transition-colors hover:border-violet-200 dark:hover:border-violet-900 ${index === 0 ? 'border-violet-200 bg-violet-50/60 dark:border-violet-900/60 dark:bg-violet-950/20' : ''}`}>
-          <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">{label}</p>
-          <p className="mt-1.5 truncate font-mono text-lg font-bold tabular-nums tracking-tight text-slate-950 dark:text-white">{value}</p>
+        {([
+          { label: 'Total Expenses', value: formatCurrency(totals.total, currency), icon: ReceiptText, tint: 'rose', hint: 'All recorded expenses', money: true },
+          { label: 'Today', value: formatCurrency(totals.today, currency), icon: CalendarDays, tint: 'rose', hint: 'Recorded today', money: true },
+          { label: 'This Month', value: formatCurrency(totals.month, currency), icon: CalendarRange, tint: 'rose', hint: 'Recorded this month', money: true },
+          { label: 'Number of Expenses', value: String(totals.count), icon: Hash, tint: 'violet', hint: 'Recorded entries', money: false },
+          { label: 'Largest Expense', value: formatCurrency(totals.largest, currency), icon: TrendingDown, tint: 'rose', hint: 'Biggest single expense', money: true },
+          { label: 'Average Expense', value: formatCurrency(totals.average, currency), icon: Scale, tint: 'rose', hint: 'Per recorded expense', money: true },
+        ]).map(({ label, value, icon: Icon, tint, hint, money }) => <div key={label} className={`${cardClass} exp-kpi min-w-0 transition-colors hover:border-violet-200 dark:hover:border-violet-900`}>
+          <p className="exp-kpi-label flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-400"><span className={`exp-kpi-icon exp-kpi-icon--${tint}`}><Icon className="h-4 w-4" /></span>{label}</p>
+          <p className={`exp-kpi-value mt-1.5 truncate font-mono text-lg font-bold tabular-nums tracking-tight ${money ? 'exp-kpi-value--money' : 'exp-kpi-value--count'}`}>{value}</p>
+          <p className="exp-kpi-hint mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">{hint}</p>
         </div>)}
       </section>
 
-      <section className={`${cardClass} cashbook-ledger-filters`}>
+      <section className={`${cardClass} exp-filters--v2 cashbook-ledger-filters`}>
         <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
           <label className="relative block sm:col-span-2 lg:col-span-1"><span className={labelClass}>Search expenses</span><Search className="absolute left-3 top-9 h-4 w-4 text-slate-400" /><input className={`${inputClass} pl-9`} value={query} onChange={event => setQuery(event.target.value)} placeholder="ID, description, vendor..." /></label>
           <label><span className={labelClass}>From date</span><input className={inputClass} type="date" value={fromDate} onChange={event => setFromDate(event.target.value)} /></label>
@@ -350,59 +351,59 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-800">
           <p className="text-xs text-slate-500">{filteredExpenses.length} matching record{filteredExpenses.length === 1 ? '' : 's'}</p>
-          {hasFilters && <button type="button" onClick={clearFilters} className="min-h-9 rounded-lg px-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/40">Clear filters</button>}
+          {hasFilters && <button type="button" onClick={clearFilters} className="exp-clear-filters min-h-9 rounded-lg px-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/40">Clear filters</button>}
         </div>
         {!validDates && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700 dark:text-rose-300">End date must be on or after the start date.</p>}
       </section>
 
-      <section className={`${cardClass} !p-0`}>
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800 sm:px-5">
+      <section className={`${cardClass} exp-list--v2 !p-0`}>
+        <div className="exp-list-head flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800 sm:px-5">
           <div><h2 className="section-title">Expense records</h2><p className="mt-0.5 text-xs text-slate-500">{filteredExpenses.length} matching record{filteredExpenses.length === 1 ? '' : 's'}</p></div>
-          <button type="button" onClick={() => onNavigate('cashbook')} className="text-xs font-semibold text-violet-700 hover:underline dark:text-violet-300">Open Cashbook</button>
+          <button type="button" onClick={() => onNavigate('cashbook')} className="exp-open-cashbook text-xs font-semibold text-violet-700 hover:underline dark:text-violet-300">Open Cashbook</button>
         </div>
-        {filteredExpenses.length === 0 ? <div className="px-5 py-12 text-center">
+        {filteredExpenses.length === 0 ? <div className="exp-empty--v2 px-5 py-12 text-center">
           <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{scopedExpenses.length ? 'No expenses match these filters.' : 'No expenses recorded.'}</p>
           <p className="mt-1 text-xs text-slate-500">Record business spending to track outgoing money and account balances.</p>
-          <button type="button" disabled={!scopedAccounts.some(account => account.enabled) || !activeCategories.length} onClick={startCreate} className="customer-primary-action mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"><Plus className="h-4 w-4" />Add Expense</button>
+          <button type="button" disabled={!scopedAccounts.some(account => account.enabled) || !activeCategories.length} onClick={startCreate} className="exp-btn-primary customer-primary-action mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"><Plus className="h-4 w-4" />Add Expense</button>
         </div> : <>
-          <div className="hidden overflow-x-auto lg:block">
-            <table className="w-full min-w-[980px] text-left text-xs">
+          <div className="exp-table-wrap hidden overflow-x-auto lg:block">
+            <table className="exp-table w-full min-w-[980px] text-left text-xs">
               <thead className="text-slate-500"><tr className="border-b border-slate-100 dark:border-slate-800">{['Expense ID', 'Date', 'Category', 'Description', 'Account', 'Vendor', 'Amount', 'Status', 'Actions'].map(label => <th key={label} scope="col" className="px-3 py-3 font-semibold">{label}</th>)}</tr></thead>
               <tbody>{filteredExpenses.map(expense => <tr key={expense.id} className="border-b border-slate-50 last:border-0 dark:border-slate-800/70">
-                <td className="px-3 py-3 font-mono font-semibold">{expenseReference(expense.id)}</td>
+                <td className="exp-id-cell px-3 py-3 font-mono font-semibold">{expenseReference(expense.id)}</td>
                 <td className="px-3 py-3 whitespace-nowrap">{formatAppDate(expense.date)}</td>
-                <td className="px-3 py-3">{categories.find(category => category.id === expense.categoryId)?.name || 'Uncategorized'}</td>
+                <td className="px-3 py-3"><span className="exp-cat-chip">{categories.find(category => category.id === expense.categoryId)?.name || 'Uncategorized'}</span></td>
                 <td className="max-w-56 truncate px-3 py-3" title={expense.description}>{expense.description}</td>
                 <td className="px-3 py-3">{accountById.get(expense.accountId)?.name || 'Account unavailable'}</td>
                 <td className="px-3 py-3">{expense.vendor || '—'}</td>
-                <td className="px-3 py-3 font-mono font-semibold">{formatCurrency(expense.amount, expense.currency)}</td>
-                <td className="px-3 py-3"><span>{displayStatus(expense)}</span></td>
+                <td className="exp-amount px-3 py-3 font-mono font-semibold">{formatCurrency(expense.amount, expense.currency)}</td>
+                <td className="px-3 py-3"><span className={`exp-status-pill exp-status-pill--${expense.status === 'voided' ? 'voided' : 'recorded'}`}>{displayStatus(expense)}</span></td>
                 <td className="px-3 py-3"><div className="flex items-center gap-1">
-                  <button type="button" aria-label={`View ${expenseReference(expense.id)}`} onClick={() => setSelectedExpense(expense)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:hover:bg-slate-800"><Eye className="h-4 w-4" /></button>
+                  <button type="button" aria-label={`View ${expenseReference(expense.id)}`} onClick={() => setSelectedExpense(expense)} className="exp-row-action rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:hover:bg-slate-800"><Eye className="h-4 w-4" /></button>
                   {expense.status === 'posted' && <>
-                    <button type="button" aria-label={`Edit ${expenseReference(expense.id)}`} onClick={() => editExpense(expense)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:hover:bg-slate-800"><Pencil className="h-4 w-4" /></button>
-                    <button type="button" aria-label={`Void ${expenseReference(expense.id)}`} onClick={() => setVoidTarget(expense)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-rose-600 dark:hover:bg-rose-950/30"><XCircle className="h-4 w-4" /></button>
+                    <button type="button" aria-label={`Edit ${expenseReference(expense.id)}`} onClick={() => editExpense(expense)} className="exp-row-action rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:hover:bg-slate-800"><Pencil className="h-4 w-4" /></button>
+                    <button type="button" aria-label={`Void ${expenseReference(expense.id)}`} onClick={() => setVoidTarget(expense)} className="exp-row-action exp-row-action--danger rounded-lg p-2 text-rose-600 hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-rose-600 dark:hover:bg-rose-950/30"><XCircle className="h-4 w-4" /></button>
                   </>}
                 </div></td>
               </tr>)}</tbody>
             </table>
           </div>
-          <div className="space-y-2 p-3 lg:hidden">{filteredExpenses.map(expense => <article key={expense.id} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800">
-            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-semibold text-slate-500">{categories.find(category => category.id === expense.categoryId)?.name || 'Uncategorized'} · {displayStatus(expense)}</p><h3 className="mt-1 truncate text-sm font-semibold text-slate-900 dark:text-white">{expense.description}</h3></div><p className="shrink-0 font-mono text-sm font-bold">{formatCurrency(expense.amount, expense.currency)}</p></div>
+          <div className="space-y-2 p-3 lg:hidden">{filteredExpenses.map(expense => <article key={expense.id} className="exp-card--v2 rounded-xl border border-slate-100 p-3 dark:border-slate-800">
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-slate-500"><span className="exp-cat-chip">{categories.find(category => category.id === expense.categoryId)?.name || 'Uncategorized'}</span><span className={`exp-status-pill exp-status-pill--${expense.status === 'voided' ? 'voided' : 'recorded'}`}>{displayStatus(expense)}</span></p><h3 className="mt-1 truncate text-sm font-semibold text-slate-900 dark:text-white">{expense.description}</h3></div><p className="exp-card-amount shrink-0 font-mono text-sm font-bold">{formatCurrency(expense.amount, expense.currency)}</p></div>
             <p className="mt-2 text-[11px] text-slate-500">{formatAppDate(expense.date)} · {accountById.get(expense.accountId)?.name || 'Account unavailable'}{expense.vendor ? ` · ${expense.vendor}` : ''}</p>
-            <div className="mt-3 flex gap-2"><button type="button" onClick={() => setSelectedExpense(expense)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold dark:border-slate-700">View</button>{expense.status === 'posted' && <><button type="button" onClick={() => editExpense(expense)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold dark:border-slate-700">Edit</button><button type="button" onClick={() => setVoidTarget(expense)} className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:border-rose-900 dark:text-rose-300">Void</button></>}</div>
+            <div className="mt-3 flex gap-2"><button type="button" onClick={() => setSelectedExpense(expense)} className="exp-card-btn rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold dark:border-slate-700">View</button>{expense.status === 'posted' && <><button type="button" onClick={() => editExpense(expense)} className="exp-card-btn rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold dark:border-slate-700">Edit</button><button type="button" onClick={() => setVoidTarget(expense)} className="exp-card-btn exp-card-btn--danger rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:border-rose-900 dark:text-rose-300">Void</button></>}</div>
           </article>)}</div>
         </>}
       </section>
 
       <Modal isOpen={Boolean(draft)} onClose={() => { setDraft(null); setEditingExpense(null); }} title={editingExpense ? 'Edit Expense' : 'Add Expense'} subtitle="Changes update the existing Cashbook ledger record.">
-        {draft && <form className="space-y-4" onSubmit={saveExpense}>
+        {draft && <form className="exp-form--v2 space-y-4" onSubmit={saveExpense}>
           <label className="block"><span className={labelClass}>Expense Account *</span><select className={inputClass} value={draft.accountId} onChange={event => {
             const account = accountById.get(event.target.value);
             setDraft({ ...draft, accountId: event.target.value, currency: account?.currency || currency });
           }} required><option value="">Select account</option>{scopedAccounts.filter(account => account.enabled).map(account => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}</select></label>
           <label className="block"><span className={labelClass}>Category *</span><select className={inputClass} value={draft.categoryId} onChange={event => setDraft({ ...draft, categoryId: event.target.value })} required><option value="">Select category</option>{activeCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-          {formAccount && projectedBalance !== undefined && <div className="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-800/70">
+          {formAccount && projectedBalance !== undefined && <div className="exp-balance-strip grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-800/70">
             <div><p className="text-slate-500">Current balance</p><p className="mt-1 font-mono font-semibold">{formatCurrency((accountBalances.get(formAccount.id) || 0) + (editingExpense?.status === 'posted' && editingExpense.accountId === formAccount.id ? editingExpense.amount : 0), formAccount.currency)}</p></div>
             <div><p className="text-slate-500">Expense amount</p><p className="mt-1 font-mono font-semibold">{formatCurrency(Number(draft.amount) || 0, formAccount.currency)}</p></div>
             <div><p className="text-slate-500">After expense</p><p className={`mt-1 font-mono font-semibold ${projectedBalance < 0 ? 'text-rose-700 dark:text-rose-300' : 'text-slate-900 dark:text-white'}`}>{formatCurrency(projectedBalance, formAccount.currency)}</p></div>
@@ -422,7 +423,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
       </Modal>
 
       <Modal isOpen={Boolean(selectedExpense)} onClose={() => setSelectedExpense(null)} title="Expense Details" subtitle={selectedExpense ? expenseReference(selectedExpense.id) : undefined}>
-        {selectedExpense && <div className="space-y-4">
+        {selectedExpense && <div className="exp-details--v2 space-y-4">
           <dl className="grid gap-3 sm:grid-cols-2">
             {[
               ['Date', formatAppDate(selectedExpense.date)],
@@ -436,7 +437,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
               ['Created At', formatAppDateTime(selectedExpense.createdAt)],
               ['Updated At', formatAppDateTime(selectedExpense.updatedAt)],
               ['Notes', selectedExpense.notes || '—'],
-            ].map(([label, value]) => <div key={label}><dt className="text-xs font-medium text-slate-500">{label}</dt><dd className="mt-1 break-words text-sm font-semibold text-slate-900 dark:text-slate-100">{value}</dd></div>)}
+            ].map(([label, value]) => <div key={label}><dt className="text-xs font-medium text-slate-500">{label}</dt><dd className={`mt-1 break-words text-sm font-semibold text-slate-900 dark:text-slate-100 ${label === 'Amount' ? 'exp-details-amount' : ''}`}>{value}</dd></div>)}
           </dl>
           <button type="button" onClick={() => onNavigate('cashbook', selectedExpense.accountId)} className="text-sm font-semibold text-violet-700 hover:underline dark:text-violet-300">View Account Ledger</button>
           {selectedExpense.status === 'posted' && <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800"><button type="button" onClick={() => editExpense(selectedExpense)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold dark:border-slate-700">Edit</button><button type="button" onClick={() => { setVoidTarget(selectedExpense); setSelectedExpense(null); }} className="rounded-xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 dark:border-rose-900 dark:text-rose-300">Void Expense</button></div>}
@@ -444,8 +445,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
       </Modal>
 
       <Modal isOpen={Boolean(voidTarget)} onClose={() => { setVoidTarget(null); setVoidReason(''); }} title="Void Expense" subtitle="The expense will remain in history but will no longer affect the Cashbook balance.">
-        {voidTarget && <div className="space-y-4">
-          <p className="text-sm text-slate-700 dark:text-slate-300">{expenseReference(voidTarget.id)} · {voidTarget.description} · {formatCurrency(voidTarget.amount, voidTarget.currency)}</p>
+        {voidTarget && <div className="exp-void--v2 space-y-4">
+          <p className="exp-void-summary text-sm text-slate-700 dark:text-slate-300">{expenseReference(voidTarget.id)} · {voidTarget.description} · {formatCurrency(voidTarget.amount, voidTarget.currency)}</p>
           <label className="block"><span className={labelClass}>Reason *</span><textarea className={inputClass} rows={3} value={voidReason} onChange={event => setVoidReason(event.target.value)} required /></label>
           <div className="flex justify-end gap-2"><button type="button" onClick={() => { setVoidTarget(null); setVoidReason(''); }} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold dark:border-slate-700">Cancel</button><button type="button" onClick={voidExpense} disabled={!voidReason.trim()} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Void Expense</button></div>
         </div>}

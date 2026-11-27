@@ -232,45 +232,50 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
   };
 
   return (
-    <div className="section-layout-shell mx-auto max-w-[1600px] space-y-5 px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
-      <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-        <div>
-          <div className="flex items-center gap-2"><BellRing className="h-6 w-6 text-violet-600" /><h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Reminders</h1></div>
+    <div className="reminders-view--v2 section-layout-shell mx-auto max-w-[1600px] space-y-5 px-3 py-3 sm:px-6 sm:py-6 lg:px-8" data-section="reminders">
+      <header className="sv-page-header--v2 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+        <div className="sv-page-header-inner">
+          <span className="sv-page-icon"><BellRing className="h-5 w-5" /></span>
+          <div className="sv-page-titles">
+            <span className="sv-page-eyebrow">Follow-ups</span>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Reminders</h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Renewals, payments and follow-ups, soonest first.</p>
+          </div>
         </div>
-        <button type="button" onClick={() => openCreate()} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
+        <button type="button" onClick={() => openCreate()} className="sv-btn-primary--v2 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600">
           <Plus className="h-4 w-4" /> New Follow-up
         </button>
       </header>
 
-      <section aria-label="Reminder summary" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <section aria-label="Reminder summary" className="sv-kpi-grid--v2 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {[
-          ['Due Today', dueTodayCount, 'text-blue-700 dark:text-blue-300'],
-          ['Overdue', overdueCount, 'text-rose-700 dark:text-rose-300'],
-          ['Upcoming', upcomingCount, 'text-emerald-700 dark:text-emerald-300'],
-          ['High Priority', highPriorityCount, 'text-amber-700 dark:text-amber-300'],
-          ['Completed', countFor('completed'), 'text-slate-700 dark:text-slate-300'],
-          ['Snoozed', countFor('snoozed'), 'text-violet-700 dark:text-violet-300'],
-        ].map(([label, value, color]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-          <p className="text-xs text-slate-500">{label}</p><p className={`mt-1 text-xl font-bold ${color}`}>{value}</p>
+          ['Due Today', dueTodayCount, 'blue', 'Due today'],
+          ['Overdue', overdueCount, 'rose', 'Past due'],
+          ['Upcoming', upcomingCount, 'emerald', 'Due after today'],
+          ['High Priority', highPriorityCount, 'amber', 'High or critical'],
+          ['Completed', countFor('completed'), 'slate', 'Finished'],
+          ['Snoozed', countFor('snoozed'), 'violet', 'Paused for now'],
+        ].map(([label, value, tone, hint]) => <div key={label} className={`sv-kpi--v2 sv-kpi-tone--${tone} rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900`}>
+          <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{label}</p><p className="sv-kpi-value mt-1 text-xl font-bold">{value}</p><p className="text-[11px] text-slate-500 dark:text-slate-400">{hint}</p>
         </div>)}
       </section>
 
-      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-        <div role="group" aria-label="Filter follow-ups" className="flex gap-2 overflow-x-auto pb-1">
+      <section className="sv-panel--v2 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+        <div role="group" aria-label="Filter follow-ups" className="sv-filter-chips--v2 flex gap-2 overflow-x-auto pb-1">
           {filters.map(item => <button key={item.id} type="button" aria-pressed={filter === item.id} onClick={() => setFilter(item.id)} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 ${filter === item.id ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'}`}>
             {item.label} <span className="ml-1 opacity-75">{countFor(item.id)}</span>
           </button>)}
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="relative"><span className="sr-only">Search follow-ups</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search reason, customer, service, invoice..." className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-violet-500 dark:border-slate-700 dark:bg-slate-800" /></label>
+          <label className="relative"><span className="sr-only">Search follow-ups</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search reason, customer, service, invoice..." className="sv-field--v2 w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-violet-500 dark:border-slate-700 dark:bg-slate-800" /></label>
           <div className="flex gap-2">
-            <label className="min-w-0 flex-1"><span className="sr-only">Filter by reminder type</span><select aria-label="Filter by reminder type" value={typeFilter} onChange={event => setTypeFilter(event.target.value as ReminderType | 'all')} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="all">All types</option>{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label className="min-w-0 flex-1"><span className="sr-only">Filter by priority</span><select aria-label="Filter by priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value as ReminderPriority | 'all')} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="all">All priorities</option>{(['critical', 'high', 'medium', 'low'] as const).map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>
+            <label className="min-w-0 flex-1"><span className="sr-only">Filter by reminder type</span><select aria-label="Filter by reminder type" value={typeFilter} onChange={event => setTypeFilter(event.target.value as ReminderType | 'all')} className="sv-field--v2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="all">All types</option>{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label className="min-w-0 flex-1"><span className="sr-only">Filter by priority</span><select aria-label="Filter by priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value as ReminderPriority | 'all')} className="sv-field--v2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="all">All priorities</option>{(['critical', 'high', 'medium', 'low'] as const).map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>
           </div>
         </div>
 
-        {visibleReminders.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 px-4 py-12 text-center dark:border-slate-700">
-          <CalendarClock className="mx-auto h-8 w-8 text-slate-400" />
+        {visibleReminders.length === 0 ? <div className="sv-empty--v2 rounded-xl border border-dashed border-slate-300 px-4 py-12 text-center dark:border-slate-700">
+          <CalendarClock className="sv-empty-icon mx-auto h-8 w-8 text-slate-400" />
           <p className="mt-3 font-semibold text-slate-800 dark:text-slate-100">{filter === 'overdue' ? 'No overdue reminders.' : filter === 'upcoming' ? 'No upcoming reminders.' : filter === 'today' ? "You're all caught up." : 'No reminders found.'}</p>
           <p className="mt-1 text-xs text-slate-500">{query ? 'Try another search or filter.' : 'Automatic suggestions refresh while the app is open. Manual follow-ups are saved locally.'}</p>
         </div> : <div className="space-y-2" aria-live="polite">
@@ -285,30 +290,30 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
             const isOverdue = !isClosed && reminder.status !== 'snoozed'
               && (reminder.dueDate < today
                 || (reminder.dueDate === today && Boolean(reminder.dueAt) && Date.parse(reminder.dueAt!) < nowTimestamp));
-            return <article key={reminder.id} className={`rounded-xl border p-3 sm:p-4 ${isOverdue ? 'border-rose-300 bg-rose-50/60 dark:border-rose-900 dark:bg-rose-950/20' : 'border-slate-200 dark:border-slate-800'}`}>
+            return <article key={reminder.id} className={`sv-reminder--v2 rounded-xl border p-3 sm:p-4 ${isOverdue ? 'is-overdue border-rose-300 bg-rose-50/60 dark:border-rose-900 dark:bg-rose-950/20' : isClosed ? 'is-closed border-slate-200 dark:border-slate-800' : 'border-slate-200 dark:border-slate-800'}`}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="w-full min-w-0 sm:flex-1">
                   <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                     <h2 className="font-semibold text-slate-900 dark:text-white">{reminder.title}</h2>
-                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${priorityClass[reminder.priority]}`}>{reminder.priority} priority</span>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">{statusLabels[reminder.status]}</span>
+                    <span className={`sv-prio-chip--v2 sv-prio--${reminder.priority} rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${priorityClass[reminder.priority]}`}>{reminder.priority} priority</span>
+                    <span className="sv-status-chip--v2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">{statusLabels[reminder.status]}</span>
                   </div>
-                  <p className={`mt-1 text-xs ${isOverdue ? 'font-semibold text-rose-700 dark:text-rose-300' : 'text-slate-500'}`}>{typeLabels[reminder.type]} · {isPaymentReminder ? 'Expected payment' : 'Due'} {reminder.dueAt ? formatDateTime(reminder.dueAt) : formatAppDate(reminder.dueDate, language)}{reminder.status === 'snoozed' && reminder.snoozedUntil ? ` · Snoozed until ${formatDateTime(reminder.snoozedUntil)}` : ''}</p>
+                  <p className={`sv-due-line mt-1 text-xs ${isOverdue ? 'font-semibold text-rose-700 dark:text-rose-300' : 'text-slate-500'}`}>{typeLabels[reminder.type]} · {isPaymentReminder ? 'Expected payment' : 'Due'} {reminder.dueAt ? formatDateTime(reminder.dueAt) : formatAppDate(reminder.dueDate, language)}{reminder.status === 'snoozed' && reminder.snoozedUntil ? ` · Snoozed until ${formatDateTime(reminder.snoozedUntil)}` : ''}</p>
                   {reminder.description && <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{reminder.description}</p>}
-                  {reminder.outcome && <p className="mt-2 rounded-lg bg-white/80 px-3 py-2 text-sm text-slate-700 dark:bg-slate-900/80 dark:text-slate-300"><span className="font-semibold">Outcome:</span> {reminder.outcome}</p>}
+                  {reminder.outcome && <p className="sv-outcome--v2 mt-2 rounded-lg bg-white/80 px-3 py-2 text-sm text-slate-700 dark:bg-slate-900/80 dark:text-slate-300"><span className="font-semibold">Outcome:</span> {reminder.outcome}</p>}
                   <p className="mt-1 text-xs text-slate-500">{customer?.name || ''}{service?.name ? ` · ${service.name}` : ''}{reminder.stage ? ` · ${reminder.stage.replaceAll('_', ' ')}` : ''}</p>
-                  {reminder.amount !== undefined && <p className="mt-2 text-sm font-bold text-slate-900 dark:text-white">{formatCurrency(reminder.amount, reminder.currency || currency)}</p>}
+                  {reminder.amount !== undefined && <p className="sv-amount--v2 mt-2 text-sm font-bold text-slate-900 dark:text-white">{formatCurrency(reminder.amount, reminder.currency || currency)}</p>}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {!isClosed && <button type="button" onClick={() => goToSource(reminder)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">View</button>}
-                  {reminder.subscriptionId && subscription && !isClosed && <button type="button" onClick={() => onRenewSubscription(subscription)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700">Renew</button>}
-                  {reminder.saleId && !isClosed && <button type="button" onClick={() => onAddPayment(reminder.saleId!)} className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300">Payment</button>}
-                  {reminder.customerId && canContact(reminder.customerId) && !isClosed && <button type="button" onClick={() => whatsapp(reminder)} className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300">WhatsApp</button>}
-                  {!isClosed && reminder.status !== 'snoozed' && <label className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 dark:border-slate-700"><Clock3 className="h-3.5 w-3.5 text-slate-500" /><span className="sr-only">Snooze reminder</span><select aria-label={`Snooze ${reminder.title}`} defaultValue="" onChange={event => { if (event.target.value) snooze(reminder, event.target.value); event.target.value = ''; }} className="max-w-24 bg-transparent py-2 text-xs"><option value="" disabled>Snooze</option><option value="1h">1 hour</option><option value="today">Today</option><option value="1">Tomorrow</option><option value="3">{formatDurationDays(3)}</option><option value="7">{formatDurationDays(7)}</option></select></label>}
-                  {!isClosed && <button type="button" onClick={() => { setCompletionTarget(reminder); setOutcome(''); }} aria-label={`Complete ${reminder.title}`} className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900"><Check className="h-3.5 w-3.5" /><span className="hidden sm:inline">Complete</span></button>}
-                  {isClosed && <button type="button" onClick={() => perform(() => reopenReminder(reminder.id), 'Reminder reopened.')} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Reopen</button>}
-                  {reminder.status === 'completed' && reminder.customerId && <button type="button" onClick={() => openCreate(reminder.customerId)} className="rounded-lg border border-violet-200 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-900 dark:text-violet-300">Schedule next</button>}
-                  {!isClosed && <button type="button" onClick={() => perform(() => dismissReminder(reminder.id), 'Follow-up cancelled.')} aria-label={`Cancel ${reminder.title}`} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"><X className="h-4 w-4" /></button>}
+                  {!isClosed && <button type="button" onClick={() => goToSource(reminder)} className="sv-btn-ghost--v2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">View</button>}
+                  {reminder.subscriptionId && subscription && !isClosed && <button type="button" onClick={() => onRenewSubscription(subscription)} className="sv-btn-renew--v2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700">Renew</button>}
+                  {reminder.saleId && !isClosed && <button type="button" onClick={() => onAddPayment(reminder.saleId!)} className="sv-btn-mint--v2 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300">Payment</button>}
+                  {reminder.customerId && canContact(reminder.customerId) && !isClosed && <button type="button" onClick={() => whatsapp(reminder)} className="sv-btn-mint--v2 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300">WhatsApp</button>}
+                  {!isClosed && reminder.status !== 'snoozed' && <label className="sv-snooze--v2 flex items-center gap-1 rounded-lg border border-slate-200 px-2 dark:border-slate-700"><Clock3 className="h-3.5 w-3.5 text-slate-500" /><span className="sr-only">Snooze reminder</span><select aria-label={`Snooze ${reminder.title}`} defaultValue="" onChange={event => { if (event.target.value) snooze(reminder, event.target.value); event.target.value = ''; }} className="max-w-24 bg-transparent py-2 text-xs"><option value="" disabled>Snooze</option><option value="1h">1 hour</option><option value="today">Today</option><option value="1">Tomorrow</option><option value="3">{formatDurationDays(3)}</option><option value="7">{formatDurationDays(7)}</option></select></label>}
+                  {!isClosed && <button type="button" onClick={() => { setCompletionTarget(reminder); setOutcome(''); }} aria-label={`Complete ${reminder.title}`} className="sv-btn-primary--v2 inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900"><Check className="h-3.5 w-3.5" /><span className="hidden sm:inline">Complete</span></button>}
+                  {isClosed && <button type="button" onClick={() => perform(() => reopenReminder(reminder.id), 'Reminder reopened.')} className="sv-btn-ghost--v2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Reopen</button>}
+                  {reminder.status === 'completed' && reminder.customerId && <button type="button" onClick={() => openCreate(reminder.customerId)} className="sv-btn-violet-outline--v2 rounded-lg border border-violet-200 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-900 dark:text-violet-300">Schedule next</button>}
+                  {!isClosed && <button type="button" onClick={() => perform(() => dismissReminder(reminder.id), 'Follow-up cancelled.')} aria-label={`Cancel ${reminder.title}`} className="sv-icon-btn--v2 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"><X className="h-4 w-4" /></button>}
                 </div>
               </div>
             </article>;
@@ -323,14 +328,14 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
         maxWidth="lg"
       >
         <form onSubmit={submitReminder} className="space-y-4">
-          <label className="block text-xs font-semibold">Follow-up reason *<input required maxLength={120} value={title} onChange={event => setTitle(event.target.value)} placeholder="e.g. Discuss renewal options" className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
-          <label className="block text-xs font-semibold">Customer *<select required value={customerId} onChange={event => setCustomerId(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="">Select a customer</option>{customers.filter(customer => !customer.isArchived && customer.status !== 'archived').map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}</select></label>
-          <label className="block text-xs font-semibold">Notes<textarea maxLength={1000} value={description} onChange={event => setDescription(event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
+          <label className="block text-xs font-semibold">Follow-up reason *<input required maxLength={120} value={title} onChange={event => setTitle(event.target.value)} placeholder="e.g. Discuss renewal options" className="sv-field--v2 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
+          <label className="block text-xs font-semibold">Customer *<select required value={customerId} onChange={event => setCustomerId(event.target.value)} className="sv-field--v2 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="">Select a customer</option>{customers.filter(customer => !customer.isArchived && customer.status !== 'archived').map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}</select></label>
+          <label className="block text-xs font-semibold">Notes<textarea maxLength={1000} value={description} onChange={event => setDescription(event.target.value)} rows={3} className="sv-field--v2 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-xs font-semibold">Due date &amp; time *<input type="datetime-local" required value={dueAt} onChange={event => setDueAt(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
-            <label className="block text-xs font-semibold">Priority<select value={priority} onChange={event => setPriority(event.target.value as ReminderPriority)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800">{(['low', 'medium', 'high', 'critical'] as const).map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>
+            <label className="block text-xs font-semibold">Due date &amp; time *<input type="datetime-local" required value={dueAt} onChange={event => setDueAt(event.target.value)} className="sv-field--v2 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
+            <label className="block text-xs font-semibold">Priority<select value={priority} onChange={event => setPriority(event.target.value as ReminderPriority)} className="sv-field--v2 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800">{(['low', 'medium', 'high', 'critical'] as const).map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>
           </div>
-          <footer className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setShowCreate(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold dark:border-slate-700">Cancel</button><button type="submit" disabled={!title.trim() || !customerId || !dueAt} className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Save Follow-up</button></footer>
+          <footer className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setShowCreate(false)} className="sv-btn-ghost--v2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold dark:border-slate-700">Cancel</button><button type="submit" disabled={!title.trim() || !customerId || !dueAt} className="sv-btn-primary--v2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Save Follow-up</button></footer>
         </form>
       </Modal>
       <Modal
@@ -347,8 +352,8 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
           setOutcome('');
         }} className="space-y-4">
           <p className="text-sm text-slate-600 dark:text-slate-300">{completionTarget?.title}</p>
-          <label className="block text-xs font-semibold">Outcome / notes<textarea maxLength={1000} value={outcome} onChange={event => setOutcome(event.target.value)} rows={4} placeholder="What happened? Note any agreed next steps." className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
-          <footer className="flex justify-end gap-2"><button type="button" onClick={() => setCompletionTarget(null)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold dark:border-slate-700">Back</button><button type="submit" className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white">Complete follow-up</button></footer>
+          <label className="block text-xs font-semibold">Outcome / notes<textarea maxLength={1000} value={outcome} onChange={event => setOutcome(event.target.value)} rows={4} placeholder="What happened? Note any agreed next steps." className="sv-field--v2 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
+          <footer className="flex justify-end gap-2"><button type="button" onClick={() => setCompletionTarget(null)} className="sv-btn-ghost--v2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold dark:border-slate-700">Back</button><button type="submit" className="sv-btn-primary--v2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white">Complete follow-up</button></footer>
         </form>
       </Modal>
     </div>

@@ -586,8 +586,8 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
         </section>
 
         {/* Action Controls */}
-        <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0 text-xs text-slate-500 dark:text-slate-400">
+        <div className="invoice-preview-actions flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
+          <div className="invoice-preview-status min-w-0 text-xs text-slate-500 dark:text-slate-400">
             {invoiceResult && (
               <>
                 <span className="flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-400">
@@ -599,7 +599,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
             )}
           </div>
 
-          <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:justify-end">
+          <div className="invoice-preview-buttons grid grid-cols-2 items-center gap-2 sm:flex sm:justify-end">
             <button
               type="button"
               onClick={onClose}

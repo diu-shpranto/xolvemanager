@@ -600,7 +600,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   return (
     <div className="sales-view customer-list-page section-layout-shell mx-auto max-w-[1600px] space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-6 lg:px-8">
-      <div className="customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:flex-nowrap sm:gap-4 sm:pb-4">
+      <div className="customer-page-header sales-page-header--v2 flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:flex-nowrap sm:gap-4 sm:pb-4">
         <div className="customer-heading flex min-w-0 flex-1 items-start gap-3">
           <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11">
             <Receipt className="h-5 w-5" />
@@ -649,7 +649,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
         </div>
       </div>
 
-      <section className="sales-summary-grid grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" aria-label="Sales summary">
+      <section className="sales-summary-grid sales-summary-strip grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6" aria-label="Sales summary">
         {[
           { label: 'Total Sales', value: String(salesStats.totalSales), context: 'Selected period', icon: Receipt, tone: 'violet' },
           { label: 'Paid Sales', value: String(salesStats.paid), amounts: salesStats.paidSalesAmount, context: 'Fully received', icon: CheckCircle2, tone: 'emerald' },
@@ -684,7 +684,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       </section>
 
       {activeOrders.length > 0 && (
-        <section aria-labelledby="open-orders-title" className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 p-3 dark:border-violet-900/60 dark:bg-violet-950/10 sm:p-4">
+        <section aria-labelledby="open-orders-title" className="sales-open-orders--v2 space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 p-3 dark:border-violet-900/60 dark:bg-violet-950/10 sm:p-4">
           <div className="flex items-start gap-2">
             <FileText className="mt-0.5 h-4 w-4 shrink-0 text-violet-700 dark:text-violet-300" />
             <div>
@@ -723,7 +723,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
         </section>
       )}
 
-      <section className="sales-quick-followup rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+      <section className="sales-quick-followup sales-quick-followup--v2 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900">
         <div className="mb-2 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-bold text-slate-800 dark:text-slate-100">Quick follow-up</p>
@@ -765,7 +765,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       </section>
 
       {/* Filters Strip */}
-      <div className="sales-filter-toolbar rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-3">
+      <div className="sales-filter-toolbar sales-filter-toolbar--v2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-3">
         <div className="grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center xl:gap-3">
         <div className="relative min-w-0">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -886,7 +886,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
         )}
       </div>
 
-      <div className="customer-directory-heading flex items-center justify-between gap-3 px-0.5">
+      <div className="customer-directory-heading sales-directory-heading--v2 flex items-center justify-between gap-3 px-0.5">
         <div className="flex min-w-0 items-center gap-2">
           <h2 className="text-base font-bold tracking-tight text-slate-900 dark:text-white">Sales &amp; Orders</h2>
           <span className="customer-directory-count shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold tabular-nums dark:border-slate-700">
@@ -932,7 +932,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
           const status = getSalePaymentStatus(sale, businessPayments);
           const canVoid = !getSaleVoidBlockedReason(sale, businessPayments, subscriptions, invoices);
           return (
-            <article key={sale.id} className="sales-order-card min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs transition-colors hover:border-violet-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-violet-900 sm:p-4">
+            <article key={sale.id} className={`sales-order-card sales-order-card--${status} min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs transition-colors hover:border-violet-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-violet-900 sm:p-4`}>
               <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5">
                 <div className="min-w-0">
                   {saleItems.map((item, index) => (
@@ -993,7 +993,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       </div>
 
       {/* Sales Table */}
-      <div className="hidden xl:block bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+      <div className="sales-table-card--v2 hidden xl:block bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
         <div className="data-table-scroll sales-table-scroll overflow-x-auto" role="region" aria-label="Sales table; scroll horizontally to view all columns" tabIndex={0}>
           <table className="w-full min-w-[1120px] whitespace-nowrap text-left border-collapse text-xs">
             <caption className="sr-only">Sales</caption>
@@ -1108,7 +1108,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
         </div>
       </div>
       {filteredSales.length > 0 && (
-        <nav className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs dark:border-slate-800 dark:bg-slate-900" aria-label="Sales pages">
+        <nav className="sales-pagination--v2 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs dark:border-slate-800 dark:bg-slate-900" aria-label="Sales pages">
           <span className="text-slate-500">
             Showing {(page - 1) * salesPageSize + 1}–{Math.min(page * salesPageSize, filteredSales.length)} of {filteredSales.length}
           </span>
@@ -1131,8 +1131,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
           subtitle={settings.storeName || 'My Business'}
           maxWidth="2xl"
         >
-          <div className="space-y-4 text-sm">
-            <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-3.5 dark:border-violet-900/60 dark:bg-violet-950/20 sm:p-4" aria-label="Sale summary">
+          <div className="sales-detail-body space-y-4 text-sm">
+            <section className="sales-detail-hero--v2 rounded-2xl border border-violet-200 bg-violet-50/70 p-3.5 dark:border-violet-900/60 dark:bg-violet-950/20 sm:p-4" aria-label="Sale summary">
               <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">Invoice</p>

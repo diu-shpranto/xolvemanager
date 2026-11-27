@@ -1,10 +1,14 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   BarChart3,
   Download,
   FilterX,
   Printer,
   Receipt,
+  SlidersHorizontal,
+  TrendingUp,
+  Wallet,
 } from 'lucide-react';
 import {
   Area,
@@ -142,11 +146,20 @@ function MetricCard({
     amber: 'text-amber-700 dark:text-amber-300',
     blue: 'text-violet-700 dark:text-violet-300',
   };
+  const icons = {
+    slate: <BarChart3 className="h-4 w-4" />,
+    green: <TrendingUp className="h-4 w-4" />,
+    amber: <AlertTriangle className="h-4 w-4" />,
+    blue: <Wallet className="h-4 w-4" />,
+  };
   return (
-    <div className={cardClass}>
-      <span className={labelClass}>{label}</span>
+    <div className={`${cardClass} rep-v2-kpi`}>
+      <div className="rep-v2-kpi-head">
+        <span className={`rep-v2-kpi-icon rep-v2-kpi-icon--${tone}`}>{icons[tone]}</span>
+        <span className="rep-v2-kpi-label">{label}</span>
+      </div>
       <span className={`${numberClass} ${tones[tone]}`}>{value}</span>
-      {detail && <span className="mt-1 block text-[11px] text-slate-400">{detail}</span>}
+      {detail && <span className="rep-v2-kpi-hint">{detail}</span>}
     </div>
   );
 }
@@ -161,9 +174,9 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className={`${cardClass} min-w-0 space-y-4`}>
+    <section className={`${cardClass} rep-v2-panel min-w-0 space-y-4`}>
       <div>
-        <h2 className="section-title">{title}</h2>
+        <h2 className="section-title rep-v2-section-title">{title}</h2>
         {description && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{description}</p>}
       </div>
       {children}
@@ -1237,7 +1250,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     printWindow.document.close();
   };
 
-  const selectClass = 'w-full min-w-0 min-h-11 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-700 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200';
+  const selectClass = 'w-full min-w-0 min-h-11 rounded-xl border border-[#e9e4f5] bg-white px-3 py-2.5 text-xs font-medium text-slate-700 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-[#332c45] dark:bg-[#211e2b] dark:text-slate-200';
   const noResults = reportSales.length === 0
     && reportPayments.length === 0
     && reportSubscriptions.length === 0
@@ -1328,31 +1341,37 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   };
 
   return (
-    <div className="finance-responsive-page section-layout-shell customer-list-page mx-auto flex w-full max-w-[1600px] flex-col gap-3 px-3 py-3 pb-10 sm:gap-4 sm:px-6 sm:py-6 lg:px-8">
-      <header className="finance-responsive-header customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:pb-4">
+    <div className="reports-view finance-responsive-page section-layout-shell customer-list-page mx-auto flex w-full max-w-[1600px] flex-col gap-3 px-3 py-3 pb-10 sm:gap-4 sm:px-6 sm:py-6 lg:px-8" data-section="reports">
+      <header className="finance-responsive-header report-page-header--v2 flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="customer-heading flex min-w-0 items-start gap-3">
-          <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11"><BarChart3 className="h-5 w-5" /></div>
+          <div className="report-page-icon mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center"><BarChart3 className="h-5 w-5" /></div>
           <div className="min-w-0">
-            <p className="customer-page-eyebrow mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em]">Business intelligence</p>
+            <p className="report-page-eyebrow mb-0.5">Business intelligence</p>
             <h1 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[30px]">Insights</h1>
-            <p className="mt-1 text-[11px] font-medium text-violet-200">{currentBusiness?.name || settings.storeName} · {formatAppDate(bounds.start, language)} – {formatAppDate(bounds.end, language)}</p>
-            <p className="mt-0.5 text-sm leading-5 text-slate-600 dark:text-slate-400">Sales, cash flow, expenses, customers, and subscriptions.</p>
+            <p className="report-page-meta mt-1">{currentBusiness?.name || settings.storeName} · {formatAppDate(bounds.start, language)} – {formatAppDate(bounds.end, language)}</p>
+            <p className="report-page-subtitle mt-0.5">Sales, cash flow, expenses, customers, and subscriptions.</p>
           </div>
         </div>
-        <div className="finance-responsive-actions customer-header-actions flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
-          <button type="button" onClick={downloadReportCsv} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/60">
+        <div className="finance-responsive-actions flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+          <button type="button" onClick={downloadReportCsv} className="report-primary-action">
             <Download className="h-4 w-4" /> Export CSV
           </button>
-          <button type="button" onClick={printReport} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/60">
+          <button type="button" onClick={printReport} className="report-header-action">
             <Printer className="h-4 w-4" /> Print Report
           </button>
-          <button type="button" onClick={() => showToast('Reports reflect the latest saved business data.', 'info')} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/60">
+          <button type="button" onClick={() => showToast('Reports reflect the latest saved business data.', 'info')} className="report-header-action">
             Refresh
           </button>
         </div>
       </header>
 
-      <section aria-label="Report filters" className={`${cardClass} grid min-w-0 grid-cols-2 gap-2 rounded-xl sm:gap-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6`}>
+      <section aria-label="Report filters" className={`${cardClass} report-filters--v2 grid min-w-0 grid-cols-2 gap-2 rounded-xl sm:gap-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6`}>
+        <div className="report-filters-head col-span-full">
+          <div className="report-filters-title"><SlidersHorizontal className="h-4 w-4" /> Report filters</div>
+          <button type="button" onClick={clearFilters} disabled={!hasFilters} className="report-clear-filters">
+            <FilterX className="h-4 w-4" /> Clear Filters
+          </button>
+        </div>
         <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
           Date Range
           <select aria-label="Date range" value={datePreset} onChange={event => setDatePreset(event.target.value as ReportDatePreset)} className={`${selectClass} mt-1`}>
@@ -1433,11 +1452,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             {['active', 'ending', 'expired', 'cancelled'].map(status => <option key={status} value={status}>{status}</option>)}
           </select>
         </label>
-        <div className="flex items-end">
-          <button type="button" onClick={clearFilters} disabled={!hasFilters} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-violet-700 hover:border-violet-300 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-violet-300 dark:hover:bg-slate-800">
-            <FilterX className="h-4 w-4" /> Clear Filters
-          </button>
-        </div>
         {datePreset === 'custom' && (
           <div className="grid grid-cols-2 gap-2 sm:col-span-2 lg:col-span-3 xl:col-span-4 2xl:col-span-3">
             <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
@@ -1493,7 +1507,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <MetricCard key={type} label={`${type.replace(/_/g, ' ')} reminders`} value={count} />
           ))}
         </div>
-        <button type="button" onClick={() => onNavigate('reminders')} className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">View Smart Reminders →</button>
+        <button type="button" onClick={() => onNavigate('reminders')} className="text-xs font-semibold text-violet-700 hover:underline dark:text-violet-300">View Smart Reminders →</button>
       </Section>
       <Section title="Money Summary" description={`Account balances and money in and out from ${bounds.start} to ${bounds.end}. Transfers between your accounts are not counted as income or spending.`}>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
@@ -1509,7 +1523,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <MetricCard label="Closing Balance" value={accountPeriodSummary.length ? formatCurrency(accountPeriodSummary.reduce((sum, account) => sum + account.closingBalance, 0), currency) : formatCurrency(0, currency)} />
           <MetricCard label="Transfers Between Accounts" value={formatCurrency(transferTotal, currency)} detail={`${reportTransfers.length} transfers`} />
         </div>
-        <button type="button" onClick={() => onNavigate('cashbook')} className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">View Cashbook →</button>
+        <button type="button" onClick={() => onNavigate('cashbook')} className="text-xs font-semibold text-violet-700 hover:underline dark:text-violet-300">View Cashbook →</button>
       </Section>
 
       <Section title="Unpaid Sales by Age" description={`Money due as of ${bounds.end}. Later payments are not included. If an invoice has no due date, the sale date is used.`}>
@@ -1557,7 +1571,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 type="button"
                 aria-pressed={profitabilityBreakdown === mode}
                 onClick={() => setProfitabilityBreakdown(mode)}
-                className={`rounded-lg px-3 py-2 text-xs font-semibold ${profitabilityBreakdown === mode ? 'bg-emerald-600 text-white' : 'border border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold ${profitabilityBreakdown === mode ? 'bg-violet-600 text-white' : 'border border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}
               >
                 By {label}
               </button>
@@ -1574,11 +1588,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             <button type="button" onClick={() => {
               setProfitabilityDraft(previous => ({ ...previous, date: previous.date || businessToday }));
               setShowProfitabilityForm(open => !open);
-            }} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500">Add Cost</button>
+            }} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-500">Add Cost</button>
           </div>
         </div>
         {showProfitabilityForm && (
-          <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 dark:border-emerald-900 dark:bg-emerald-950/20">
+          <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 p-4 dark:border-violet-900 dark:bg-violet-950/20">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Record a profitability cost</h3>
               <span className="text-[11px] text-slate-500">Classification only; does not change cashbook balances.</span>
@@ -1644,10 +1658,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             </div>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setShowProfitabilityForm(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Cancel</button>
-              <button type="button" onClick={handleSaveProfitabilityCost} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500">Save Cost</button>
+              <button type="button" onClick={handleSaveProfitabilityCost} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-500">Save Cost</button>
             </div>
           </div>
         )}
+        <div className="rep-v2-legend" aria-hidden="true">
+          <span><i style={{ background: '#7c3aed' }} /> Gross sales</span>
+          <span><i style={{ background: '#f59e0b' }} /> Actual allocated cost</span>
+          <span><i style={{ background: '#059669' }} /> Gross profit</span>
+        </div>
         <div className="h-64 w-full">
           {boundsAreValid && profitabilityTrend.length ? (
             <ResponsiveContainer width="100%" height="100%">
@@ -1688,26 +1707,26 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         <p className="text-[11px] text-slate-500 dark:text-slate-400">Profile/family-slot sales snapshot the account purchase cost divided by configured profile capacity; full-account sales snapshot the full cost. An explicit sale-linked direct cost record is used only when no snapshot exists; sales without either source remain unknown. Net profit is unavailable because operating expenses are not fully attributable to sales.</p>
       </Section>
 
-      <section aria-label="Resource utilization" className={`${cardClass} space-y-4`}>
+      <section aria-label="Resource utilization" className={`${cardClass} rep-v2-panel space-y-4`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="section-title">Resource Utilization</h2>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Account, profile and available-capacity totals by service.</p>
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={() => onNavigate('accounts')} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Full Accounts: {fullResourceAccounts}</button>
-            <button type="button" onClick={() => onNavigate('profiles')} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Expiring Assignments: {expiringResourceAssignments}</button>
+            <button type="button" onClick={() => onNavigate('accounts')} className="report-resource-action">Full Accounts: {fullResourceAccounts}</button>
+            <button type="button" onClick={() => onNavigate('profiles')} className="report-resource-action">Expiring Assignments: {expiringResourceAssignments}</button>
           </div>
         </div>
         {resourceSummary.length ? (
           <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
-            <div className="hidden grid-cols-[minmax(0,1.5fr)_repeat(5,minmax(0,1fr))] gap-3 bg-slate-50 px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:bg-slate-800/70 dark:text-slate-400 sm:grid">
+            <div className="rep-v2-resource-head hidden grid-cols-[minmax(0,1.5fr)_repeat(5,minmax(0,1fr))] gap-3 bg-slate-50 px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:bg-slate-800/70 dark:text-slate-400 sm:grid">
               <span>Service</span><span>Accounts</span><span>Active</span><span>Capacity</span><span>Available</span><span>Utilization</span>
             </div>
             {resourceSummary.map(row => {
               const service = businessServices.find(item => item.id === row.serviceId);
               return (
-                <button key={row.serviceId} type="button" onClick={() => onNavigate('accounts')} className="grid w-full grid-cols-2 gap-2 border-t border-slate-100 px-4 py-3 text-left text-xs first:border-t-0 hover:bg-emerald-50/60 dark:border-slate-800 dark:hover:bg-emerald-950/20 sm:grid-cols-[minmax(0,1.5fr)_repeat(5,minmax(0,1fr))] sm:gap-3">
+                <button key={row.serviceId} type="button" onClick={() => onNavigate('accounts')} className="rep-v2-resource-row grid w-full grid-cols-2 gap-2 border-t border-slate-100 px-4 py-3 text-left text-xs first:border-t-0 hover:bg-violet-50/60 dark:border-slate-800 dark:hover:bg-violet-950/20 sm:grid-cols-[minmax(0,1.5fr)_repeat(5,minmax(0,1fr))] sm:gap-3">
                   <span className="font-semibold text-slate-900 dark:text-white">{service?.name || 'Service unavailable'}</span>
                   <span className="text-slate-600 dark:text-slate-300">{row.accountCount} accounts</span>
                   <span className="text-slate-600 dark:text-slate-300">{row.activeAccounts} active</span>
@@ -1722,7 +1741,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       </section>
 
       {noResults && (
-        <div className={`${cardClass} py-12 text-center`}>
+        <div className={`${cardClass} rep-v2-panel rep-v2-empty py-12 text-center`}>
           <BarChart3 className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
           <h2 className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
             {hasFilters ? 'No results found.' : 'No data available for this period.'}
@@ -1741,7 +1760,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               </button>
             </>
           )}
-          {hasFilters && <button type="button" onClick={clearFilters} className="mt-3 text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">Clear filters</button>}
+          {hasFilters && <button type="button" onClick={clearFilters} className="mt-3 text-xs font-semibold text-violet-700 hover:underline dark:text-violet-300">Clear filters</button>}
         </div>
       )}
       <>
@@ -1777,6 +1796,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 </select>
               </div>
               {reportSales.length === 0 ? <p className="py-8 text-center text-xs text-slate-500">No sales data available for this period.</p> : (
+                <>
+                <div className="rep-v2-legend" aria-hidden="true">
+                  <span><i style={{ background: '#2563eb' }} /> Sales</span>
+                  <span><i style={{ background: '#059669' }} /> Revenue</span>
+                </div>
                 <div className="h-64 w-full" role="img" aria-label="Sales trend showing sales count and revenue by date">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={trendData} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
@@ -1790,6 +1814,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
+                </>
               )}
             </Section>
             <Section title="Payment Trend" description="Payments by their recorded payment date.">
@@ -1812,6 +1837,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           <div className="grid gap-4 xl:grid-cols-2">
             <Section title="Cash Flow Trend" description="Daily money in and money out from the shared financial ledger; transfers are excluded.">
               {cashFlowTrend.length === 0 ? <p className="py-8 text-center text-xs text-slate-500">No cash flow activity for this period.</p> : (
+                <>
+                <div className="rep-v2-legend" aria-hidden="true">
+                  <span><i style={{ background: '#059669' }} /> Money in</span>
+                  <span><i style={{ background: '#e11d48' }} /> Money out</span>
+                </div>
                 <div className="h-64 w-full" role="img" aria-label="Cash flow chart showing money received, money spent, and net cash flow">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={cashFlowTrend} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
@@ -1824,6 +1854,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+                </>
               )}
             </Section>
             <Section title="Expense Analytics" description={`${reportExpenses.length} recorded expenses · ${bounds.start} – ${bounds.end}`}>
@@ -1850,7 +1881,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-200">Top Expense Categories</h3>
                 {expenseSummary.categories.slice(0, 8).map(category => {
                   const categoryId = expenseCategories.find(item => item.name === category.name)?.id;
-                  return <button key={category.name} type="button" onClick={() => categoryId && onNavigate('expenses', `category:${categoryId}`)} className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-xs hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:hover:bg-slate-800">
+                  return <button key={category.name} type="button" onClick={() => categoryId && onNavigate('expenses', `category:${categoryId}`)} className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-xs hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:hover:bg-slate-800">
                     <span className="font-medium text-slate-700 dark:text-slate-200">{category.name} <span className="text-slate-400">· {category.count}</span></span>
                     <span className="font-mono font-semibold">{formatCurrency(category.total, currency)}</span>
                   </button>;
@@ -1914,7 +1945,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                         <span>Paid <b>{formatCurrency(item.paid, currency)}</b></span>
                         <span>Due <b className="text-amber-700 dark:text-amber-300">{formatCurrency(item.due, currency)}</b></span>
                       </div>
-                      <button type="button" onClick={() => onNavigate('customers', item.customerId)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-950/30">View Customer</button>
+                      <button type="button" onClick={() => onNavigate('customers', item.customerId)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-violet-700 hover:bg-violet-50 dark:border-slate-700 dark:text-violet-300 dark:hover:bg-violet-950/30">View Customer</button>
                     </div>
                   ))}
                 </div>
@@ -1967,8 +1998,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
                           <span>{row.kind === 'renewed' ? `Renewed ${formatAppDate(row.date, language)}` : `Expires ${formatAppDate(row.date, language)}`}{row.amount > 0 ? ` · ${formatCurrency(row.amount, currency)}` : ''}</span>
                           <div className="flex gap-2">
-                            {subscription && <button type="button" onClick={() => onNavigate('subscriptions', subscription.id)} className="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">View</button>}
-                            {subscription && row.kind !== 'renewed' && <button type="button" onClick={() => onRenewSubscription(subscription)} className="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">Renew</button>}
+                            {subscription && <button type="button" onClick={() => onNavigate('subscriptions', subscription.id)} className="font-semibold text-violet-700 hover:underline dark:text-violet-300">View</button>}
+                            {subscription && row.kind !== 'renewed' && <button type="button" onClick={() => onRenewSubscription(subscription)} className="font-semibold text-violet-700 hover:underline dark:text-violet-300">Renew</button>}
                           </div>
                         </div>
                       </div>
@@ -1995,7 +2026,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 </label>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {Object.entries(receivableAging).map(([label, bucket]) => <button key={label} type="button" onClick={() => onNavigate('sales', outstandingRows.find(row => row.due > 0)?.sale.id)} className="rounded-xl border border-slate-100 p-3 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-800 dark:hover:bg-slate-800">
+                {Object.entries(receivableAging).map(([label, bucket]) => <button key={label} type="button" onClick={() => onNavigate('sales', outstandingRows.find(row => row.due > 0)?.sale.id)} className="rounded-xl border border-slate-100 p-3 text-left hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-800 dark:hover:bg-slate-800">
                   <span className="block text-[11px] text-slate-500">{label} · {bucket.count} sales</span>
                   <span className="mt-1 block font-mono text-sm font-semibold">{formatCurrency(bucket.amount, currency)}</span>
                 </button>)}
@@ -2012,7 +2043,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                         <div><div className="font-semibold text-slate-800 dark:text-slate-100">{row.customer?.name || 'Customer unavailable'} · {row.customer?.phone || 'No phone'}</div><div className="mt-0.5 text-[11px] text-slate-500">{row.invoice?.invoiceNumber || row.sale.invoiceNo} · {row.service?.name || 'Service unavailable'} · {row.sale.plan}</div></div>
                         <div className="text-right text-[11px]"><div>Total {formatCurrency(row.total, currency)}</div><div>Paid {formatCurrency(row.paid, currency)}</div><div className="font-bold text-amber-700 dark:text-amber-300">Due {formatCurrency(row.due, currency)} · {row.status}</div></div>
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                      <div className="mt-2 flex flex-wrap gap-3 text-[11px] font-semibold text-violet-700 dark:text-violet-300">
                         {row.customer && <button type="button" onClick={() => onNavigate('customers', row.customer!.id)}>View Customer</button>}
                         <button type="button" onClick={() => onNavigate('sales', row.sale.id)}>View Sale / Add Payment</button>
                         {row.invoice && <button type="button" onClick={() => onViewInvoice(row.invoice!.invoiceId)}>View Invoice</button>}
@@ -2028,7 +2059,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   <>
                     <div className="space-y-2">{paymentMethods.map(item => {
                       const share = reportPaymentsPaidTotal > 0 ? item.received / reportPaymentsPaidTotal * 100 : 0;
-                      return <button key={item.methodId} type="button" onClick={() => onNavigate('payments')} className="flex w-full flex-wrap items-center justify-between gap-2 border-b border-slate-100 py-2 text-left text-xs last:border-0 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-800 dark:hover:bg-slate-800">
+                      return <button key={item.methodId} type="button" onClick={() => onNavigate('payments')} className="flex w-full flex-wrap items-center justify-between gap-2 border-b border-slate-100 py-2 text-left text-xs last:border-0 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-800 dark:hover:bg-slate-800">
                         <span className="font-semibold text-slate-700 dark:text-slate-200">{item.methodName} <span className="font-normal capitalize text-slate-500">· {item.category.replace('_', ' ')}</span></span>
                         <span className="text-slate-500">{item.transactionCount} payments · Avg {formatCurrency(item.average, currency)} · {share.toFixed(1)}% of received</span>
                         <span className="font-mono font-bold">{formatCurrency(item.received, currency)}</span>
@@ -2052,7 +2083,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                     {['Account', 'Opening', 'Money In', 'Money Out', 'Transfer In', 'Transfer Out', 'Closing', 'Transactions'].map(label => <th key={label} scope="col" className="p-2">{label}</th>)}
                   </tr></thead>
                   <tbody>{accountPeriodSummary.map(account => <tr key={account.accountId} className="border-b border-slate-100 dark:border-slate-800">
-                    <td className="p-2"><button type="button" onClick={() => onNavigate('cashbook', account.accountId)} className="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">{account.accountName}</button></td>
+                    <td className="p-2"><button type="button" onClick={() => onNavigate('cashbook', account.accountId)} className="font-semibold text-violet-700 hover:underline dark:text-violet-300">{account.accountName}</button></td>
                     <td className="p-2">{formatCurrency(account.openingBalance, currency)}</td>
                     <td className="p-2">{formatCurrency(account.moneyIn, currency)}</td>
                     <td className="p-2">{formatCurrency(account.moneyOut, currency)}</td>
@@ -2081,7 +2112,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   <table className="w-full min-w-[780px] text-left text-xs">
                     <thead><tr className="border-b border-slate-200 text-slate-500 dark:border-slate-800">{['Date', 'Opening', 'Money In', 'Money Out', 'Expected', 'Actual', 'Difference', 'Status'].map(label => <th key={label} scope="col" className="p-2">{label}</th>)}</tr></thead>
                     <tbody>{closingRows.map(closing => <tr key={closing.id} className="border-b border-slate-100 dark:border-slate-800">
-                      <td className="p-2"><button type="button" onClick={() => onNavigate('daily-closing', closing.date)} className="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">{formatAppDate(closing.date, language)}</button></td>
+                      <td className="p-2"><button type="button" onClick={() => onNavigate('daily-closing', closing.date)} className="font-semibold text-violet-700 hover:underline dark:text-violet-300">{formatAppDate(closing.date, language)}</button></td>
                       <td className="p-2">{formatCurrency(closing.openingBalance, closing.currency)}</td>
                       <td className="p-2">{formatCurrency(closing.totalMoneyIn, closing.currency)}</td>
                       <td className="p-2">{formatCurrency(closing.totalMoneyOut, closing.currency)}</td>
@@ -2114,7 +2145,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               {recentFinancialActivity.map(item => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-xs">
                 <div className="min-w-0"><p className="font-semibold text-slate-800 dark:text-slate-100">{item.type} · {item.description}</p><p className="mt-1 text-slate-500">{formatAppDate(item.date, language)} · {item.status}</p></div>
                 <span className={`font-mono font-semibold ${item.amount < 0 ? 'text-rose-700 dark:text-rose-300' : 'text-slate-800 dark:text-slate-100'}`}>{formatCurrency(item.amount, currency)}</span>
-                {item.targetSection && item.targetId && <button type="button" onClick={() => item.targetSection === 'invoices' ? onViewInvoice(item.targetId!) : onNavigate(item.targetSection!, item.targetId)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-950/30">View</button>}
+                {item.targetSection && item.targetId && <button type="button" onClick={() => item.targetSection === 'invoices' ? onViewInvoice(item.targetId!) : onNavigate(item.targetSection!, item.targetId)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold text-violet-700 hover:bg-violet-50 dark:border-slate-700 dark:text-violet-300 dark:hover:bg-violet-950/30">View</button>}
               </div>)}
             </div>}
           </Section>
@@ -2147,7 +2178,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                     <div className="min-w-36"><div className="font-semibold text-slate-800 dark:text-slate-100">{row.invoice.invoiceNumber} · {formatAppDate(row.invoice.invoiceDate, language)}</div><div className="mt-0.5 text-slate-500">{row.customer?.name || 'Customer unavailable'} · {row.service?.name || 'Service unavailable'} · {row.sale.plan}</div></div>
                     <div className="text-slate-600 dark:text-slate-300">Total {formatCurrency(row.revenue, currency)} · Paid {formatCurrency(row.paid, currency)} · Due {formatCurrency(row.due, currency)}</div>
                     <span className="capitalize text-slate-500">{row.status}</span>
-                    <button type="button" onClick={() => onViewInvoice(row.invoice.invoiceId)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-950/30"><Receipt className="h-3.5 w-3.5" /> View Invoice</button>
+                    <button type="button" onClick={() => onViewInvoice(row.invoice.invoiceId)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 font-semibold text-violet-700 hover:bg-violet-50 dark:border-slate-700 dark:text-violet-300 dark:hover:bg-violet-950/30"><Receipt className="h-3.5 w-3.5" /> View Invoice</button>
                   </div>
                 ))}
               </div>
