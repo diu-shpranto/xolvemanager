@@ -141,6 +141,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const [orderQuotationId, setOrderQuotationId] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [stepError, setStepError] = useState('');
+  // Quick sale shares all wizard state (customer, items, totals, payment) so
+  // switching modes never loses data. Only the layout changes.
+  const [saleMode, setSaleMode] = useState<'wizard' | 'quick'>('wizard');
   const [customerSearch, setCustomerSearch] = useState('');
   const [debouncedCustomerSearch, setDebouncedCustomerSearch] = useState('');
   const [serviceSearch, setServiceSearch] = useState('');
@@ -350,6 +353,59 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       setDiscountMode('fixed');
       setDiscountValue(0);
     }
+  };
+
+  const switchToQuickSale = () => {
+    setStepError('');
+    setSaleMode('quick');
+  };
+
+  const switchToWizard = () => {
+    setStepError('');
+    setSaleMode('wizard');
+    // Land on the wizard step that matches the current draft.
+    if (isCurrentItemActive && selectedService) setStep(2);
+    else if (itemDrafts.length > 0 || selectedServiceQueue.length > 0) setStep(1);
+    else setStep(0);
+  };
+
+  // Quick sale: pick one service at a time and configure it inline. The current
+  // item must be added (or removed) before another service can be picked, so a
+  // half-configured item is never silently committed or lost.
+  const handleQuickPickService = (nextServiceId: string) => {
+    const committedIndex = itemDrafts.findIndex(item => item.serviceId === nextServiceId);
+    if (nextServiceId === serviceId && isCurrentItemActive) {
+      handleServiceChange(nextServiceId);
+      return;
+    }
+    if (isCurrentItemActive && selectedService) {
+      showToast('Add the current item first, or remove it, before choosing another service.', 'info');
+      return;
+    }
+    if (committedIndex >= 0) {
+      handleEditSaleItem(committedIndex);
+      return;
+    }
+    setServiceId(nextServiceId);
+    setSelectedServiceIds(current => current.includes(nextServiceId) ? current : [...current, nextServiceId]);
+    setPlan('');
+    setPlanId('');
+    setItemQuantity(1);
+    setItemDiscountInput('0');
+    setItemAllocations([{ accountId: '', profileId: '' }]);
+    setStartDate(getTodayDateString(settings.businessProfile?.timeZone));
+    setExpectedPaymentDate('');
+    currentItemDraftId.current = createRecordId('sale-line-draft');
+    setIsCurrentItemActive(true);
+    setStepError('');
+  };
+
+  const handleQuickEditItem = (index: number) => {
+    if (isCurrentItemActive && selectedService && editingItemIndex !== index) {
+      showToast('Add the current item first, or remove it, before editing another item.', 'info');
+      return;
+    }
+    handleEditSaleItem(index);
   };
 
   // When account changes, update available profile
@@ -1789,6 +1845,15 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         maxWidth="5xl"
         protectUnsavedChanges={!completedSaleData}
         footer={!completedSaleData ? (
+        saleMode === 'quick' ? (
+        <nav aria-label="Quick sale actions" className="flex items-center justify-between gap-2 sm:gap-3">
+          <button type="button" onClick={handleModalClose} className="inline-flex min-h-11 shrink-0 items-center rounded-lg px-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-300 dark:hover:bg-slate-800 sm:px-3">{t('cancel')}</button>
+          <button key="create-invoice-quick" type="submit" form="new-sale-form" disabled={isSubmitting || !selectedCustomer || (!isCurrentItemActive && itemDrafts.length === 0) || (isCurrentItemActive && (!selectedService || !selectedPlan)) || !Number.isFinite(totalAmount) || totalAmount <= 0 || !amountReceivedValid || !paymentLineAllocationsValid || !advanceInputValid || !currentItemDiscountValid || !paymentDate || (isCurrentItemActive && Number(durationDays) < 1)} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:px-4">
+            {isSubmitting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            <span className="truncate">{isSubmitting ? 'Creating invoice…' : 'Create Invoice'}</span>
+          </button>
+        </nav>
+        ) : (
         <nav aria-label="Sale workflow navigation" className="flex items-center justify-between gap-2 sm:gap-3">
           {step > 0 ? <button type="button" onClick={() => {
             setStep(step >= 5 ? 1 : step === 4 ? 3 : step === 3 ? 2 : step === 2 ? 1 : 0);
@@ -1806,6 +1871,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
               </button>
             )}
           </nav>
+        )
         ) : undefined}
       >
         {/* AFTER SALE FLOW: SUCCESS & INVOICE SCREEN */}
@@ -2040,7 +2106,14 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
             }}
             className="space-y-4"
           >
-              <div className="rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2.5 dark:border-violet-900/60 dark:bg-violet-950/20">
+              <div className="space-y-1.5">
+                <div role="tablist" aria-label={language === 'bn' ? 'বিক্রির ধরন' : 'Sale mode'} className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+                  <button type="button" role="tab" aria-selected={saleMode === 'quick'} onClick={switchToQuickSale} className={`min-h-10 rounded-lg px-3 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-violet-600 ${saleMode === 'quick' ? 'bg-white text-violet-900 shadow-sm dark:bg-slate-900 dark:text-violet-200' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}>{language === 'bn' ? 'দ্রুত বিক্রি' : 'Quick sale'}</button>
+                  <button type="button" role="tab" aria-selected={saleMode === 'wizard'} onClick={switchToWizard} className={`min-h-10 rounded-lg px-3 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-violet-600 ${saleMode === 'wizard' ? 'bg-white text-violet-900 shadow-sm dark:bg-slate-900 dark:text-violet-200' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}>{language === 'bn' ? 'পুরো ধাপ' : 'Full steps'}</button>
+                </div>
+                {saleMode === 'quick' && <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{language === 'bn' ? 'এক পাতায় কাস্টমার, সার্ভিস ও পেমেন্ট — ধাপে ধাপে যেতে হবে না।' : 'Customer, items and payment on one screen — no step-by-step.'}</p>}
+              </div>
+              <div className={`rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2.5 dark:border-violet-900/60 dark:bg-violet-950/20${saleMode === 'quick' ? ' hidden' : ''}`}>
                 <div className="mb-2 flex items-center justify-between gap-3 md:hidden">
                   <span className="text-xs font-semibold text-violet-900 dark:text-violet-200">{visibleSteps[activeVisibleStep]?.label || 'Sale'}</span>
                   <span className="shrink-0 text-[11px] font-medium tabular-nums text-violet-700 dark:text-violet-300">Step {activeVisibleStep + 1} of {visibleSteps.length}</span>
@@ -2067,7 +2140,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
 
             <div className={`grid min-w-0 gap-4 ${step === 1 ? 'lg:grid-cols-[minmax(0,2.6fr)_minmax(16rem,1fr)]' : 'lg:grid-cols-[minmax(0,1fr)_280px]'}`}>
               <div className="min-w-0 space-y-4">
-                {step === 0 && (
+                {(step === 0 || saleMode === 'quick') && (
                   <section aria-labelledby="sale-customer-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div><h2 id="sale-customer-title" className="text-base font-bold text-slate-900 dark:text-white">Choose a customer</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Search by name, phone, or email. The sale is linked to the selected customer record.</p></div>
@@ -2105,7 +2178,116 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                   </section>
                 )}
 
-                {step === 1 && (
+                {saleMode === 'quick' && (
+                  <section aria-labelledby="quick-items-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
+                    <div>
+                      <h2 id="quick-items-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'সার্ভিস যোগ করুন' : 'Add services'}</h2>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{language === 'bn' ? 'সার্ভিস বাছুন, প্ল্যান ও পরিমাণ ঠিক করুন, তারপর যোগ করুন। একাধিক সার্ভিস যোগ করা যাবে।' : 'Pick a service, set its plan and quantity, then add it. You can add more than one.'}</p>
+                    </div>
+
+                    {itemDrafts.length > 0 && (
+                      <div className="space-y-2">
+                        <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100">{language === 'bn' ? 'যোগ করা হয়েছে' : 'Added items'} ({itemDrafts.length})</h3>
+                        {itemDrafts.map((item, index) => (
+                          <div key={item.draftId} className="flex min-w-0 items-start justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/70">
+                            <div className="min-w-0">
+                              <p className="break-words font-semibold text-slate-900 dark:text-white">{item.serviceNameSnapshot || services.find(candidate => candidate.id === item.serviceId)?.name || 'Service'} · {item.plan}</p>
+                              <p className="text-slate-600 dark:text-slate-300">{item.quantity} × {formatCurrency(item.unitPrice, item.currency)} = {formatCurrency(minorUnitsToAmount(amountToMinorUnits(item.unitPrice) * item.quantity), item.currency)} · {formatDurationDays(item.durationDays)}</p>
+                              {getItemAllocationSummary(item) && <p className="mt-0.5 break-words text-slate-500 dark:text-slate-400">{getItemAllocationSummary(item)}</p>}
+                            </div>
+                            <div className="flex shrink-0 gap-1">
+                              <button type="button" onClick={() => handleQuickEditItem(index)} className="min-h-8 rounded-md px-2 font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-slate-700">{language === 'bn' ? 'বদলান' : 'Edit'}</button>
+                              <button type="button" onClick={() => handleRemoveSaleItem(index)} aria-label={`Remove ${item.plan} item`} className="min-h-8 rounded-md px-2 font-semibold text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">{language === 'bn' ? 'সরান' : 'Remove'}</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <label className="relative block">
+                        <span className="sr-only">{language === 'bn' ? 'সার্ভিস খুঁজুন' : 'Search services'}</span>
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input type="search" value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} placeholder={language === 'bn' ? 'সার্ভিস খুঁজুন…' : 'Search services…'} className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      </label>
+                      <div className="max-h-64 space-y-2 overflow-y-auto pr-1" role="listbox" aria-label={language === 'bn' ? 'সার্ভিসের তালিকা' : 'Service list'}>
+                        {servicesToDisplay.length ? servicesToDisplay.map(service => {
+                          const activePlanCount = getActiveServicePlanCount(service);
+                          const hasActivePlans = Boolean(service.planDetails?.some(item => item.status === 'active'));
+                          const firstPlan = service.planDetails?.find(item => item.status === 'active');
+                          return (
+                            <button key={service.id} type="button" role="option" aria-selected={false} disabled={!hasActivePlans} onClick={() => handleQuickPickService(service.id)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-colors hover:border-violet-300 focus-visible:outline-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-violet-700">
+                              <span className="min-w-0">
+                                <span className="block break-words text-sm font-semibold text-slate-900 dark:text-white">{service.name}</span>
+                                <span className="mt-0.5 block break-words text-xs text-slate-500 dark:text-slate-400">{service.description || service.category} · {activePlanCount} {activePlanCount === 1 ? 'plan' : 'plans'}{firstPlan ? ` · ${language === 'bn' ? 'শুরু' : 'from'} ${formatCurrency(firstPlan.price, firstPlan.currency)}` : ''}</span>
+                              </span>
+                              <Plus className="h-4 w-4 shrink-0 text-slate-400" />
+                            </button>
+                          );
+                        }) : filteredServices.length > 0 ? (
+                          <p className="rounded-lg bg-slate-50 p-4 text-center text-sm text-slate-500 dark:bg-slate-800">{language === 'bn' ? 'মিলে যাওয়া সব সার্ভিস ইতিমধ্যে যোগ করা হয়েছে।' : 'All matching services are already added.'}</p>
+                        ) : eligibleServices.length > 0 ? (
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center dark:border-slate-700 dark:bg-slate-800">
+                            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{language === 'bn' ? 'কোনো সার্ভিস পাওয়া যায়নি' : 'No services found'}</p>
+                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{language === 'bn' ? 'অন্য কিছু খুঁজে দেখুন।' : 'Try a different search.'}</p>
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                            <p>{language === 'bn' ? 'বিক্রির জন্য কোনো সক্রিয় সার্ভিস নেই।' : 'There are no active services available for sale.'}</p>
+                            <button type="button" onClick={onAddService} className="mt-3 inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-amber-700 px-3 text-xs font-semibold text-white hover:bg-amber-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"><Plus className="h-3.5 w-3.5" />{language === 'bn' ? 'সার্ভিস যোগ করুন' : 'Add Service'}</button>
+                          </div>
+                        )}
+                      </div>
+                      {availableMatchingServiceCount > 50 && <p className="text-xs text-slate-500 dark:text-slate-400">{language === 'bn' ? 'প্রথম ৫০টি দেখানো হচ্ছে। খুঁজে আরও দেখুন।' : 'Showing the first 50 available services. Refine your search to see others.'}</p>}
+                    </div>
+
+                    {isCurrentItemActive && selectedService && (
+                      <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 p-3.5 dark:border-violet-800 dark:bg-violet-950/20">
+                        <div className="flex min-w-0 items-center justify-between gap-3">
+                          <h3 className="min-w-0 break-words text-sm font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'সাজান' : 'Configure'} <span className="inline rounded-md bg-violet-100 px-1.5 py-0.5 text-violet-800 dark:bg-violet-900/60 dark:text-violet-200">{selectedService.name}</span></h3>
+                          <button type="button" onClick={handleRemoveCurrentService} aria-label={`Remove ${selectedService.name} service`} className="min-h-9 shrink-0 rounded-lg border border-rose-200 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-rose-600 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/40">{language === 'bn' ? 'সরান' : 'Remove'}</button>
+                        </div>
+                        {selectedService.planDetails?.some(item => item.status === 'active') ? (
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {selectedService.planDetails.filter(item => item.status === 'active').map(servicePlan => (
+                              <button key={servicePlan.id} type="button" onClick={() => handlePlanChange(servicePlan)} aria-pressed={planId === servicePlan.id} className={`flex min-h-14 items-center justify-between gap-3 rounded-xl border px-3.5 py-3 text-left text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-violet-600 ${planId === servicePlan.id ? 'border-violet-500 bg-violet-50 text-violet-950 ring-1 ring-violet-500/20 dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-100' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'}`}>
+                                <span className="min-w-0"><span className="block break-words font-semibold">{servicePlan.name}</span><span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-slate-400">{formatCurrency(servicePlan.price, servicePlan.currency)} · {formatDurationDays(servicePlan.durationDays)}{servicePlan.profileCapacity ? ` · ${servicePlan.profileCapacity} profiles` : ''}</span></span>
+                                {planId === servicePlan.id && <CheckCircle2 className="h-4 w-4 shrink-0 text-violet-700 dark:text-violet-300" />}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><p>{language === 'bn' ? 'এই সার্ভিসের কোনো সক্রিয় প্ল্যান নেই।' : 'No active plans are available for this service.'}</p><button type="button" onClick={onAddService} className="mt-2 font-semibold underline">{language === 'bn' ? 'সার্ভিস ও প্ল্যান দেখুন' : 'Manage services and plans'}</button></div>
+                        )}
+                        {!selectedPlan && <p role="alert" className="text-xs font-medium text-rose-700 dark:text-rose-300">{language === 'bn' ? 'সার্ভিসটি সাজাতে একটি সক্রিয় প্ল্যান বাছুন।' : 'Choose an active plan to configure this service.'}</p>}
+                        {selectedPlan && (
+                          <>
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">{language === 'bn' ? 'প্রতি ইউনিটের দাম' : 'Price per unit'}</span><p className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-mono text-base font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{formatCurrency(selectedPlan.price, selectedPlan.currency)}</p></div>
+                              <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">{language === 'bn' ? 'মেয়াদ' : 'Duration'}</span><p className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{formatDurationDays(selectedPlan.durationDays)}</p></div>
+                              <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{language === 'bn' ? 'পরিমাণ' : 'Quantity'}</span><input aria-label={`${selectedService.name} quantity`} type="number" min={1} max={serviceUsesAccounts ? allocationCapacity : undefined} step={1} value={itemQuantity} onChange={event => updateQuantity(Number(event.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /><span className="block text-[11px] font-normal">{serviceUsesAccounts ? `${allocationCapacity} ${allocationCapacity === 1 ? 'unit' : 'units'} available.` : language === 'bn' ? 'এই সার্ভিসে ইনভেন্টরি লাগে না।' : 'This service does not require tracked inventory.'}</span></label>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{language === 'bn' ? 'শুরুর তারিখ' : 'Subscription start date'}</span><input aria-label={`${selectedService.name} start date`} type="date" value={startDate} onChange={event => setStartDate(event.target.value)} className="w-full min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
+                              <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">{language === 'bn' ? 'মেয়াদ শেষ' : 'Calculated expiry date'}</span><p className="min-h-11 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">{startDate ? formatAppDate(calculatedExpiryDate, language) : '—'}</p></div>
+                              <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{language === 'bn' ? 'আইটেম ছাড়' : 'Item discount'}</span><input aria-label={`${selectedService.name} item discount`} type="number" min={0} max={currentItemSubtotal} step={currency === 'USD' ? '0.01' : '1'} value={itemDiscountInput} onChange={event => setItemDiscountInput(event.target.value)} aria-invalid={!currentItemDiscountValid} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />{!currentItemDiscountValid && <span role="alert" className="block text-[11px] font-medium text-rose-700 dark:text-rose-300">{language === 'bn' ? 'ছাড় লাইনের মোটের বেশি হতে পারবে না।' : 'Discount cannot exceed this line subtotal.'}</span>}</label>
+                              <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg bg-violet-50 px-3 py-2.5 text-xs dark:bg-violet-950/30"><span className="font-semibold text-violet-900 dark:text-violet-200">{language === 'bn' ? 'লাইনের মোট' : 'Line total'}</span><span className="font-mono text-base font-bold tabular-nums text-violet-800 dark:text-violet-200">{formatCurrency(minorUnitsToAmount(Math.max(0, amountToMinorUnits(currentItemSubtotal) - amountToMinorUnits(currentItemDiscount))), currency)}</span></div>
+                            </div>
+                          </>
+                        )}
+                        <button type="button" onClick={handleAddSaleItem} disabled={!selectedPlan} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 sm:w-auto"><Plus className="h-4 w-4" />{language === 'bn' ? 'আইটেম যোগ করুন' : 'Add item'}</button>
+                      </div>
+                    )}
+
+                    {selectedServiceCount > 0 && (
+                      <div className="grid gap-3 rounded-xl border border-violet-200 bg-violet-50/40 p-3.5 dark:border-violet-800 dark:bg-violet-950/20 sm:grid-cols-2">
+                        <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{language === 'bn' ? 'বিক্রির ছাড়' : 'Sale discount'}</span><div className="flex gap-2"><input aria-label="Discount amount" type="number" min={0} max={discountMode === 'percentage' ? 100 : minorUnitsToAmount(globalDiscountableMinor)} step={currency === 'USD' ? '0.01' : '1'} value={discountValue} onChange={event => setDiscountValue(Number(event.target.value))} aria-invalid={discountValue < 0 || (discountMode === 'fixed' && amountToMinorUnits(discountValue) > globalDiscountableMinor) || (discountMode === 'percentage' && discountValue > 100)} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /><select aria-label="Discount type" value={discountMode} onChange={event => setDiscountMode(event.target.value as 'fixed' | 'percentage')} className="rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="fixed">{language === 'bn' ? 'নির্দিষ্ট' : 'Fixed'}</option><option value="percentage">{language === 'bn' ? 'শতাংশ' : 'Percent'}</option></select></div><span className="block text-[11px] font-normal">{language === 'bn' ? 'পুরো বিক্রির ওপর প্রযোজ্য।' : 'Applied to the full sale.'}</span></label>
+                        <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3 text-xs dark:border-slate-700 dark:bg-slate-900"><div className="flex justify-between"><span className="text-slate-500">{language === 'bn' ? 'মোট' : 'Order subtotal'}</span><span>{formatCurrency(subtotal || 0, currency)}</span></div><div className="flex justify-between"><span className="text-slate-500">{language === 'bn' ? 'ছাড়' : 'Sale discount'}</span><span>−{formatCurrency(discountAmount, currency)}</span></div><div className="flex justify-between border-t border-slate-200 pt-2 font-bold dark:border-slate-700"><span>{language === 'bn' ? 'সর্বমোট' : 'Grand total'}</span><span className="text-violet-700 dark:text-violet-300">{formatCurrency(totalAmount, currency)}</span></div></div>
+                      </div>
+                    )}
+                  </section>
+                )}
+                {saleMode === 'wizard' && step === 1 && (
                   <section aria-labelledby="sale-service-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 id="sale-service-title" className="text-base font-bold text-slate-900 dark:text-white">Choose Services</h2><p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-500 dark:text-slate-400">Select one or more services. Each can have its own plan, quantity, and fulfillment details.</p></div><span className="inline-flex min-h-7 shrink-0 items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 text-[11px] font-semibold text-violet-800 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-200">{selectedServiceCount} selected</span></div>
                     {itemDrafts.length > 0 && <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50/50 p-3 dark:border-violet-800 dark:bg-violet-950/20">
@@ -2312,7 +2494,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                   </section>
                 )}
 
-                {step === 2 && (
+                {saleMode === 'wizard' && step === 2 && (
                   <section aria-labelledby="sale-plan-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
                     <div>
                       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -2352,7 +2534,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                   </section>
                 )}
 
-                {step === 3 && (
+                {(step === 3 || (saleMode === 'quick' && isCurrentItemActive && serviceUsesAccounts)) && (
                   <section aria-labelledby="sale-fulfillment-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
                     <div><h2 id="sale-fulfillment-title" className="text-base font-bold text-slate-900 dark:text-white">Fulfillment</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{serviceUsesAccounts ? 'Choose active account or profile inventory for this service. Credentials and profile PINs are never displayed.' : 'This service does not need an account or profile. Continue to save this service.'}</p></div>
                     {serviceUsesAccounts && <div className="space-y-3">
@@ -2378,7 +2560,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                   </section>
                 )}
 
-                {step === 4 && (
+                {saleMode === 'wizard' && step === 4 && (
                   <section id="sale-quotation-print" aria-labelledby="sale-quotation-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
                     <style>{`@media print { body * { visibility: hidden !important; } #sale-quotation-print, #sale-quotation-print * { visibility: visible !important; } #sale-quotation-print { position: absolute !important; inset: 0 auto auto 0 !important; width: 100% !important; border: 0 !important; box-shadow: none !important; color: #0f172a !important; background: #fff !important; } #sale-quotation-print .print\\:hidden { display: none !important; } }`}</style>
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2432,10 +2614,10 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                   </section>
                 )}
 
-                {step === 5 && (
+                {saleMode === 'wizard' && step === 5 && (
                   <div className="lg:hidden">{orderSummary}</div>
                 )}
-                {step === 5 && (
+                {(step === 5 || saleMode === 'quick') && (
                   <section aria-labelledby="sale-payment-title" className="space-y-4">
                     <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5"><div><h2 id="sale-payment-title" className="text-base font-bold text-slate-900 dark:text-white">Payment details</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose an enabled method. {settings.paymentPreferences?.requireTransactionId && amountReceived > 0 ? 'A transaction ID is required for received cash.' : 'A transaction ID is optional when no cash is received.'}</p></div>
                       <div className="space-y-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
@@ -2520,7 +2702,10 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                     </div>
                   </section>
                 )}
-                {step === 6 && (
+                {saleMode === 'quick' && (
+                  <div className="lg:hidden">{orderSummary}</div>
+                )}
+                {saleMode === 'wizard' && step === 6 && (
                   <section aria-labelledby="sale-review-title" className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5">
                     <div><h2 id="sale-review-title" className="text-base font-bold text-slate-900 dark:text-white">Review Sale</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Check customer, fulfillment, dates, and payment before creating the sale. Use Edit to return to a step.</p></div>
                     {itemDrafts.length > 0 && <div className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
@@ -2570,7 +2755,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
               </div>
               <aside className="hidden h-fit lg:sticky lg:top-2 lg:block">{orderSummary}</aside>
             </div>
-            {step === 1
+            {saleMode === 'quick' ? null : step === 1
               ? <div className="lg:hidden">{orderSummary}</div>
               : step !== 5 && <details className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-900 lg:hidden"><summary className="cursor-pointer text-sm font-semibold text-slate-900 dark:text-white">Order summary · {formatCurrency(totalAmount, currency)}</summary><div className="pt-3">{orderSummary}</div></details>}
           </form>
