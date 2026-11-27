@@ -366,18 +366,9 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
   const [resetCode, setResetCode] = useState('');
   const [resent, setResent] = useState(false);
 
-  // Dark mode follows the operating system (prefers-color-scheme), so the
-  // wordmark switches to its light variant on dark backgrounds.
-  const [prefersDark, setPrefersDark] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches,
-  );
-
-  useEffect(() => {
-    const query = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = (event: MediaQueryListEvent) => setPrefersDark(event.matches);
-    query.addEventListener('change', onChange);
-    return () => query.removeEventListener('change', onChange);
-  }, []);
+  // The sign-in / sign-up pages always stay light, even on dark-mode
+  // systems (owner decision, 27 Nov 2026) — so the wordmark always uses
+  // its default (dark-on-light) tone.
 
   useEffect(() => {
     try {
@@ -751,7 +742,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
           <button type="button" onClick={updateLanguage} className="auth-language" aria-label={language === 'en' ? 'Switch language to Bangla' : 'Switch language to English'}><Globe2 aria-hidden="true" />{text.language}<ChevronRight aria-hidden="true" /></button>
         </div>
         <div className={styles.brandmark}>
-          <ProductLogo size="compact" tone={prefersDark ? 'inverse' : 'default'} showTagline className={styles.brandLogo} />
+          <ProductLogo size="compact" tone="default" showTagline className={styles.brandLogo} />
         </div>
 
         {resultKey ? (
