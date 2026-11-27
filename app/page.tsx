@@ -444,7 +444,7 @@ export default function Home() {
               <Eyebrow>A look around the workspace</Eyebrow>
               <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">A Preview of the Tools You Will Use</h2>
               <p className="mt-4 text-sm leading-6 text-slate-600">
-                These illustrative previews use labels and placeholders—not customer, account, or financial data. The same screens open on any device you sign in from. Actual screens may change as the app evolves.
+                These are real screenshots from the app, using sample records. The same screens open on any device you sign in from. Actual screens may change as the app evolves.
               </p>
             </div>
             <div className="relative mx-auto mt-10 w-full max-w-4xl">
@@ -452,7 +452,7 @@ export default function Home() {
               <div className="relative overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-2xl shadow-violet-950/15 sm:rounded-3xl">
                 <Image
                   src="/images/xolvemanager-dashboard-showcase.png"
-                  alt="XolveManager demo dashboard showing sample business summaries, workspace navigation, and quick actions."
+                  alt="XolveManager dashboard showing business summaries, workspace navigation, and quick actions, with sample data."
                   width={1400}
                   height={720}
                   sizes="(max-width: 1023px) 100vw, 896px"

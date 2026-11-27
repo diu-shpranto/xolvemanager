@@ -46,7 +46,7 @@ const steps: WalkthroughStep[] = [
     },
     relatedScreenshot: {
       src: '/images/xolvemanager-walkthrough-service-setup.png',
-      alt: 'Actual Add Service plan form showing plan name, price, currency, duration, duration unit, and status fields.',
+      alt: 'Actual Add Service plan form showing plan name, price, currency, duration, and duration unit fields.',
       caption: 'Plan setup',
       width: 855,
     },
@@ -168,7 +168,7 @@ export function WorkflowWalkthrough() {
         </ol>
 
         <p className={styles.workflowNote}>
-          Screenshots show fictional sample records. Your business records stay in your browser.
+          Screenshots show sample records from the app.
           Payments are recorded—not processed, and subscriptions are tracked—not automatically billed.
         </p>
       </div>
