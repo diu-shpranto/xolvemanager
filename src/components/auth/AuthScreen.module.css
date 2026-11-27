@@ -230,15 +230,6 @@
   margin-bottom: 1.25rem;
 }
 
-.brandmark::before {
-  content: "";
-  position: absolute;
-  inset: -3rem -5rem;
-  z-index: 0;
-  background: radial-gradient(closest-side, rgba(124, 58, 237, 0.22), rgba(37, 99, 235, 0.12) 48%, transparent 72%);
-  pointer-events: none;
-}
-
 .brandLogo {
   position: relative;
   z-index: 1;
