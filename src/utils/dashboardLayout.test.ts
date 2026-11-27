@@ -20,7 +20,7 @@ test('normalization removes unknown and duplicate IDs while appending missing wi
     hidden: ['customers', 'unknown', 'customers', 1],
   });
 
-  assert.deepEqual(normalized.summaryOrder, ['customers', 'receivedRevenue', 'outstandingPayments', 'availableAdvanceCredit', 'activeSubscriptions', 'expiringSubscriptions7', 'expiringSubscriptions30', 'overdueInvoices']);
+  assert.deepEqual(normalized.summaryOrder, ['customers', 'receivedRevenue', 'outstandingPayments', 'availableAdvanceCredit', 'activeSubscriptions', 'expiringSubscriptions7', 'expiringSubscriptions30', 'overdueInvoices', 'totalSales']);
   assert.deepEqual(normalized.panelOrder, ['recentSales', 'attention', 'revenueTrend', 'subscriptionHealth']);
   assert.deepEqual(normalized.hidden, ['customers']);
 });

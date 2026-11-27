@@ -10,6 +10,7 @@ import {
   KeyRound,
   Calendar,
   ArrowUpRight,
+  Receipt,
   RefreshCw,
   CheckCircle,
   Copy,
@@ -353,6 +354,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       outstandingPayments: 'বকেয়া পেমেন্ট',
       availableAdvanceCredit: 'অগ্রিম ক্রেডিট',
       overdueInvoices: 'মেয়াদোত্তীর্ণ ইনভয়েস',
+      totalSales: 'মোট বিক্রয়',
     }
     : {
       receivedRevenue: 'Money received',
@@ -363,6 +365,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       outstandingPayments: 'Money due',
       availableAdvanceCredit: 'Available advance',
       overdueInvoices: 'Overdue invoices',
+      totalSales: 'Total sales',
     };
   const panelWidgetNames: Record<DashboardPanelWidgetId, string> = language === 'bn'
     ? {
@@ -2119,6 +2122,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           formatValue={amount => formatNumber(Math.round(amount))}
           prefersReducedMotion={prefersReducedMotion}
         /></strong>
+      </button>
+    ),
+    totalSales: order => (
+      <button type="button" style={{ order }} onClick={() => onNavigate('sales')} className="dashboard-kpi dashboard-kpi--sales">
+        <span className="dashboard-kpi-label"><Receipt aria-hidden="true" /> {summaryWidgetNames.totalSales}</span>
+        <strong><DashboardCountUp
+          value={financialSummary.salesCount}
+          formatValue={amount => formatNumber(Math.round(amount))}
+          prefersReducedMotion={prefersReducedMotion}
+        /></strong>
+        <span className="dashboard-kpi-hint">{language === 'bn' ? `মোট ${formatCurrency(financialSummary.revenue, currency)}` : `Total ${formatCurrency(financialSummary.revenue, currency)}`}</span>
       </button>
     ),
   };

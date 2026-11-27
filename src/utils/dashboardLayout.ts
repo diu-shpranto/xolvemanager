@@ -14,6 +14,7 @@ export const dashboardSummaryWidgetIds: DashboardSummaryWidgetId[] = [
   'expiringSubscriptions30',
   'overdueInvoices',
   'customers',
+  'totalSales',
 ];
 
 export const dashboardPanelWidgetIds: DashboardPanelWidgetId[] = [

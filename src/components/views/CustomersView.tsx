@@ -37,6 +37,7 @@ import {
   Copy,
   MoreVertical,
   Printer,
+  Wallet,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
@@ -866,6 +867,14 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     setCurrentPage(1);
   };
 
+  // KPI shortcut: show exactly the customers a KPI counts (other filters reset first).
+  const applyKpiFilter = (key: 'all' | 'active' | 'at_risk' | 'renewals') => {
+    clearCustomerFilters();
+    if (key === 'active') setFilterCrmStatus('active');
+    else if (key === 'at_risk') setFilterCrmStatus('at_risk');
+    else if (key === 'renewals') setFilterRenewal('due');
+  };
+
   // Selected customer for detailed view
   const detailedCustomer = customers.find(c => c.id === detailedCustomerId);
   const detailsLoadError = Boolean(customersError || storageWarning?.includes('saved data'));
@@ -1079,9 +1088,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     <div className="customers-view section-layout-shell mx-auto max-w-[1600px] px-3 py-3 sm:px-6 sm:py-6 lg:px-8" data-section="customers">
       <div className={detailedCustomerId ? 'hidden' : 'customer-list-page space-y-3 sm:space-y-4'}>
       {/* 1. PAGE HEADER */}
-      <div className="customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:flex-nowrap sm:gap-4 sm:pb-4">
+      <div className="customer-page-header customer-page-header--v2 flex min-w-0 flex-wrap items-center justify-between gap-3 sm:flex-nowrap sm:gap-4">
         <div className="customer-heading flex min-w-0 flex-1 items-start gap-3">
-          <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11">
+          <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11">
             <Users className="h-5 w-5" />
           </div>
           <div className="min-w-0">
@@ -1153,7 +1162,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         </div>
       </div>
 
-      <div className="customer-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
+      <div className="customer-kpi-grid grid grid-cols-2 xl:grid-cols-4">
         {[
           {
             label: language === 'bn' ? 'মোট গ্রাহক' : 'Total Customers',
@@ -1183,10 +1192,23 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             color: 'text-amber-600 dark:text-amber-400',
             isCurrency: false,
           },
-        ].map((metric, index) => (
-          <div key={metric.label} className={`customer-kpi customer-kpi--${index} flex min-h-[100px] min-w-0 flex-col justify-between rounded-xl border p-3 transition-colors sm:min-h-[100px] sm:p-4 ${index === 0 ? 'border-violet-200 bg-violet-50/70 dark:border-violet-900/60 dark:bg-violet-950/25' : index === 3 ? 'border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'}`}>
+        ].map((metric, index) => {
+          const filterKey = (['all', 'active', 'at_risk', 'renewals'] as const)[index];
+          const pressed =
+            filterKey === 'all' ? !hasCustomerFilters
+            : filterKey === 'active' ? filterCrmStatus === 'active'
+            : filterKey === 'at_risk' ? filterCrmStatus === 'at_risk'
+            : filterRenewal === 'due';
+          return (
+          <button
+            type="button"
+            key={metric.label}
+            onClick={() => applyKpiFilter(filterKey)}
+            aria-pressed={pressed}
+            title={language === 'bn' ? 'এই তালিকা দেখতে ট্যাপ করুন' : 'Tap to show this list'}
+            className={`customer-kpi customer-kpi--${index} ${pressed ? 'customer-kpi--active' : ''} flex min-h-[100px] w-full min-w-0 cursor-pointer flex-col justify-between p-3 text-left transition-colors sm:min-h-[100px] sm:p-4`}>
             <div className="flex min-w-0 items-center gap-2.5">
-              <span className={`customer-kpi-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${index === 0 ? 'bg-violet-100 dark:bg-violet-900/50' : index === 1 ? 'bg-emerald-50 dark:bg-emerald-950/50' : index === 2 ? 'bg-rose-50 dark:bg-rose-950/50' : 'bg-amber-50 dark:bg-amber-950/50'}`}>
+              <span className={`customer-kpi-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-lg customer-kpi-icon--${index}`}>
                 <metric.icon className={`h-4 w-4 ${metric.color}`} />
               </span>
               <span className="min-w-0 text-sm font-semibold leading-5 text-slate-700 dark:text-slate-200">{metric.label}</span>
@@ -1198,14 +1220,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 ? <span className="block h-6 w-14 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
                 : metric.isCurrency ? formatCurrency(metric.value, currency) : metric.value}
             </div>
-          </div>
-        ))}
+          </button>
+          );
+        })}
       </div>
 
       {/* 2. SEARCH + FILTER TOOLBAR */}
       <div className="customer-toolbar grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center xl:gap-3 xl:p-3 dark:border-slate-800 dark:bg-slate-900">
         {/* Search input (Name, Phone, Email, Facebook ID) */}
-        <div className="relative min-w-0">
+        <div className="customer-search-box relative min-w-0">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <input
             type="text"
@@ -1298,7 +1321,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               setCurrentPage(1);
             }}
             aria-label="Filter by service"
-            className="h-11 max-w-full px-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
+            className="h-11 max-w-full px-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-violet-500 shadow-2xs cursor-pointer"
           >
             <option value="all">{language === 'bn' ? 'সকল সার্ভিস' : 'All Services'}</option>
             {services.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}
@@ -1311,7 +1334,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               setCurrentPage(1);
             }}
             aria-label={language === 'bn' ? 'নবায়নের প্রয়োজন অনুযায়ী ফিল্টার' : 'Filter by renewal need'}
-            className="h-11 max-w-full px-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
+            className="h-11 max-w-full px-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-violet-500 shadow-2xs cursor-pointer"
           >
             <option value="all">{language === 'bn' ? 'সব নবায়নের অবস্থা' : 'All renewal needs'}</option>
             <option value="due">{language === 'bn' ? 'নবায়ন বাকি' : 'Renewal due'}</option>
@@ -1323,7 +1346,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             value={filterSubscription}
             onChange={event => { setFilterSubscription(event.target.value as typeof filterSubscription); setCurrentPage(1); }}
             aria-label={language === 'bn' ? 'সাবস্ক্রিপশনের অবস্থা অনুযায়ী ফিল্টার' : 'Filter by current subscription state'}
-            className="h-11 max-w-full rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs focus:border-emerald-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+            className="h-11 max-w-full rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs focus:border-violet-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
           >
             <option value="all">Any subscription state</option>
             <option value="active">Has active subscription</option>
@@ -1335,7 +1358,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             value={filterPayment}
             onChange={event => { setFilterPayment(event.target.value as typeof filterPayment); setCurrentPage(1); }}
             aria-label="Filter by payment status"
-            className="h-11 max-w-full rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs focus:border-emerald-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+            className="h-11 max-w-full rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs focus:border-violet-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
           >
             <option value="all">All payments</option>
             <option value="paid">Fully paid</option>
@@ -1346,7 +1369,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             value={filterActivity}
             onChange={event => { setFilterActivity(event.target.value as typeof filterActivity); setCurrentPage(1); }}
             aria-label="Filter by customer activity"
-            className="h-11 max-w-full rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs focus:border-emerald-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+            className="h-11 max-w-full rounded-lg border border-slate-200/80 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs focus:border-violet-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
           >
             <option value="all">All activity</option>
             <option value="new">New customers</option>
@@ -1371,25 +1394,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               </fieldset>
               <button type="button" onClick={() => {
                 setCreatedFrom(''); setCreatedTo(''); setLastActivityFrom(''); setLastActivityTo('');
-              }} className="justify-self-start text-xs font-semibold text-emerald-700 dark:text-emerald-300">Clear dates</button>
+              }} className="justify-self-start text-xs font-semibold text-violet-700 dark:text-violet-300">Clear dates</button>
             </div>
           </details>
 
-          {/* Page size selector */}
-          <div className="relative hidden sm:block">
-            <select
-              value={pageSize}
-              onChange={e => {
-                setPageSize(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="h-11 px-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-mono text-slate-600 dark:text-slate-400 focus:outline-hidden focus:border-emerald-500 shadow-2xs cursor-pointer"
-            >
-              <option value={10}>10 / page</option>
-              <option value={25}>25 / page</option>
-              <option value={50}>50 / page</option>
-            </select>
-          </div>
               {invalidCustomerDateRange && <p role="alert" className="col-span-full text-xs font-medium text-rose-700 dark:text-rose-300">
                 {language === 'bn' ? 'শুরুর তারিখ শেষের তারিখের পরে হতে পারবে না।' : 'Each start date must be on or before its end date.'}
               </p>}
@@ -1441,295 +1449,40 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         </div>
       )}
 
-      {/* 4. CUSTOMER DIRECTORY */}
-      <div className="customer-directory-heading">
-        <div>
-          <p>{language === 'bn' ? 'গ্রাহক তালিকা' : 'Customer directory'}</p>
-          <span>{language === 'bn' ? 'আপনার গ্রাহক সম্পর্ক এক জায়গায় পরিচালনা করুন' : 'Manage your customer relationships in one place'}</span>
-        </div>
-        <span className="customer-directory-count" aria-live="polite">
-          {language === 'bn' ? `${filteredCustomers.length} জন গ্রাহক` : `${filteredCustomers.length} ${filteredCustomers.length === 1 ? 'record' : 'records'}`}
-        </span>
-      </div>
       <div className="customer-list-section space-y-3">
-        {/* Customer cards are used at every screen size. */}
-        <div className="data-table-scroll customer-desktop-table hidden overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" aria-hidden="true">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                <th className="py-3 px-5">{language === 'bn' ? 'কাস্টমার' : 'Customer'}</th>
-                <th className="py-3 px-5">{language === 'bn' ? 'ফোন' : 'Phone'}</th>
-                <th className="py-3 px-5">{language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Active Subscriptions'}</th>
-                <th className="py-3 px-5">{language === 'bn' ? 'মোট খরচ' : 'Total Spent'}</th>
-                <th className="py-3 px-5">{language === 'bn' ? 'বকেয়া' : 'Due'}</th>
-                <th className="py-3 px-5">{language === 'bn' ? 'সর্বশেষ কার্যক্রম' : 'Last Activity'}</th>
-                <th className="py-3 px-5">{language === 'bn' ? 'স্ট্যাটাস' : 'Status'}</th>
-                <th className="py-3 px-5 text-right">{language === 'bn' ? 'অ্যাকশন' : 'Actions'}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
-              {/* Loading State */}
-              {customersLoading && customers.length === 0 ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i} className="h-16 animate-pulse">
-                    <td className="py-3.5 px-5">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-slate-200 dark:bg-slate-800" />
-                        <div className="space-y-1.5 flex-1">
-                          <div className="w-28 h-3.5 bg-slate-200 dark:bg-slate-800 rounded" />
-                          <div className="w-36 h-2.5 bg-slate-100 dark:bg-slate-800/60 rounded" />
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-5">
-                      <div className="w-24 h-3.5 bg-slate-200 dark:bg-slate-800 rounded" />
-                    </td>
-                    <td className="py-3.5 px-5">
-                      <div className="w-16 h-3.5 bg-slate-200 dark:bg-slate-800 rounded" />
-                    </td>
-                    <td className="py-3.5 px-5">
-                      <div className="w-16 h-3.5 bg-slate-200 dark:bg-slate-800 rounded" />
-                    </td>
-                    <td className="py-3.5 px-5">
-                      <div className="w-20 h-3.5 bg-slate-200 dark:bg-slate-800 rounded" />
-                    </td>
-                    <td className="py-3.5 px-5 text-right">
-                      <div className="w-12 h-6 bg-slate-200 dark:bg-slate-800 rounded ml-auto" />
-                    </td>
-                  </tr>
-                ))
-              ) : paginatedCustomers.length === 0 ? (
-                /* Empty State */
-                <tr>
-                  <td colSpan={8} className="py-16 text-center text-slate-400">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400">
-                        <Users className="w-7 h-7 stroke-[1.5]" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                          {hasCustomerFilters
-                            ? (language === 'bn' ? 'কোনো কাস্টমার পাওয়া যায়নি।' : 'No matching customers.')
-                            : filterStatus === 'archived'
-                            ? (language === 'bn' ? 'কোনো আর্কাইভকৃত কাস্টমার নেই।' : 'No archived customers.')
-                            : customersError
-                              ? (language === 'bn' ? 'গ্রাহক লোড করা যায়নি।' : 'Unable to load customers.')
-                              : (language === 'bn' ? 'এখনও কোনো কাস্টমার নেই।' : 'No customers yet.')}
-                        </p>
-                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                          {hasCustomerFilters
-                            ? (language === 'bn' ? 'অন্য নাম বা ফোন নম্বর দিয়ে খুঁজুন।' : 'Try a different search or filter.')
-                            : customersError
-                              ? (language === 'bn' ? 'আবার চেষ্টা করুন অথবা পরে রিলোড করুন।' : 'Retry to reload customer data.')
-                              : (language === 'bn' ? 'শুরু করতে আপনার প্রথম কাস্টমার যোগ করুন।' : 'Add your first customer to get started.')}
-                        </p>
-                      </div>
-                      {hasNoCustomers &&
-                        !searchQuery &&
-                        filterServiceId === 'all' &&
-                        filterRenewal === 'all' &&
-                        filterStatus !== 'archived' &&
-                        !customersError && (
-                        <button
-                          onClick={openAddModal}
-                          className="mt-1 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span>{language === 'bn' ? t('addCustomer') : 'Add Customer'}</span>
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                paginatedCustomers.map(cust => {
-                  const metrics = customerMetrics.get(cust.id);
-                  const activeCount = metrics?.activeCount || 0;
-                  const spending = metrics?.spent || 0;
-                  const canWhatsApp = canContact(cust.id);
-                  const initials = getInitials(cust.name);
-                  const avatarColor = getAvatarColorClass(cust.name);
-                  const customerStatus = cust.isArchived ? 'Archived'
-                    : metrics?.status === 'at_risk' ? 'At Risk'
-                      : metrics?.status === 'inactive' ? 'Inactive' : 'Active';
-                  const statusClass = cust.isArchived || metrics?.status === 'inactive'
-                    ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                    : metrics?.status === 'at_risk'
-                      ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
-                      : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300';
-
-                  return (
-                    <tr
-                      key={cust.id}
-                      onClick={() => openCustomerDetails(cust.id)}
-                      className="h-16 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group"
-                    >
-                      {/* Customer Cell: Avatar + Name + Email + FB */}
-                      <td className="py-3.5 px-5">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`w-9 h-9 rounded-lg font-bold text-xs flex items-center justify-center shrink-0 border ${avatarColor}`}
-                          >
-                            {initials}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="font-semibold text-slate-900 dark:text-white text-sm flex flex-wrap items-center gap-1.5">
-                              <CustomerNameWithType customer={cust} nameClassName="min-w-0 break-words" />
-                              {cust.isArchived && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-normal">
-                                  Archived
-                                </span>
-                              )}
-                              {cust.facebookUrl && (
-                                <a
-                                  href={cust.facebookUrl.startsWith('http') ? cust.facebookUrl : `https://${cust.facebookUrl}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  onClick={e => e.stopPropagation()}
-                                  className="text-blue-500 hover:text-blue-600 transition-colors"
-                                  title={cust.facebookId ? `Facebook: ${cust.facebookId}` : 'Facebook Profile'}
-                                >
-                                  <Facebook className="w-3.5 h-3.5" />
-                                </a>
-                              )}
-                            </div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400 truncate flex items-center gap-1.5">
-                              <span>{cust.email || (language === 'bn' ? 'ইমেইল নেই' : 'No email')}</span>
-                              {cust.facebookId && (
-                                <span className="text-[11px] text-blue-600 dark:text-blue-400 font-mono truncate">
-                                  · @{cust.facebookId}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Phone & WhatsApp Action */}
-                      <td className="py-3.5 px-5" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs text-slate-700 dark:text-slate-300 font-medium">
-                            {cust.phone}
-                          </span>
-                          {canWhatsApp && <button type="button"
-                            onClick={() => openMessage({ customerId: cust.id })}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 rounded-md border border-emerald-200/80 dark:border-emerald-800/60 transition-colors"
-                            aria-label={`Compose WhatsApp message for ${cust.name}`}
-                          >
-                            <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                            <span>WhatsApp</span>
-                          </button>}
-                        </div>
-                      </td>
-
-                      {/* Active Subscriptions */}
-                      <td className="py-3.5 px-5">
-                        <div className={`inline-flex items-center gap-1.5 text-xs ${activeCount > 0 ? 'font-semibold text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}`}>
-                          <span className={`h-2 w-2 shrink-0 rounded-full ${activeCount > 0 ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
-                          <span>{activeCount}</span>
-                        </div>
-                      </td>
-
-                      {/* Total Spent */}
-                      <td className="py-3.5 px-5">
-                        <span className="font-mono font-bold text-sm text-slate-900 dark:text-white">
-                          {formatCurrency(spending, currency)}
-                        </span>
-                      </td>
-
-                      <td className="py-3.5 px-5 font-mono text-xs text-amber-700 dark:text-amber-300">
-                        {formatCurrency(metrics?.totalDue || 0, currency)}
-                      </td>
-
-                      <td className="py-3.5 px-5 text-xs text-slate-500 dark:text-slate-400 font-mono">
-                        {metrics?.lastActivity ? formatAppEventDateTime(metrics.lastActivity) : '—'}
-                      </td>
-
-                      <td className="py-3.5 px-5">
-                        <span className={`inline-flex rounded-md px-2 py-1 text-[11px] font-semibold ${statusClass}`}>
-                          {customerStatus}
-                        </span>
-                      </td>
-
-                      {/* Action Buttons */}
-                      <td className="py-3.5 px-5 text-right" onClick={e => e.stopPropagation()}>
-                        <div className="inline-flex items-center gap-1 opacity-90 group-hover:opacity-100 transition-opacity">
-                          {!cust.isArchived && <button
-                            type="button"
-                            onClick={() => onOpenNewSaleForCustomer(cust.id)}
-                            aria-label={`New sale for ${cust.name}`}
-                            title="New sale"
-                            className="rounded-md p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 dark:text-slate-300 dark:hover:bg-emerald-950/40"
-                          ><Plus className="h-4 w-4" /></button>}
-                          {!cust.isArchived && onAddPaymentForCustomer && <button
-                            type="button"
-                            onClick={() => onAddPaymentForCustomer(cust.id)}
-                            aria-label={`Add payment for ${cust.name}`}
-                            title="Add payment"
-                            className="rounded-md p-1.5 text-slate-500 hover:bg-amber-50 hover:text-amber-700 dark:text-slate-300 dark:hover:bg-amber-950/40"
-                          ><CreditCard className="h-4 w-4" /></button>}
-                          <button
-                            onClick={() => openCustomerDetails(cust.id)}
-                            aria-label={language === 'bn' ? `বিস্তারিত দেখুন: ${cust.name}` : `View details for ${cust.name}`}
-                            title={language === 'bn' ? 'বিস্তারিত দেখুন' : 'View customer'}
-                            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                            <span className="sr-only">{language === 'bn' ? 'দেখুন' : 'View'}</span>
-                          </button>
-                          {cust.isArchived ? (
-                            <button
-                              onClick={() => handleRestore(cust.id, cust.name)}
-                              className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 rounded-md transition-colors cursor-pointer"
-                              title="Restore Customer"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => openEditModal(cust)}
-                              className="p-1.5 text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
-                              title={t('edit')}
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setCustomerToDelete(cust)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md transition-colors cursor-pointer"
-                            title={cust.isArchived ? 'Permanent Delete' : 'Archive or Delete'}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+        <div className="customer-list-header" aria-hidden="true">
+          <span>{language === 'bn' ? 'কাস্টমার' : 'Customer'}</span>
+          <span>{language === 'bn' ? 'যোগাযোগ' : 'Contact'}</span>
+          <span>{language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Active subscriptions'}</span>
+          <span>{language === 'bn' ? 'মোট খরচ' : 'Total spent'}</span>
+          <span>{language === 'bn' ? 'বকেয়া' : 'Due'}</span>
+          <span>{language === 'bn' ? 'শেষ কার্যক্রম' : 'Last activity'}</span>
+          <span />
         </div>
-
-        <div className="customer-card-grid customer-card-list-grid grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <div className="customer-card-grid customer-card-list-grid grid gap-2.5">
           {customersLoading && customers.length === 0 ? (
             <div className="contents" aria-label="Loading customers">
               {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="animate-pulse rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+                <div key={index} className="customer-card-skeleton animate-pulse rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-slate-200 dark:bg-slate-800" />
-                    <div className="flex-1 space-y-2">
+                    <div className="h-11 w-11 shrink-0 rounded-2xl bg-slate-200 dark:bg-slate-800" />
+                    <div className="min-w-0 flex-1 space-y-2">
                       <div className="h-3.5 w-2/5 rounded bg-slate-200 dark:bg-slate-800" />
                       <div className="h-3 w-3/5 rounded bg-slate-100 dark:bg-slate-800/60" />
                     </div>
+                    <div className="hidden h-8 w-20 rounded-full bg-slate-100 dark:bg-slate-800/60 sm:block" />
                   </div>
-                  <div className="mt-4 h-3 w-full rounded bg-slate-100 dark:bg-slate-800/60" />
-                  <div className="mt-3 h-8 w-28 rounded bg-slate-100 dark:bg-slate-800/60" />
+                  <div className="mt-3 grid grid-cols-4 gap-2">
+                    <div className="h-9 rounded-lg bg-slate-100 dark:bg-slate-800/60" />
+                    <div className="h-9 rounded-lg bg-slate-100 dark:bg-slate-800/60" />
+                    <div className="h-9 rounded-lg bg-slate-100 dark:bg-slate-800/60" />
+                    <div className="h-9 rounded-lg bg-slate-100 dark:bg-slate-800/60" />
+                  </div>
                 </div>
               ))}
             </div>
           ) : paginatedCustomers.length === 0 ? (
-            <div className="col-span-full flex min-h-64 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-4 py-12 text-center dark:border-slate-700 dark:bg-slate-900">
+            <div className="customer-empty-state col-span-full flex min-h-64 items-center justify-center rounded-2xl border border-dashed border-violet-300/70 bg-violet-50/40 px-4 py-12 text-center dark:border-violet-900/60 dark:bg-violet-950/20">
               <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                   <Users className="h-5 w-5" />
@@ -1758,7 +1511,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   !customersError && (
                   <button
                     onClick={openAddModal}
-                    className="mt-2 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
+                    className="mt-2 inline-flex items-center gap-2 rounded-lg bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-600"
                   >
                     <Plus className="h-4 w-4" />
                     {language === 'bn' ? t('addCustomer') : 'Add Customer'}
@@ -1784,6 +1537,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 : metrics?.status === 'at_risk'
                   ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-300'
                   : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300';
+              const rowStatus = cust.isArchived ? 'archived' : metrics?.status === 'at_risk' ? 'at_risk' : metrics?.status === 'inactive' ? 'inactive' : 'active';
               const renewalSubscription = metrics?.subscriptions
                 .filter(subscription => {
                   const days = getDaysDifference(subscription.expiryDate);
@@ -1813,56 +1567,52 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       openCustomerDetails(cust.id);
                     }
                   }}
-                  className="customer-card group min-w-0 cursor-pointer rounded-xl border border-slate-200 bg-white p-4 shadow-xs transition-[border-color,box-shadow,transform] hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-800 dark:bg-slate-900"
+                  className={`customer-card customer-card--${rowStatus} group min-w-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600`}
                   style={{ '--customer-card-accent': cardAccent } as React.CSSProperties & { '--customer-card-accent': string }}
                 >
-                  <div className="customer-card-header flex min-w-0 items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div
-                        className={`customer-card-avatar flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-sm font-bold ${avatarColor}`}
-                      >
-                        {initials}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <button type="button" onClick={() => openCustomerDetails(cust.id)} aria-label={`View customer details for ${cust.name}`} className="customer-card-name inline-flex min-h-10 min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-left text-[15px] font-bold text-slate-900 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-white dark:hover:text-violet-300">
-                            <CustomerNameWithType customer={cust} nameClassName="min-w-0 break-words" />
-                          </button>
-                          {valueTag && <span className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-violet-50 px-1.5 py-0.5 text-[9px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"><Sparkles className="h-2.5 w-2.5" />{valueTag}</span>}
-                        </div>
-                      </div>
+                  <div className="customer-card-identity">
+                    <div
+                      className={`customer-card-avatar flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border text-sm font-bold ${avatarColor}`}
+                    >
+                      {initials}
                     </div>
-                    <span className={`customer-card-status inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-semibold ${statusClass}`}>
-                      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${cust.isArchived || metrics?.status === 'inactive' ? 'bg-slate-400' : metrics?.status === 'at_risk' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                      {customerStatus}
-                    </span>
+                    <div className="customer-card-identity-copy min-w-0">
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+                        <button type="button" onClick={() => openCustomerDetails(cust.id)} aria-label={`View customer details for ${cust.name}`} className="customer-card-name inline-flex min-h-10 min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-left text-[15px] font-bold text-slate-900 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-white dark:hover:text-violet-300">
+                          <CustomerNameWithType customer={cust} nameClassName="min-w-0 break-words" />
+                        </button>
+                        {valueTag && <span className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-violet-50 px-1.5 py-0.5 text-[9px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"><Sparkles className="h-2.5 w-2.5" />{valueTag}</span>}
+                        <span className={`customer-card-status inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-semibold ${statusClass}`}>
+                          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${cust.isArchived || metrics?.status === 'inactive' ? 'bg-slate-400' : metrics?.status === 'at_risk' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                          {customerStatus}
+                        </span>
+                      </div>
+                      {renewalSubscription && (
+                        <button type="button" onClick={() => onViewSubscription(renewalSubscription.id)} className="customer-card-renewal mt-1 inline-flex min-h-8 items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-amber-600 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950/70">
+                          <CalendarDays className="h-3 w-3" aria-hidden="true" />
+                          {renewalDays === 0 ? 'Renewal due today' : `Renewal due in ${renewalDays} day${renewalDays === 1 ? '' : 's'}`}
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="customer-card-contacts mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0 text-xs">
-                    <span className="customer-contact-link inline-flex min-h-9 min-w-0 items-center gap-2 text-slate-700 dark:text-slate-200">
-                      <MessageCircle className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                      <span className="min-w-0">WA: {cust.whatsapp || cust.phone || 'Not set'}</span>
-                    </span>
+                    {cust.whatsapp && cust.whatsapp !== cust.phone && (
+                      <span className="customer-contact-link inline-flex min-h-9 min-w-0 items-center gap-2 text-slate-700 dark:text-slate-200">
+                        <MessageCircle className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                        <span className="min-w-0">WA: {cust.whatsapp}</span>
+                      </span>
+                    )}
                     {cust.phone && <a href={`tel:${cust.phone}`} onClick={event => event.stopPropagation()} className="customer-contact-link inline-flex min-h-9 min-w-0 items-center gap-2 text-slate-700 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-200 dark:hover:text-violet-300"><Phone className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="min-w-0">{cust.phone}</span></a>}
                     {cust.email && <a href={`mailto:${cust.email}`} onClick={event => event.stopPropagation()} title={cust.email} className="customer-contact-link inline-flex min-h-9 min-w-0 items-center gap-2 text-slate-700 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-slate-200 dark:hover:text-violet-300"><Mail className="h-3.5 w-3.5 shrink-0 text-slate-400" /><span className="min-w-0">{cust.email}</span></a>}
                     {cust.facebookUrl && <a href={cust.facebookUrl.startsWith('http') ? cust.facebookUrl : `https://${cust.facebookUrl}`} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()} aria-label={`Facebook profile for ${cust.name}`} className="customer-contact-link inline-flex min-h-9 min-w-0 items-center gap-2 text-blue-700 hover:text-blue-800 focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-blue-300"><Facebook className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Facebook</span></a>}
                   </div>
 
-                  <div className="customer-card-metrics mt-3 grid grid-cols-2 gap-x-4 gap-y-3 border-y border-slate-100 py-3 dark:border-slate-800">
+                  <div className="customer-card-metrics mt-3 grid grid-cols-2 gap-x-4 gap-y-3 border-y border-slate-100 py-2.5 dark:border-slate-800">
                     <div className="customer-card-metric min-w-0"><p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Active Subscriptions</p><p className="mt-1 text-base font-semibold tabular-nums text-slate-900 dark:text-white">{activeCount}</p></div>
                     <div className="customer-card-metric min-w-0"><p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Total Spent</p><p className="mt-1 truncate text-base font-semibold tabular-nums text-slate-900 dark:text-white">{formatCurrency(spending, currency)}</p></div>
                     <div className={`customer-card-metric customer-card-due min-w-0 rounded-lg ${metrics?.totalDue ? 'bg-amber-50/80 dark:bg-amber-950/25' : ''}`}><p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Due Amount</p><p className={`mt-1 truncate text-base font-semibold tabular-nums ${metrics?.totalDue ? 'text-amber-800 dark:text-amber-300' : 'text-slate-700 dark:text-slate-200'}`}>{formatCurrency(metrics?.totalDue || 0, currency)}</p></div>
                     <div className="customer-card-metric min-w-0"><p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Last Activity</p><p className="mt-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">{metrics?.lastActivity ? formatAppEventDateTime(metrics.lastActivity) : '—'}</p></div>
-                  </div>
-
-                  <div className="customer-card-renewal-slot">
-                    {renewalSubscription && (
-                      <div className="customer-card-renewal mt-3">
-                      <button type="button" onClick={() => onViewSubscription(renewalSubscription.id)} className="inline-flex min-h-10 items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-amber-600 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950/70">
-                        {renewalDays === 0 ? 'Renewal due today' : `Renewal due in ${renewalDays} day${renewalDays === 1 ? '' : 's'}`}
-                      </button>
-                      </div>
-                    )}
                   </div>
 
                   <div className="customer-card-actions mt-3 flex flex-wrap items-center justify-end gap-1.5 border-t border-slate-100 pt-3 dark:border-slate-800">
@@ -1890,7 +1640,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
         {/* 5. PAGINATION FOOTER */}
         {filteredCustomers.length > 0 && (
-          <div className="flex items-center justify-between gap-3 px-1 py-1 text-[11px] text-slate-500 dark:text-slate-400">
+          <div className="customer-pagination flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white px-4 py-2 text-[11px] text-slate-500 shadow-xs dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
             <div>
               {language === 'bn' ? 'প্রদর্শিত হচ্ছে' : 'Showing'}{' '}
               <span className="font-semibold text-slate-900 dark:text-white">
@@ -1903,7 +1653,20 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               </span>
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
+              <select
+                value={pageSize}
+                onChange={e => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                aria-label={language === 'bn' ? 'প্রতি পৃষ্ঠায় কতজন' : 'Customers per page'}
+                className="h-10 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 shadow-2xs focus:border-violet-500 focus:outline-hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+              >
+                <option value={10}>10 / {language === 'bn' ? 'পৃষ্ঠা' : 'page'}</option>
+                <option value={25}>25 / {language === 'bn' ? 'পৃষ্ঠা' : 'page'}</option>
+                <option value={50}>50 / {language === 'bn' ? 'পৃষ্ঠা' : 'page'}</option>
+              </select>
               <button
                 disabled={currentPage <= 1}
                 onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
@@ -1931,19 +1694,20 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <section className="rounded-xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <section className="customer-attention-panel customer-attention-panel--renewals rounded-xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Renewal Opportunities</h2>
-              <p className="mt-1 text-xs text-slate-500">Expiring subscriptions and recently expired renewals.</p>
+              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white"><CalendarDays className="h-4 w-4 text-amber-600 dark:text-amber-300" aria-hidden="true" />{language === 'bn' ? 'নবায়নের সুযোগ' : 'Renewal Opportunities'}</h2>
+              <p className="mt-1 text-xs text-slate-500">{language === 'bn' ? 'মেয়াদ শেষ হচ্ছে এমন ও সম্প্রতি মেয়াদোত্তীর্ণ সাবস্ক্রিপশন।' : 'Expiring subscriptions and recently expired renewals.'}</p>
             </div>
             <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">{renewalOpportunityRows.length}</span>
           </div>
-          {renewalOpportunityRows.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-center text-xs text-slate-500 dark:bg-slate-800/50">No upcoming renewal opportunities.</p> : (
+          {renewalOpportunityRows.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-center text-xs text-slate-500 dark:bg-slate-800/50">{language === 'bn' ? 'আসন্ন কোনো নবায়নের সুযোগ নেই।' : 'No upcoming renewal opportunities.'}</p> : (
             <ul className="space-y-2">
               {renewalOpportunityRows.map(({ subscription, customer, service, daysRemaining }) => (
-                <li key={subscription.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 dark:border-slate-800">
-                  <button type="button" onClick={() => openCustomerDetails(customer.id)} className="min-w-0 text-left">
+                <li key={subscription.id} className="customer-attention-row flex flex-wrap items-center gap-3 rounded-lg border border-slate-100 p-3 dark:border-slate-800">
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-[11px] font-bold ${getAvatarColorClass(customer.name)}`} aria-hidden="true">{getInitials(customer.name)}</span>
+                  <button type="button" onClick={() => openCustomerDetails(customer.id)} className="min-w-0 flex-1 text-left">
                     <span className="block truncate text-xs font-semibold text-slate-900 dark:text-white">{customer.name}</span>
                     <span className="block truncate text-[11px] text-slate-500">{service?.name || 'Service'} · {subscription.plan} · {formatCurrency(subscription.price, subscription.currency)}</span>
                     <span className="block text-[10px] text-amber-700 dark:text-amber-300">{daysRemaining < 0 ? `Expired ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) === 1 ? '' : 's'} ago` : daysRemaining === 0 ? 'Expires today' : `Expires in ${daysRemaining} days`}</span>
@@ -1958,19 +1722,20 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           )}
         </section>
 
-        <section className="rounded-xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <section className="customer-attention-panel customer-attention-panel--due rounded-xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Outstanding Balance</h2>
-              <p className="mt-1 text-xs text-slate-500">Open sales with a balance calculated from actual payment records.</p>
+              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white"><AlertTriangle className="h-4 w-4 text-rose-600 dark:text-rose-300" aria-hidden="true" />{language === 'bn' ? 'বকেয়া' : 'Outstanding Balance'}</h2>
+              <p className="mt-1 text-xs text-slate-500">{language === 'bn' ? 'প্রকৃত পেমেন্ট রেকর্ড থেকে হিসাব করা বকেয়া সহ খোলা বিক্রয়।' : 'Open sales with a balance calculated from actual payment records.'}</p>
             </div>
             <span className="rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-800 dark:bg-rose-950/40 dark:text-rose-300">{outstandingBalanceRows.length}</span>
           </div>
-          {outstandingBalanceRows.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-center text-xs text-slate-500 dark:bg-slate-800/50">No outstanding balances.</p> : (
+          {outstandingBalanceRows.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-center text-xs text-slate-500 dark:bg-slate-800/50">{language === 'bn' ? 'কোনো বকেয়া নেই।' : 'No outstanding balances.'}</p> : (
             <ul className="space-y-2">
               {outstandingBalanceRows.map(({ sale, customer, due }) => (
-                <li key={sale.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 dark:border-slate-800">
-                  <button type="button" onClick={() => openCustomerDetails(customer.id)} className="min-w-0 text-left">
+                <li key={sale.id} className="customer-attention-row flex flex-wrap items-center gap-3 rounded-lg border border-slate-100 p-3 dark:border-slate-800">
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-[11px] font-bold ${getAvatarColorClass(customer.name)}`} aria-hidden="true">{getInitials(customer.name)}</span>
+                  <button type="button" onClick={() => openCustomerDetails(customer.id)} className="min-w-0 flex-1 text-left">
                     <span className="block truncate text-xs font-semibold text-slate-900 dark:text-white">{customer.name} · {sale.invoiceNo}</span>
                     <span className="block text-[11px] text-slate-500">{getSaleLineItems(sale).map(item => `${services.find(service => service.id === item.serviceId)?.name || 'Service'} · ${item.plan}${item.quantity > 1 ? ` × ${item.quantity}` : ''}`).join('; ')} · {formatAppEventDateTime(sale.createdAt || sale.date)} · Due {formatCurrency(due, sale.currency)}</span>
                   </button>
@@ -2045,7 +1810,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
           </button>
           <div className="customer-detail-content space-y-5">
             {/* Header info card */}
-            <section className="customer-profile-header flex min-w-0 flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6 xl:flex-row xl:items-center xl:justify-between dark:border-slate-800 dark:bg-slate-900">
+            <section className="customer-profile-header customer-profile-header--v2 flex min-w-0 flex-col gap-5 rounded-2xl p-5 shadow-xs sm:p-6 xl:flex-row xl:items-center xl:justify-between">
               <div className="customer-profile-identity flex min-w-0 items-start gap-4 sm:items-center">
                 <div
                   className={`customer-profile-avatar mt-0.5 flex h-[4.25rem] w-[4.25rem] shrink-0 items-center justify-center rounded-[1.125rem] border text-lg font-bold sm:mt-0 ${getAvatarColorClass(
@@ -2085,7 +1850,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       {detailedCrmMetrics?.status === 'at_risk' ? 'At Risk' : detailedCrmMetrics?.status === 'inactive' ? 'Inactive' : 'Active'}
                     </span>
                   </div>
-                  {(detailedCustomer.phone?.trim() || detailedCustomer.email?.trim()) && <div className="mt-2 flex min-w-0 flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-600 dark:text-slate-300">
+                  {(detailedCustomer.phone?.trim() || detailedCustomer.email?.trim()) && <div className="customer-profile-contact mt-2 flex min-w-0 flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-600 dark:text-slate-300">
                     {detailedCustomer.phone?.trim() && <a href={`tel:${detailedCustomer.phone}`} className="break-all hover:text-violet-700 dark:hover:text-violet-300">{detailedCustomer.phone}</a>}
                     {detailedCustomer.email?.trim() && <a href={`mailto:${detailedCustomer.email}`} className="break-all hover:text-violet-700 dark:hover:text-violet-300">{detailedCustomer.email}</a>}
                   </div>}
@@ -2157,7 +1922,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               </div>
             </section>
 
-            <nav aria-label="Customer sections" className="customer-detail-nav flex min-w-0 gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-slate-900">
+            <nav aria-label="Customer sections" className="customer-detail-nav customer-detail-nav--v2 sticky top-0 z-10 flex min-w-0 gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white/95 p-1 shadow-xs backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
               <a href="#customer-overview" className="customer-detail-nav-link">{language === 'bn' ? 'সারসংক্ষেপ' : 'Overview'}</a>
               <a href="#customer-financial-statement" className="customer-detail-nav-link">Financial statement</a>
               <a href="#customer-subscriptions" className="customer-detail-nav-link">{language === 'bn' ? 'সাবস্ক্রিপশন' : 'Subscriptions'} <span>{detailedSubs.length}</span></a>
@@ -2167,14 +1932,14 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
             <section id="customer-overview" aria-label="Customer overview" className="customer-overview-grid grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
               <div className="customer-overview-metric">
-                <span>{language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Active plans'}</span>
+                <span><CheckCircle2 className="customer-overview-label-icon h-3.5 w-3.5 text-violet-600 dark:text-violet-300" aria-hidden="true" />{language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Active plans'}</span>
                 <strong>{currentActiveSubsForDetailed.length}</strong>
                 <small>{language === 'bn'
                   ? `${formatNumber(detailedSubs.length)}টি মোট সাবস্ক্রিপশন`
                   : `${detailedSubs.length} plans total`}</small>
               </div>
               <div className={`customer-overview-metric ${detailedTotalDue > 0 ? 'customer-overview-metric--due' : ''}`}>
-                <span>{language === 'bn' ? `মোট বকেয়া · ${currency}` : `Amount due · ${currency}`}</span>
+                <span><AlertTriangle className="customer-overview-label-icon h-3.5 w-3.5 text-amber-600 dark:text-amber-300" aria-hidden="true" />{language === 'bn' ? `মোট বকেয়া · ${currency}` : `Amount due · ${currency}`}</span>
                 <strong>{formatCurrency(detailedTotalDue, currency)}</strong>
                 <small>{language === 'bn' ? 'গ্রাহকের মোট বকেয়া' : 'Money the customer still owes'}</small>
                 {detailedTotalDue > 0 && (
@@ -2190,34 +1955,34 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 )}
               </div>
               <div className="customer-overview-metric customer-overview-metric--paid">
-                <span>{`Payments received · ${currency}`}</span>
+                <span><CreditCard className="customer-overview-label-icon h-3.5 w-3.5 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />{`Payments received · ${currency}`}</span>
                 <strong>{formatCurrency(customerStatement?.summary.amountReceived || 0, currency)}</strong>
                 <small>Total payments received</small>
               </div>
               <div className="customer-overview-metric">
-                <span>{language === 'bn' ? `অগ্রিম পেমেন্ট · ${currency}` : `Advance payment · ${currency}`}</span>
+                <span><Wallet className="customer-overview-label-icon h-3.5 w-3.5 text-violet-600 dark:text-violet-300" aria-hidden="true" />{language === 'bn' ? `অগ্রিম পেমেন্ট · ${currency}` : `Advance payment · ${currency}`}</span>
                 <strong>{formatCurrency(customerStatement?.summary.availableAdvance || detailedAdvanceBalances[currency], currency)}</strong>
                 <small>{language === 'bn' ? 'পরের কেনাকাটায় ব্যবহার করা যাবে' : 'Available for the next sale'}</small>
               </div>
               <div className="customer-overview-metric">
-                <span>{`Total sales · ${currency}`}</span>
+                <span><Receipt className="customer-overview-label-icon h-3.5 w-3.5 text-violet-600 dark:text-violet-300" aria-hidden="true" />{`Total sales · ${currency}`}</span>
                 <strong>{formatCurrency(detailedTotalSales, currency)}</strong>
                 <small>{language === 'bn'
                   ? `${formatNumber(detailedCrmMetrics?.salesCount || 0)}টি বিক্রয়`
                   : `${detailedCrmMetrics?.salesCount || 0} sales`}</small>
               </div>
               <div className="customer-overview-metric">
-                <span>{`Discounts · ${currency}`}</span>
+                <span><DollarSign className="customer-overview-label-icon h-3.5 w-3.5 text-slate-500 dark:text-slate-300" aria-hidden="true" />{`Discounts · ${currency}`}</span>
                 <strong>{formatCurrency(customerStatement?.summary.totalDiscounts || 0, currency)}</strong>
                 <small>Total discount given</small>
               </div>
               <div className={`customer-overview-metric ${(customerStatement?.summary.overdueInvoices || 0) > 0 ? 'customer-overview-metric--due' : ''}`}>
-                <span>Late invoices</span>
+                <span><Clock className="customer-overview-label-icon h-3.5 w-3.5 text-rose-600 dark:text-rose-300" aria-hidden="true" />Late invoices</span>
                 <strong>{customerStatement?.summary.overdueInvoices || 0}</strong>
                 <small>Unpaid invoices past their due date</small>
               </div>
               <div className="customer-overview-metric">
-                <span>{language === 'bn' ? 'পরবর্তী সাবস্ক্রিপশনের মেয়াদ' : 'Next plan ends'}</span>
+                <span><CalendarDays className="customer-overview-label-icon h-3.5 w-3.5 text-amber-600 dark:text-amber-300" aria-hidden="true" />{language === 'bn' ? 'পরবর্তী সাবস্ক্রিপশনের মেয়াদ' : 'Next plan ends'}</span>
                 <strong>
                   {customerMetrics.get(detailedCustomer.id)?.nextRenewal
                     ? formatAppDate(customerMetrics.get(detailedCustomer.id)?.nextRenewal || '', language)
@@ -2226,7 +1991,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               </div>
             </section>
 
-            <section id="customer-financial-statement" aria-label="Customer financial statement" className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40">
+            <section id="customer-financial-statement" aria-label="Customer financial statement" className="customer-statement-panel min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40">
               <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <div className="min-w-0">
                   <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
@@ -2259,7 +2024,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       ['Amount still due', customerStatement.summary.totalDue],
                       ['Advance payment', customerStatement.summary.availableAdvance],
                     ].map(([label, value]) => (
-                      <div key={label} className="min-w-0 rounded-lg bg-slate-50 p-2.5 dark:bg-slate-800/60">
+                      <div key={label} className="customer-statement-chip min-w-0 rounded-xl border border-slate-100 bg-white p-3 dark:border-slate-800 dark:bg-slate-800/60">
                         <span className="block truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">{label}</span>
                         <strong className={`mt-1 block truncate text-xs tabular-nums ${
                           label === 'Amount still due' && Number(value) > 0
@@ -2344,7 +2109,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     </p>
                   ) : (
                     <div className="max-w-full overflow-x-auto p-3">
-                      <table className="w-full min-w-[1000px] border-collapse text-left text-[11px]">
+                      <table className="customer-statement-table w-full min-w-[1000px] border-collapse text-left text-[11px]">
                         <thead>
                           <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
                             <th className="px-2 py-2 font-semibold">Date and time</th>
@@ -2398,7 +2163,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               )}
             </section>
 
-            {canContact(detailedCustomer.id) && <details className="customer-message-templates rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            {canContact(detailedCustomer.id) && <details className="customer-message-templates customer-message-templates--v2 rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
               <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-4 text-sm font-semibold text-slate-800 dark:text-slate-100">
                 <span className="inline-flex items-center gap-2"><MessageCircle className="h-4 w-4 text-violet-600 dark:text-violet-300" />{language === 'bn' ? 'হোয়াটসঅ্যাপ মেসেজ টেমপ্লেট' : 'WhatsApp message templates'}</span>
                 <ChevronDown className="h-4 w-4 text-slate-500" />
@@ -2415,17 +2180,17 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               </div>
             </details>}
 
-            <section aria-label="Customer reminders" className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
-              <h3 className="mb-2 text-xs font-bold text-slate-800 dark:text-slate-100">Reminders ({detailedReminders.length})</h3>
-              {detailedReminders.length === 0 ? <p className="text-xs text-slate-500">No open reminders for this customer.</p> : <div className="space-y-2">
+            <section aria-label="Customer reminders" className="customer-reminders--v2 rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+              <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-100"><Clock className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" aria-hidden="true" />Reminders ({detailedReminders.length})</h3>
+              {detailedReminders.length === 0 ? <p className="text-xs text-slate-500 dark:text-slate-400">No open reminders for this customer.</p> : <div className="space-y-2">
                 {detailedReminders.slice(0, 4).map(reminder => {
                   const isPaymentReminder = ['invoice_due', 'invoice_overdue', 'partial_payment', 'payment_overdue', 'unpaid_sale']
                     .includes(reminder.type);
                   return (
-                    <div key={reminder.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/60">
+                    <div key={reminder.id} className="customer-reminder-row flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/60">
                       <div className="min-w-0">
-                        <p className="truncate font-semibold">{reminder.title}</p>
-                        <p className="text-slate-500">{isPaymentReminder ? 'Expected payment' : 'Due'} {formatAppDate(reminder.dueDate, language)} · {reminder.priority}</p>
+                        <p className="truncate font-semibold text-slate-900 dark:text-white">{reminder.title}</p>
+                        <p className="text-slate-500 dark:text-slate-400">{isPaymentReminder ? 'Expected payment' : 'Due'} {formatAppDate(reminder.dueDate, language)} · {reminder.priority}</p>
                       </div>
                       <div className="flex gap-2">
                         <button type="button" onClick={() => completeReminder(reminder.id)} className="font-semibold text-emerald-700 hover:underline dark:text-emerald-300">Complete</button>
@@ -2439,7 +2204,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
             {/* Customer Information */}
             <div className="customer-detail-information rounded-xl border border-slate-200/80 bg-white p-4 text-xs dark:border-slate-800 dark:bg-slate-800">
-              <div className="text-sm font-semibold text-slate-900 dark:text-white">Customer Information</div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white"><Users className="h-4 w-4 text-violet-600 dark:text-violet-300" aria-hidden="true" />Customer Information</div>
               <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <dt className="text-slate-500 dark:text-slate-400">Customer Since</dt>
@@ -2471,7 +2236,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
             <section className="grid gap-4 lg:grid-cols-2">
               <div className="rounded-xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-800">
-                <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Customer Tags</h4>
+                <h4 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-white"><Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-300" aria-hidden="true" />Customer Tags</h4>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {(detailedCustomer.tags || []).map(tag => (
                     <span key={tag} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
@@ -2488,7 +2253,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   <input id="customer-new-tag" value={newTag} onChange={event => setNewTag(event.target.value)} onKeyDown={event => {
                     if (event.key === 'Enter') { event.preventDefault(); void saveCustomerTag(detailedCustomer, newTag); }
                   }} placeholder="Add a custom tag" className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none dark:border-slate-700" />
-                  <button type="button" onClick={() => void saveCustomerTag(detailedCustomer, newTag)} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600">Add tag</button>
+                  <button type="button" onClick={() => void saveCustomerTag(detailedCustomer, newTag)} className="rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-600">Add tag</button>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {['VIP', 'Regular', 'New', 'High Value', 'Renewal Due', 'Has Due', 'At Risk'].map(tag => (
@@ -2500,10 +2265,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
               </div>
 
               <div className="rounded-xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-800">
-                <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Customer Notes</h4>
+                <h4 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-white"><FileText className="h-4 w-4 text-violet-600 dark:text-violet-300" aria-hidden="true" />Customer Notes</h4>
                 <p className="mt-1 text-[11px] text-slate-500">Do not include passwords, PINs, or account credentials.</p>
                 <textarea value={noteDraft} onChange={event => setNoteDraft(event.target.value)} rows={2} aria-label="Add a customer note" placeholder="Add a note about this customer..." className="mt-3 w-full resize-y rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none dark:border-slate-700" />
-                <button type="button" onClick={saveCustomerNote} disabled={!noteDraft.trim()} className="mt-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">Add Note</button>
+                <button type="button" onClick={saveCustomerNote} disabled={!noteDraft.trim()} className="mt-2 rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-50">Add Note</button>
                 <ol className="mt-3 max-h-56 space-y-2 overflow-y-auto">
                   {[...(detailedCustomer.notesHistory || [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(note => (
                     <li key={note.id} className="rounded-lg border border-slate-100 p-2.5 dark:border-slate-700">
@@ -2601,6 +2366,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                             : badge.status === 'active' ? 'customer-subscription-row--active' : ''
                         }`}
                       >
+                        <span className="customer-subscription-icon hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-200/70 bg-violet-50 text-sm font-bold text-violet-700 dark:border-violet-900/50 dark:bg-violet-950/40 dark:text-violet-300 sm:flex" aria-hidden="true">{(srv?.name || 'S').trim().charAt(0).toUpperCase()}</span>
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-semibold text-sm text-slate-900 dark:text-white">
                             {srv?.name || 'Subscription Service'}
@@ -2743,7 +2509,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             <div id="customer-purchases" className="customer-detail-section">
               <section aria-label="Customer payment history" className="mb-5 rounded-xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-800">
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">Payment history ({detailedPaymentHistory.length})</h3>
+                  <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white"><CreditCard className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" aria-hidden="true" />Payment history ({detailedPaymentHistory.length})</h3>
                   <span className="text-[10px] text-slate-500">Received amounts include any advance payment.</span>
                 </div>
                 {detailedPaymentHistory.length === 0 ? (
@@ -2751,10 +2517,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 ) : (
                   <ol className="space-y-2">
                     {detailedPaymentHistory.map(payment => (
-                      <li key={payment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 text-xs dark:border-slate-700">
-                        <div className="min-w-0">
+                      <li key={payment.id} className="customer-transaction-row flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 text-xs dark:border-slate-700">
+                        <span className="customer-row-icon hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-200/70 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300 sm:flex" aria-hidden="true"><CreditCard className="h-4 w-4" /></span>
+                        <div className="min-w-0 flex-1">
                           <p className="font-semibold text-slate-800 dark:text-slate-100">{formatAppEventDateTime(payment.createdAt || payment.paymentDate)} · {payment.paymentMethodName || payment.paymentMethod} · {payment.paymentStatus}</p>
-                          <p className="mt-1 text-[11px] text-slate-500">
+                          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                             {payment.allocations?.length
                               ? `Allocated to sale${payment.allocations.length === 1 ? '' : 's'}: ${formatCurrency(getPaymentRecognizedAmount(payment), payment.currency)}`
                               : payment.advanceCreditAmount
@@ -2763,7 +2530,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                             {Number(payment.advanceCreditAmount) > 0 ? ` · Advance payment ${formatCurrency(payment.advanceCreditAmount || 0, payment.currency)}` : ''}
                           </p>
                         </div>
-                        <strong className="font-mono">{formatCurrency(payment.amount, payment.currency)}</strong>
+                        <strong className="font-mono text-slate-900 dark:text-white">{formatCurrency(payment.amount, payment.currency)}</strong>
                       </li>
                     ))}
                   </ol>
@@ -2783,7 +2550,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   {[...detailedSales]
                     .sort((a, b) => b.date.localeCompare(a.date))
                     .map(sale => (
-                      <div key={sale.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-800">
+                      <div key={sale.id} className="customer-transaction-row flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-800">
+                        <span className="customer-row-icon hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-200/70 bg-violet-50 text-violet-700 dark:border-violet-900/50 dark:bg-violet-950/40 dark:text-violet-300 sm:flex" aria-hidden="true"><Receipt className="h-4 w-4" /></span>
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold text-slate-800 dark:text-slate-100">
                             {formatAppEventDateTime(sale.createdAt || sale.date)}
@@ -2845,7 +2613,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                     const sale = detailedSales.find(item => item.id === invoice.saleId);
                     if (!sale) return null;
                     return (
-                      <div key={invoice.invoiceId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-800">
+                      <div key={invoice.invoiceId} className="customer-transaction-row flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-800">
+                        <span className="customer-row-icon hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-sky-200/70 bg-sky-50 text-sky-700 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-300 sm:flex" aria-hidden="true"><FileText className="h-4 w-4" /></span>
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold text-slate-800 dark:text-slate-100">
                             {invoice.invoiceNumber} · {formatAppEventDateTime(invoice.createdAt || invoice.invoiceDate)}
@@ -2904,7 +2673,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       const serviceId = linkedSale?.serviceId ||
                         subscriptions.find(subscription => subscription.id === pay.subscriptionId)?.serviceId;
                       return (
-                        <div key={pay.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-800">
+                        <div key={pay.id} className="customer-transaction-row flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-800">
+                          <span className="customer-row-icon hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-200/70 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300 sm:flex" aria-hidden="true"><CreditCard className="h-4 w-4" /></span>
                           <div className="min-w-0 flex-1">
                             <div className="truncate font-semibold text-slate-800 dark:text-slate-100">
                               {services.find(service => service.id === serviceId)?.name || (language === 'bn' ? 'সার্ভিস অনুপলব্ধ' : 'Service unavailable')}
@@ -2975,7 +2745,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       : `No ${timelineFilter} recorded for this customer.`}
                 </p>
               ) : (
-                <ol aria-label="Customer transaction events" className="max-h-[28rem] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
+                <ol aria-label="Customer transaction events" className="customer-timeline--v2 max-h-[28rem] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
                   {visibleTimeline.map(event => {
                     const iconClass = event.type === 'refund'
                       ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300'

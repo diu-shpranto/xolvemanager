@@ -9,7 +9,8 @@ export type DashboardSummaryWidgetId =
   | 'expiringSubscriptions30'
   | 'outstandingPayments'
   | 'availableAdvanceCredit'
-  | 'overdueInvoices';
+  | 'overdueInvoices'
+  | 'totalSales';
 export type DashboardPanelWidgetId =
   | 'attention'
   | 'revenueTrend'
