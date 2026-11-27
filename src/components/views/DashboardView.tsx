@@ -2053,6 +2053,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           formatValue={amount => formatNumber(Math.round(amount))}
           prefersReducedMotion={prefersReducedMotion}
         /></strong>
+        <span className="dashboard-kpi-hint">{language === 'bn' ? `${formatNumber(activeCustomerCount)} সক্রিয়` : `${formatNumber(activeCustomerCount)} active`}</span>
       </button>
     ),
     activeSubscriptions: order => (
@@ -2063,6 +2064,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           formatValue={amount => formatNumber(Math.round(amount))}
           prefersReducedMotion={prefersReducedMotion}
         /></strong>
+        <span className="dashboard-kpi-hint">MRR {formatCurrency(currentTotalMRR, currency)}</span>
       </button>
     ),
     expiringSubscriptions7: order => (
@@ -2095,6 +2097,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             prefersReducedMotion={prefersReducedMotion}
           /></strong></span>
         </span>
+        <span className="dashboard-kpi-hint">{language === 'bn' ? `${formatNumber(allDashboardAttentionSales.length)}টি বিক্রয়ে বকেয়া` : `${formatNumber(allDashboardAttentionSales.length)} sale${allDashboardAttentionSales.length === 1 ? '' : 's'} with due`}</span>
       </button>
     ),
     availableAdvanceCredit: order => (
@@ -2105,6 +2108,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           formatValue={amount => formatCurrency(amount, currency)}
           prefersReducedMotion={prefersReducedMotion}
         /></strong>
+        <span className="dashboard-kpi-hint">{language === 'bn' ? `${formatNumber(advanceCreditByCustomer.size)} জন গ্রাহক` : `${formatNumber(advanceCreditByCustomer.size)} customer${advanceCreditByCustomer.size === 1 ? '' : 's'}`}</span>
       </button>
     ),
     overdueInvoices: order => (
@@ -2193,11 +2197,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const gettingStartedCompletedCount = gettingStartedSteps.filter(step => step.completed).length;
 
   return (
-    <div className="dashboard-view section-layout-shell mx-auto flex max-w-[1600px] flex-col gap-5 px-3 py-3 sm:gap-6 sm:px-6 sm:py-6 xl:px-8">
+    <div className="dashboard-view section-layout-shell mx-auto flex max-w-[1600px] flex-col gap-4 px-3 py-3 sm:gap-5 sm:px-6 sm:py-6 xl:px-8">
       <header className="dashboard-page-header flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <p className="text-sm font-bold tracking-wide text-violet-700 dark:text-violet-300">{dashboardCopy.overview}</p>
-          <h1 className="mt-1 whitespace-nowrap text-3xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-4xl">
+          <p className="text-xs font-bold tracking-wide text-violet-700 dark:text-violet-300">{dashboardCopy.overview}</p>
+          <h1 className="mt-1 whitespace-nowrap text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[1.75rem]">
             {dashboardCopy.title}
           </h1>
         </div>
@@ -3074,7 +3078,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Row 2: Recharts Visualizations (MRR Trends & Subscription Distribution by Service) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
         {/* Visualization 1: Monthly Recurring Revenue (MRR) Trends (7 cols - Primary Focus) */}
-        <div className="lg:col-span-7 p-5 sm:p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
+        <div className="lg:col-span-7 p-4 sm:p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
           <div>
             {/* Header & Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800/80">
@@ -3229,7 +3233,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </p>
               </div>
             ) : (
-            <div className="pt-4 h-68 sm:h-76 w-full">
+            <div className="pt-4 h-60 sm:h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
                   data={mrrTrendData}
@@ -3358,7 +3362,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Visualization 2: Active Subscription Distribution by Service Type (5 cols) */}
-        <div className="lg:col-span-5 p-5 sm:p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
+        <div className="lg:col-span-5 p-4 sm:p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
           <div>
             {/* Header & Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
@@ -3575,7 +3579,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* Row 2.5: Monthly Revenue Growth Trends - Recharts Line Chart */}
-      <div className="p-5 sm:p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-5">
+      <div className="p-4 sm:p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-4">
         {/* Header & Controls Toolbar */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
           <div>
@@ -3857,7 +3861,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </p>
           </div>
         ) : (
-        <div className="pt-2 h-72 sm:h-80 w-full">
+        <div className="pt-2 h-64 sm:h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={monthlyRevenueGrowthData}
