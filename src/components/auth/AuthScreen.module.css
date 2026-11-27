@@ -1,7 +1,13 @@
-/* Visual system for the sign-in / sign-up screens only: the minimal,
- * professional centered-card login page — flat light-gray page, one white
- * 440px card, 14px corners, solid #5925DC primary. No gradients, no
- * decorative rings or illustrations. Scoped to AuthScreen via CSS modules.
+/* Visual system for the sign-in / sign-up screens only: the "glass aurora"
+ * redesign (27 Nov 2026) built around the new logo — neon glass X with a
+ * person + shield, violet / blue / pink. Light aurora page (soft color
+ * blobs on near-white), one white glass card with a gradient top strip,
+ * the wordmark large with a soft halo behind it, gradient primary button.
+ * Logo sizing follows the redesign spec: 280px wide on desktop
+ * (260-300px range), 220px on mobile (210-240px range), centered above
+ * the heading with generous breathing space, aspect ratio preserved.
+ * Scoped to AuthScreen via CSS modules; all auth logic, copy, fields and
+ * flows are untouched — only the visuals changed.
  *
  * The global `auth-page` class is kept on <main> alongside .shell so the
  * CSS variables (--auth-ink, --auth-violet, --auth-focus), the
@@ -15,12 +21,13 @@
  *
  * The auth pages always stay light, even on dark-mode systems (owner
  * decision, 27 Nov 2026); the wordmark always uses its default tone.
+ * There is deliberately no dark-mode block in this file.
  */
 
 .shell:global(.auth-page) {
-  --auth-violet: #5925dc;
-  --auth-violet-dark: #4e21b8;
-  --auth-focus: #5925dc;
+  --auth-violet: #7c3aed;
+  --auth-violet-dark: #6d28d9;
+  --auth-focus: #7c3aed;
   display: flex;
   min-height: 100vh;
   min-height: 100dvh;
@@ -30,15 +37,22 @@
   padding: 1.25rem 1rem 2.5rem;
   color: #17213b;
   font-family: var(--font-sans);
-  background: #f3f4f6;
+  background-color: #faf9ff;
+  background-image:
+    radial-gradient(36rem 24rem at 12% 8%, rgba(124, 58, 237, 0.1), transparent 62%),
+    radial-gradient(30rem 22rem at 88% 12%, rgba(37, 99, 235, 0.09), transparent 62%),
+    radial-gradient(44rem 30rem at 50% 112%, rgba(225, 25, 252, 0.06), transparent 62%);
+  background-repeat: no-repeat;
 }
 
-.shell:global(.auth-page)[data-auth-mode="login"] {
-  background: #f3f4f6;
-}
-
+.shell:global(.auth-page)[data-auth-mode="login"],
 .shell:global(.auth-page)[data-auth-mode="signup"] {
-  background: #f3f4f6;
+  background-color: #faf9ff;
+  background-image:
+    radial-gradient(36rem 24rem at 12% 8%, rgba(124, 58, 237, 0.1), transparent 62%),
+    radial-gradient(30rem 22rem at 88% 12%, rgba(37, 99, 235, 0.09), transparent 62%),
+    radial-gradient(44rem 30rem at 50% 112%, rgba(225, 25, 252, 0.06), transparent 62%);
+  background-repeat: no-repeat;
 }
 
 .shell:global(.auth-page)[data-auth-mode="login"]::before,
@@ -78,49 +92,69 @@
   position: static;
   min-height: 2.75rem;
   padding: 0.38rem 0.72rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.625rem;
+  border: 1px solid #e7e3f7;
+  border-radius: 0.75rem;
   color: #4b5563;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.85);
   box-shadow: none;
   transform: none;
 }
 
 .shell:global(.auth-page) .topbar :global(.auth-language):hover {
-  border-color: #d1d5db;
-  background: #f9fafb;
+  border-color: #d9d2f5;
+  background: #f8f7ff;
   transform: none;
 }
 
-/* Wordmark, centered above the card. */
+/* Wordmark, centered above the card, LARGE (260-300px desktop,
+ * 210-240px mobile per the redesign spec), with a soft aurora halo
+ * and generous breathing space. Aspect ratio is preserved by the
+ * image itself (1080x200); only the width is set, height stays auto. */
 .brandmark {
+  position: relative;
   display: flex;
   justify-content: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.brandmark::before {
+  content: "";
+  position: absolute;
+  inset: -3rem -5rem;
+  z-index: 0;
+  background: radial-gradient(closest-side, rgba(124, 58, 237, 0.18), rgba(37, 99, 235, 0.09) 48%, transparent 72%);
+  pointer-events: none;
+}
+
+.brandLogo {
+  position: relative;
+  z-index: 1;
 }
 
 .brandLogo :global(.brand-lockup__wordmark) {
-  width: 11rem;
+  width: 17.5rem;
   height: auto;
 }
 
 .brandLogo :global(.brand-lockup__tagline) {
-  color: #5925dc;
-  font-size: 0.68rem;
+  color: #6d28d9;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
 }
 
 /* Heading + intro, centered above the card. */
 .heading {
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
   text-align: center;
 }
 
 .heading h1 {
   margin: 0;
   color: #17213b;
-  font-size: 1.5rem;
+  font-size: 1.65rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   line-height: 1.2;
   text-wrap: balance;
 }
@@ -129,54 +163,64 @@
   margin: 0.5rem auto 0;
   max-width: 24rem;
   color: #66718b;
-  font-size: 0.875rem;
+  font-size: 0.9rem;
   line-height: 1.55;
 }
 
-/* The card: 440px, 14px corners, subtle shadow. */
+/* The card: white glass, 24px corners, gradient top strip, soft shadow. */
 .card {
+  position: relative;
   width: 100%;
-  padding: 1.75rem 1.75rem 1.5rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.875rem;
+  padding: 2rem 1.75rem 1.6rem;
+  border: 1px solid rgba(124, 58, 237, 0.12);
+  border-radius: 1.5rem;
   background: #ffffff;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px rgba(16, 24, 40, 0.06);
+  box-shadow: 0 24px 60px rgba(76, 29, 149, 0.12), 0 2px 8px rgba(76, 29, 149, 0.06);
 }
 
-/* Flat white inputs (the global .auth-input has a subtle gradient). */
+.card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 2rem;
+  right: 2rem;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #7c3aed, #2563eb, #e119fc);
+}
+
+/* Soft lavender inputs (the global .auth-input has a subtle gradient). */
 .shell :global(.auth-input) {
-  border-radius: 0.625rem;
-  background: #ffffff;
+  border-color: #e7e3f7;
+  border-radius: 0.75rem;
+  background: #f8f7ff;
 }
 
-.shell:global(.auth-page)[data-auth-mode="login"] :global(.auth-input) {
-  border-radius: 0.625rem;
-  background: #ffffff;
-}
-
+.shell:global(.auth-page)[data-auth-mode="login"] :global(.auth-input),
 .shell:global(.auth-page)[data-auth-mode="signup"] :global(.auth-input) {
-  border-radius: 0.625rem;
-  background: #ffffff;
+  border-color: #e7e3f7;
+  border-radius: 0.75rem;
+  background: #f8f7ff;
+}
+
+.shell :global(.auth-input):hover {
+  border-color: #d9d2f5;
 }
 
 .shell :global(.auth-input):focus {
-  border-color: #5925dc;
-  box-shadow: 0 0 0 3px rgba(89, 37, 220, 0.15);
-}
-
-.shell:global(.auth-page)[data-auth-mode="login"] :global(.auth-input):focus {
-  border-color: #5925dc;
+  border-color: #7c3aed;
   background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(89, 37, 220, 0.15);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.16), 0 0 0 1px rgba(124, 58, 237, 0.08);
 }
 
+.shell:global(.auth-page)[data-auth-mode="login"] :global(.auth-input):focus,
 .shell:global(.auth-page)[data-auth-mode="signup"] :global(.auth-input):focus {
-  border-color: #5925dc;
+  border-color: #7c3aed;
   background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(89, 37, 220, 0.15);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.16), 0 0 0 1px rgba(124, 58, 237, 0.08);
 }
 
-/* Google button: outlined white, no lift. */
+/* Google button: outlined white, soft lavender hover. */
 .googleBtn {
   display: flex;
   width: 100%;
@@ -184,8 +228,8 @@
   align-items: center;
   gap: 0.7rem;
   padding: 0.65rem 0.9rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.625rem;
+  border: 1px solid #e7e3f7;
+  border-radius: 0.75rem;
   color: #303249;
   background: #ffffff;
   font: inherit;
@@ -197,8 +241,8 @@
 }
 
 .googleBtn:hover:not(:disabled) {
-  border-color: #d1d5db;
-  background: #f9fafb;
+  border-color: #d9d2f5;
+  background: #f8f7ff;
 }
 
 .googleBtn:disabled {
@@ -216,7 +260,7 @@
   color: #8175ae;
 }
 
-/* Primary submit: solid #5925DC, no gradient, no lift. */
+/* Primary submit: violet-to-blue gradient, soft lift on hover. */
 .primaryBtn {
   display: flex;
   width: 100%;
@@ -226,25 +270,28 @@
   gap: 0.55rem;
   margin-top: 0.15rem;
   padding: 0.72rem 1rem;
-  border: 1px solid #5925dc;
-  border-radius: 0.625rem;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
   color: #ffffff;
-  background: #5925dc;
+  background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 48%, #2563eb 100%);
+  box-shadow: 0 8px 20px rgba(124, 58, 237, 0.32);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 0.88rem;
   font-weight: 720;
   cursor: pointer;
-  transition: background-color 150ms ease, border-color 150ms ease;
+  transition: filter 150ms ease, transform 150ms ease, box-shadow 150ms ease;
 }
 
 .primaryBtn:hover:not(:disabled) {
-  border-color: #4e21b8;
-  background: #4e21b8;
+  filter: brightness(1.07);
+  box-shadow: 0 12px 26px rgba(124, 58, 237, 0.4);
+  transform: translateY(-1px);
 }
 
 .primaryBtn:active:not(:disabled) {
-  border-color: #421a9e;
-  background: #421a9e;
+  filter: brightness(0.97);
+  box-shadow: 0 6px 16px rgba(124, 58, 237, 0.3);
+  transform: translateY(0);
 }
 
 .primaryBtn:disabled {
@@ -270,7 +317,7 @@
   min-height: 2.75rem;
   padding: 0.5rem 0.35rem;
   border: 0;
-  color: #5925dc;
+  color: #6d28d9;
   background: transparent;
   font: inherit;
   font-weight: 650;
@@ -330,14 +377,14 @@
 }
 
 .page :global(.auth-footer-link:hover) {
-  color: #4c4a68;
+  color: #6d28d9;
   background: transparent;
   box-shadow: none;
 }
 
 .page :global(.auth-footer-link:focus-visible) {
   background: transparent;
-  outline: 2px solid rgba(89, 37, 220, 0.45);
+  outline: 2px solid rgba(124, 58, 237, 0.45);
   outline-offset: 3px;
 }
 
@@ -360,12 +407,16 @@
   }
 
   .brandmark {
-    margin-bottom: 1.1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .brandLogo :global(.brand-lockup__wordmark) {
+    width: 13.75rem;
   }
 
   .card {
-    padding: 1.35rem 1.15rem 1.2rem;
-    border-radius: 0.875rem;
+    padding: 1.6rem 1.15rem 1.3rem;
+    border-radius: 1.5rem;
   }
 
   .googleBtn,
