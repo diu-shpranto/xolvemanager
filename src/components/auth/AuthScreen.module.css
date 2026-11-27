@@ -513,6 +513,33 @@
   }
 }
 
+/* Medium-height viewports (tall laptop windows, ~1000px): the full-size
+ * logo does not leave room for the signup form, so the logo steps down
+ * one size here too. Shorter screens get the tighter rules below. */
+@media (max-height: 1080px) {
+  .brandmark {
+    margin-bottom: 1rem;
+  }
+
+  .brandLogo :global(.brand-lockup__stacked) {
+    width: 11.25rem;
+  }
+
+  .brandLogo :global(.brand-lockup__wordmark) {
+    width: 11.25rem;
+  }
+}
+
+@media (max-height: 1080px) and (max-width: 480px) {
+  .brandLogo :global(.brand-lockup__stacked) {
+    width: 9.375rem;
+  }
+
+  .brandLogo :global(.brand-lockup__wordmark) {
+    width: 9.375rem;
+  }
+}
+
 /* Short viewports (small laptop windows, short phones): shrink the logo
  * a step further and tighten spacing again so the page still fits.
  * The intro line and the small Google hint hide here — the heading
