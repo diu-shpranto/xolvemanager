@@ -42,8 +42,8 @@ test('manifest icons exist as PNG assets with their declared dimensions', () => 
   }
 
   for (const wordmarkFile of [
-    'xolvemanager-wordmark-violet-dark.png',
-    'xolvemanager-wordmark-violet-light.png',
+    'xolvemanager-wordmark-violet-dark-v2.png',
+    'xolvemanager-wordmark-violet-light-v2.png',
   ]) {
     const wordmark = readFileSync(new URL(`../../public/${wordmarkFile}`, import.meta.url));
     assert.equal(wordmark.readUInt32BE(16), 1080);
