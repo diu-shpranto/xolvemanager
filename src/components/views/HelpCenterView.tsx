@@ -70,28 +70,30 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
   };
 
   return (
-    <main className="section-layout-shell mx-auto w-full max-w-[1600px] space-y-5 px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
-      <header className="overflow-hidden rounded-3xl border border-violet-200/80 bg-gradient-to-br from-white via-violet-50 to-indigo-50 p-5 shadow-sm dark:border-violet-900/60 dark:from-slate-900 dark:via-violet-950/30 dark:to-slate-900 sm:p-7">
+    <main className="help-view--v2 section-layout-shell mx-auto w-full max-w-[1600px] space-y-5 px-3 py-3 sm:px-6 sm:py-6 lg:px-8" data-section="help">
+      <header className="sv-page-header--v2 overflow-hidden rounded-3xl border border-violet-200/80 bg-gradient-to-br from-white via-violet-50 to-indigo-50 p-5 shadow-sm dark:border-violet-900/60 dark:from-slate-900 dark:via-violet-950/30 dark:to-slate-900 sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-3xl">
-            <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/80 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-violet-800 dark:border-violet-800 dark:bg-slate-900/70 dark:text-violet-200">
-              <LifeBuoy aria-hidden="true" className="h-4 w-4" />
-              {labels?.brand || 'XolveManager Help Center'}
-            </span>
-            <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-3xl">
-              {article ? article.title : labels?.heading || 'What would you like help with?'}
-            </h1>
-            <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-base">
-              {article
-                ? article.introduction
-                : labels?.introduction || 'Search verified guides, follow common workflows, or find a next step when something is missing.'}
-            </p>
+          <div className="sv-page-header-inner max-w-3xl">
+            <span className="sv-page-icon"><LifeBuoy aria-hidden="true" className="h-5 w-5" /></span>
+            <div className="sv-page-titles">
+              <span className="sv-brand-pill--v2 inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/80 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-violet-800 dark:border-violet-800 dark:bg-slate-900/70 dark:text-violet-200">
+                {labels?.brand || 'XolveManager Help Center'}
+              </span>
+              <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-3xl">
+                {article ? article.title : labels?.heading || 'What would you like help with?'}
+              </h1>
+              <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300 sm:text-base">
+                {article
+                  ? article.introduction
+                  : labels?.introduction || 'Search verified guides, follow common workflows, or find a next step when something is missing.'}
+              </p>
+            </div>
           </div>
           {article && (
             <button
               type="button"
               onClick={() => onSelectArticle(null)}
-              className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 text-sm font-semibold text-violet-800 transition hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-violet-800 dark:bg-slate-900 dark:text-violet-200 dark:hover:bg-violet-950/50"
+              className="sv-btn-ghost--v2 inline-flex min-h-10 items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 text-sm font-semibold text-violet-800 transition hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-violet-800 dark:bg-slate-900 dark:text-violet-200 dark:hover:bg-violet-950/50"
             >
               <ArrowLeft aria-hidden="true" className="h-4 w-4" />
               {labels?.allHelpTopics || 'All help topics'}
@@ -101,7 +103,7 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
       </header>
 
       <div className="min-w-0 space-y-5">
-        <section aria-label={labels?.browseTopics || 'Browse help topics'} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
+        <section aria-label={labels?.browseTopics || 'Browse help topics'} className="sv-panel--v2 rounded-2xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
           <div className="relative max-w-2xl">
             <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <label htmlFor="help-search" className="sr-only">{labels?.articleSearchLabel || 'Search help articles'}</label>
@@ -114,7 +116,7 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
                 if (articleId) onSelectArticle(null);
               }}
               placeholder={labels?.searchPlaceholder || 'Search guides and answers'}
-              className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-sm text-slate-900 shadow-xs outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              className="sv-field--v2 min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-sm text-slate-900 shadow-xs outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
             />
             {query && (
               <button
@@ -128,7 +130,7 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
             )}
           </div>
 
-          <nav aria-label={labels?.browseTopics || 'Help categories'} className="mt-3 flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible">
+          <nav aria-label={labels?.browseTopics || 'Help categories'} className="sv-filter-chips--v2 mt-3 flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible">
             <button
               type="button"
               onClick={() => selectCategory('All')}
@@ -156,14 +158,14 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
 
         <section id="help-center-content" tabIndex={-1} aria-live="polite" className="min-w-0 outline-none">
           {article ? (
-            <article className="mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6 lg:p-8">
+            <article className="sv-article--v2 mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6 lg:p-8">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-800 dark:bg-violet-950/50 dark:text-violet-200">{language === 'bn' ? helpCategoriesBn[article.category] : article.category}</span>
+                <span className="sv-cat-chip--v2 rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-800 dark:bg-violet-950/50 dark:text-violet-200">{language === 'bn' ? helpCategoriesBn[article.category] : article.category}</span>
                 {article.destination && <span className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300">{labels?.workspace || 'Workspace'}: {article.destinationLabel?.replace(/^Open /, '').replace(/ খুলুন$/, '') || 'in app'}</span>}
               </div>
 
               {article.problem && (
-                <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/70 dark:bg-amber-950/30">
+                <div className="sv-callout-amber--v2 mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/70 dark:bg-amber-950/30">
                   <div className="flex items-start gap-2">
                     <ShieldAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
                     <div className="space-y-2 text-sm leading-6">
@@ -179,7 +181,7 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
                 <ol className="mt-4 space-y-3">
                   {article.steps.map((step, index) => (
                     <li key={`${article.id}-step-${index}`} className="flex min-w-0 gap-3">
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs font-bold text-violet-800 dark:bg-violet-950/60 dark:text-violet-200">{index + 1}</span>
+                      <span className="sv-step-num--v2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs font-bold text-violet-800 dark:bg-violet-950/60 dark:text-violet-200">{index + 1}</span>
                       <p className="min-w-0 pt-0.5 text-sm leading-6 text-slate-700 dark:text-slate-300">{step}</p>
                     </li>
                   ))}
@@ -187,7 +189,7 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
               </section>
 
               {article.note && (
-                <p className="mt-5 rounded-xl border border-blue-200 bg-blue-50/70 p-3 text-sm leading-6 text-blue-900 dark:border-blue-900/70 dark:bg-blue-950/25 dark:text-blue-200">
+                <p className="sv-callout-blue--v2 mt-5 rounded-xl border border-blue-200 bg-blue-50/70 p-3 text-sm leading-6 text-blue-900 dark:border-blue-900/70 dark:bg-blue-950/25 dark:text-blue-200">
                   <strong>{labels?.goodToKnow || 'Good to know:'}</strong> {article.note}
                 </p>
               )}
@@ -197,7 +199,7 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onNavigate(article.destination!, article.id)}
-                    className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white transition hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
+                    className="sv-btn-primary--v2 inline-flex min-h-10 items-center gap-2 rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white transition hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
                   >
                     {article.destinationLabel || labels?.openWorkspace || 'Open workspace'}
                     <ArrowRight aria-hidden="true" className="h-4 w-4" />
@@ -206,7 +208,7 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
                 {article.externalHref && (
                   <a
                     href={article.externalHref}
-                    className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    className="sv-btn-ghost--v2 inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
                     Privacy &amp; Data Notice <ExternalLink aria-hidden="true" className="h-4 w-4" />
                   </a>
@@ -222,7 +224,7 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
                         key={related.id}
                         type="button"
                         onClick={() => openArticle(related.id)}
-                        className="group flex min-h-12 items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50/50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:border-violet-800 dark:hover:bg-violet-950/20"
+                        className="sv-related--v2 group flex min-h-12 items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50/50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:text-slate-200 dark:hover:border-violet-800 dark:hover:bg-violet-950/20"
                       >
                         <span className="min-w-0">{getLocalizedHelpArticle(related, language).title}</span>
                         <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-violet-600 transition-transform group-hover:translate-x-0.5 dark:text-violet-300" />
@@ -255,10 +257,10 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
                     type="button"
                     key={item.id}
                     onClick={() => openArticle(item.id)}
-                    className="group flex min-h-40 flex-col rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-xs transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-violet-800 sm:p-5"
+                    className="sv-help-card--v2 group flex min-h-40 flex-col rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-xs transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-violet-800 sm:p-5"
                   >
                     <span className="flex items-center justify-between gap-3">
-                      <span className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-800 dark:bg-violet-950/50 dark:text-violet-200">{language === 'bn' ? helpCategoriesBn[item.category] : item.category}</span>
+                      <span className="sv-cat-chip--v2 rounded-full bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-800 dark:bg-violet-950/50 dark:text-violet-200">{language === 'bn' ? helpCategoriesBn[item.category] : item.category}</span>
                       <BookOpen aria-hidden="true" className="h-4 w-4 shrink-0 text-violet-500" />
                     </span>
                     <span className="mt-3 text-sm font-bold text-slate-900 dark:text-white">{getLocalizedHelpArticle(item, language).title}</span>
@@ -271,19 +273,19 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
               </div>
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center dark:border-slate-700 dark:bg-slate-900">
-              <CircleHelp aria-hidden="true" className="mx-auto h-9 w-9 text-slate-400" />
+            <div className="sv-empty--v2 rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center dark:border-slate-700 dark:bg-slate-900">
+              <CircleHelp aria-hidden="true" className="sv-empty-icon mx-auto h-9 w-9 text-slate-400" />
               <h2 className="mt-3 text-base font-bold text-slate-900 dark:text-white">{labels?.noResults || 'No matching guides'}</h2>
               <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-slate-600 dark:text-slate-400">
                 {labels?.noResultsHelp || 'Try a shorter keyword or choose another category. You can also browse these common guides.'}
               </p>
               <div className="mt-5 flex flex-wrap justify-center gap-2">
                 {suggested.slice(0, 3).map(item => (
-                  <button key={item.id} type="button" onClick={() => openArticle(item.id)} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-violet-800 hover:border-violet-300 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-violet-200 dark:hover:bg-violet-950/30">
+                  <button key={item.id} type="button" onClick={() => openArticle(item.id)} className="sv-btn-ghost--v2 min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-violet-800 hover:border-violet-300 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-violet-200 dark:hover:bg-violet-950/30">
                     {getLocalizedHelpArticle(item, language).title}
                   </button>
                 ))}
-                <button type="button" onClick={() => { setQuery(''); setCategory('All'); }} className="min-h-10 rounded-xl bg-violet-700 px-3 text-xs font-semibold text-white hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-violet-600">
+                <button type="button" onClick={() => { setQuery(''); setCategory('All'); }} className="sv-btn-primary--v2 min-h-10 rounded-xl bg-violet-700 px-3 text-xs font-semibold text-white hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-violet-600">
                   {labels?.browseAll || 'Browse all guides'}
                 </button>
               </div>
@@ -292,7 +294,7 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
               </a>
             </div>
           )}
-          <div className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
+          <div className="sv-footnote--v2 mt-5 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
             <span className="inline-flex items-center gap-2"><CheckCircle2 aria-hidden="true" className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> {labels?.verified || 'Instructions reflect current XolveManager screens.'}</span>
             <button type="button" onClick={() => onNavigate('dashboard')} className="shrink-0 font-semibold text-violet-700 hover:underline focus-visible:outline-2 focus-visible:outline-violet-600 dark:text-violet-300">
               {labels?.backToApp || 'Back to app'}

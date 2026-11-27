@@ -1061,8 +1061,8 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   const pendingPaymentCount = subscriptionRows.filter(row => row.due > 0).length;
 
   return (
-    <div className="subscriptions-view section-layout-shell mx-auto max-w-[1600px] space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-5 lg:px-8">
-      <div className="customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:flex-nowrap sm:gap-4 sm:pb-4">
+    <div data-section="subscriptions" className="subscriptions-view section-layout-shell mx-auto max-w-[1600px] space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-5 lg:px-8">
+      <div className="subscription-page-header--v2 customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:flex-nowrap sm:gap-4 sm:pb-4">
         <div className="customer-heading flex min-w-0 flex-1 items-start gap-3">
           <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11">
             <CreditCard className="h-5 w-5" />
@@ -1107,14 +1107,14 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         </div>
       </div>
 
-      <section aria-label="Subscription summary" className="subscription-summary-grid grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
+      <section aria-label="Subscription summary" className="subscription-summary--v2 subscription-summary-grid grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
         {[
-          { label: 'Total Subscriptions', value: statusCounts.all, icon: Layers, tone: 'slate' },
-          { label: 'Active', value: statusCounts.active, icon: CheckCircle2, tone: 'emerald' },
-          { label: 'Ending Soon', value: statusCounts.expiring, icon: Clock, tone: 'amber' },
-          { label: 'Expired', value: statusCounts.expired, icon: AlertCircle, tone: 'rose' },
-          { label: 'Pending Payments', value: pendingPaymentCount, icon: DollarSign, tone: 'amber' },
-          { label: 'Renewals Due', value: statusCounts.renewalsDue, icon: RefreshCw, tone: 'violet' },
+          { label: language === 'bn' ? 'মোট সাবস্ক্রিপশন' : 'Total Subscriptions', hint: language === 'bn' ? `${statusCounts.active}টি সক্রিয়` : `${statusCounts.active} active`, value: statusCounts.all, icon: Layers, tone: 'slate' },
+          { label: language === 'bn' ? 'সক্রিয়' : 'Active', hint: statusCounts.all ? (language === 'bn' ? `মোটের ${Math.round((statusCounts.active / statusCounts.all) * 100)}%` : `${Math.round((statusCounts.active / statusCounts.all) * 100)}% of total`) : (language === 'bn' ? 'কোনো সাবস্ক্রিপশন নেই' : 'No subscriptions'), value: statusCounts.active, icon: CheckCircle2, tone: 'emerald' },
+          { label: language === 'bn' ? 'শীঘ্রই শেষ' : 'Ending Soon', hint: language === 'bn' ? 'নবায়নের সময় ঘনিয়ে এসেছে' : 'Renewal window open', value: statusCounts.expiring, icon: Clock, tone: 'amber' },
+          { label: language === 'bn' ? 'মেয়াদ শেষ' : 'Expired', hint: language === 'bn' ? 'এখনই নবায়ন প্রয়োজন' : 'Renewal overdue', value: statusCounts.expired, icon: AlertCircle, tone: 'rose' },
+          { label: language === 'bn' ? 'বকেয়া পেমেন্ট' : 'Pending Payments', hint: language === 'bn' ? 'পেমেন্ট সংগ্রহ করুন' : 'Payment to collect', value: pendingPaymentCount, icon: DollarSign, tone: 'amber' },
+          { label: language === 'bn' ? 'নবায়ন বাকি' : 'Renewals Due', hint: language === 'bn' ? 'মেয়াদ শেষ বা শেষের পথে' : 'Expiring or expired', value: statusCounts.renewalsDue, icon: RefreshCw, tone: 'violet' },
         ].map(item => {
           const toneClasses = {
             slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
@@ -1128,6 +1128,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             <div className="min-w-0">
               <p className="text-[11px] font-semibold leading-tight text-slate-500 dark:text-slate-400">{item.label}</p>
               <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-slate-950 dark:text-white">{item.value}</p>
+              <p className="subscription-summary-hint mt-0.5 text-[11px] leading-4 text-slate-400 dark:text-slate-500">{item.hint}</p>
             </div>
             <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${toneClasses}`}>
               <item.icon className="h-3.5 w-3.5" />
@@ -1137,7 +1138,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         })}
       </section>
 
-      <section aria-label="Quick subscription filters" className="subscription-quick-followup flex flex-col gap-2 rounded-xl border border-violet-100 bg-gradient-to-r from-violet-50/70 via-white to-white p-3 dark:border-violet-950/70 dark:from-violet-950/20 dark:via-[#151C28] dark:to-[#151C28] sm:flex-row sm:items-center sm:justify-between">
+      <section aria-label="Quick subscription filters" className="subscription-quick--v2 subscription-quick-followup flex flex-col gap-2 rounded-xl border border-violet-100 bg-gradient-to-r from-violet-50/70 via-white to-white p-3 dark:border-violet-950/70 dark:from-violet-950/20 dark:via-[#151C28] dark:to-[#151C28] sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-bold text-slate-800 dark:text-slate-100">
             {language === 'bn' ? 'দ্রুত ফলো-আপ' : 'Quick follow-up'}
@@ -1198,7 +1199,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       </section>
 
       <div className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Subscription statuses">
-        <div className="flex w-max min-w-full gap-1.5 rounded-xl border border-slate-200/80 bg-white p-1.5 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:gap-2 sm:p-2">
+        <div className="subscription-status-tabs--v2 flex w-max min-w-full gap-1.5 rounded-xl border border-slate-200/80 bg-white p-1.5 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:gap-2 sm:p-2">
         {[
           { id: 'all', label: 'All', count: statusCounts.all },
           { id: 'active', label: 'Active', count: statusCounts.active },
@@ -1240,12 +1241,12 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         {/* LEFT PANEL: SUBSCRIPTION BROWSER (List view on mobile)                */}
         {/* ===================================================================== */}
         <div
-          className={`space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900/60 sm:p-4 md:sticky md:top-4 md:col-span-5 lg:col-span-4 ${
+          className={`subscription-browser--v2 space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900/60 sm:p-4 md:sticky md:top-4 md:col-span-5 lg:col-span-4 ${
             mobileView === 'detail' ? 'hidden md:block' : 'block'
           }`}
         >
           {/* Search Box */}
-          <div className="relative">
+          <div className="subscription-search--v2 relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
@@ -1294,7 +1295,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
 
           {/* Collapsible Advanced Filters */}
           {showAdvancedFilters && (
-            <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-2xs space-y-2 text-xs">
+            <div className="subscription-filters--v2 p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-2xs space-y-2 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 <div>
                   <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Service</label>
@@ -1383,7 +1384,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
           )}
 
           {/* Subscription List Items */}
-          <div className="space-y-2 overflow-visible pr-1 md:max-h-[calc(100vh-22rem)] md:overflow-y-auto md:scrollbar-thin">
+          <div className="subscription-list--v2 space-y-2 overflow-visible pr-1 md:max-h-[calc(100vh-22rem)] md:overflow-y-auto md:scrollbar-thin">
             {filteredSubscriptions.length === 0 ? (
               <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 text-slate-400">
                 <CreditCard className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
@@ -1423,7 +1424,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                       setSelectedSubId(sub.id);
                       setMobileView('detail');
                     }}
-                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer relative group ${
+                    className={`subscription-list-card--v2 sub-card--${status === 'expiring_soon' ? 'expiring' : status}${isSelected ? ' sub-card--selected' : ''} p-3.5 rounded-2xl border transition-all cursor-pointer relative group ${
                       isSelected
                         ? 'bg-violet-50/70 dark:bg-violet-950/20 border-violet-500/60 dark:border-violet-500/50 shadow-sm ring-1 ring-violet-500/20'
                         : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800/90 hover:border-slate-300 dark:hover:border-slate-700 shadow-2xs'
@@ -1517,7 +1518,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                       )}
                     </div>
                     {filteredSubscriptions.length > pageSize && (
-                      <nav aria-label="Subscription pages" className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-900">
+                      <nav aria-label="Subscription pages" className="subscription-pagination--v2 flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-900">
                         <span className="text-slate-500">Page {currentPage} of {totalPages}</span>
                         <div className="flex gap-2">
                           <button type="button" onClick={() => setCurrentPage(page => Math.max(1, page - 1))} disabled={currentPage === 1} className="min-h-8 rounded-lg border border-slate-200 px-3 font-semibold text-slate-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200">Previous</button>
@@ -1541,7 +1542,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
           }`}
         >
           {selectedSub && selectedService ? (
-            <div className="subscription-detail-workspace space-y-4">
+            <div className="subscription-detail-workspace subscription-detail--v2 space-y-4">
               {/* Mobile Back Button */}
               <div className="md:hidden flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
                 <button
@@ -1558,11 +1559,11 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               </div>
 
               {/* Workspace Main Header Card */}
-              <div className="subscription-detail-header p-4 sm:p-5 bg-white dark:bg-slate-900 rounded-2xl border border-violet-200/70 dark:border-violet-900/50 shadow-xs space-y-4">
+              <div className="subscription-detail-header subscription-detail-hero--v2 p-4 sm:p-5 bg-white dark:bg-slate-900 rounded-2xl border border-violet-200/70 dark:border-violet-900/50 shadow-xs space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div className="flex items-start gap-3.5 min-w-0">
                     <div
-                      className="w-12 h-12 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-sm ring-4 ring-violet-50 dark:ring-violet-950/40"
+                      className="sub-detail-logo w-12 h-12 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-sm ring-4 ring-violet-50 dark:ring-violet-950/40"
                       style={{ backgroundColor: selectedService.color || '#7c3aed' }}
                     >
                       {selectedService.logoUrl
@@ -1613,7 +1614,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                       type="button"
                       onClick={() => openRenewDrawer(selectedSub)}
                       disabled={selectedSubStatus === 'cancelled'}
-                      className="inline-flex items-center gap-2 px-3.5 py-2 bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                      className="sub-hero-renew inline-flex items-center gap-2 px-3.5 py-2 bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Zap className="w-4 h-4 fill-current stroke-[2.5]" />
                       <span>{language === 'bn' ? 'রিনিউ করুন' : 'Renew'}</span>
@@ -1625,7 +1626,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                       onClick={() => selectedCustomer && onOpenNewSale(selectedCustomer.id, selectedService.id)}
                       disabled={!selectedCustomer}
                       title={!selectedCustomer ? 'Customer unavailable' : undefined}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-xl transition-all cursor-pointer"
+                      className="sub-hero-action inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-xl transition-all cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5 text-slate-500" />
                       <span>{t('newSale')}</span>
@@ -1635,7 +1636,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => openEditDrawer(selectedSub)}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-xl transition-all cursor-pointer"
+                      className="sub-hero-action inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-xl transition-all cursor-pointer"
                     >
                       <Edit3 className="w-3.5 h-3.5 text-slate-500" />
                       <span>{language === 'bn' ? 'এডিট' : 'Edit'}</span>
@@ -1646,7 +1647,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
-                        className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                        className="sub-hero-more p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                         title="More Actions"
                       >
                         <MoreVertical className="w-4 h-4" />
@@ -1703,7 +1704,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                 </div>
 
                 {/* Subscription Summary 4-Box Metrics */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                <div className={`subscription-detail-stats--v2 sub-stats--${selectedSubStatus} grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs`}>
                   <div className="p-3 bg-violet-50/60 dark:bg-violet-950/20 rounded-xl border border-violet-100 dark:border-violet-900/50">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
                       Days Remaining
@@ -1753,7 +1754,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               </div>
 
               {/* Expiry Alert & Visual Progress Bar */}
-              <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-2">
+              <div className="subscription-expiry--v2 p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -1800,9 +1801,9 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               </div>
 
               {/* Core Business Relationship Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="subscription-detail-grid--v2 grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* 1. Customer Information Card */}
-                <div className="p-4 bg-sky-100/80 dark:bg-sky-950/35 rounded-2xl border border-sky-300 dark:border-sky-800 shadow-xs space-y-3">
+                <div className="sub-detail-card--v2 sub-detail-card--customer p-4 bg-sky-100/80 dark:bg-sky-950/35 rounded-2xl border border-sky-300 dark:border-sky-800 shadow-xs space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-sky-100 dark:border-sky-900/60">
                     <div className="flex items-center gap-2">
                       <User className="w-4 h-4 text-sky-600 dark:text-sky-400" />
@@ -1883,7 +1884,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                 </div>
 
                 {/* 2. Service & Plan Details Card */}
-                <div className="p-4 bg-violet-100/80 dark:bg-violet-950/35 rounded-2xl border border-violet-300 dark:border-violet-800 shadow-xs space-y-3">
+                <div className="sub-detail-card--v2 sub-detail-card--service p-4 bg-violet-100/80 dark:bg-violet-950/35 rounded-2xl border border-violet-300 dark:border-violet-800 shadow-xs space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-violet-100 dark:border-violet-900/60">
                     <div className="flex items-center gap-2">
                       <Tv className="w-4 h-4 text-violet-600 dark:text-violet-400" />
@@ -1932,7 +1933,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                 </div>
 
                 {/* 3. Account & Profile Assignment Card */}
-                {selectedRequiresResource && <div className="p-4 bg-amber-100/80 dark:bg-amber-950/35 rounded-2xl border border-amber-300 dark:border-amber-800 shadow-xs space-y-3">
+                {selectedRequiresResource && <div className="sub-detail-card--v2 sub-detail-card--account p-4 bg-amber-100/80 dark:bg-amber-950/35 rounded-2xl border border-amber-300 dark:border-amber-800 shadow-xs space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-amber-100 dark:border-amber-900/60">
                     <div className="flex items-center gap-2">
                       <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
@@ -2004,7 +2005,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                 </div>}
 
                 {/* 4. Payment & Invoice Record Card */}
-                <div className="p-4 bg-emerald-100/80 dark:bg-emerald-950/35 rounded-2xl border border-emerald-300 dark:border-emerald-800 shadow-xs space-y-3">
+                <div className="sub-detail-card--v2 sub-detail-card--payment p-4 bg-emerald-100/80 dark:bg-emerald-950/35 rounded-2xl border border-emerald-300 dark:border-emerald-800 shadow-xs space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-emerald-100 dark:border-emerald-900/60">
                     <div className="flex items-center gap-2">
                       <DollarSign className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -2117,7 +2118,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               </div>
 
               {/* 5. Subscription Timeline & Historical Activity */}
-              <div className="p-4 sm:p-5 bg-slate-50/70 dark:bg-slate-900/80 rounded-2xl border border-slate-300/80 dark:border-slate-700 shadow-xs space-y-3">
+              <div className="sub-timeline--v2 p-4 sm:p-5 bg-slate-50/70 dark:bg-slate-900/80 rounded-2xl border border-slate-300/80 dark:border-slate-700 shadow-xs space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
                   <div className="flex items-center gap-2">
                     <History className="w-4 h-4 text-slate-600 dark:text-slate-300" />
@@ -2173,7 +2174,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               </div>
             </div>
           ) : (
-            <div className="relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-6 text-center shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:min-h-[520px] sm:p-10">
+            <div className="subscription-empty--v2 relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-6 text-center shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:min-h-[520px] sm:p-10">
               <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-violet-100/70 blur-3xl dark:bg-violet-950/40" />
               <div className="pointer-events-none absolute -bottom-24 -left-14 h-56 w-56 rounded-full bg-indigo-100/60 blur-3xl dark:bg-indigo-950/30" />
               <div className="relative flex max-w-md flex-col items-center">
@@ -2232,7 +2233,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         maxWidth="lg"
       >
         {selectedSub && selectedService && (
-          <form onSubmit={handleExecuteRenew} className="space-y-4 text-xs">
+          <form onSubmit={handleExecuteRenew} className="subscription-modal-form--v2 subscription-renew-form--v2 space-y-4 text-xs">
             {/* Current Subscription Recap */}
             <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 space-y-2">
               <div className="flex items-center justify-between">
@@ -2311,7 +2312,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             </div>
 
             {/* Live New Expiry Calculation */}
-            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
+            <div className="sub-renew-expiry--v2 p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
               <div>
                 <span className="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 block">
                   New Expiry Date
@@ -2381,7 +2382,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               </div>
             </div>
 
-            <dl className="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-800/60">
+            <dl className="sub-renew-totals--v2 grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-800/60">
               <div><dt className="text-slate-500">Total</dt><dd className="mt-1 font-bold text-slate-900 dark:text-white">{formatCurrency(renewalTotal, renewCurrency)}</dd></div>
               <div><dt className="text-slate-500">Paid</dt><dd className="mt-1 font-bold text-slate-900 dark:text-white">{formatCurrency(renewalPaid, renewCurrency)}</dd></div>
               <div><dt className="text-slate-500">Due</dt><dd className="mt-1 font-bold text-slate-900 dark:text-white">{formatCurrency(renewalDue, renewCurrency)}</dd></div>
@@ -2423,7 +2424,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         title={language === 'bn' ? 'সাবস্ক্রিপশন সম্পাদনা' : 'Edit Subscription'}
         maxWidth="md"
       >
-        <form onSubmit={handleSaveEdit} className="space-y-3.5 text-xs">
+        <form onSubmit={handleSaveEdit} className="subscription-modal-form--v2 subscription-edit-form--v2 space-y-3.5 text-xs">
           <div>
             <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Plan</label>
             <input
@@ -2524,7 +2525,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         maxWidth="md"
       >
         {selectedAccount && (
-          <div className="space-y-3 text-xs">
+          <div className="subscription-profile-picker--v2 space-y-3 text-xs">
             <p className="text-slate-500 dark:text-slate-400">
               Select an available profile slot on <strong>{selectedAccount.email}</strong>:
             </p>
@@ -2597,7 +2598,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         title="Cancel Subscription"
         maxWidth="md"
       >
-        <div className="space-y-3.5 text-xs">
+        <div className="subscription-cancel--v2 space-y-3.5 text-xs">
           <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-300">
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -2657,7 +2658,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         title={language === 'bn' ? '+ নতুন সাবস্ক্রিপশন তৈরি করুন' : '+ New Subscription'}
         maxWidth="xl"
       >
-        <form onSubmit={handleCreateNewSubscription} className="space-y-4 text-xs">
+        <form onSubmit={handleCreateNewSubscription} className="subscription-modal-form--v2 subscription-new-form--v2 space-y-4 text-xs">
           {/* Step 1: Customer Selection */}
           <div>
             <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">

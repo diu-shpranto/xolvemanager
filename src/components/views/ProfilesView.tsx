@@ -438,7 +438,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
   return (
     <div className="profiles-view section-layout-shell mx-auto max-w-[1600px] space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-6 lg:px-8" data-section="profiles">
       {/* 1. PAGE HEADER */}
-      <div className="profile-page-header flex min-w-0 flex-wrap items-center justify-between gap-3">
+      <div className="profile-page-header profile-page-header--v2 flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="profile-page-heading flex min-w-0 flex-1 items-start gap-3">
           <div className="profile-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
             <UserCheck className="h-5 w-5 stroke-[2.2]" />
@@ -558,7 +558,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
       </div>
 
       {/* 3. SEARCH + FILTER TOOLBAR */}
-      <div className="profile-toolbar">
+      <div className="profile-toolbar profile-toolbar--v2">
         <div className="profile-toolbar-layout flex flex-col items-stretch gap-2.5">
           {/* Search bar */}
           <div className="profile-search-field relative flex-1">
@@ -677,7 +677,15 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
           </button>
         </div>
       ) : (
-        <div className="profile-card-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+        <div className="profile-list">
+          <div className="profile-list-column-header" aria-hidden="true">
+            <span>{language === 'bn' ? 'প্রোফাইল' : 'Profile'}</span>
+            <span>{language === 'bn' ? 'অ্যাকাউন্ট' : 'Account'}</span>
+            <span>{language === 'bn' ? 'স্ট্যাটাস' : 'Status'}</span>
+            <span>{language === 'bn' ? 'বরাদ্দকৃত গ্রাহক' : 'Assigned To'}</span>
+            <span>{language === 'bn' ? 'পিন ও মেয়াদ' : 'PIN & Dates'}</span>
+            <span>{language === 'bn' ? 'অ্যাকশন' : 'Actions'}</span>
+          </div>
           {filteredProfiles.map(({ profile, account, service, customer, subscription }) => {
             const hasPin = Boolean(profile.pin);
             const profileStatus = getProfileStatus(profile, account, settings.businessProfile?.timeZone);
@@ -717,149 +725,145 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
             return (
               <div
                 key={profile.id}
-                className={`profile-card rounded-xl border ${accent.border} border-l-[3.5px] sm:border-l-4 ${accent.leftBorder} ${accent.bgTint} shadow-2xs hover:shadow-xs transition-all p-4 sm:p-5 flex flex-col justify-between overflow-hidden`}
+                className={`profile-card profile-card--v2 is-${profileStatus.toLowerCase()} rounded-xl border shadow-2xs transition-all overflow-hidden`}
               >
-                <div className="space-y-3.5">
-                  {/* Card Header: Service Label + Status Badge */}
-                  <div className="flex items-center justify-between gap-2">
-                    {/* Service Label with Icon */}
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <div
-                        className={`profile-card-service-icon w-6 h-6 rounded-md ${accent.iconBg} flex items-center justify-center shrink-0`}
-                        title={service?.name}
-                      >
-                        {service?.logoUrl ? (
-                          <img src={service.logoUrl} alt={service.name} className="w-3.5 h-3.5 object-contain" />
-                        ) : (
-                          <span aria-hidden="true" className="text-[10px] font-bold">{service?.name.trim().charAt(0).toUpperCase() || '?'}</span>
-                        )}
-                      </div>
-                      <span
-                        className={`profile-card-service-badge text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md border truncate ${accent.badge}`}
-                        title={service?.name || 'Service'}
-                      >
-                        {service?.name || 'Service'}
-                      </span>
-                    </div>
-
-                    {/* Semantic Status Badge */}
-                    <span
-                      className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${statusInfo.cls}`}
+                {/* Identity column: service + profile name */}
+                <div className="profile-row-col profile-row-col--identity">
+                  {/* Service row */}
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    {/* Service icon */}
+                    <div
+                      className={`profile-card-service-icon w-6 h-6 rounded-md ${accent.iconBg} flex items-center justify-center shrink-0`}
+                      title={service?.name}
                     >
-                      <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`} />
-                      <span>{statusInfo.text}</span>
+                      {service?.logoUrl ? (
+                        <img src={service.logoUrl} alt={service.name} className="w-3.5 h-3.5 object-contain" />
+                      ) : (
+                        <span aria-hidden="true" className="text-[10px] font-bold">{service?.name.trim().charAt(0).toUpperCase() || '?'}</span>
+                      )}
+                    </div>
+                    <span
+                      className={`profile-card-service-badge text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md border truncate ${accent.badge}`}
+                      title={service?.name || 'Service'}
+                    >
+                      {service?.name || 'Service'}
                     </span>
                   </div>
 
-                  {/* Profile Name (Main content) */}
-                  <div>
-                    <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate tracking-tight">
-                      {profile.profileName}
-                    </h3>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      {isAssigned
-                        ? language === 'bn'
-                          ? 'সক্রিয় ব্যবহারকারী বরাদ্দ'
-                          : 'Active customer allocation'
-                        : language === 'bn'
-                        ? 'বিক্রয় বা বরাদ্দের জন্য প্রস্তুত'
-                        : 'Ready to allocate'}
-                    </p>
-                  </div>
+                  {/* Profile Name */}
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate tracking-tight">
+                    {profile.profileName}
+                  </h3>
+                  <p className="profile-row-sub text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    {isAssigned
+                      ? language === 'bn'
+                        ? 'সক্রিয় ব্যবহারকারী বরাদ্দ'
+                        : 'Active customer allocation'
+                      : language === 'bn'
+                      ? 'বিক্রয় বা বরাদ্দের জন্য প্রস্তুত'
+                      : 'Ready to allocate'}
+                  </p>
+                </div>
 
-                  {/* Account Information Block */}
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-2 text-xs">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">
-                        {language === 'bn' ? 'মাস্টার অ্যাকাউন্ট' : 'Account'}
-                      </span>
-                      <div className="flex items-center justify-between gap-2">
-                        <span
-                          className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 truncate"
-                          title={account.email}
-                        >
-                          {account.email}
-                        </span>
-                        <button
-                          onClick={() => copyToClipboard(account.email, `acc-${profile.id}`, 'Account email copied!')}
-                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded transition-colors shrink-0 cursor-pointer"
-                          title="Copy account email"
-                        >
-                          {copiedId === `acc-${profile.id}` ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* PIN Block */}
-                    <div className="p-2.5 bg-slate-50/90 dark:bg-slate-900/80 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-                        <Lock className={`w-3.5 h-3.5 ${hasPin ? 'text-amber-500' : 'text-slate-400'}`} />
-                        <span className="text-[11px] font-semibold">
-                          {language === 'bn' ? 'প্রোফাইল পিন' : 'Profile PIN'}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        {hasPin ? (
-                          <>
-                            <span className="font-mono font-bold text-xs text-slate-900 dark:text-white tracking-widest">
-                              ••••
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-slate-400 dark:text-slate-500 text-xs italic">
-                            {language === 'bn' ? 'পিন নেই' : 'No PIN'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Assigned To Block */}
-                    <div>
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">
-                        {language === 'bn' ? 'বরাদ্দকৃত গ্রাহক' : 'Assigned To'}
-                      </span>
-                      {customer ? (
-                        <div className="flex items-center justify-between gap-1">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <div className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-bold shrink-0">
-                              {customer.name.charAt(0).toUpperCase()}
-                            </div>
-                            <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
-                              {customer.name}
-                            </span>
-                          </div>
-                          {customer.phone && (
-                            <span className="font-mono text-[10px] text-slate-500 truncate">
-                              {customer.phone}
-                            </span>
-                          )}
-                        </div>
+                {/* Account column */}
+                <div className="profile-row-col profile-row-col--account">
+                  <span className="profile-row-label">
+                    {language === 'bn' ? 'মাস্টার অ্যাকাউন্ট' : 'Account'}
+                  </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 truncate"
+                      title={account.email}
+                    >
+                      {account.email}
+                    </span>
+                    <button
+                      onClick={() => copyToClipboard(account.email, `acc-${profile.id}`, 'Account email copied!')}
+                      className="profile-copy-btn text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded transition-colors shrink-0 cursor-pointer"
+                      title="Copy account email"
+                    >
+                      {copiedId === `acc-${profile.id}` ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
                       ) : (
-                        <span className="text-xs text-slate-400 dark:text-slate-500 italic">
-                          {language === 'bn' ? 'বরাদ্দহীন' : 'Unassigned'}
-                        </span>
+                        <Copy className="w-3.5 h-3.5" />
                       )}
-                    </div>
-                    {(subscription?.startDate || subscription?.expiryDate || profile.startDate || profile.expiryDate) && (
-                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500 dark:text-slate-400">
-                        {(subscription?.startDate || profile.startDate) && (
-                          <span>{language === 'bn' ? 'শুরু:' : 'Started:'} {subscription?.startDate || profile.startDate}</span>
-                        )}
-                        {(subscription?.expiryDate || profile.expiryDate) && (
-                          <span>{language === 'bn' ? 'মেয়াদ শেষ:' : 'Expires:'} {subscription?.expiryDate || profile.expiryDate}</span>
-                        )}
-                      </div>
-                    )}
+                    </button>
                   </div>
                 </div>
 
-                {/* Card Bottom / Actions */}
-                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                {/* Status column */}
+                <div className="profile-row-col profile-row-col--status">
+                  <span
+                    className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${statusInfo.cls}`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`} />
+                    <span>{statusInfo.text}</span>
+                  </span>
+                </div>
+
+                {/* Assigned-to column */}
+                <div className="profile-row-col profile-row-col--customer">
+                  <span className="profile-row-label">
+                    {language === 'bn' ? 'বরাদ্দকৃত গ্রাহক' : 'Assigned To'}
+                  </span>
+                  {customer ? (
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center text-[10px] font-bold shrink-0">
+                          {customer.name.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                          {customer.name}
+                        </span>
+                      </div>
+                      {customer.phone && (
+                        <span className="font-mono text-[10px] text-slate-500 truncate">
+                          {customer.phone}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-slate-400 dark:text-slate-500 italic">
+                      {language === 'bn' ? 'বরাদ্দহীন' : 'Unassigned'}
+                    </span>
+                  )}
+                </div>
+
+                {/* Security column: PIN + dates */}
+                <div className="profile-row-col profile-row-col--security">
+                  <div className="profile-pin-chip flex items-center justify-between gap-1.5 rounded-xl border px-2.5 py-2">
+                    <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                      <Lock className={`w-3.5 h-3.5 ${hasPin ? 'text-amber-500' : 'text-slate-400'}`} />
+                      <span className="text-[11px] font-semibold">
+                        {language === 'bn' ? 'প্রোফাইল পিন' : 'Profile PIN'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {hasPin ? (
+                        <span className="font-mono font-bold text-xs text-slate-900 dark:text-white tracking-widest">
+                          ••••
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 dark:text-slate-500 text-xs italic">
+                          {language === 'bn' ? 'পিন নেই' : 'No PIN'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {(subscription?.startDate || subscription?.expiryDate || profile.startDate || profile.expiryDate) && (
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500 dark:text-slate-400">
+                      {(subscription?.startDate || profile.startDate) && (
+                        <span>{language === 'bn' ? 'শুরু:' : 'Started:'} {subscription?.startDate || profile.startDate}</span>
+                      )}
+                      {(subscription?.expiryDate || profile.expiryDate) && (
+                        <span>{language === 'bn' ? 'মেয়াদ শেষ:' : 'Expires:'} {subscription?.expiryDate || profile.expiryDate}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions column */}
+                <div className="profile-row-col profile-row-col--actions">
                   <div>
                     {isAssigned && customer ? (
                       <button
@@ -880,7 +884,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
                             showToast('Customer unassigned from profile.', 'info');
                           }
                         }}
-                        className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 hover:underline cursor-pointer flex items-center gap-1"
+                        className="profile-unassign-action text-[11px] font-semibold text-amber-700 dark:text-amber-400 hover:underline cursor-pointer flex items-center gap-1"
                       >
                         <UserX className="w-3 h-3" />
                         <span>{t('unassign')}</span>
@@ -895,7 +899,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
                           setAssignCustomerId('');
                           setAssignSubscriptionId('');
                         }}
-                        className="text-[11px] font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+                        className="profile-assign-action text-[11px] font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
                       >
                         Assign
                       </button>
@@ -954,7 +958,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
           }
           maxWidth="md"
         >
-          <form onSubmit={handleAddProfile} className="space-y-4 text-xs">
+          <form onSubmit={handleAddProfile} className="profile-modal-form space-y-4 text-xs">
             <div>
               <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
                 {language === 'bn' ? 'মাস্টার অ্যাকাউন্ট নির্বাচন করুন' : 'Select Target Account'} <span className="text-rose-500">*</span>
@@ -1043,7 +1047,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
           title="Assign Profile"
           maxWidth="md"
         >
-          <form onSubmit={handleAssignProfile} className="space-y-4 text-sm">
+          <form onSubmit={handleAssignProfile} className="profile-assign-form space-y-4 text-sm">
             <label className="block font-medium text-slate-700 dark:text-slate-300">
               Customer
               <select
@@ -1071,7 +1075,7 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
             {assignCustomerId && assignableSubscriptions.length === 0 && (
               <div role="status" className="space-y-2 text-xs text-amber-700 dark:text-amber-300">
                 <p>This customer has no compatible unassigned subscription for the selected service and plan. Create a sale first to record the subscription, payment, and profile assignment together.</p>
-                {onCreateSaleForProfile && <button type="button" onClick={handleCreateSaleForProfile} className="rounded-lg bg-emerald-600 px-3 py-2 font-semibold text-white hover:bg-emerald-700">Create Sale for this Profile</button>}
+                {onCreateSaleForProfile && <button type="button" onClick={handleCreateSaleForProfile} className="profile-create-sale-btn rounded-lg bg-emerald-600 px-3 py-2 font-semibold text-white hover:bg-emerald-700">Create Sale for this Profile</button>}
               </div>
             )}
             <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">

@@ -495,6 +495,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const partialCount = useMemo(() => visiblePayments.filter(payment => payment.paymentStatus === 'partial').length, [visiblePayments]);
   const pendingCount = useMemo(() => visiblePayments.filter(payment => payment.paymentStatus === 'pending').length, [visiblePayments]);
   const failedCount = useMemo(() => visiblePayments.filter(payment => payment.paymentStatus === 'failed').length, [visiblePayments]);
+  const receivedCount = useMemo(() => visiblePayments.filter(payment => payment.paymentStatus === 'paid' || payment.paymentStatus === 'partial').length, [visiblePayments]);
+  const refundedCount = useMemo(() => visiblePayments.filter(payment => payment.paymentStatus === 'refunded').length, [visiblePayments]);
   const today = getTodayDateString(settings.businessProfile?.timeZone);
   const collectionDateRangeValues = collectionPeriod === 'all' ? null : getDateRange(collectionPeriod, '', '', settings.businessProfile?.timeZone);
   const collectionDateRange = {
@@ -1114,8 +1116,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   ].filter(Boolean).length;
 
   return (
-    <div className="payments-view customer-list-page mx-auto flex max-w-[1600px] flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-6 xl:px-8">
-      <header className="customer-page-header flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:flex-nowrap sm:gap-4 sm:pb-4">
+    <div data-section="payments" className="payments-view customer-list-page mx-auto flex max-w-[1600px] flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-6 xl:px-8">
+      <header className="customer-page-header payment-page-header--v2 flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800 sm:flex-nowrap sm:gap-4 sm:pb-4">
         <div className="customer-heading flex min-w-0 flex-1 items-start gap-3">
           <div className="customer-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 sm:h-11 sm:w-11">
             <CreditCard className="h-5 w-5" />
@@ -1139,7 +1141,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </div>
       </header>
 
-      <div className="payment-tabs flex w-full items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-slate-900">
+      <div className="payment-tabs payment-tabs--v2 flex w-full items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-slate-900">
         <TabButton active={activeTab === 'payments'} onClick={() => setActiveTab('payments')}>Payment history <span>{payments.length}</span></TabButton>
         <TabButton active={activeTab === 'outstanding'} onClick={() => setActiveTab('outstanding')}>Money Due <span>{outstandingSales.length}</span></TabButton>
         <TabButton active={activeTab === 'due-collection'} onClick={() => setActiveTab('due-collection')}>Collect Payments <span>{dueCollectionSummary.customers.length}</span></TabButton>
@@ -1147,12 +1149,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
       {activeTab === 'due-collection' ? (
         <>
-          <section aria-label="Payment summary" className="payment-summary-grid grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-5">
-            <Metric label={`Total Money Due · ${currency}`} value={formatCurrency(dueCollectionSummary.totalOutstanding, currency)} tone="amber" icon={AlertCircle} />
-            <Metric label={`Past-Due Amount · ${currency}`} value={formatCurrency(dueCollectionSummary.overdueAmount, currency)} tone="rose" icon={CalendarDays} />
-            <Metric label="Partly Paid Sales" value={String(dueCollectionSummary.partiallyPaidTransactions)} tone="amber" icon={CreditCard} />
-            <Metric label="Paid Sales" value={String(dueCollectionSummary.fullyPaidTransactions)} tone="emerald" icon={CheckCircle2} />
-            <Metric label={`Payments Received · ${currency}`} value={formatCurrency(dueCollectionSummary.paymentsCollected, currency)} tone="emerald" icon={HandCoins} />
+          <section aria-label="Payment summary" className="payment-summary-grid payment-summary--v2 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-5">
+            <Metric label={`Total Money Due · ${currency}`} value={formatCurrency(dueCollectionSummary.totalOutstanding, currency)} tone="amber" icon={AlertCircle} hint={`${dueCollectionSummary.customers.length} ${dueCollectionSummary.customers.length === 1 ? 'customer' : 'customers'}`} />
+            <Metric label={`Past-Due Amount · ${currency}`} value={formatCurrency(dueCollectionSummary.overdueAmount, currency)} tone="rose" icon={CalendarDays} hint={`${dueCollectionSummary.customers.filter(customer => customer.overdue > 0).length} past due`} />
+            <Metric label="Partly Paid Sales" value={String(dueCollectionSummary.partiallyPaidTransactions)} tone="amber" icon={CreditCard} hint={`${dueCollectionSummary.partiallyPaidTransactions + dueCollectionSummary.fullyPaidTransactions} sales in period`} />
+            <Metric label="Paid Sales" value={String(dueCollectionSummary.fullyPaidTransactions)} tone="emerald" icon={CheckCircle2} hint={`${dueCollectionSummary.partiallyPaidTransactions + dueCollectionSummary.fullyPaidTransactions} sales in period`} />
+            <Metric label={`Payments Received · ${currency}`} value={formatCurrency(dueCollectionSummary.paymentsCollected, currency)} tone="emerald" icon={HandCoins} hint={collectionPeriod === 'month' ? 'This month' : collectionPeriod === 'last_month' ? 'Last month' : 'All time'} />
           </section>
           <section className="dashboard-panel flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between sm:p-4">
             <div className="min-w-0">
@@ -1217,7 +1219,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               {visibleDueCustomers.length} {visibleDueCustomers.length === 1 ? 'customer' : 'customers'} with an outstanding balance
             </div>
           </section>
-          <section aria-label="Due collection customers" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
+          <section aria-label="Due collection customers" className="dashboard-panel payment-table-panel--v2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
             <div className="data-table-scroll hidden overflow-x-auto lg:block" role="region" aria-label="Due collection table" tabIndex={0}>
               <table className="w-full min-w-[1120px] text-left text-xs">
                 <caption className="sr-only">Payments awaiting collection</caption>
@@ -1295,7 +1297,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               {pageDueCustomers.map(summary => {
                 const status = customerDueFollowUps[summary.customer.id]?.status || 'follow_up_required';
                 return (
-                  <article key={summary.customer.id} className="space-y-3 p-4">
+                  <article key={summary.customer.id} className="payment-mobile-card--v2 payment-mobile-card--due space-y-3 p-4">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0"><h3 className="break-words font-semibold text-slate-900 dark:text-white"><CustomerNameWithType customer={summary.customer} /></h3><p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-slate-500">{summary.customer.phone ? <><Phone className="h-3 w-3" />{summary.customer.phone}</> : 'No contact number'}</p></div>
                       <strong className="shrink-0 font-mono text-amber-700 dark:text-amber-300">{formatCurrency(summary.due, currency)}</strong>
@@ -1344,16 +1346,16 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </>
       ) : (
         <>
-      <section aria-label="Payment summary" className="payment-summary-grid grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Metric label="Received" value={<CurrencyAmounts amounts={currencyTotals} field="received" />} tone="emerald" icon={Wallet} />
-        <Metric label="Outstanding Due" value={<CurrencyAmounts amounts={currencyTotals} field="due" />} tone="amber" icon={AlertCircle} />
-        <Metric label="Partial" value={String(partialCount)} tone="amber" icon={CreditCard} />
-        <Metric label="Pending" value={String(pendingCount)} tone="slate" icon={Clock3} />
-        <Metric label="Refunds" value={<CurrencyAmounts amounts={currencyTotals} field="refunded" />} tone="rose" icon={ArrowDownToLine} />
-        <Metric label="Failed" value={String(failedCount)} tone="rose" icon={AlertCircle} />
+      <section aria-label="Payment summary" className="payment-summary-grid payment-summary--v2 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <Metric label="Received" value={<CurrencyAmounts amounts={currencyTotals} field="received" />} tone="emerald" icon={Wallet} hint={`${receivedCount} ${receivedCount === 1 ? 'payment' : 'payments'}`} />
+        <Metric label="Outstanding Due" value={<CurrencyAmounts amounts={currencyTotals} field="due" />} tone="amber" icon={AlertCircle} hint={`${visibleOutstanding.length} ${visibleOutstanding.length === 1 ? 'invoice' : 'invoices'}`} />
+        <Metric label="Partial" value={String(partialCount)} tone="amber" icon={CreditCard} hint={`of ${visiblePayments.length} listed`} />
+        <Metric label="Pending" value={String(pendingCount)} tone="slate" icon={Clock3} hint={`of ${visiblePayments.length} listed`} />
+        <Metric label="Refunds" value={<CurrencyAmounts amounts={currencyTotals} field="refunded" />} tone="rose" icon={ArrowDownToLine} hint={`${refundedCount} ${refundedCount === 1 ? 'refund' : 'refunds'}`} />
+        <Metric label="Failed" value={String(failedCount)} tone="rose" icon={AlertCircle} hint={`of ${visiblePayments.length} listed`} />
       </section>
 
-      <section className="payment-followup dashboard-panel rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
+      <section className="payment-followup payment-followup--v2 dashboard-panel rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-3">
           <div><p className="text-xs font-bold text-slate-800 dark:text-slate-100">Payment follow-up</p><p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">Jump to payments that need attention</p></div>
           <button
@@ -1387,7 +1389,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </div>
       </section>
 
-      <section aria-label="Payment methods summary" className="payment-method-summary dashboard-panel space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
+      <section aria-label="Payment methods summary" className="payment-method-summary payment-method-summary--v2 dashboard-panel space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div><h2 className="text-sm font-bold text-slate-900 dark:text-white">Received by method</h2><p className="text-xs text-slate-500">Received and partial payments matching the current filters.</p></div>
           {selectedMethod !== 'all' && <span className="text-xs text-slate-500">Filtered to {selectedMethod}</span>}
@@ -1396,7 +1398,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           {paymentMethodSummaries.map(group => <div key={group.currency}>
             <h3 className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{group.currency}</h3>
             <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
-              {group.methods.map(item => <div key={`${group.currency}-${item.methodId}`} className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 p-2.5 dark:border-slate-800 dark:bg-slate-800/50 sm:p-3">
+              {group.methods.map(item => <div key={`${group.currency}-${item.methodId}`} className="payment-method-tile--v2 min-w-0 rounded-lg border border-slate-100 bg-slate-50 p-2.5 dark:border-slate-800 dark:bg-slate-800/50 sm:p-3">
                 <div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold">{item.methodName}</span><span className="text-[10px] capitalize text-slate-500">{item.category.replace('_', ' ')}</span></div>
                 <p className="mt-1 font-mono text-base font-bold">{formatCurrency(item.received, group.currency)}</p>
                 <p className="mt-1 text-[11px] text-slate-500">{item.transactionCount} payments · Avg {formatCurrency(item.average, group.currency)}</p>
@@ -1407,7 +1409,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </div> : <p className="payment-method-empty rounded-lg border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-slate-700">No received payments match the current filters.</p>}
       </section>
 
-      <section className="payment-filter-panel dashboard-panel space-y-3 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-3">
+      <section className="payment-filter-panel payment-filter-panel--v2 dashboard-panel space-y-3 rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-3">
         <div className="flex flex-col gap-2 lg:flex-row">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">Search payments and receivables</span>
@@ -1474,7 +1476,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       </section>
 
       {activeTab === 'payments' ? (
-        <section aria-label="Payments table" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
+        <section aria-label="Payments table" className="dashboard-panel payment-table-panel--v2 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
           <div className="data-table-scroll hidden overflow-x-auto lg:block" role="region" aria-label="Payments table; scroll horizontally to view all columns" tabIndex={0}>
             <table className="w-full min-w-[980px] text-left text-xs">
               <caption className="sr-only">Payment history</caption>
@@ -1506,7 +1508,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             {pagePayments.map(payment => {
               const sale = paymentSales.get(payment.id);
               const customer = resolvePaymentCustomer(payment, customers, sales, subscriptions);
-              return <article id={`payment-${payment.id}`} key={payment.id} className={`space-y-2 p-4 ${focusedPaymentIdState === payment.id ? 'bg-violet-50 dark:bg-violet-950/30' : ''}`}>
+              return <article id={`payment-${payment.id}`} key={payment.id} data-status={payment.paymentStatus} className={`payment-mobile-card--v2 space-y-2 p-4 ${focusedPaymentIdState === payment.id ? 'bg-violet-50 dark:bg-violet-950/30' : ''}`}>
                 <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-mono text-xs text-slate-500">{payment.id}</p><h3 className="mt-1 text-sm font-bold text-slate-900 dark:text-white"><CustomerNameWithType customer={customer} nameClassName="min-w-0 break-words" /></h3><p className="text-xs text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</p><p className="break-words text-xs text-slate-500">{sale ? saleItemLabel(sale) : 'Payment'}</p></div><span className="shrink-0 font-mono font-bold">{formatCurrency(payment.amount, payment.currency)}</span></div>
                 <div className="flex flex-wrap items-center justify-between gap-2"><PaymentStatusBadge status={payment.paymentStatus} className={statusStyle(payment.paymentStatus)} icon={statusIcon(payment.paymentStatus)} /><span className="text-xs text-slate-500">{methodLabel(payment.paymentMethodName || payment.paymentMethod)} · {formatAppEventDateTime(payment.createdAt || payment.paymentDate)}</span></div>
                 <div className="flex items-center justify-between gap-2"><span className="truncate font-mono text-[11px] text-slate-500">{payment.transactionId || 'No transaction ID'}</span><button type="button" onClick={() => openPaymentDetails(payment)} className="min-h-9 shrink-0 rounded-lg px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/40">View details</button></div>
@@ -1522,7 +1524,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           />}
         </section>
       ) : (
-        <section aria-label="Unpaid sales" className="dashboard-panel overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
+        <section aria-label="Unpaid sales" className="dashboard-panel payment-table-panel--v2 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
           <div className="data-table-scroll hidden overflow-x-auto lg:block" role="region" aria-label="Unpaid sales table; scroll to see all columns" tabIndex={0}>
             <table className="w-full min-w-[850px] text-left text-xs">
               <caption className="sr-only">Outstanding sales</caption>
@@ -1550,7 +1552,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
             {pageOutstanding.map(({ sale, invoice, due, paid, lastPayment, dueReferenceDate }) => {
               const customer = customersById.get(sale.customerId);
               const days = getAgingDays(dueReferenceDate, settings.businessProfile?.timeZone);
-              return <article key={sale.id} className="space-y-3 p-4">
+              return <article key={sale.id} className="payment-mobile-card--v2 payment-mobile-card--due space-y-3 p-4">
                 <div className="flex items-start justify-between gap-2"><div><h3 className="font-bold"><CustomerNameWithType customer={customer} /></h3><p className="text-xs text-slate-500">{saleItemLabel(sale)}</p><p className="mt-1 text-[11px] text-slate-500">{invoice?.invoiceNumber || sale.invoiceNo}</p></div><p className="font-mono font-bold text-amber-700 dark:text-amber-300">{formatCurrency(due, sale.currency)} due</p></div>
                 <dl className="grid grid-cols-2 gap-2 text-xs"><div><dt className="text-slate-500">Total / Paid</dt><dd>{formatCurrency(sale.amount, sale.currency)} / {formatCurrency(paid, sale.currency)}</dd></div><div><dt className="text-slate-500">Money due</dt><dd>{formatDurationDays(days)} · {getAgingBucket(days, formatNumber, language === 'bn' ? 'দিন' : 'days')}</dd></div><div><dt className="text-slate-500">Last payment</dt><dd>{lastPayment ? formatAppEventDateTime(lastPayment.createdAt || lastPayment.paymentDate) : 'None'}</dd></div></dl>
                 <div className="flex flex-wrap gap-2"><button type="button" onClick={() => openAddPayment(sale.customerId, sale.id)} className="min-h-9 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white hover:bg-violet-700">Add Payment</button>{customer && canContact(customer.id) && <button type="button" onClick={() => openMessage({ customerId: customer.id, saleId: sale.id, templateId: 'payment_reminder' })} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-emerald-200 px-3 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"><MessageCircle className="h-3.5 w-3.5" />WhatsApp Reminder</button>}<button type="button" onClick={() => onNavigateSection?.('sales', sale.id)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Sale</button><button type="button" onClick={() => openInvoice(sale)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">View Invoice</button><button type="button" onClick={() => onNavigateSection?.('customers', sale.customerId)} className="min-h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-slate-700">Customer</button></div>
@@ -1563,7 +1565,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </>
       )}
 
-      {(activeTab === 'payments' ? visiblePayments.length : activeTab === 'outstanding' ? visibleOutstanding.length : visibleDueCustomers.length) > 0 && <nav aria-label="Pagination" className="flex items-center justify-between gap-3 text-xs text-slate-500">
+      {(activeTab === 'payments' ? visiblePayments.length : activeTab === 'outstanding' ? visibleOutstanding.length : visibleDueCustomers.length) > 0 && <nav aria-label="Pagination" className="payment-pagination--v2 flex items-center justify-between gap-3 text-xs text-slate-500">
         <span>Page {currentPage} of {totalPages}</span>
         <div className="flex gap-2"><button type="button" disabled={currentPage <= 1} onClick={() => setPage(value => Math.max(1, value - 1))} className="min-h-9 rounded-lg border border-slate-200 px-3 font-semibold disabled:opacity-40 dark:border-slate-700">Previous</button><button type="button" disabled={currentPage >= totalPages} onClick={() => setPage(value => Math.min(totalPages, value + 1))} className="min-h-9 rounded-lg border border-slate-200 px-3 font-semibold disabled:opacity-40 dark:border-slate-700">Next</button></div>
       </nav>}
@@ -1600,7 +1602,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         <form
           id={newPaymentMode === 'collect' ? 'customer-payment-collection-form' : undefined}
           onSubmit={handleRecordPayment}
-          className={`space-y-4 ${newPaymentMode === 'collect' ? 'payment-collection-form' : ''}`}
+          className={`payment-modal-form--v2 space-y-4 ${newPaymentMode === 'collect' ? 'payment-collection-form' : ''}`}
         >
           {newPaymentMode !== 'collect' && <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800 sm:grid-cols-3" aria-label="Payment action">
             <button type="button" aria-pressed={newPaymentMode === 'sale'} onClick={() => { setNewPaymentMode('sale'); setNewSaleId(''); setNewAmount(''); setCollectionReceipt(null); setPossibleDuplicateConfirmed(false); }} className={`min-h-10 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'sale' ? 'bg-white text-violet-700 shadow-xs dark:bg-slate-700 dark:text-violet-200' : 'text-slate-600 dark:text-slate-300'}`}>Payment for a sale</button>
@@ -2082,8 +2084,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       </Modal>
 
       <Modal isOpen={Boolean(selectedPayment)} onClose={() => { setSelectedPayment(null); setRefundFormOpen(false); }} title={selectedPayment?.id || 'Payment Details'} subtitle={selectedPayment ? `${formatAppEventDateTime(selectedPayment.createdAt || selectedPayment.paymentDate)} · ${selectedPayment.paymentStatus}` : undefined} maxWidth="xl">
-        {selectedPayment && <div className="space-y-5">
-          <section className="grid gap-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-700 sm:grid-cols-3">
+        {selectedPayment && <div className="payment-detail--v2 space-y-5">
+          <section className="payment-detail-hero--v2 grid gap-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-700 sm:grid-cols-3">
             <Detail label="Amount" value={formatCurrency(selectedPayment.amount, selectedPayment.currency)} strong />
             <Detail label="Method" value={methodLabel(selectedPayment.paymentMethodName || selectedPayment.paymentMethod)} />
             <Detail label="Method category" value={selectedPayment.paymentMethodCategory?.replace('_', ' ') || 'Not categorized'} />
@@ -2230,11 +2232,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   );
 };
 
-function Metric({ label, value, tone = 'slate', icon: Icon }: {
+function Metric({ label, value, tone = 'slate', icon: Icon, hint }: {
   label: string;
   value: React.ReactNode;
   tone?: 'slate' | 'emerald' | 'amber' | 'rose';
   icon: React.ComponentType<{ className?: string }>;
+  hint?: string;
 }) {
   const tones = {
     slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
@@ -2242,7 +2245,7 @@ function Metric({ label, value, tone = 'slate', icon: Icon }: {
     amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
     rose: 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
   };
-  return <article className="payment-metric min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:p-3.5"><div className="flex min-w-0 items-center gap-2"><span className={`payment-metric-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}><Icon className="h-3.5 w-3.5" /></span><p className="min-w-0 text-[11px] font-semibold leading-tight text-slate-600 dark:text-slate-300">{label}</p></div><div className="payment-metric-value mt-2 min-w-0 break-words font-mono text-lg font-bold tabular-nums text-slate-950 dark:text-white sm:text-xl">{value}</div></article>;
+  return <article className="payment-metric min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:p-3.5"><span className={`payment-metric-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}><Icon className="h-3.5 w-3.5" /></span><p className="payment-metric-label min-w-0 text-[11px] font-semibold leading-tight text-slate-600 dark:text-slate-300">{label}</p><div className="payment-metric-value mt-2 min-w-0 break-words font-mono text-lg font-bold tabular-nums text-slate-950 dark:text-white sm:text-xl">{value}</div>{hint ? <p className="payment-metric-hint mt-0.5 text-[11px] font-medium leading-4 text-slate-400 dark:text-slate-500">{hint}</p> : null}</article>;
 }
 
 function CurrencyAmounts({ amounts, field }: {
@@ -2265,7 +2268,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 
 function PaymentStatusBadge({ status, className, icon }: { status: PaymentStatus; className: string; icon: React.ReactNode }) {
   const label = status === 'paid' ? 'Paid' : status === 'partial' ? 'Partial' : status === 'pending' ? 'Pending' : status === 'failed' ? 'Failed' : status === 'voided' ? 'Voided' : 'Refunded';
-  return <span aria-label={`Payment status: ${label}`} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold ${className}`}>{icon}{label}</span>;
+  return <span aria-label={`Payment status: ${label}`} className={`payment-status-badge--v2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold ${className}`}>{icon}{label}</span>;
 }
 
 function EmptyState({
@@ -2278,7 +2281,7 @@ function EmptyState({
   action?: { label: string; onClick: () => void };
 }) {
   return (
-    <div className="payment-empty-state px-4 py-8 text-center sm:py-10">
+    <div className="payment-empty-state payment-empty--v2 px-4 py-8 text-center sm:py-10">
       <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
         <Wallet className="h-5 w-5" />
       </div>

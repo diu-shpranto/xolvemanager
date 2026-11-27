@@ -763,7 +763,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
   return (
     <div className="accounts-view section-layout-shell mx-auto max-w-[1600px] space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-6 lg:px-8" data-section="accounts">
       {/* 1. PAGE HEADER */}
-      <div className="account-page-header flex min-w-0 flex-wrap items-center justify-between gap-3">
+      <div className="account-page-header account-page-header--v2 flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="account-heading flex min-w-0 flex-1 items-start gap-3">
           <div className="account-page-icon mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
             <KeyRound className="h-5 w-5" />
@@ -803,6 +803,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
           {
             label: language === 'bn' ? 'মোট অ্যাকাউন্ট' : 'Total Accounts',
             value: totalAccountsCount,
+            hint: language === 'bn' ? `${totalProfileCapacity}টি প্রোফাইল স্লট` : `${totalProfileCapacity} profile slots`,
             icon: KeyRound,
             color: 'text-violet-700 dark:text-violet-300',
             iconSurface: 'bg-violet-100 dark:bg-violet-900/50',
@@ -813,6 +814,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
           {
             label: language === 'bn' ? 'সক্রিয় অ্যাকাউন্ট' : 'Active Accounts',
             value: activeAccountCount,
+            hint: language === 'bn' ? `${totalAccountsCount}টির মধ্যে` : `of ${totalAccountsCount} total`,
             icon: Users,
             color: 'text-emerald-600 dark:text-emerald-400',
             iconSurface: 'bg-emerald-50 dark:bg-emerald-950/50',
@@ -829,6 +831,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
           {
             label: language === 'bn' ? 'ব্যবহৃত প্রোফাইল' : 'Used Profiles',
             value: totalAssignedSlots,
+            hint: language === 'bn' ? `${totalProfileCapacity}টি স্লটের মধ্যে` : `of ${totalProfileCapacity} slots`,
             icon: UserCheck,
             color: 'text-blue-600 dark:text-blue-400',
             iconSurface: 'bg-blue-50 dark:bg-blue-950/50',
@@ -840,6 +843,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
           {
             label: language === 'bn' ? 'উপলব্ধ প্রোফাইল' : 'Available Profiles',
             value: totalAvailableSlots,
+            hint: language === 'bn' ? `${accountsWithCapacityCount}টি অ্যাকাউন্টে` : `in ${accountsWithCapacityCount} accounts`,
             icon: ShieldCheck,
             color: 'text-emerald-600 dark:text-emerald-400',
             iconSurface: 'bg-emerald-50 dark:bg-emerald-950/50',
@@ -867,6 +871,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
             <div className="account-kpi-value mt-2 pl-10 text-[26px] font-bold tracking-tight tabular-nums text-slate-950 dark:text-white sm:text-[30px]">
               {metric.value}
             </div>
+            <p className="account-kpi-hint mt-0.5 pl-10 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
+              {metric.hint}
+            </p>
           </div>
         ))}
       </div>
@@ -885,7 +892,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
       </div>
 
       {/* 3. SEARCH + FILTER TOOLBAR */}
-      <div className="account-toolbar">
+      <div className="account-toolbar account-toolbar--v2">
         <div className="flex flex-col items-stretch gap-2.5">
           {/* Search bar */}
           <div className="account-search-field relative flex-1">
@@ -899,7 +906,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
               }
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="account-search-input w-full h-11 pl-10 pr-9 bg-slate-50/70 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 transition-all font-mono"
+              className="account-search-input w-full h-11 pl-10 pr-9 bg-slate-50/70 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:border-violet-500 focus:bg-white dark:focus:bg-slate-900 transition-all font-mono"
             />
             {searchQuery && (
               <button
@@ -919,7 +926,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
               <select
                 value={selectedServiceId}
                 onChange={e => setSelectedServiceId(e.target.value)}
-                className="account-filter-select w-full h-11 pl-3 pr-8 bg-slate-50/70 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-emerald-500 cursor-pointer appearance-none"
+                className="account-filter-select w-full h-11 pl-3 pr-8 bg-slate-50/70 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-hidden focus:border-violet-500 cursor-pointer appearance-none"
               >
                 <option value="all">{language === 'bn' ? 'সকল সার্ভিস' : 'All Services'}</option>
                 {services.map(s => (
@@ -1062,7 +1069,14 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
             )}
           </div>
         ) : (
-          filteredAccounts.map(acc => {
+          <>
+          <div className="account-list-column-header" aria-hidden="true">
+            <span>{language === 'bn' ? 'অ্যাকাউন্ট' : 'Account'}</span>
+            <span>{language === 'bn' ? 'প্ল্যান ও মেয়াদ' : 'Plan & expiry'}</span>
+            <span>{language === 'bn' ? 'প্রোফাইল স্লট' : 'Profile slots'}</span>
+            <span>{language === 'bn' ? 'কার্যক্রম' : 'Actions'}</span>
+          </div>
+          {filteredAccounts.map(acc => {
             const srv = services.find(s => s.id === acc.serviceId);
             const CategoryIcon = getCategoryIcon(srv?.category);
             const accent = getServiceAccent(srv?.name, srv?.category, srv?.color);
@@ -1163,7 +1177,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
               <div
                 key={acc.id}
                 id={`account-${acc.id}`}
-                className="account-inventory-card transition-colors !rounded-xl !bg-white dark:!bg-[#171622]"
+                className={`account-inventory-card account-inventory-card--v2 transition-colors rounded-xl bg-white dark:bg-[#171622] ${isExpired ? 'is-expired' : isOperational ? 'is-operational' : 'is-inactive'}`}
               >
                 <div className="account-inventory-card-header">
                   <div className="account-card-main">
@@ -1328,7 +1342,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                           type="button"
                           onClick={() => setProfileModalAccount(acc)}
                           disabled={!isAccountActive(acc, settings.businessProfile?.timeZone)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer self-start sm:self-auto disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-700 hover:bg-violet-600 text-white rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer self-start sm:self-auto disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                           <span>Add Profile</span>
@@ -1354,7 +1368,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                         return (
                           <div
                             key={prof.id}
-                            className={`p-3.5 rounded-xl text-xs space-y-2.5 flex flex-col justify-between transition-all ${
+                            className={`account-profile-card ${isAssigned ? 'is-assigned' : 'is-available'} p-3.5 rounded-xl text-xs space-y-2.5 flex flex-col justify-between transition-all ${
                               isAssigned
                                 ? 'bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-2xs'
                                 : 'bg-emerald-50/20 dark:bg-emerald-950/10 border border-dashed border-emerald-300 dark:border-emerald-800/80 hover:border-emerald-400 dark:hover:border-emerald-700 shadow-2xs'
@@ -1489,7 +1503,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                       })}
                     </div>}
                     <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                      <section className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                      <section className="account-detail-section rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                         <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100">Account inventory</h3>
                         <dl className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
                           <div><dt className="text-slate-500">Capacity</dt><dd className="font-semibold">{inventory.capacity}</dd></div>
@@ -1500,7 +1514,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                         </dl>
                         {inventory.dataReviewRequired && <p role="status" className="mt-2 text-[10px] font-medium text-amber-700 dark:text-amber-300">Profile counts or relationships differ from the declared capacity. Review in Data Integrity.</p>}
                       </section>
-                      <section className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                      <section className="account-detail-section rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                         <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100">Related sales & subscriptions</h3>
                         <p className="mt-1 text-[11px] text-slate-500">{relatedSales.length} sales · {relatedSubscriptions.length} subscriptions</p>
                         <ul className="mt-2 space-y-1.5">
@@ -1517,7 +1531,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                           {!relatedSales.length && !relatedSubscriptions.length && <li className="text-[10px] text-slate-500">No linked sales or subscriptions.</li>}
                         </ul>
                       </section>
-                      <section className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                      <section className="account-detail-section rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                         <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100">Recent inventory activity</h3>
                         <ul className="mt-2 space-y-1.5">
                           {relatedActivity.map(log => (
@@ -1534,7 +1548,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                 )}
               </div>
             );
-          })
+          })}
+          </>
         )}
       </section>
 
@@ -1578,7 +1593,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                       ? Math.max(editingAccount?.profiles.length || 0, 1, service.settings.profileCapacity || 1)
                       : editingAccount?.profiles.length || 0);
                   }}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500 cursor-pointer appearance-none"
+                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-violet-500 cursor-pointer appearance-none"
                   required
                 >
                   {services.filter(service =>
@@ -1631,7 +1646,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                   placeholder="Enter account email"
                   value={accEmail}
                   onChange={e => setAccEmail(e.target.value)}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
+                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-violet-500"
                   required
                 />
               </div>
@@ -1645,7 +1660,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                   placeholder="account_username"
                   value={accUsername}
                   onChange={e => setAccUsername(e.target.value)}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
+                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-violet-500"
                 />
               </div>
             </div>
@@ -1661,7 +1676,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                   placeholder={editingAccount ? 'Leave blank to keep the current password' : 'Enter account password'}
                   value={accPassword}
                   onChange={e => setAccPassword(e.target.value)}
-                  className="w-full h-10 pl-3 pr-10 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
+                  className="w-full h-10 pl-3 pr-10 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-violet-500"
                 />
                 <button
                   type="button"
@@ -1691,7 +1706,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                     setAccPlanId(selectedPlan?.id || '');
                     setAccPlan(selectedPlan?.name || (e.target.value === 'legacy-plan' ? accPlan : ''));
                   }}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
+                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-violet-500"
                 >
                   <option value="">No plan</option>
                   {accPlan && !services.find(service => service.id === accServiceId)?.planDetails?.some(plan => plan.id === accPlanId)
@@ -1710,7 +1725,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                   type="number"
                   value={accMaxProfiles}
                   onChange={e => setAccMaxProfiles(e.target.value === '' ? 0 : Number(e.target.value))}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
+                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-violet-500"
                   min={accountRequiresProfiles ? 1 : editingAccount?.profiles.length || 0}
                   max={100}
                 />
@@ -1724,7 +1739,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                   <select
                     value={accStatus}
                     onChange={e => setAccStatus(e.target.value as AccountStatus)}
-                    className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500 cursor-pointer appearance-none"
+                    className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-violet-500 cursor-pointer appearance-none"
                   >
                     <option value="Available">Active</option>
                     <option value="Inactive">Inactive</option>
@@ -1752,7 +1767,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                   type="date"
                   value={accPurchaseDate}
                   onChange={e => setAccPurchaseDate(e.target.value)}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500 font-mono"
+                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-violet-500 font-mono"
                 />
               </div>
 
@@ -1764,7 +1779,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                   type="date"
                   value={accExpiryDate}
                   onChange={e => setAccExpiryDate(e.target.value)}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500 font-mono"
+                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-violet-500 font-mono"
                 />
               </div>
             </div>
@@ -1809,7 +1824,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                 placeholder="Billing card, Turkish/Nigerian region, renewal notes, customer restrictions..."
                 value={accNotes}
                 onChange={e => setAccNotes(e.target.value)}
-                className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
+                className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-violet-500"
               />
             </div>
 
@@ -1859,7 +1874,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                 placeholder="e.g. Screen 3, Profile 4, Kids"
                 value={newProfileName}
                 onChange={e => setNewProfileName(e.target.value)}
-                className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
+                className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-violet-500"
                 required
               />
             </div>
@@ -1873,7 +1888,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                 placeholder="4-digit PIN (e.g. 1423)"
                 value={newProfilePin}
                 onChange={e => setNewProfilePin(e.target.value)}
-                className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
+                className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-violet-500"
                 maxLength={6}
               />
             </div>
@@ -1894,7 +1909,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold text-xs rounded-lg shadow-sm transition-all cursor-pointer"
+                className="px-5 py-2 bg-violet-700 hover:bg-violet-600 active:bg-violet-800 text-white font-semibold text-xs rounded-lg shadow-sm transition-all cursor-pointer"
               >
                 {t('save')}
               </button>
@@ -1934,7 +1949,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                 <select
                   value={selectedCustomerIdForSlot}
                   onChange={e => setSelectedCustomerIdForSlot(e.target.value)}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500 cursor-pointer appearance-none"
+                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-violet-500 cursor-pointer appearance-none"
                   required
                 >
                   <option value="" disabled>
@@ -1962,7 +1977,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
             {selectedCustomerIdForSlot && assignableSubscriptions.length === 0 && (
               <div role="status" className="space-y-2 text-xs text-amber-700 dark:text-amber-300">
                 <p>This customer has no compatible unassigned subscription. Create a sale first to record the subscription, payment, and profile assignment together.</p>
-                {onCreateSaleForProfile && <button type="button" onClick={handleCreateSaleForProfile} className="rounded-lg bg-emerald-600 px-3 py-2 font-semibold text-white hover:bg-emerald-700">Create Sale for this Profile</button>}
+                {onCreateSaleForProfile && <button type="button" onClick={handleCreateSaleForProfile} className="rounded-lg bg-violet-700 px-3 py-2 font-semibold text-white hover:bg-violet-600">Create Sale for this Profile</button>}
               </div>
             )}
 
@@ -1990,7 +2005,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
               <button
                 type="submit"
                 disabled={!selectedSubscriptionIdForSlot}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold text-xs rounded-lg shadow-sm transition-all cursor-pointer"
+                className="px-5 py-2 bg-violet-700 hover:bg-violet-600 active:bg-violet-800 text-white font-semibold text-xs rounded-lg shadow-sm transition-all cursor-pointer"
               >
                 {language === 'bn' ? 'বরাদ্দ নিশ্চিত করুন' : 'Confirm Assignment'}
               </button>

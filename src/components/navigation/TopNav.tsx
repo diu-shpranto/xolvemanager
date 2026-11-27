@@ -495,7 +495,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                                 {notification.title}
                               </span>
                               {!notification.read && (
-                                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
+                                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-violet-600 dark:bg-violet-400" aria-hidden="true" />
                               )}
                             </span>
                             <span className="mt-1 block break-words text-xs leading-5 text-slate-600 dark:text-slate-300">
