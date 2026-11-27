@@ -6,7 +6,7 @@ export const productBrand = {
   tagline: 'Business, Simplified.',
   description: 'Business management for customers, services, subscriptions, sales, and payments.',
   faviconUrl: '/icons/xolvemanager-brand-32.png',
-  iconUrl: '/icons/xolvemanager-violet-192.png',
+  iconUrl: '/icons/xolvemanager-violet-192-v2.png',
   wordmarkDarkUrl: '/xolvemanager-wordmark-violet-dark-v3.png',
   wordmarkLightUrl: '/xolvemanager-wordmark-violet-light-v3.png',
   // Stacked original artwork (icon above "XolveManager" text, one image,

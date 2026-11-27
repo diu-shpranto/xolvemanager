@@ -758,7 +758,6 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
               </a>
             </nav>
           </footer>
-          <button type="button" onClick={updateLanguage} className="auth-language" aria-label={language === 'en' ? 'Switch language to Bangla' : 'Switch language to English'}><Globe2 aria-hidden="true" />{text.language}<ChevronRight aria-hidden="true" /></button>
         </div>
         <div className={styles.brandmark}>
           <ProductLogo size="compact" tone="default" showTagline layout="stacked" className={styles.brandLogo} />
@@ -945,14 +944,17 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                   )}
                 </section>
 
-            {(mode === 'login' || mode === 'signup') && cloudResetView === 'none' && (
-              <p className={styles.switch}>
-                {mode === 'login' ? text.createAccountPrompt : text.signInPrompt}{' '}
-                <button type="button" onClick={() => navigate(mode === 'login' ? '/signup' : '/login')} className={styles.switchLink} disabled={busy || oauthBusy}>
-                  {mode === 'login' ? text.signUp : text.signIn}
-                </button>
-              </p>
-            )}
+            <div className={styles.bottomRow}>
+              {(mode === 'login' || mode === 'signup') && cloudResetView === 'none' && (
+                <p className={styles.switch}>
+                  {mode === 'login' ? text.createAccountPrompt : text.signInPrompt}{' '}
+                  <button type="button" onClick={() => navigate(mode === 'login' ? '/signup' : '/login')} className={styles.switchLink} disabled={busy || oauthBusy}>
+                    {mode === 'login' ? text.signUp : text.signIn}
+                  </button>
+                </p>
+              )}
+              <button type="button" onClick={updateLanguage} className="auth-language" aria-label={language === 'en' ? 'Switch language to Bangla' : 'Switch language to English'}><Globe2 aria-hidden="true" />{text.language}<ChevronRight aria-hidden="true" /></button>
+            </div>
 
           </>
         )}

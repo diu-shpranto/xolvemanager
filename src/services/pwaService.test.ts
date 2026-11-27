@@ -106,12 +106,12 @@ test('a new worker waits for the user before activation and only activates on re
   await installPromise;
 
   assert.equal(harness.skipWaitingCalls, 0);
-  assert.ok(harness.cacheContents.has('xolve-manager-static-vnext-11'));
-  const newCache = harness.cacheContents.get('xolve-manager-static-vnext-11');
+  assert.ok(harness.cacheContents.has('xolve-manager-static-vnext-12'));
+  const newCache = harness.cacheContents.get('xolve-manager-static-vnext-12');
   assert.ok(newCache?.has('/manifest.webmanifest'));
-  assert.ok(newCache?.has('/icons/xolvemanager-violet-192.png'));
-  assert.ok(newCache?.has('/icons/xolvemanager-violet-512.png'));
-  assert.ok(newCache?.has('/icons/xolvemanager-violet-maskable-512.png'));
+  assert.ok(newCache?.has('/icons/xolvemanager-violet-192-v2.png'));
+  assert.ok(newCache?.has('/icons/xolvemanager-violet-512-v2.png'));
+  assert.ok(newCache?.has('/icons/xolvemanager-violet-maskable-512-v2.png'));
 
   harness.dispatch('message', { data: 'SKIP_WAITING' });
   assert.equal(harness.skipWaitingCalls, 1);
@@ -119,25 +119,25 @@ test('a new worker waits for the user before activation and only activates on re
 
 test('activation retains one previous app cache for offline recovery without touching unrelated caches', async () => {
   const harness = createServiceWorkerHarness([
-    'xolve-manager-static-vnext-7',
     'xolve-manager-static-vnext-8',
-    'xolve-manager-static-vnext-10',
+    'xolve-manager-static-vnext-9',
     'xolve-manager-static-vnext-11',
+    'xolve-manager-static-vnext-12',
     'other-application-cache',
   ]);
   let activatePromise: Promise<unknown> | undefined;
   harness.dispatch('activate', { waitUntil: (promise: Promise<unknown>) => { activatePromise = promise; } });
   await activatePromise;
 
-  assert.deepEqual(harness.deletedCaches, ['xolve-manager-static-vnext-8', 'xolve-manager-static-vnext-7']);
-  assert.ok(harness.cacheContents.has('xolve-manager-static-vnext-10'));
+  assert.deepEqual(harness.deletedCaches, ['xolve-manager-static-vnext-9', 'xolve-manager-static-vnext-8']);
   assert.ok(harness.cacheContents.has('xolve-manager-static-vnext-11'));
+  assert.ok(harness.cacheContents.has('xolve-manager-static-vnext-12'));
   assert.ok(harness.cacheContents.has('other-application-cache'));
   assert.equal(harness.claimCalls, 1);
 });
 
 test('static assets prefer fresh network responses and fall back to a retained cache offline', async () => {
-  const assetUrl = 'https://xolvemanager.example/icons/xolvemanager-violet-192.png';
+  const assetUrl = 'https://xolvemanager.example/icons/xolvemanager-violet-192-v2.png';
   const onlineResponseObject = {
     ok: true,
     type: 'basic',
@@ -160,7 +160,7 @@ test('static assets prefer fresh network responses and fall back to a retained c
   assert.equal(await onlineResponse, onlineResponseObject);
   await onlineCacheWrite;
   assert.deepEqual(
-    onlineHarness.cacheContents.get('xolve-manager-static-vnext-11')?.get(assetUrl),
+    onlineHarness.cacheContents.get('xolve-manager-static-vnext-12')?.get(assetUrl),
     { source: 'network' }
   );
 
@@ -181,10 +181,10 @@ test('static assets prefer fresh network responses and fall back to a retained c
 
 test('offline navigation falls back to the app entry point before the public homepage', async () => {
   const offlineHarness = createServiceWorkerHarness(
-    ['xolve-manager-static-vnext-11'],
+    ['xolve-manager-static-vnext-12'],
     async () => { throw new Error('offline'); },
   );
-  offlineHarness.seedCache('xolve-manager-static-vnext-11', '/login', { source: 'app-entry' });
+  offlineHarness.seedCache('xolve-manager-static-vnext-12', '/login', { source: 'app-entry' });
   let response: Promise<unknown> | undefined;
 
   offlineHarness.dispatch('fetch', {

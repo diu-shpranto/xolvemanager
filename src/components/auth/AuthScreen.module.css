@@ -96,12 +96,13 @@
   align-items: stretch;
 }
 
-/* Language switcher + quiet footer links share one top row, so the
- * footer no longer costs a whole row below the card (fit). */
+/* The three footer links (Privacy / Legal / Support) own the whole top
+ * row as a centered pill strip, so they sit at the very top of the page.
+ * The language pill lives in the bottom row instead (see .bottomRow). */
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 0.75rem;
   margin-bottom: 0.9rem;
 }
@@ -113,7 +114,7 @@
 }
 
 .topbar :global(.auth-footer-links) {
-  justify-content: flex-start;
+  justify-content: center;
 }
 
 /* The footer labels are short in the topbar row ("Privacy / Legal /
@@ -128,23 +129,77 @@
   white-space: nowrap;
 }
 
-.shell:global(.auth-page) .topbar :global(.auth-language) {
-  position: static;
-  min-height: 2.5rem;
-  flex-shrink: 0;
-  padding: 0.38rem 0.72rem;
-  border: 1px solid #e7e3f7;
-  border-radius: 0.75rem;
-  color: #4b5563;
-  background: rgba(255, 255, 255, 0.85);
-  box-shadow: none;
-  transform: none;
+/* Top links as a designed pill nav (Privacy / Legal / Support): violet
+ * pills with their icons, in the same topbar row — the pills (2.25rem)
+ * stay shorter than the language pill (2.5rem), so the row keeps its
+ * height and the no-scroll fit is untouched. On phones the pills go
+ * text-only (icons hidden) so all three + the language pill still fit
+ * one row at 360px. */
+.shell:global(.auth-page) .topbar :global(.auth-footer-links) {
+  gap: 0.5rem;
 }
 
-.shell:global(.auth-page) .topbar :global(.auth-language):hover {
-  border-color: #d9d2f5;
+.shell:global(.auth-page) .topbar :global(.auth-footer) {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.shell:global(.auth-page) .topbar :global(.auth-footer-link) {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid #e7e3f7;
+  border-radius: 999px;
+  color: #5b21b6;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 2px rgba(76, 29, 149, 0.06);
+}
+
+.shell:global(.auth-page) .topbar :global(.auth-footer-link:hover) {
+  border-color: #c4b5fd;
+  color: #6d28d9;
   background: #f8f7ff;
-  transform: none;
+  box-shadow: 0 1px 2px rgba(76, 29, 149, 0.06);
+}
+
+.shell:global(.auth-page) .topbar :global(.auth-footer-icon) {
+  display: inline-flex;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-bottom: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.shell:global(.auth-page) .topbar :global(.auth-footer-icon) svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.shell:global(.auth-page) .topbar :global(.auth-footer-label) {
+  font-size: 0.8rem;
+}
+
+@media (max-width: 480px) {
+  .shell:global(.auth-page) .topbar :global(.auth-footer-link) {
+    min-height: 2.1rem;
+    padding: 0.3rem 0.55rem;
+  }
+
+  .shell:global(.auth-page) .topbar :global(.auth-footer-icon) {
+    display: none;
+  }
+
+  .shell:global(.auth-page) .topbar :global(.auth-footer-label) {
+    font-size: 0.75rem;
+  }
 }
 
 /* Stacked original logo, centered above the card, LARGE (260px desktop,
@@ -385,11 +440,41 @@
 
 /* "Don't have an account? Sign up" / "Already have an account? Sign in" */
 .switch {
-  margin: 0.7rem 0 0;
+  margin: 0;
   color: #66718b;
   font-size: 0.85rem;
   line-height: 1.5;
   text-align: center;
+}
+
+/* Bottom row: the account switch line + the language pill side by side,
+ * centered as one group, so the top row stays the links' own strip. */
+.bottomRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.7rem 0 0;
+}
+
+.shell:global(.auth-page) .bottomRow :global(.auth-language) {
+  position: static;
+  flex-shrink: 0;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid #e7e3f7;
+  border-radius: 0.75rem;
+  color: #4b5563;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: none;
+  transform: none;
+}
+
+.shell:global(.auth-page) .bottomRow :global(.auth-language):hover {
+  border-color: #d9d2f5;
+  background: #f8f7ff;
+  transform: none;
 }
 
 .switchLink {
@@ -484,6 +569,11 @@
 
   .topbar {
     margin-bottom: 0.6rem;
+  }
+
+  .shell:global(.auth-page) .bottomRow :global(.auth-language) {
+    min-height: 2.1rem;
+    padding: 0.3rem 0.55rem;
   }
 
   .brandmark {
@@ -586,7 +676,7 @@
     min-height: 2.75rem;
   }
 
-  .switch {
+  .bottomRow {
     margin-top: 0.35rem;
   }
 }

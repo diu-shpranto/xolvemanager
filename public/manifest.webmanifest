@@ -9,19 +9,19 @@
   "background_color": "#380759",
   "icons": [
     {
-      "src": "/icons/xolvemanager-violet-192.png",
+      "src": "/icons/xolvemanager-violet-192-v2.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/xolvemanager-violet-512.png",
+      "src": "/icons/xolvemanager-violet-512-v2.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/xolvemanager-violet-maskable-512.png",
+      "src": "/icons/xolvemanager-violet-maskable-512-v2.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
