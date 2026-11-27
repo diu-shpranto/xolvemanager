@@ -91,7 +91,7 @@ const copy = {
     cloudResetIntro: 'Enter your email address. We will send you a code to set a new password.',
     cloudResetSend: 'Send reset code',
     cloudResetCodeTitle: 'Enter the code',
-    cloudResetCodeIntro: 'We sent a code to {email}. Enter it below — or click the reset link in the email instead.',
+    cloudResetCodeIntro: 'We sent a code to {email}. Enter it below to continue.',
     cloudResetCodeLabel: 'Reset code',
     cloudResetVerify: 'Verify code',
     cloudResetResend: 'Resend the code',
@@ -182,7 +182,7 @@ const copy = {
     cloudResetIntro: 'আপনার ইমেইল ঠিকানা লিখুন। নতুন পাসওয়ার্ড সেট করার কোড পাঠানো হবে।',
     cloudResetSend: 'রিসেট কোড পাঠান',
     cloudResetCodeTitle: 'কোডটি লিখুন',
-    cloudResetCodeIntro: '{email}-এ কোড পাঠানো হয়েছে। নিচে কোডটি লিখুন — অথবা ইমেইলের রিসেট লিংকে ক্লিক করুন।',
+    cloudResetCodeIntro: '{email}-এ কোড পাঠানো হয়েছে। নিচে কোডটি লিখে এগিয়ে যান।',
     cloudResetCodeLabel: 'রিসেট কোড',
     cloudResetVerify: 'কোড যাচাই করুন',
     cloudResetResend: 'কোডটি আবার পাঠান',
@@ -595,6 +595,10 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
         } else if (cloudResetView === 'code') {
           await verifyCloudPasswordResetCode(email, resetCode);
           setResetCode('');
+          setPassword('');
+          setConfirmation('');
+          setShowPassword(false);
+          setShowConfirmation(false);
           setCloudResetView('reset');
         } else {
           const user = await setCloudPassword(password);
@@ -686,6 +690,8 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     setBusy(true);
     try {
       await requestCloudPasswordReset(email);
+      setResetCode('');
+      clearFieldError('resetCode');
       setResent(true);
     } catch (caught) {
       setError(getErrorMessage(caught, language));
@@ -891,7 +897,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                       </div>
                     )}
 
-                    <button type="submit" disabled={busy || oauthBusy || (mode === 'signup' && hasAccount && authProvider === 'local')} className={styles.primaryBtn}>{busy && <LoaderCircle className="auth-spinner" aria-hidden="true" />}{busy ? text.loading : cloudResetView === 'request' ? text.cloudResetSend : cloudResetView === 'code' ? text.cloudResetVerify : cloudResetView === 'reset' ? text.recover : mode === 'login' && authProvider === 'cloud' && loginMethod === 'link' ? text.sendEmailLink : mode === 'login' ? <>{text.signIn}<ArrowRight aria-hidden="true" /></> : mode === 'signup' ? text.create : text.recover}</button>
+                    <button type="submit" disabled={busy || oauthBusy || (mode === 'signup' && hasAccount && authProvider === 'local')} className={`${styles.primaryBtn}${cloudResetView === 'code' ? ` ${styles.codeSubmit}` : ''}`}>{busy && <LoaderCircle className="auth-spinner" aria-hidden="true" />}{busy ? text.loading : cloudResetView === 'request' ? text.cloudResetSend : cloudResetView === 'code' ? text.cloudResetVerify : cloudResetView === 'reset' ? text.recover : mode === 'login' && authProvider === 'cloud' && loginMethod === 'link' ? text.sendEmailLink : mode === 'login' ? <>{text.signIn}<ArrowRight aria-hidden="true" /></> : mode === 'signup' ? text.create : text.recover}</button>
 
                     {cloudResetView === 'code' && (
                       <div style={{ textAlign: 'center' }}>

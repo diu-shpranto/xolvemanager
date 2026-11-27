@@ -450,6 +450,11 @@
   transition: filter 150ms ease, transform 150ms ease, box-shadow 150ms ease;
 }
 
+/* Code view: a little extra space between the code bar and the verify button. */
+.codeSubmit {
+  margin-top: 0.55rem;
+}
+
 .primaryBtn:hover:not(:disabled) {
   filter: brightness(1.07);
   box-shadow:
