@@ -90,11 +90,11 @@ const copy = {
     forgot: 'Forgot password?',
     cloudForgot: 'Forgot password?',
     cloudResetTitle: 'Reset your password',
-    cloudResetIntro: 'Enter your email address. We will send you a 6-digit code to set a new password.',
+    cloudResetIntro: 'Enter your email address. We will send you a code to set a new password.',
     cloudResetSend: 'Send reset code',
     cloudResetCodeTitle: 'Enter the code',
-    cloudResetCodeIntro: 'We sent a 6-digit code to {email}. Enter it below — or click the reset link in the email instead.',
-    cloudResetCodeLabel: '6-digit code',
+    cloudResetCodeIntro: 'We sent a code to {email}. Enter it below — or click the reset link in the email instead.',
+    cloudResetCodeLabel: 'Reset code',
     cloudResetVerify: 'Verify code',
     cloudResetResend: 'Resend the code',
     cloudResetResent: 'A new code was sent.',
@@ -148,7 +148,7 @@ const copy = {
     errPasswordTooShort: 'Your password must be at least 6 characters.',
     errNetwork: 'Could not reach the server. Check your connection and try again.',
     errTooManyAttempts: 'Too many attempts. Please wait a moment and try again.',
-    errCode: 'Enter the 6-digit code.',
+    errCode: 'Enter the code.',
     errGeneric: 'Something went wrong. Please try again.',
   },
   bn: {
@@ -183,11 +183,11 @@ const copy = {
     forgot: 'পাসওয়ার্ড ভুলে গেছেন?',
     cloudForgot: 'পাসওয়ার্ড ভুলে গেছেন?',
     cloudResetTitle: 'পাসওয়ার্ড রিসেট করুন',
-    cloudResetIntro: 'আপনার ইমেইল ঠিকানা লিখুন। নতুন পাসওয়ার্ড সেট করার ৬ ডিজিটের কোড পাঠানো হবে।',
+    cloudResetIntro: 'আপনার ইমেইল ঠিকানা লিখুন। নতুন পাসওয়ার্ড সেট করার কোড পাঠানো হবে।',
     cloudResetSend: 'রিসেট কোড পাঠান',
     cloudResetCodeTitle: 'কোডটি লিখুন',
-    cloudResetCodeIntro: '{email}-এ ৬ ডিজিটের কোড পাঠানো হয়েছে। নিচে কোডটি লিখুন — অথবা ইমেইলের রিসেট লিংকে ক্লিক করুন।',
-    cloudResetCodeLabel: '৬ ডিজিটের কোড',
+    cloudResetCodeIntro: '{email}-এ কোড পাঠানো হয়েছে। নিচে কোডটি লিখুন — অথবা ইমেইলের রিসেট লিংকে ক্লিক করুন।',
+    cloudResetCodeLabel: 'রিসেট কোড',
     cloudResetVerify: 'কোড যাচাই করুন',
     cloudResetResend: 'কোডটি আবার পাঠান',
     cloudResetResent: 'নতুন কোড পাঠানো হয়েছে।',
@@ -241,7 +241,7 @@ const copy = {
     errPasswordTooShort: 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।',
     errNetwork: 'সার্ভারের সাথে সংযোগ হচ্ছে না। ইন্টারনেট দেখে আবার চেষ্টা করুন।',
     errTooManyAttempts: 'অনেকবার চেষ্টা হয়েছে। কিছুক্ষণ অপেক্ষা করে আবার চেষ্টা করুন।',
-    errCode: '৬ ডিজিটের কোডটি লিখুন।',
+    errCode: 'কোডটি লিখুন।',
     errGeneric: 'কিছু একটা ভুল হয়েছে। আবার চেষ্টা করুন।',
   },
 } as const;
@@ -566,7 +566,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
       if (!isValidAuthEmail(email)) errors.email = text.errEmail;
     }
     if (cloudResetView === 'code') {
-      if (!/^\d{6}$/.test(resetCode)) errors.resetCode = text.errCode;
+      if (!/^\d{6,8}$/.test(resetCode)) errors.resetCode = text.errCode;
     }
     if (cloudResetView === 'reset') {
       if (password.length === 0) errors.password = text.errPasswordChoose;
@@ -811,7 +811,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
 
                     {cloudResetView === 'code' && (
                     <label className="auth-field">{text.cloudResetCodeLabel}
-                      <span className="auth-input-wrap"><KeyRound aria-hidden="true" /><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} required value={resetCode} onChange={event => { setResetCode(event.target.value.replace(/\D/g, '').slice(0, 6)); clearFieldError('resetCode'); }} className={`${inputClass} auth-input--with-icon auth-input--mono`} aria-invalid={!!fieldErrors.resetCode} aria-describedby={fieldErrors.resetCode ? 'resetCode-error' : undefined} /></span>
+                      <span className="auth-input-wrap"><KeyRound aria-hidden="true" /><input inputMode="numeric" autoComplete="one-time-code" maxLength={8} required value={resetCode} onChange={event => { setResetCode(event.target.value.replace(/\D/g, '').slice(0, 8)); clearFieldError('resetCode'); }} className={`${inputClass} auth-input--with-icon auth-input--mono`} aria-invalid={!!fieldErrors.resetCode} aria-describedby={fieldErrors.resetCode ? 'resetCode-error' : undefined} /></span>
                       {fieldError('resetCode')}
                     </label>
                     )}

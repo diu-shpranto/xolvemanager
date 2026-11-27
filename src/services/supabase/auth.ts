@@ -286,7 +286,7 @@ const getPasswordResetRedirect = (): string =>
  * Cloud password reset, step 1 — email the user a reset code (and link).
  *
  * Supabase sends the reset email back to `/login` (already an allowed
- * redirect). The email carries a 6-digit code ({{ .Token }} in the
+ * redirect). The email carries a code ({{ .Token }} in the
  * "Reset password" template) and the reset link: the code is verified in
  * the app with `verifyCloudPasswordResetCode`, while the link still works
  * on its own in any browser — the Gmail app, another browser, another
@@ -307,7 +307,7 @@ export const requestCloudPasswordReset = async (
 };
 
 /**
- * Cloud password reset, step 2 — verify the 6-digit code from the reset
+ * Cloud password reset, step 2 — verify the code from the reset
  * email. Verifying the code opens a recovery session: the client emits
  * PASSWORD_RECOVERY for a recovery verification, so this tab is marked
  * as a recovery session — a refresh still shows the new-password form
