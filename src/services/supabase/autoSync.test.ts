@@ -9,7 +9,6 @@ import {
   getAutoSyncStatus,
   snapshotFingerprint,
   type AutoSyncDeps,
-  type AutoSyncMoveChoice,
 } from './autoSync.ts';
 
 const USER_ID = '33333333-3333-4333-8333-333333333333';
@@ -95,14 +94,12 @@ interface FakeWorld {
   setLocal: (snapshot: LocalSnapshot) => void;
   setCloud: (result: DownloadResult) => void;
   setOnline: (online: boolean) => void;
-  setMoveChoice: (choice: AutoSyncMoveChoice) => void;
 }
 
 const makeWorld = (initialLocal: LocalSnapshot, initialCloud: DownloadResult): FakeWorld => {
   let local = initialLocal;
   let cloud = initialCloud;
   let online = true;
-  let moveChoice: AutoSyncMoveChoice = 'moved';
   const uploads: LocalSnapshot[] = [];
   const applies: string[] = [];
   let downloads = 0;
@@ -111,7 +108,6 @@ const makeWorld = (initialLocal: LocalSnapshot, initialCloud: DownloadResult): F
     userId: USER_ID,
     isOnline: () => online,
     getSnapshot: () => local,
-    getMoveChoice: () => moveChoice,
     applySnapshot: (json: string) => {
       applies.push(json);
       const doc = JSON.parse(json) as {
@@ -156,9 +152,6 @@ const makeWorld = (initialLocal: LocalSnapshot, initialCloud: DownloadResult): F
     setOnline: (value: boolean) => {
       online = value;
     },
-    setMoveChoice: (choice: AutoSyncMoveChoice) => {
-      moveChoice = choice;
-    },
   };
 };
 
@@ -196,35 +189,25 @@ test('initial restore applies the cloud copy when the browser is empty', async (
   engine.stop();
 });
 
-test('initial restore never uploads while the move choice is unmade', async () => {
+test('initial restore uploads local records automatically when the cloud is empty', async () => {
   const local = snapshotWith((snapshot) => {
     snapshot.customers = [customer('local-1')];
   });
   const world = makeWorld(local, downloadResult(emptySnapshot(), {}, 0));
-  world.setMoveChoice(null);
   const engine = createAutoSyncEngine(world.deps);
   await engine.runInitialRestore();
-  assert.equal(world.uploads.length, 0);
+  assert.equal(world.uploads.length, 1);
+  assert.equal(world.uploads[0].customers[0].id, 'local-1');
   assert.equal(world.applies.length, 0);
-  // A later local change must still not upload while the choice is pending.
+  assert.equal(getAutoSyncStatus().state, 'idle');
+  // A later local change uploads too — nothing waits on a prompt.
+  world.setLocal(snapshotWith((snapshot) => {
+    snapshot.customers = [customer('local-1'), customer('local-2')];
+  }));
   engine.notifyLocalChange();
   world.timers.runAll();
   await flush();
-  assert.equal(world.uploads.length, 0);
-  engine.stop();
-});
-
-test('initial restore stays off when the user chose to keep the data separate', async () => {
-  const cloud = snapshotWith((snapshot) => {
-    snapshot.customers = [customer('cloud-1')];
-  });
-  const world = makeWorld(emptySnapshot(), downloadResult(cloud));
-  world.setMoveChoice('kept');
-  const engine = createAutoSyncEngine(world.deps);
-  await engine.runInitialRestore();
-  assert.equal(world.downloads, 0);
-  assert.equal(world.applies.length, 0);
-  assert.equal(getAutoSyncStatus().state, 'off');
+  assert.equal(world.uploads.length, 2);
   engine.stop();
 });
 

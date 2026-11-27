@@ -25,12 +25,9 @@ import {
   getActiveWorkspaceId,
   onLocalDataChanged,
 } from '../../services/localStorageStore';
-import {
-  assertCloudWorkspaceOwner,
-  getWorkspaceMoveChoice,
-} from '../../services/workspaceService';
+import { assertCloudWorkspaceOwner } from '../../services/workspaceService';
 
-/** Reads the live auto-sync status (the sync panel shows it). */
+/** Reads the live auto-sync status (Settings → Data & Storage shows it). */
 export const useAutoSyncStatus = (): AutoSyncStatus => {
   const [status, setStatus] = useState<AutoSyncStatus>(() => getAutoSyncStatus());
   useEffect(() => subscribeAutoSyncStatus(setStatus), []);
@@ -87,7 +84,6 @@ export function AutoSyncEngine() {
         userId: user.uid,
         isOnline: () => window.navigator.onLine,
         getSnapshot: () => collectLocalSnapshot(),
-        getMoveChoice: () => getWorkspaceMoveChoice(user.uid),
         applySnapshot: (json: string) => importDataJSONRef.current(json),
         uploadSnapshot: (snapshot) =>
           uploadLocalSnapshotToCloud(

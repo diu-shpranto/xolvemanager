@@ -72,12 +72,11 @@ const storeLastDownload = (summary: LastDownload): void => {
 /**
  * Cloud download (sync-down) panel.
  *
- * Shown only after a Supabase sign-in, in the production data environment.
- * Auto-sync now handles the usual flow on its own (upload after changes,
- * restore after sign-in, periodic download from other devices) — this
- * panel stays as the manual backup: press "Download from cloud" any time
- * to pull the cloud copy now, and choose Merge or Replace — or, when this
- * browser is empty, the cloud copy is applied straight away.
+ * Lives in Settings → Data & Storage as the manual backup. Auto-sync now
+ * handles the usual flow on its own (upload after changes, restore after
+ * sign-in, periodic download from other devices) — press "Download from
+ * cloud" any time to pull the cloud copy now, and choose Merge or Replace
+ * — or, when this browser is empty, the cloud copy is applied straight away.
  *
  * - Merge: per record, newest-wins (cloud row updated_at vs local
  *   updatedAt). Records on only one side are kept.

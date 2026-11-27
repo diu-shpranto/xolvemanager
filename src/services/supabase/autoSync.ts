@@ -13,17 +13,17 @@
  *
  * Safety rules (these are the point of this module):
  * - Replace is NEVER automatic. Only the non-destructive merge runs on
- *   its own; Replace stays a manual button in the sync panel, behind a
- *   safety backup.
+ *   its own; Replace stays a manual button in Settings → Data & Storage,
+ *   behind a safety backup.
  * - A merge that would mix two different businesses is refused and the
- *   engine stops itself; the user resolves it manually in the panel.
- * - When the user chose "Keep separate" for this browser's local data,
- *   nothing is uploaded or merged automatically, ever.
- * - When the cloud is empty, the local data is non-empty, and the user
- *   has not yet chosen Move / Keep separate, the engine waits — the
- *   migration offer asks first, and auto-sync must not pre-empt it.
- * - The engine never uploads a backup file. Manual upload downloads one
- *   first; automatic upload upserts only, which never deletes cloud rows.
+ *   engine stops itself; the user resolves it manually in Settings.
+ * - No prompts, no waiting on local data: right after sign-in, any
+ *   records this browser holds are uploaded into the account's cloud
+ *   automatically (newest-wins merge; nothing is ever deleted), and the
+ *   cloud copy is restored into this browser. Local storage is only an
+ *   invisible cache — the cloud is where the data lives.
+ * - The engine never uploads a backup file. Automatic upload upserts
+ *   only, which never deletes cloud rows.
  * - Loop guard: every upsert bumps the cloud rows' server `updated_at`,
  *   so a download after an upload always looks "newer". A snapshot
  *   fingerprint (content hash) decides whether anything actually
@@ -55,8 +55,6 @@ export interface AutoSyncStatus {
   /** Human-readable detail for the current state (error or waiting reason). */
   message: string;
 }
-
-export type AutoSyncMoveChoice = 'moved' | 'kept' | null;
 
 /** Debounce between the last local change and its upload. */
 export const AUTO_SYNC_UPLOAD_DEBOUNCE_MS = 3000;
@@ -170,7 +168,6 @@ export interface AutoSyncDeps {
   userId: string;
   isOnline: () => boolean;
   getSnapshot: () => LocalSnapshot;
-  getMoveChoice: () => AutoSyncMoveChoice;
   applySnapshot: (json: string) => { success: boolean; error?: string };
   uploadSnapshot: (snapshot: LocalSnapshot) => Promise<AutoSyncUploadResult>;
   downloadSnapshot: () => Promise<DownloadResult>;
@@ -202,8 +199,6 @@ export class AutoSyncEngine {
   private restored = false;
   /** Set when a merge was refused (different business) — manual fix needed. */
   private blocked = false;
-  /** Set while the Move / Keep separate choice is still unmade. */
-  private awaitingMoveChoice = false;
   private changePending = false;
 
   constructor(deps: AutoSyncDeps) {
@@ -262,7 +257,7 @@ export class AutoSyncEngine {
 
   /** Called whenever local data is written. Debounced; never uploads directly. */
   notifyLocalChange(): void {
-    if (this.stopped || !this.restored || this.blocked || this.awaitingMoveChoice) return;
+    if (this.stopped || !this.restored || this.blocked) return;
     this.changePending = true;
     this.scheduleUpload();
   }
@@ -282,14 +277,6 @@ export class AutoSyncEngine {
    */
   async runInitialRestore(): Promise<void> {
     if (this.stopped || this.restored || this.blocked) return;
-    if (this.deps.getMoveChoice() === 'kept') {
-      this.blocked = true;
-      setStatus({
-        state: 'off',
-        message: 'Auto-sync is off for this account on this browser — you chose to keep its data separate.',
-      });
-      return;
-    }
     setStatus({ state: 'restoring', message: 'Restoring your cloud data…' });
     if (!this.deps.isOnline()) {
       setStatus({ state: 'offline', message: 'You are offline. Your cloud data will restore when you are back online.' });
@@ -311,14 +298,8 @@ export class AutoSyncEngine {
         this.finishRestore('Your cloud account is empty — add a record and it will sync automatically.');
         return;
       }
-      if (this.deps.getMoveChoice() === null) {
-        // Do not pre-empt the Move / Keep separate choice.
-        this.awaitingMoveChoice = true;
-        this.finishRestore('Choose whether to move this browser’s data into your account — see the offer above. Nothing is uploaded until you choose.');
-        return;
-      }
-      // The user chose Move: the local data is already this account's
-      // workspace data, so upload it.
+      // No prompts: this browser's records go straight into the
+      // account's cloud (upsert only — nothing is deleted).
       await this.uploadCurrent();
       this.finishRestore('');
       return;
@@ -375,7 +356,7 @@ export class AutoSyncEngine {
 
   /** Uploads the current local snapshot when it differs from the last upload. */
   async runUploadCheck(force = false): Promise<void> {
-    if (this.stopped || !this.restored || this.blocked || this.awaitingMoveChoice) return;
+    if (this.stopped || !this.restored || this.blocked) return;
     if (!force && !this.changePending) return;
     if (this.busy) return; // The in-flight run re-checks `changePending` when done.
     this.changePending = false;
@@ -428,21 +409,6 @@ export class AutoSyncEngine {
     if (this.stopped || !this.restored || this.blocked || this.busy) return;
     if (!this.deps.isOnline()) {
       setStatus({ state: 'offline', message: 'You are offline. Changes will sync when you are back online.' });
-      return;
-    }
-    if (this.awaitingMoveChoice) {
-      const choice = this.deps.getMoveChoice();
-      if (choice === 'moved') {
-        this.awaitingMoveChoice = false;
-        await this.uploadCurrent();
-      } else if (choice === 'kept') {
-        this.awaitingMoveChoice = false;
-        this.blocked = true;
-        setStatus({
-          state: 'off',
-          message: 'Auto-sync is off for this account on this browser — you chose to keep its data separate.',
-        });
-      }
       return;
     }
     this.busy = true;

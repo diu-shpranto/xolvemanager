@@ -16,6 +16,7 @@ import {
 import { AppSettings, Customer, FinancialCategory, WhatsAppTemplateId } from '../../types';
 import type { NotificationCategory } from '../../types';
 import { CsvImportUtility } from '../settings/CsvImportUtility';
+import { CloudSyncPanel } from '../supabase/CloudSyncPanel';
 import { initialSettings } from '../../data/mockData';
 import { productBrand } from '../../config/brand';
 import { ProductLogo } from '../common/BrandLockup';
@@ -1113,6 +1114,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
         const persistenceLabel = storageDurability?.persisted === true ? 'Granted' :
           storageDurability?.persisted === false ? 'Denied' : 'Unavailable';
         return <div className="space-y-5">
+          <CloudSyncPanel />
           <section className={cardClass}>
             <SectionHeading title="Storage overview" description="Manage local business data, backups, imports, exports, and integrity checks." />
             {storageWarning && <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{storageWarning}</div>}
