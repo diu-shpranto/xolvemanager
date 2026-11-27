@@ -156,6 +156,15 @@ export const signUpWithSupabase = async (
   });
   if (error) throw new SupabaseAuthError('SIGNUP_FAILED', error.message);
   if (!data.user) throw new SupabaseAuthError('SIGNUP_FAILED', 'Cloud sign-up did not return an account.');
+  // Supabase does not return an error when the email is already
+  // registered (to avoid leaking which emails have accounts): it returns
+  // a user with an empty identities list instead. Without this check the
+  // caller would show a "check your email" confirmation notice for an
+  // account that already exists — and the user would be stuck waiting
+  // for a confirmation email that never comes.
+  if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+    throw new SupabaseAuthError('EMAIL_ALREADY_REGISTERED', 'User already registered');
+  }
   clearCloudPasswordRecoveryPending();
   // Email confirmation is off, so sign-up returns an active session.
   // Sign it out right away and clear the cloud-session markers: the
