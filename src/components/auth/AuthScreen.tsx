@@ -739,6 +739,25 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
     <main className={`auth-page ${styles.shell}`} data-auth-language={language} data-auth-mode={mode}>
       <div className={styles.page}>
         <div className={styles.topbar}>
+          <footer className="auth-footer" aria-label="XolveManager footer navigation">
+            <nav className="auth-footer-links" aria-label="Quick links">
+              <a href="/legal/privacy" className="auth-footer-link" aria-label="Privacy policy">
+                <span className="auth-footer-icon"><ShieldCheck aria-hidden="true" /></span>
+                <span className="auth-footer-label auth-footer-label--full">Privacy</span>
+                <span className="auth-footer-label auth-footer-label--short">Privacy</span>
+              </a>
+              <a href="/legal" className="auth-footer-link" aria-label="Legal & Trust Center">
+                <span className="auth-footer-icon"><Scale aria-hidden="true" /></span>
+                <span className="auth-footer-label auth-footer-label--full">Legal &amp; Trust Center</span>
+                <span className="auth-footer-label auth-footer-label--short">Legal</span>
+              </a>
+              <a href="/support" className="auth-footer-link" aria-label="Contact & Support">
+                <span className="auth-footer-icon"><Headset aria-hidden="true" /></span>
+                <span className="auth-footer-label auth-footer-label--full">Contact &amp; Support</span>
+                <span className="auth-footer-label auth-footer-label--short">Support</span>
+              </a>
+            </nav>
+          </footer>
           <button type="button" onClick={updateLanguage} className="auth-language" aria-label={language === 'en' ? 'Switch language to Bangla' : 'Switch language to English'}><Globe2 aria-hidden="true" />{text.language}<ChevronRight aria-hidden="true" /></button>
         </div>
         <div className={styles.brandmark}>
@@ -908,8 +927,8 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
                         <ChevronRight aria-hidden="true" />
                       </button>
                       {googleEnabled
-                        ? <p className="auth-session-note" style={{ marginTop: '0.5rem' }}>{text.googleNote}</p>
-                        : <p className="auth-session-note" style={{ marginTop: '0.5rem' }}>{language === 'bn' ? 'Google সাইন-ইন এখনও চালু হয়নি — ইমেইল ও পাসওয়ার্ড ব্যবহার করুন।' : 'Google sign-in is not configured yet — use email and password.'}</p>}
+                        ? <p className="auth-session-note auth-google-note" style={{ marginTop: '0.5rem' }}>{text.googleNote}</p>
+                        : <p className="auth-session-note auth-google-note" style={{ marginTop: '0.5rem' }}>{language === 'bn' ? 'Google সাইন-ইন এখনও চালু হয়নি — ইমেইল ও পাসওয়ার্ড ব্যবহার করুন।' : 'Google sign-in is not configured yet — use email and password.'}</p>}
                     </>
                   )}
 
@@ -937,25 +956,6 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
 
           </>
         )}
-        <footer className="auth-footer" aria-label="XolveManager footer navigation">
-          <nav className="auth-footer-links" aria-label="Quick links">
-            <a href="/legal/privacy" className="auth-footer-link" aria-label="Privacy policy">
-              <span className="auth-footer-icon"><ShieldCheck aria-hidden="true" /></span>
-              <span className="auth-footer-label auth-footer-label--full">Privacy</span>
-              <span className="auth-footer-label auth-footer-label--short">Privacy</span>
-            </a>
-            <a href="/legal" className="auth-footer-link" aria-label="Legal & Trust Center">
-              <span className="auth-footer-icon"><Scale aria-hidden="true" /></span>
-              <span className="auth-footer-label auth-footer-label--full">Legal &amp; Trust Center</span>
-              <span className="auth-footer-label auth-footer-label--short">Legal</span>
-            </a>
-            <a href="/support" className="auth-footer-link" aria-label="Contact & Support">
-              <span className="auth-footer-icon"><Headset aria-hidden="true" /></span>
-              <span className="auth-footer-label auth-footer-label--full">Contact &amp; Support</span>
-              <span className="auth-footer-label auth-footer-label--short">Support</span>
-            </a>
-          </nav>
-        </footer>
       </div>
     </main>
   );

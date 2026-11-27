@@ -9,6 +9,22 @@
  * Scoped to AuthScreen via CSS modules; all auth logic, copy, fields and
  * flows are untouched — only the visuals changed.
  *
+ * FIT (27 Nov 2026, owner: the whole page must fit one screen, no scroll,
+ * on desktop and mobile): the layout is compacted so /login and /signup
+ * fit inside the viewport — tight shell/topbar/brandmark/heading/card
+ * spacing, a slightly smaller logo (260px desktop / 210px mobile, still
+ * inside the spec range), inputs and buttons kept at 44px+ touch targets,
+ * and the quiet footer links moved up into the topbar row (they used to
+ * sit below the card and cost a whole row). On short viewports
+ * (max-height 900px) the logo shrinks further (180px desktop / 140px
+ * mobile), spacing tightens again, the generic intro line and the small
+ * Google hint hide (the heading alone says enough). On very short
+ * viewports (max-height 780px) the logo shrinks to 150px desktop /
+ * 110px mobile and the tagline hides too — the smallest readable size;
+ * below that the page scrolls rather than shrinking the logo further.
+ * Scroll remains only as a fallback for very short screens; nothing is
+ * clipped (no overflow hidden on the shell).
+ *
  * The global `auth-page` class is kept on <main> alongside .shell so the
  * CSS variables (--auth-ink, --auth-violet, --auth-focus), the
  * focus-visible ring, the Bangla font rule and the focus-reveal hook that
@@ -34,7 +50,7 @@
   align-items: center;
   justify-content: center;
   overflow-x: clip;
-  padding: 1.25rem 1rem 2.5rem;
+  padding: 1rem 1rem 1.25rem;
   color: #17213b;
   font-family: var(--font-sans);
   background-color: #faf9ff;
@@ -80,17 +96,42 @@
   align-items: stretch;
 }
 
-/* Language switcher, top right of the column (in normal flow, so it can
- * never drift over the card on narrow screens). */
+/* Language switcher + quiet footer links share one top row, so the
+ * footer no longer costs a whole row below the card (fit). */
 .topbar {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 1.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.topbar :global(.auth-footer) {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.topbar :global(.auth-footer-links) {
+  justify-content: flex-start;
+}
+
+/* The footer labels are short in the topbar row ("Privacy / Legal /
+ * Support") so the row never wraps to two lines — the full labels
+ * ("Legal & Trust Center", "Contact & Support") only fit below the card. */
+.topbar :global(.auth-footer-label--full) {
+  display: none;
+}
+
+.topbar :global(.auth-footer-label--short) {
+  display: inline-block;
+  white-space: nowrap;
 }
 
 .shell:global(.auth-page) .topbar :global(.auth-language) {
   position: static;
-  min-height: 2.75rem;
+  min-height: 2.5rem;
+  flex-shrink: 0;
   padding: 0.38rem 0.72rem;
   border: 1px solid #e7e3f7;
   border-radius: 0.75rem;
@@ -106,17 +147,18 @@
   transform: none;
 }
 
-/* Stacked original logo, centered above the card, LARGE (260-300px
- * desktop, 210-240px mobile per the redesign spec), with a soft aurora
- * halo and generous breathing space. Aspect ratio is preserved by the
- * image itself (1252x742); only the width is set, height stays auto.
+/* Stacked original logo, centered above the card, LARGE (260px desktop,
+ * 210px mobile — the redesign spec range, slightly tightened for fit),
+ * with a soft aurora halo and generous breathing space. Aspect ratio is
+ * preserved by the image itself (1252x742); only the width is set,
+ * height stays auto.
  * The stacked artwork is the owner's original image (icon above the
  * "XolveManager" text), not the rebuilt horizontal wordmark. */
 .brandmark {
   position: relative;
   display: flex;
   justify-content: center;
-  margin-bottom: 2rem;
+  margin-bottom: 1.25rem;
 }
 
 .brandmark::before {
@@ -139,7 +181,7 @@
 }
 
 .brandLogo :global(.brand-lockup__stacked) {
-  width: 18.75rem;
+  width: 16.25rem;
   height: auto;
   max-width: 100%;
   border-radius: 0.25rem;
@@ -155,14 +197,14 @@
 
 /* Heading + intro, centered above the card. */
 .heading {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
   text-align: center;
 }
 
 .heading h1 {
   margin: 0;
   color: #17213b;
-  font-size: 1.65rem;
+  font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.025em;
   line-height: 1.2;
@@ -170,7 +212,7 @@
 }
 
 .intro {
-  margin: 0.5rem auto 0;
+  margin: 0.35rem auto 0;
   max-width: 24rem;
   color: #66718b;
   font-size: 0.9rem;
@@ -181,7 +223,7 @@
 .card {
   position: relative;
   width: 100%;
-  padding: 2rem 1.75rem 1.6rem;
+  padding: 1.5rem 1.75rem 1.25rem;
   border: 1px solid rgba(124, 58, 237, 0.12);
   border-radius: 1.5rem;
   background: #ffffff;
@@ -204,6 +246,33 @@
   border-color: #e7e3f7;
   border-radius: 0.75rem;
   background: #f8f7ff;
+}
+
+/* Fit: tighter form rhythm inside the card — inputs stay 44px+ so the
+ * form stays easy to tap and type in. */
+.card :global(.auth-form) {
+  gap: 0.6rem;
+}
+
+.card :global(.auth-field) {
+  gap: 0.25rem;
+}
+
+.card :global(.auth-input) {
+  height: 2.75rem;
+}
+
+.card :global(.auth-divider) {
+  margin: 0.55rem 0;
+}
+
+.card :global(.auth-login-options) {
+  min-height: 2.25rem;
+}
+
+.card :global(.auth-terms) {
+  font-size: 0.7rem;
+  line-height: 1.4;
 }
 
 .shell:global(.auth-page)[data-auth-mode="login"] :global(.auth-input),
@@ -234,7 +303,7 @@
 .googleBtn {
   display: flex;
   width: 100%;
-  min-height: 3.4rem;
+  min-height: 3.1rem;
   align-items: center;
   gap: 0.7rem;
   padding: 0.65rem 0.9rem;
@@ -274,7 +343,7 @@
 .primaryBtn {
   display: flex;
   width: 100%;
-  min-height: 3.4rem;
+  min-height: 3.1rem;
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
@@ -316,7 +385,7 @@
 
 /* "Don't have an account? Sign up" / "Already have an account? Sign in" */
 .switch {
-  margin: 1.1rem 0 0;
+  margin: 0.7rem 0 0;
   color: #66718b;
   font-size: 0.85rem;
   line-height: 1.5;
@@ -324,8 +393,8 @@
 }
 
 .switchLink {
-  min-height: 2.75rem;
-  padding: 0.5rem 0.35rem;
+  min-height: 2rem;
+  padding: 0.35rem 0.35rem;
   border: 0;
   color: #6d28d9;
   background: transparent;
@@ -361,9 +430,10 @@
   color: #8a91a5;
 }
 
-/* Footer links as quiet centered text (overrides the global dark panel). */
+/* Footer links as quiet text (overrides the global dark panel). They live
+ * in the topbar row now (fit), so no margin is needed here. */
 .page :global(.auth-footer) {
-  margin: 1.75rem 0 0;
+  margin: 0;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -409,33 +479,128 @@
 
 @media (max-width: 480px) {
   .shell:global(.auth-page) {
-    padding: 1rem 0.9rem 2rem;
+    padding: 0.75rem 0.9rem 1rem;
   }
 
   .topbar {
-    margin-bottom: 1.25rem;
+    margin-bottom: 0.6rem;
   }
 
   .brandmark {
-    margin-bottom: 1.5rem;
+    margin-bottom: 0.75rem;
   }
 
   .brandLogo :global(.brand-lockup__wordmark) {
-    width: 15rem;
+    width: 13.125rem;
   }
 
   .brandLogo :global(.brand-lockup__stacked) {
-    width: 15rem;
+    width: 13.125rem;
+  }
+
+  .heading {
+    margin-bottom: 0.75rem;
   }
 
   .card {
-    padding: 1.6rem 1.15rem 1.3rem;
+    padding: 1.15rem 1.15rem 1rem;
     border-radius: 1.5rem;
   }
 
   .googleBtn,
   .primaryBtn {
-    min-height: 3.2rem;
+    min-height: 3rem;
+  }
+}
+
+/* Short viewports (small laptop windows, short phones): shrink the logo
+ * a step further and tighten spacing again so the page still fits.
+ * The intro line and the small Google hint hide here — the heading
+ * alone says enough — while the logo and tagline stay. */
+@media (max-height: 900px) {
+  .brandmark {
+    margin-bottom: 0.5rem;
+  }
+
+  .brandLogo :global(.brand-lockup__stacked) {
+    width: 8.4375rem;
+  }
+
+  .brandLogo :global(.brand-lockup__wordmark) {
+    width: 8.4375rem;
+  }
+
+  .heading {
+    margin-bottom: 0.5rem;
+  }
+
+  .intro {
+    display: none;
+  }
+
+  .topbar {
+    margin-bottom: 0.5rem;
+  }
+
+  .card {
+    padding: 1rem 1.5rem 0.8rem;
+  }
+
+  .card :global(.auth-form) {
+    gap: 0.55rem;
+  }
+
+  .card :global(.auth-google-note) {
+    display: none;
+  }
+
+  .googleBtn,
+  .primaryBtn {
+    min-height: 2.75rem;
+  }
+
+  .switch {
+    margin-top: 0.35rem;
+  }
+}
+
+@media (max-height: 900px) and (max-width: 480px) {
+  .brandLogo :global(.brand-lockup__stacked) {
+    width: 7.8125rem;
+  }
+
+  .brandLogo :global(.brand-lockup__wordmark) {
+    width: 7.8125rem;
+  }
+
+  .shell:global(.auth-page) {
+    padding-bottom: 0.6rem;
+  }
+}
+
+/* Very short viewports (short laptop windows, short phones): the logo
+ * goes to the smallest readable size and the tagline hides too. */
+@media (max-height: 780px) {
+  .brandLogo :global(.brand-lockup__stacked) {
+    width: 7.5rem;
+  }
+
+  .brandLogo :global(.brand-lockup__wordmark) {
+    width: 7.5rem;
+  }
+
+  .brandLogo :global(.brand-lockup__tagline) {
+    display: none;
+  }
+}
+
+@media (max-height: 780px) and (max-width: 480px) {
+  .brandLogo :global(.brand-lockup__stacked) {
+    width: 6.25rem;
+  }
+
+  .brandLogo :global(.brand-lockup__wordmark) {
+    width: 6.25rem;
   }
 }
 
