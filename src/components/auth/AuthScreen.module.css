@@ -132,7 +132,7 @@
 }
 
 .brandLogo :global(.brand-lockup__wordmark) {
-  width: 17.5rem;
+  width: 18.75rem;
   height: auto;
 }
 
@@ -411,7 +411,7 @@
   }
 
   .brandLogo :global(.brand-lockup__wordmark) {
-    width: 13.75rem;
+    width: 15rem;
   }
 
   .card {
