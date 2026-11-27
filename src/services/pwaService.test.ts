@@ -106,12 +106,12 @@ test('a new worker waits for the user before activation and only activates on re
   await installPromise;
 
   assert.equal(harness.skipWaitingCalls, 0);
-  assert.ok(harness.cacheContents.has('xolve-manager-static-vnext-12'));
-  const newCache = harness.cacheContents.get('xolve-manager-static-vnext-12');
+  assert.ok(harness.cacheContents.has('xolve-manager-static-vnext-13'));
+  const newCache = harness.cacheContents.get('xolve-manager-static-vnext-13');
   assert.ok(newCache?.has('/manifest.webmanifest'));
-  assert.ok(newCache?.has('/icons/xolvemanager-violet-192-v2.png'));
-  assert.ok(newCache?.has('/icons/xolvemanager-violet-512-v2.png'));
-  assert.ok(newCache?.has('/icons/xolvemanager-violet-maskable-512-v2.png'));
+  assert.ok(newCache?.has('/icons/xolvemanager-violet-192-v3.png'));
+  assert.ok(newCache?.has('/icons/xolvemanager-violet-512-v3.png'));
+  assert.ok(newCache?.has('/icons/xolvemanager-violet-maskable-512-v3.png'));
 
   harness.dispatch('message', { data: 'SKIP_WAITING' });
   assert.equal(harness.skipWaitingCalls, 1);
@@ -137,7 +137,7 @@ test('activation retains one previous app cache for offline recovery without tou
 });
 
 test('static assets prefer fresh network responses and fall back to a retained cache offline', async () => {
-  const assetUrl = 'https://xolvemanager.example/icons/xolvemanager-violet-192-v2.png';
+  const assetUrl = 'https://xolvemanager.example/icons/xolvemanager-violet-192-v3.png';
   const onlineResponseObject = {
     ok: true,
     type: 'basic',
@@ -160,7 +160,7 @@ test('static assets prefer fresh network responses and fall back to a retained c
   assert.equal(await onlineResponse, onlineResponseObject);
   await onlineCacheWrite;
   assert.deepEqual(
-    onlineHarness.cacheContents.get('xolve-manager-static-vnext-12')?.get(assetUrl),
+    onlineHarness.cacheContents.get('xolve-manager-static-vnext-13')?.get(assetUrl),
     { source: 'network' }
   );
 

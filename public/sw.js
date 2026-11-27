@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'xolve-manager-static-v';
-const CACHE_NAME = `${CACHE_PREFIX}next-12`;
+const CACHE_NAME = `${CACHE_PREFIX}next-13`;
 const PREVIOUS_CACHE_COUNT = 1;
 const PRECACHE_URLS = [
   '/manifest.webmanifest',
@@ -9,9 +9,9 @@ const PRECACHE_URLS = [
   '/icons/xolvemanager-brand-16.png',
   '/icons/xolvemanager-brand-32.png',
   '/icons/xolvemanager-brand-180.png',
-  '/icons/xolvemanager-violet-192-v2.png',
-  '/icons/xolvemanager-violet-512-v2.png',
-  '/icons/xolvemanager-violet-maskable-512-v2.png',
+  '/icons/xolvemanager-violet-192-v3.png',
+  '/icons/xolvemanager-violet-512-v3.png',
+  '/icons/xolvemanager-violet-maskable-512-v3.png',
 ];
 
 const getAppCacheNames = async () => (await caches.keys())
