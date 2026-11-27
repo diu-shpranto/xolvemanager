@@ -742,7 +742,7 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
           <button type="button" onClick={updateLanguage} className="auth-language" aria-label={language === 'en' ? 'Switch language to Bangla' : 'Switch language to English'}><Globe2 aria-hidden="true" />{text.language}<ChevronRight aria-hidden="true" /></button>
         </div>
         <div className={styles.brandmark}>
-          <ProductLogo size="compact" tone="default" showTagline className={styles.brandLogo} />
+          <ProductLogo size="compact" tone="default" showTagline layout="stacked" className={styles.brandLogo} />
         </div>
 
         {resultKey ? (

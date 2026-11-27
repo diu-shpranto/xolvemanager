@@ -9,6 +9,11 @@ interface ProductLogoProps {
   markOnly?: boolean;
   markSrc?: string;
   showTagline?: boolean;
+  // 'stacked' renders the owner's original artwork as one image (icon
+  // above the "XolveManager" text) instead of the rebuilt horizontal
+  // wordmark. Only the auth pages use it; everything else keeps the
+  // horizontal wordmark.
+  layout?: 'horizontal' | 'stacked';
 }
 
 export const ProductLogo: React.FC<ProductLogoProps> = ({
@@ -18,6 +23,7 @@ export const ProductLogo: React.FC<ProductLogoProps> = ({
   markOnly = false,
   markSrc,
   showTagline = false,
+  layout = 'horizontal',
 }) => {
   return (
     <div
@@ -40,6 +46,18 @@ export const ProductLogo: React.FC<ProductLogoProps> = ({
             loading="eager"
           />
         </span>
+      ) : layout === 'stacked' ? (
+        <div className="brand-lockup__copy">
+          <Image
+            className="brand-lockup__stacked"
+            src={productBrand.stackedLogoUrl}
+            alt=""
+            width={1252}
+            height={742}
+            priority
+          />
+          {showTagline && <span className="brand-lockup__tagline">{productBrand.tagline}</span>}
+        </div>
       ) : (
         <div className="brand-lockup__copy">
           <Image

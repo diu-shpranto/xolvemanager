@@ -106,10 +106,12 @@
   transform: none;
 }
 
-/* Wordmark, centered above the card, LARGE (260-300px desktop,
- * 210-240px mobile per the redesign spec), with a soft aurora halo
- * and generous breathing space. Aspect ratio is preserved by the
- * image itself (1080x200); only the width is set, height stays auto. */
+/* Stacked original logo, centered above the card, LARGE (260-300px
+ * desktop, 210-240px mobile per the redesign spec), with a soft aurora
+ * halo and generous breathing space. Aspect ratio is preserved by the
+ * image itself (1252x742); only the width is set, height stays auto.
+ * The stacked artwork is the owner's original image (icon above the
+ * "XolveManager" text), not the rebuilt horizontal wordmark. */
 .brandmark {
   position: relative;
   display: flex;
@@ -134,6 +136,14 @@
 .brandLogo :global(.brand-lockup__wordmark) {
   width: 18.75rem;
   height: auto;
+}
+
+.brandLogo :global(.brand-lockup__stacked) {
+  width: 18.75rem;
+  height: auto;
+  max-width: 100%;
+  border-radius: 0.25rem;
+  object-fit: contain;
 }
 
 .brandLogo :global(.brand-lockup__tagline) {
@@ -411,6 +421,10 @@
   }
 
   .brandLogo :global(.brand-lockup__wordmark) {
+    width: 15rem;
+  }
+
+  .brandLogo :global(.brand-lockup__stacked) {
     width: 15rem;
   }
 
