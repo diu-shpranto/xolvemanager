@@ -17,8 +17,10 @@ import { AppSettings, Customer, FinancialCategory, WhatsAppTemplateId } from '..
 import type { NotificationCategory } from '../../types';
 import { CsvImportUtility } from '../settings/CsvImportUtility';
 import { CloudSyncPanel } from '../supabase/CloudSyncPanel';
+import { useAutoSyncStatus } from '../supabase/AutoSyncEngine';
+import { isCloudSession } from '../../services/supabase/auth';
 import { initialSettings } from '../../data/mockData';
-import { productBrand } from '../../config/brand';
+import { productBrand, APP_VERSION } from '../../config/brand';
 import { ProductLogo } from '../common/BrandLockup';
 import { AboutExperience } from './AboutExperience';
 import { InstallAppPrompt } from '../common/InstallAppPrompt';
@@ -107,6 +109,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
   } = useApp();
   const { formatDateTime, formatDurationDays } = useAppFormatting();
   const { installStatus } = usePwaState();
+  const autoSyncStatus = useAutoSyncStatus();
   const { showToast } = useToast();
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection ?? 'business');
   const [draft, setDraft] = useState<AppSettings>(settings);
@@ -362,7 +365,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
     if (backupBusy && !safetyCopy) return false;
     if (!safetyCopy) setBackupBusy(true);
     try {
-      const backup = await createVersionedBackup(exportDataJSON(), '0.0.0');
+      const backup = await createVersionedBackup(exportDataJSON(), APP_VERSION);
       const recordCount = getBackupRecordCount(backup.records);
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -688,7 +691,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
       businessId: currentBusiness?.businessId,
     };
     try {
-      await updateSettings(defaultPreferences);
+      await updateSettings(nextSettings);
       setDraft(nextSettings);
       if (nextSettings.currency !== currency) setCurrency(nextSettings.currency);
       if (nextSettings.language !== language) setLanguage(nextSettings.language);
@@ -1107,37 +1110,87 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
         const prettyBytes = storageBytes === null ? 'Unavailable' :
           storageBytes < 1024 ? `${storageBytes} B` :
             storageBytes < 1024 * 1024 ? `${(storageBytes / 1024).toFixed(1)} KB` : `${(storageBytes / 1024 / 1024).toFixed(2)} MB`;
-        const prettyQuota = storageDurability?.quotaBytes == null ? 'Unavailable' :
-          storageDurability.quotaBytes < 1024 * 1024
-            ? `${(storageDurability.quotaBytes / 1024).toFixed(1)} KB`
-            : `${(storageDurability.quotaBytes / 1024 / 1024).toFixed(2)} MB`;
         const persistenceLabel = storageDurability?.persisted === true ? 'Granted' :
           storageDurability?.persisted === false ? 'Denied' : 'Unavailable';
+        const syncStatus = (() => {
+          switch (autoSyncStatus.state) {
+            case 'idle':
+              return {
+                tone: 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100',
+                dot: 'bg-emerald-500',
+                text: autoSyncStatus.lastSyncedAt
+                  ? `Cloud sync is on · Last synced ${formatDateTime(autoSyncStatus.lastSyncedAt)}`
+                  : 'Cloud sync is on.',
+              };
+            case 'uploading':
+              return {
+                tone: 'border-violet-200 bg-violet-50 text-violet-950 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-100',
+                dot: 'bg-violet-500 animate-pulse',
+                text: 'Syncing your latest changes to the cloud…',
+              };
+            case 'downloading':
+              return {
+                tone: 'border-violet-200 bg-violet-50 text-violet-950 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-100',
+                dot: 'bg-violet-500 animate-pulse',
+                text: 'Downloading the latest changes from the cloud…',
+              };
+            case 'restoring':
+              return {
+                tone: 'border-violet-200 bg-violet-50 text-violet-950 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-100',
+                dot: 'bg-violet-500 animate-pulse',
+                text: 'Restoring your cloud data to this browser…',
+              };
+            case 'offline':
+              return {
+                tone: 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100',
+                dot: 'bg-amber-500',
+                text: autoSyncStatus.message || 'You are offline. Changes will sync when you are back online.',
+              };
+            case 'error':
+              return {
+                tone: 'border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200',
+                dot: 'bg-rose-500',
+                text: autoSyncStatus.message
+                  ? `Cloud sync hit a problem: ${autoSyncStatus.message}`
+                  : 'Cloud sync hit a problem. The data in this browser was not changed.',
+              };
+            default:
+              return {
+                tone: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200',
+                dot: 'bg-slate-400',
+                text: 'Cloud sync is off — your data stays in this browser only.',
+              };
+          }
+        })();
         return <div className="space-y-5">
           <CloudSyncPanel />
           <section className={cardClass}>
-            <SectionHeading title="Storage overview" description="Manage local business data, backups, imports, exports, and integrity checks." />
+            <SectionHeading title="Storage overview" description="Your data, backups, and exports — in one place." />
             {storageWarning && <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{storageWarning}</div>}
-            <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <AboutItem label="Current business" value={currentBusinessName || settings.storeName || 'Not set'} />
-              <AboutItem label="Storage mode" value="Local browser storage" />
-              <AboutItem label="Approximate storage usage" value={prettyBytes} />
-              <AboutItem label="Browser storage quota" value={prettyQuota} />
+            <p className="mb-4 text-sm leading-6 text-slate-600 dark:text-slate-300">
+              Your business data lives in this browser. When you sign in with a cloud account, it also syncs to the cloud automatically — so the same data shows up on your other devices. A backup file is a separate copy you keep somewhere safe.
+            </p>
+            <div className={`mb-4 flex items-start gap-2.5 rounded-xl border p-3 text-sm ${syncStatus.tone}`}>
+              <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${syncStatus.dot}`} aria-hidden="true" />
+              <span>{syncStatus.text}</span>
+            </div>
+            <div className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <AboutItem label="Where your data lives" value={isCloudSession() ? 'Cloud sync + this browser' : 'This browser only'} />
+              <AboutItem label="How much space it uses" value={prettyBytes} />
               <AboutItem label="Last backup" value={formatMetadataDate(backupMetadata.lastBackupAt, language, settings.businessProfile?.timeZone)} />
-              <AboutItem label="Last restore" value={formatMetadataDate(backupMetadata.lastRestoreAt, language, settings.businessProfile?.timeZone)} />
-              <AboutItem label="Last import" value={formatMetadataDate(backupMetadata.lastImportAt, language, settings.businessProfile?.timeZone)} />
               <AboutItem label="Last export" value={formatMetadataDate(backupMetadata.lastExportAt, language, settings.businessProfile?.timeZone)} />
             </div>
+            <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">History — Last restore: {formatMetadataDate(backupMetadata.lastRestoreAt, language, settings.businessProfile?.timeZone)} · Last import: {formatMetadataDate(backupMetadata.lastImportAt, language, settings.businessProfile?.timeZone)}</p>
             <div className="mb-4 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white">Local data protection: {persistenceLabel}</p>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">Browser protection: {persistenceLabel}</p>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     {storageDurability?.persisted === true
-                      ? 'The browser reports persistent storage is granted, which can reduce automatic cleanup. It does not protect against device failure, profile deletion, or manually cleared data. Keep regular backups.'
+                      ? 'This browser has agreed to keep your data, so it is less likely to be cleared during cleanups. It still will not help if the device is lost, the browser profile is deleted, or you clear site data yourself — keep a backup.'
                       : storageDurability?.persisted === false
-                        ? 'The browser denied persistent storage. Local data may be removed during cleanup. Keep regular backups.'
-                        : 'The browser cannot report whether persistent storage is granted. Protection is unavailable or unconfirmed. Keep regular backups.'}
+                        ? 'This browser may clear your data when it cleans up storage. Download a backup regularly so nothing is lost.'
+                        : 'We could not check whether this browser will keep your data. Download a backup regularly to be safe.'}
                   </p>
                   {storagePersistenceError && <p role="alert" className="mt-2 text-xs text-rose-700 dark:text-rose-300">{storagePersistenceError}</p>}
                 </div>
@@ -1152,6 +1205,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
                 {storageDurability && !storageDurability.supported && <span className="text-xs text-slate-500 dark:text-slate-400">Unavailable in this browser</span>}
               </div>
             </div>
+            <h3 className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">What&apos;s in this business</h3>
             <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               <Metric label="Customers" count={customers.length} /><Metric label="Services" count={services.length} />
               <Metric label="Plans" count={planCount} /><Metric label="Accounts" count={accounts.length} />
@@ -1188,10 +1242,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
               <p className="text-sm font-semibold text-violet-950 dark:text-violet-100">Moving to another device?</p>
               <ol className="mt-2 list-inside list-decimal space-y-1 text-xs leading-5 text-violet-900 dark:text-violet-200">
                 <li>Download a full backup on the device that has your data.</li>
-                <li>Transfer the file securely to the other device and open XolveManager there.</li>
-                <li>Choose that file below and restore it to the matching Production or Demo profile.</li>
+                <li>Send the file to the other device and open XolveManager there.</li>
+                <li>Choose the file below and restore it to the matching Production or Demo profile.</li>
               </ol>
-              <p className="mt-2 text-xs text-violet-900 dark:text-violet-200">The backup is a file transfer, not cloud sync. Keep the file somewhere safe; it is the copy you can use if browser data is lost.</p>
+              <p className="mt-2 text-xs text-violet-900 dark:text-violet-200">A backup is a file you move yourself — not cloud sync. Keep it somewhere safe; it is the copy you use if browser data is lost.</p>
             </div>
             <button type="button" disabled={backupBusy} onClick={() => void downloadBackup()} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-600 disabled:cursor-wait disabled:opacity-60"><Download className="h-4 w-4" />{backupBusy ? 'Preparing backup…' : 'Download Full Backup'}</button>
             {backupSummary && <div role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm dark:border-emerald-900 dark:bg-emerald-950/20">
@@ -1204,10 +1258,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
             <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs leading-5 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
               <strong>Sensitive file:</strong> Full backups include saved account credentials and profile PINs because they are part of account records. Files are not encrypted; anyone with the file may be able to read them. Store it securely and transfer it only through a trusted method. XolveManager does not upload backups.
             </div>
-            <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">This browser uses localStorage; no IndexedDB business store is present. Authentication/session credentials, browser-specific backup dates, PWA install dismissal, and temporary search/view state are intentionally excluded. Notification data, settings, saved records, and demo-data management metadata are included.</p>
+            <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">A backup includes your records, settings, and notifications. It does not include your sign-in details, and dates like &ldquo;last backup&rdquo; are kept in this browser only — they are not saved in the file.</p>
             <div className="mt-5 border-t border-slate-100 pt-5 dark:border-slate-800">
               <h3 className="font-semibold">Import Full Backup</h3>
-              <p className="mt-1 text-xs text-slate-500">Choose the JSON backup file from this or another device. XolveManager checks the file and shows its record counts before restoring anything. Restore replaces the active workspace, and a safety backup is downloaded first.</p>
+              <p className="mt-1 text-xs text-slate-500">Choose a backup file (.json). We check it and show what is inside before anything is restored. Restoring replaces this workspace — a safety backup is downloaded first.</p>
               <label className="mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium dark:border-slate-700"><Upload className="h-4 w-4" />{backupBusy ? 'Reading backup…' : 'Choose backup file'}
                 <input type="file" accept="application/json,.json" aria-label="Choose JSON backup file" className="sr-only" onChange={event => {
                   const file = event.target.files?.[0]; event.target.value = ''; if (!file) return;
@@ -1275,7 +1329,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
                   {mergePlan.conflicts.length > 0 && <ul className="mt-2 max-h-28 list-inside list-disc overflow-y-auto text-xs text-amber-800 dark:text-amber-300">{mergePlan.conflicts.slice(0, 8).map((conflict, index) => <li key={`${conflict.collection}-${conflict.id}-${index}`}>{conflict.collection} · {conflict.id}: {conflict.reason}</li>)}</ul>}
                 </div>}
                 {backupMode === 'replace' && <div className="mt-3 space-y-3 rounded-xl border border-rose-400 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200">
-                  <p className="font-bold">Replacing current data may permanently remove existing records. A safety backup download must start before restore. Storage writes are staged with rollback if a write fails.</p>
+                  <p className="font-bold">Replacing deletes your current records. A safety backup is downloaded first, and if a write fails the restore rolls back.</p>
                   <label className="flex items-start gap-2"><input type="checkbox" checked={restoreConfirmed} onChange={event => setRestoreConfirmed(event.target.checked)} className="mt-1 accent-rose-600" />I understand the replace operation and confirm this restore.</label>
                   {emptyBackupNeedsConfirmation && <label className="flex items-start gap-2 rounded-lg border border-rose-400 bg-white/70 p-2 dark:bg-slate-900/50"><input type="checkbox" checked={emptyBackupConfirmed} onChange={event => setEmptyBackupConfirmed(event.target.checked)} className="mt-1 accent-rose-600" />I understand this backup contains zero records and confirm replacing my {currentRecordCount} current records with empty data.</label>}
                   {businessIdentityNeedsConfirmation && <label className="flex items-start gap-2 rounded-lg border border-rose-400 bg-white/70 p-2 dark:bg-slate-900/50"><input type="checkbox" checked={businessIdentityConfirmed} onChange={event => setBusinessIdentityConfirmed(event.target.checked)} className="mt-1 accent-rose-600" />I understand the backup Business ID differs or cannot be verified, and confirm replacing the current business identity with the identity in this backup.</label>}

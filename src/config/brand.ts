@@ -25,5 +25,8 @@ export const productBrand = {
 
 export const APP_BRAND = productBrand;
 
+/** Single source of truth for the app version — recorded in every backup file. */
+export const APP_VERSION = packageJson.version;
+
 export const DEFAULT_INVOICE_BUSINESS_NAME = 'XolveManager';
 export const DEFAULT_INVOICE_SUPPORT_NUMBER = '01614661521';

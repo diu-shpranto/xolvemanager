@@ -14,6 +14,7 @@
 import type { LocalSnapshot } from './mapping';
 import { CLOUD_TABLES, snapshotRowsForTable } from './mapping';
 import { createVersionedBackup } from '../dataBackupService';
+import { APP_VERSION } from '../../config/brand';
 
 /** Minimal shape of a Supabase client needed for the upload (real client fits).
  *  The real client's upsert returns a PostgrestFilterBuilder (a PromiseLike),
@@ -83,7 +84,7 @@ export const uploadLocalSnapshotToCloud = async (
 export const downloadLocalBackup = async (exportDataJSON: () => string): Promise<string | null> => {
   if (typeof window === 'undefined' || typeof document === 'undefined') return null;
   try {
-    const backup = await createVersionedBackup(exportDataJSON(), '0.0.0');
+    const backup = await createVersionedBackup(exportDataJSON(), APP_VERSION);
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const now = new Date();
