@@ -92,6 +92,16 @@
   }
 }
 
+/* On phones the page starts at the very top of the viewport, so the
+ * Privacy / Legal / Support strip sits right under the browser chrome
+ * instead of floating mid-screen on a tall phone (owner request,
+ * 27 Nov 2026). Desktop keeps the centered layout. */
+@media (max-width: 480px) {
+  .shell:global(.auth-page) {
+    align-items: flex-start;
+  }
+}
+
 /* One centered column, 440px wide. */
 .page {
   display: flex;
@@ -342,6 +352,7 @@
 }
 
 .card :global(.auth-login-options) {
+  justify-content: flex-end;
   min-height: 2.25rem;
 }
 
@@ -760,3 +771,39 @@
 /* The sign-in / sign-up pages always stay light, even on dark-mode
  * systems (owner decision, 27 Nov 2026). There is deliberately no
  * dark-mode block in this file. */
+
+/* Phones: clear space between the Privacy / Legal / Support strip and
+ * the logo (owner request, 27 Nov 2026 — the strip sat glued to the
+ * logo, only ~8px apart). The extra height is paid for by tightening
+ * the logo-to-heading gap, card padding, form gaps, login-options row
+ * and bottom row on the same screens, so login/signup still fit
+ * without scrolling. Placed last so it wins over the height tiers. */
+@media (max-width: 480px) {
+  .topbar {
+    margin-bottom: 2rem;
+  }
+
+  .brandmark {
+    margin-bottom: 0.25rem;
+  }
+
+  .heading {
+    margin-bottom: 0.25rem;
+  }
+
+  .card {
+    padding: 0.85rem 1.15rem 0.65rem;
+  }
+
+  .card :global(.auth-form) {
+    gap: 0.5rem;
+  }
+
+  .card :global(.auth-login-options) {
+    min-height: 2rem;
+  }
+
+  .bottomRow {
+    margin-top: 0.2rem;
+  }
+}

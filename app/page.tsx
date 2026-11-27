@@ -326,7 +326,7 @@ const privacyPoints = [
 
 function Eyebrow({ children, dark = false }: { children: ReactNode; dark?: boolean }) {
   return (
-    <p className={`text-xs font-bold uppercase tracking-[0.18em] ${dark ? 'text-blue-300' : 'text-blue-700'}`}>
+    <p className={`text-xs font-bold uppercase tracking-[0.18em] ${dark ? 'text-violet-300' : 'text-violet-700'}`}>
       {children}
     </p>
   );
@@ -346,26 +346,26 @@ export default function Home() {
       <HomepageNavigation />
       <main className="scroll-smooth motion-reduce:scroll-auto">
         {/* Hero */}
-        <section className={`relative overflow-hidden bg-gradient-to-b from-sky-100 via-[#F0F7FF] to-white ${styles.sectionReveal}`}>
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 [background-image:radial-gradient(rgba(37,99,235,0.09)_1px,transparent_1px)] [background-size:22px_22px] [mask-image:linear-gradient(to_bottom,black,transparent_78%)]" />
-          <div aria-hidden="true" className="pointer-events-none absolute -top-32 left-1/2 h-96 w-[42rem] -translate-x-1/2 rounded-full bg-blue-300/30 blur-3xl" />
-          <div aria-hidden="true" className="pointer-events-none absolute bottom-[-40%] left-[-8%] h-80 w-80 rounded-full bg-sky-200/30 blur-3xl" />
+        <section className={`relative overflow-hidden bg-gradient-to-b from-violet-100 via-[#F8F7FF] to-white ${styles.sectionReveal}`}>
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 [background-image:radial-gradient(rgba(124,58,237,0.09)_1px,transparent_1px)] [background-size:22px_22px] [mask-image:linear-gradient(to_bottom,black,transparent_78%)]" />
+          <div aria-hidden="true" className="pointer-events-none absolute -top-32 left-1/2 h-96 w-[42rem] -translate-x-1/2 rounded-full bg-violet-300/30 blur-3xl" />
+          <div aria-hidden="true" className="pointer-events-none absolute bottom-[-40%] left-[-8%] h-80 w-80 rounded-full bg-fuchsia-200/30 blur-3xl" />
           <div className="relative mx-auto max-w-7xl px-4 py-14 text-center sm:px-8 sm:py-20 lg:py-24">
-            <p className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/90 px-3 py-1.5 text-[11px] font-bold tracking-wide text-blue-800 shadow-sm">
-              <span className="h-2 w-2 rounded-full bg-blue-600" aria-hidden="true" />
+            <p className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/90 px-3 py-1.5 text-[11px] font-bold tracking-wide text-violet-800 shadow-sm">
+              <span className="h-2 w-2 rounded-full bg-violet-600" aria-hidden="true" />
               Cloud account · Works on any device
             </p>
             <h1 className="mx-auto mt-5 max-w-3xl text-[2.5rem] font-extrabold leading-[1.08] tracking-[-0.045em] text-slate-950 sm:text-5xl lg:text-[3.75rem]">
-              Manage customers, subscriptions &amp; sales <span className="text-blue-600">— on any device.</span>
+              Manage customers, subscriptions &amp; sales <span className="bg-gradient-to-r from-violet-600 via-[#6d28d9] to-blue-600 bg-clip-text text-transparent">— on any device.</span>
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
               Sign in with Google or email, and your business records follow your account — not just one browser.
             </p>
             <div className="mt-8 flex flex-col items-center justify-center gap-3 min-[420px]:flex-row">
-              <Link href="/signup" className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-bold text-white shadow-md shadow-blue-900/20 transition hover:-translate-y-0.5 hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 motion-reduce:transform-none min-[420px]:w-auto">
+              <Link href="/signup" className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-[#6d28d9] to-blue-600 px-6 py-3 text-sm font-bold text-white shadow-md shadow-violet-900/25 transition hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 motion-reduce:transform-none min-[420px]:w-auto">
                 Get started free <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
-              <Link href="/login" className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:border-blue-300 hover:text-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 min-[420px]:w-auto">
+              <Link href="/login" className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:border-violet-300 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 min-[420px]:w-auto">
                 Sign in
               </Link>
             </div>
@@ -376,8 +376,8 @@ export default function Home() {
                 { label: 'Each account sees only its own data', icon: ShieldCheck },
                 { label: 'Works offline after first load', icon: WifiOff },
               ].map(({ label, icon: Icon }) => (
-                <li key={label} className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-white/80 p-3.5 shadow-sm shadow-blue-950/[0.03]">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-blue-100 text-blue-700">
+                <li key={label} className="flex items-start gap-3 rounded-2xl border border-violet-100 bg-white/80 p-3.5 shadow-sm shadow-violet-950/[0.03]">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700">
                     <Icon className="h-4 w-4" aria-hidden="true" />
                   </span>
                   <span className="leading-6">{label}</span>
@@ -398,13 +398,13 @@ export default function Home() {
               </p>
             </div>
             <div className="relative mt-10 grid gap-4 md:grid-cols-3">
-              <div aria-hidden="true" className="absolute left-[16%] right-[16%] top-9 hidden h-0.5 bg-gradient-to-r from-blue-200 via-blue-300 to-blue-200 md:block" />
+              <div aria-hidden="true" className="absolute left-[16%] right-[16%] top-9 hidden h-0.5 bg-gradient-to-r from-violet-200 via-violet-300 to-violet-200 md:block" />
               {cloudSteps.map(({ step, title, description, icon: Icon }) => (
-                <article key={title} className="relative rounded-3xl border border-blue-100 bg-[#F8FBFF] p-6 text-center sm:p-7">
-                  <span className="relative mx-auto grid h-[4.5rem] w-[4.5rem] place-items-center rounded-full border-4 border-white bg-blue-700 text-white shadow-lg shadow-blue-900/20">
+                <article key={title} className="relative rounded-3xl border border-violet-100 bg-[#F8FBFF] p-6 text-center sm:p-7">
+                  <span className="relative mx-auto grid h-[4.5rem] w-[4.5rem] place-items-center rounded-full border-4 border-white bg-gradient-to-br from-violet-600 to-blue-700 text-white shadow-lg shadow-violet-900/20">
                     <Icon className="h-7 w-7" aria-hidden="true" />
                   </span>
-                  <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.16em] text-blue-600">{step}</p>
+                  <p className="mt-4 text-[11px] font-bold uppercase tracking-[0.16em] text-violet-600">{step}</p>
                   <h3 className="mt-1.5 text-lg font-bold text-slate-900">{title}</h3>
                   <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
                 </article>
@@ -426,8 +426,8 @@ export default function Home() {
             </div>
             <div className="mt-9 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {features.map(({ title, description, icon: Icon }) => (
-                <article key={title} className="group rounded-3xl border border-blue-100 bg-white p-5 shadow-sm shadow-blue-950/[0.03] transition duration-200 hover:-translate-y-1 hover:border-blue-300 hover:shadow-xl hover:shadow-blue-950/[0.08] motion-reduce:transform-none sm:p-6">
-                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-md shadow-blue-900/20 transition-transform duration-200 group-hover:scale-105 motion-reduce:transform-none">
+                <article key={title} className="group rounded-3xl border border-violet-100 bg-white p-5 shadow-sm shadow-violet-950/[0.03] transition duration-200 hover:-translate-y-1 hover:border-violet-300 hover:shadow-xl hover:shadow-violet-950/[0.08] motion-reduce:transform-none sm:p-6">
+                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-violet-600 to-blue-700 text-white shadow-md shadow-violet-900/20 transition-transform duration-200 group-hover:scale-105 motion-reduce:transform-none">
                     <Icon className="h-5.5 w-5.5" aria-hidden="true" />
                   </span>
                   <h3 className="mt-4 text-base font-bold text-slate-900">{title}</h3>
@@ -448,8 +448,8 @@ export default function Home() {
               </p>
             </div>
             <div className="relative mx-auto mt-10 w-full max-w-4xl">
-              <div aria-hidden="true" className="absolute -inset-4 rounded-[3rem] bg-blue-300/40 blur-3xl" />
-              <div className="relative overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl shadow-blue-950/15 sm:rounded-3xl">
+              <div aria-hidden="true" className="absolute -inset-4 rounded-[3rem] bg-violet-300/40 blur-3xl" />
+              <div className="relative overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-2xl shadow-violet-950/15 sm:rounded-3xl">
                 <Image
                   src="/images/xolvemanager-dashboard-showcase.png"
                   alt="XolveManager demo dashboard showing sample business summaries, workspace navigation, and quick actions."
@@ -459,8 +459,8 @@ export default function Home() {
                   className="h-auto w-full"
                 />
               </div>
-              <div className="relative -mt-5 ml-4 flex max-w-xs items-center gap-2.5 rounded-2xl border border-blue-100 bg-white/95 px-4 py-3 shadow-lg shadow-blue-950/10 backdrop-blur sm:ml-8">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-100 text-blue-700">
+              <div className="relative -mt-5 ml-4 flex max-w-xs items-center gap-2.5 rounded-2xl border border-violet-100 bg-white/95 px-4 py-3 shadow-lg shadow-violet-950/10 backdrop-blur sm:ml-8">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-700">
                   <ShieldCheck className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <p className="text-xs font-semibold leading-5 text-slate-700">
@@ -469,7 +469,7 @@ export default function Home() {
               </div>
               <div className="relative mt-5 flex flex-wrap justify-center gap-2">
                 {['Add Customers', 'Create Services and Plans', 'Track Subscriptions', 'Record Sales and Payments'].map(label => (
-                  <span key={label} className="rounded-full border border-blue-100 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-600 shadow-sm sm:text-xs">
+                  <span key={label} className="rounded-full border border-violet-100 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-600 shadow-sm sm:text-xs">
                     {label}
                   </span>
                 ))}
@@ -481,30 +481,30 @@ export default function Home() {
           </div>
         </section>
 
-        <section id="privacy-data" className="scroll-mt-24 bg-blue-950 py-16 text-white sm:py-20">
+        <section id="privacy-data" className="scroll-mt-24 bg-violet-950 py-16 text-white sm:py-20">
           <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
             <div>
               <Eyebrow dark>Privacy &amp; trust</Eyebrow>
               <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">Your data is yours.</h2>
-              <p className="mt-5 leading-7 text-blue-100/85">
+              <p className="mt-5 leading-7 text-violet-100/85">
                 Your records belong to your cloud account. Each account has its own workspace, so another account never sees your data. When you are signed in, your records sync to your cloud account automatically — and only to your account.
               </p>
-              <p className="mt-4 text-sm leading-6 text-blue-200/80">
+              <p className="mt-4 text-sm leading-6 text-violet-200/80">
                 You can also download a full backup file any time. Clearing browser data can remove records that exist only on that device, so keep a backup.
               </p>
-              <Link href="/legal/privacy" className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-white underline decoration-blue-300 underline-offset-4 transition hover:decoration-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
+              <Link href="/legal/privacy" className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-white underline decoration-violet-300 underline-offset-4 transition hover:decoration-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">
                 Read the Privacy &amp; Data Notice <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
             </div>
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
               {privacyPoints.map(({ title, description, icon: Icon }) => (
                 <article key={title} className="rounded-2xl border border-white/15 bg-white/[0.07] p-5">
-                  <Icon className="h-6 w-6 text-blue-300" aria-hidden="true" />
+                  <Icon className="h-6 w-6 text-violet-300" aria-hidden="true" />
                   <h3 className="mt-4 text-base font-bold">{title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-blue-100/75">{description}</p>
+                  <p className="mt-2 text-sm leading-6 text-violet-100/75">{description}</p>
                 </article>
               ))}
-              <p className="text-xs leading-5 text-blue-200/70 sm:col-span-3">
+              <p className="text-xs leading-5 text-violet-200/70 sm:col-span-3">
                 XolveManager records payments made through other means; it does not process customer payments or automatically bill subscriptions.
               </p>
             </div>
@@ -529,7 +529,7 @@ export default function Home() {
                   'Small teams keeping payment and invoice records together',
                 ].map(item => (
                   <li key={item} className="flex gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm font-medium leading-6 text-slate-700">
-                    <Check className="mt-1 h-4 w-4 shrink-0 text-blue-700" aria-hidden="true" />
+                    <Check className="mt-1 h-4 w-4 shrink-0 text-violet-700" aria-hidden="true" />
                     {item}
                   </li>
                 ))}
@@ -544,12 +544,12 @@ export default function Home() {
               <Eyebrow>Helpful answers</Eyebrow>
               <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">Frequently Asked Questions</h2>
             </div>
-            <div className="mt-8 divide-y divide-blue-100 border-y border-blue-100">
+            <div className="mt-8 divide-y divide-violet-100 border-y border-violet-100">
               {faqs.map(({ question, answer }) => (
                 <details key={question} className={`${styles.faqItem} group py-1`}>
-                  <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 py-4 text-left text-sm font-bold text-slate-900 marker:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 [&::-webkit-details-marker]:hidden">
+                  <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 py-4 text-left text-sm font-bold text-slate-900 marker:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 [&::-webkit-details-marker]:hidden">
                     {question}
-                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white text-blue-700 transition-transform group-open:rotate-180">
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white text-violet-700 transition-transform group-open:rotate-180">
                       <ArrowDownRight className="h-4 w-4" aria-hidden="true" />
                     </span>
                   </summary>
@@ -565,17 +565,17 @@ export default function Home() {
         </section>
 
         <section className="bg-white px-4 py-16 sm:px-8 sm:py-20">
-          <div className="relative mx-auto max-w-5xl overflow-hidden rounded-3xl bg-gradient-to-br from-blue-700 via-blue-800 to-blue-950 px-5 py-10 text-center text-white shadow-xl shadow-blue-900/20 sm:px-10 sm:py-14">
-            <div aria-hidden="true" className="pointer-events-none absolute -top-20 right-[-5%] h-64 w-64 rounded-full bg-sky-400/20 blur-3xl" />
-            <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 left-[-5%] h-64 w-64 rounded-full bg-blue-400/20 blur-3xl" />
+          <div className="relative mx-auto max-w-5xl overflow-hidden rounded-3xl bg-gradient-to-br from-violet-700 via-violet-800 to-violet-950 px-5 py-10 text-center text-white shadow-xl shadow-violet-900/20 sm:px-10 sm:py-14">
+            <div aria-hidden="true" className="pointer-events-none absolute -top-20 right-[-5%] h-64 w-64 rounded-full bg-blue-400/20 blur-3xl" />
+            <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 left-[-5%] h-64 w-64 rounded-full bg-fuchsia-400/20 blur-3xl" />
             <div className="relative">
               <Eyebrow dark>Your workspace starts here</Eyebrow>
               <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">Ready to organize your business — on any device?</h2>
-              <p className="mx-auto mt-4 max-w-2xl leading-7 text-blue-100">
+              <p className="mx-auto mt-4 max-w-2xl leading-7 text-violet-100">
                 Create your free cloud account and start with your customers, services, and sales.
               </p>
               <div className="mt-7 flex flex-col justify-center gap-3 min-[420px]:flex-row">
-                <Link href="/signup" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-blue-900 transition hover:-translate-y-0.5 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-white motion-reduce:transform-none">
+                <Link href="/signup" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-violet-900 transition hover:-translate-y-0.5 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-white motion-reduce:transform-none">
                   Create Free Account <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </Link>
                 <Link href="/login" className="inline-flex min-h-12 items-center justify-center rounded-xl border border-white/40 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-white">
@@ -591,7 +591,7 @@ export default function Home() {
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-8">
           <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
             <div>
-              <Link href="/" className="inline-flex items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-blue-600">
+              <Link href="/" className="inline-flex items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-violet-600">
                 <Image
                   src={productBrand.wordmarkLightUrl}
                   alt=""
@@ -608,26 +608,26 @@ export default function Home() {
             <div>
               <h2 className="text-sm font-bold text-slate-900">Explore</h2>
               <ul className="mt-3 space-y-2.5 text-sm text-slate-600">
-                <li><a href="#features" className="transition-colors hover:text-blue-800">Features</a></li>
-                <li><a href="#how-it-works" className="transition-colors hover:text-blue-800">How it works</a></li>
-                <li><a href="#faq" className="transition-colors hover:text-blue-800">FAQ</a></li>
-                <li><a href="#privacy-data" className="transition-colors hover:text-blue-800">Privacy &amp; Data</a></li>
+                <li><a href="#features" className="transition-colors hover:text-violet-800">Features</a></li>
+                <li><a href="#how-it-works" className="transition-colors hover:text-violet-800">How it works</a></li>
+                <li><a href="#faq" className="transition-colors hover:text-violet-800">FAQ</a></li>
+                <li><a href="#privacy-data" className="transition-colors hover:text-violet-800">Privacy &amp; Data</a></li>
               </ul>
             </div>
             <div>
               <h2 className="text-sm font-bold text-slate-900">Data &amp; Trust</h2>
               <ul className="mt-3 space-y-2.5 text-sm text-slate-600">
-                <li><Link href="/legal/data-backup" className="transition-colors hover:text-blue-800">Data &amp; Backup</Link></li>
-                <li><Link href="/legal" className="transition-colors hover:text-blue-800">Legal &amp; Trust Center</Link></li>
-                <li><Link href="/legal/privacy" className="transition-colors hover:text-blue-800">Privacy Policy</Link></li>
-                <li><Link href="/support" className="transition-colors hover:text-blue-800">Contact &amp; Support</Link></li>
+                <li><Link href="/legal/data-backup" className="transition-colors hover:text-violet-800">Data &amp; Backup</Link></li>
+                <li><Link href="/legal" className="transition-colors hover:text-violet-800">Legal &amp; Trust Center</Link></li>
+                <li><Link href="/legal/privacy" className="transition-colors hover:text-violet-800">Privacy Policy</Link></li>
+                <li><Link href="/support" className="transition-colors hover:text-violet-800">Contact &amp; Support</Link></li>
               </ul>
             </div>
             <div>
               <h2 className="text-sm font-bold text-slate-900">Your Account</h2>
               <ul className="mt-3 space-y-2.5 text-sm text-slate-600">
-                <li><Link href="/login" className="transition-colors hover:text-blue-800">Sign in</Link></li>
-                <li><Link href="/signup" className="transition-colors hover:text-blue-800">Create Free Account</Link></li>
+                <li><Link href="/login" className="transition-colors hover:text-violet-800">Sign in</Link></li>
+                <li><Link href="/signup" className="transition-colors hover:text-violet-800">Create Free Account</Link></li>
               </ul>
             </div>
           </div>

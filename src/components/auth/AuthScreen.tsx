@@ -73,8 +73,6 @@ const copy = {
     password: 'Password',
     confirmPassword: 'Enter password again',
     recoveryKey: 'Recovery code',
-    persistentSession: 'You will stay signed in on this device until you sign out.',
-    cloudSessionNote: 'You will stay signed in on this device until you sign out.',
     welcomeEyebrow: 'WELCOME BACK',
     localEyebrow: 'THIS DEVICE ONLY',
     setupEyebrow: 'NEW ACCOUNT',
@@ -166,8 +164,6 @@ const copy = {
     password: 'পাসওয়ার্ড',
     confirmPassword: 'পাসওয়ার্ড নিশ্চিত করুন',
     recoveryKey: 'রিকভারি কী',
-    persistentSession: 'সাইন আউট না করা পর্যন্ত এই ডিভাইসে সাইন ইন থাকবে।',
-    cloudSessionNote: 'সাইন আউট না করা পর্যন্ত এই ডিভাইসে সাইন ইন থাকবে।',
     welcomeEyebrow: 'স্বাগতম',
     localEyebrow: 'শুধু এই ডিভাইসে',
     setupEyebrow: 'নতুন অ্যাকাউন্ট',
@@ -862,13 +858,11 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
 
                     {mode === 'login' && authProvider === 'local' && (
                       <div className="auth-login-options">
-                        <p className="auth-session-note">{text.persistentSession}</p>
                         <button type="button" onClick={() => navigate('/forgot-password')} className="auth-text-link">{text.forgot}</button>
                       </div>
                     )}
                     {mode === 'login' && authProvider === 'cloud' && cloudResetView === 'none' && loginMethod !== 'link' && (
                       <div className="auth-login-options">
-                        <p className="auth-session-note">{text.cloudSessionNote}</p>
                         <button type="button" onClick={() => { setError(''); setFieldErrors({}); setCloudResetView('request'); }} className="auth-text-link">{text.cloudForgot}</button>
                       </div>
                     )}
