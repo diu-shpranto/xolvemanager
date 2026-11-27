@@ -92,7 +92,7 @@ const copy = {
     cloudResetIntro: 'Enter your email address. We will send you a link to set a new password.',
     cloudResetSend: 'Send reset link',
     cloudResetSentTitle: 'Check your inbox',
-    cloudResetSentBody: 'We sent a password reset link to {email}. It only works in this browser — open the link here.',
+    cloudResetSentBody: 'We sent a password reset link to {email}. You can open it in any browser.',
     cloudResetResend: 'Resend the link',
     cloudResetResent: 'A new link was sent.',
     accountConfirmationNotice: 'Check your email — we sent a confirmation link to {email}. Open it, then sign in.',
@@ -101,7 +101,7 @@ const copy = {
     sendEmailLink: 'Send sign-in link',
     emailLinkSent: 'Check your email — we sent a sign-in link to {email}.',
     emailLinkResend: 'Send a new link',
-    cloudResetLinkInvalid: 'That reset link did not work — it may have expired, already been used, or been opened in another browser. Request a new link below.',
+    cloudResetLinkInvalid: 'That reset link did not work — it may have expired or already been used. Request a new link below.',
     cloudResetSetTitle: 'Set a new password',
     cloudResetSetIntro: 'Choose a new password. You will stay signed in after this.',
     loginLink: 'Back to sign in',
@@ -182,7 +182,7 @@ const copy = {
     cloudResetIntro: 'আপনার ইমেইল ঠিকানা লিখুন। নতুন পাসওয়ার্ড সেট করার লিংক পাঠানো হবে।',
     cloudResetSend: 'রিসেট লিংক পাঠান',
     cloudResetSentTitle: 'ইনবক্স দেখুন',
-    cloudResetSentBody: '{email} ঠিকানায় পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে। এটি শুধু এই ব্রাউজারেই কাজ করবে — লিংকটি এখানেই খুলুন।',
+    cloudResetSentBody: '{email} ঠিকানায় পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে। যেকোনো ব্রাউজারেই খুলতে পারবেন।',
     cloudResetResend: 'লিংকটি আবার পাঠান',
     cloudResetResent: 'নতুন লিংক পাঠানো হয়েছে।',
     accountConfirmationNotice: 'ইমেইল দেখুন — {email}-এ কনফার্মেশন লিংক পাঠানো হয়েছে। লিংকটি খুলে তারপর সাইন ইন করুন।',
@@ -191,7 +191,7 @@ const copy = {
     sendEmailLink: 'সাইন-ইন লিংক পাঠান',
     emailLinkSent: 'ইমেইল দেখুন — {email}-এ সাইন-ইন লিংক পাঠানো হয়েছে।',
     emailLinkResend: 'নতুন লিংক পাঠান',
-    cloudResetLinkInvalid: 'রিসেট লিংকটি কাজ করেনি — হয়তো মেয়াদ শেষ হয়ে গেছে, ইতিমধ্যে ব্যবহৃত হয়েছে, অথবা অন্য ব্রাউজারে খোলা হয়েছে। নিচে নতুন লিংক চেয়ে নিন।',
+    cloudResetLinkInvalid: 'রিসেট লিংকটি কাজ করেনি — হয়তো মেয়াদ শেষ হয়ে গেছে বা ইতিমধ্যে ব্যবহৃত হয়েছে। নিচে নতুন লিংক চেয়ে নিন।',
     cloudResetSetTitle: 'নতুন পাসওয়ার্ড সেট করুন',
     cloudResetSetIntro: 'নতুন পাসওয়ার্ড বেছে নিন। এরপর সাইন ইন থাকবে।',
     loginLink: 'সাইন ইন-এ ফিরে যান',
@@ -395,10 +395,13 @@ export function AuthScreen({ mode, hasAccount, initialError, onAuthenticated, on
         setCloudResetView('reset');
         return;
       }
-      // A reset link that could not be used (expired, already used, or
-      // opened in another browser) still leaves its code/error in the URL.
+      // A reset link that could not be used (expired or already used)
+      // still leaves its error in the URL — in the query string for a
+      // code link, or in the hash for a token link. A leftover token in
+      // the hash means the link was not accepted either.
       const params = new URLSearchParams(window.location.search);
-      if (params.has('code') || params.has('error')) {
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      if (params.has('code') || params.has('error') || hashParams.has('error') || hashParams.has('access_token')) {
         setAuthProvider('cloud');
         setCloudResetView('request');
         setResetLinkFailed(true);

@@ -79,7 +79,7 @@ export const clearCloudSessionFlag = (): void => {
 
 /**
  * Password-recovery marker. Set only when the Supabase client emits the
- * PASSWORD_RECOVERY event (a reset link's code was exchanged), and mirrored
+ * PASSWORD_RECOVERY event (a reset link was opened), and mirrored
  * to sessionStorage so it survives a reload of the same tab. It is advisory
  * only: it never authorizes anything, it only tells AuthScreen to show the
  * set-new-password form instead of the sign-in form.
@@ -182,8 +182,9 @@ export const signUpWithSupabase = async (
 
 /**
  * Passwordless sign-in — email the user a sign-in link. The link returns
- * to /dashboard; the browser client exchanges its PKCE code on load and
- * the shell signs the user in, exactly like a Google OAuth return.
+ * to /dashboard; the browser client reads its token from the link on load
+ * and the shell signs the user in, exactly like a Google OAuth return.
+ * The link works in any browser — the token travels in the link itself.
  *
  * `shouldCreateUser: false`: a link is only sent to an existing account,
  * so the login page cannot be used to create accounts without a name or
@@ -284,10 +285,10 @@ const getPasswordResetRedirect = (): string =>
  * Cloud password reset, step 1 — email the user a reset link.
  *
  * Supabase sends a link back to `/login` (already an allowed redirect).
- * The link carries a PKCE code; the browser client exchanges it
- * automatically and emits the PASSWORD_RECOVERY event, which marks this
- * tab as a recovery session. The code only works in the browser where the
- * reset was requested — the verifier lives in that browser's storage.
+ * The link carries its token in the URL, so it works in any browser —
+ * the Gmail app, another browser, another device. The browser client
+ * reads the token on load and emits the PASSWORD_RECOVERY event, which
+ * marks this tab as a recovery session.
  *
  * Supabase answers the same way whether or not the email has an account,
  * so callers must not reveal the distinction either.
@@ -357,8 +358,8 @@ export const getSupabaseSessionUser = async (
   // A password-reset link lands here with a recovery session. That session
   // must NOT sign the user in — the app shell would send them straight to
   // the dashboard with no way to set a new password. Catch the
-  // PASSWORD_RECOVERY event, which the client emits while exchanging the
-  // link's code: the listener is registered before getUser() awaits
+  // PASSWORD_RECOVERY event, which the client emits while processing the
+  // link: the listener is registered before getUser() awaits
   // initialization, and the event is delivered before getUser() returns.
   const unsubscribe = subscribeToSupabaseAuthChanges((event) => {
     if (event === 'PASSWORD_RECOVERY') markCloudPasswordRecoveryPending();
