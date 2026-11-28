@@ -2848,9 +2848,9 @@ button.dashboard-metric:hover {
   flex-direction: column;
   grid-column: 1 / -1;
   justify-content: center;
-  gap: .5rem;
+  gap: .375rem;
   min-width: 0;
-  padding: 1.125rem 1.25rem;
+  padding: .5rem 1.25rem;
   transition: background-color .16s, box-shadow .16s;
   display: flex;
   position: relative;
@@ -2890,7 +2890,7 @@ button.dashboard-metric:hover {
 .dashboard-revenue-values strong {
   overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
-  font-size: clamp(1.75rem, 3.5vw, 2.25rem);
+  font-size: clamp(1.375rem, 2.75vw, 1.625rem);
   font-weight: 800;
   line-height: 1.15;
 }
@@ -2919,6 +2919,7 @@ button.dashboard-metric:hover {
 
 .dashboard-quick-actions-heading {
   flex-direction: column;
+  flex-shrink: 0;
   gap: .15rem;
   min-width: 8.5rem;
   display: flex;
@@ -2942,7 +2943,8 @@ button.dashboard-metric:hover {
 .dashboard-quick-actions-list {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: .625rem;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   display: grid;
 }
 
@@ -2956,10 +2958,11 @@ button.dashboard-metric:hover {
   align-items: center;
   gap: .55rem;
   min-width: 0;
-  min-height: 2.5rem;
-  padding: .625rem .75rem;
+  min-height: 2.25rem;
+  padding: .5rem .75rem;
   font-size: .8125rem;
   font-weight: 700;
+  white-space: nowrap;
   transition: border-color .15s, background-color .15s, color .15s, transform .15s;
   display: inline-flex;
 }
@@ -2990,7 +2993,7 @@ button.dashboard-metric:hover {
 
 .dashboard-core-grid {
   flex-direction: column;
-  gap: .875rem;
+  gap: .75rem;
   min-width: 0;
   display: flex;
 }
@@ -3490,7 +3493,7 @@ button.dashboard-metric:hover {
 
 @media (min-width: 640px) {
   .dashboard-kpi-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .dashboard-revenue-kpi {
@@ -3535,7 +3538,7 @@ button.dashboard-metric:hover {
                    "sales sales"
                    / minmax(0, 1.65fr) minmax(340px, .9fr);
     align-items: stretch;
-    gap: .875rem;
+    gap: .75rem;
     display: grid;
   }
 
@@ -10539,7 +10542,7 @@ button.dashboard-metric:hover {
   background: none;
   border: 0;
   border-radius: 0;
-  gap: .75rem;
+  gap: .5rem;
   overflow: visible;
 }
 
@@ -10674,7 +10677,7 @@ button.dashboard-metric:hover {
 
 @media (max-width: 639px) {
   .app-main .dashboard-view .dashboard-kpi-grid {
-    gap: .625rem;
+    gap: .5rem;
   }
 
   .app-main .dashboard-view .dashboard-kpi, .app-main .dashboard-view .dashboard-revenue-kpi {
@@ -16395,14 +16398,14 @@ html:has(.auth-page) {
 }
 
 .dashboard-view {
-  gap: 1rem;
+  gap: .75rem;
 }
 
 .dashboard-view > header.dashboard-page-header--v2 {
   background: #fff;
   border: 1px solid #e9e4f5;
   border-radius: 1.25rem;
-  padding: 1.25rem 1.5rem;
+  padding: .75rem 1.25rem;
   position: relative;
   overflow: hidden;
   box-shadow: 0 1px 2px #4c1d9512;
@@ -16429,15 +16432,15 @@ html:has(.auth-page) {
   border-radius: .9rem;
   flex: none;
   place-items: center;
-  width: 2.75rem;
-  height: 2.75rem;
+  width: 2.25rem;
+  height: 2.25rem;
   display: grid;
   box-shadow: 0 4px 12px -4px #4c1d958c;
 }
 
 .dashboard-page-header-icon svg {
-  width: 1.375rem;
-  height: 1.375rem;
+  width: 1.125rem;
+  height: 1.125rem;
 }
 
 .dashboard-page-header-eyebrow {
@@ -16537,12 +16540,12 @@ html:has(.auth-page) {
 .dashboard-view .dashboard-quick-actions {
   border-color: #e9e4f5;
   border-radius: 1.25rem;
-  padding: .875rem 1rem;
+  padding: .625rem .875rem;
   box-shadow: 0 1px 2px #261c3c0d;
 }
 
 .dashboard-view .dashboard-quick-actions-list {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
 }
 
 .dashboard-view .dashboard-quick-action {

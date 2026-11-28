@@ -108,28 +108,28 @@ const sizeStyles: Record<StatCardSize, {
   hint: string;
 }> = {
   default: {
-    card: 'p-4 sm:p-5',
-    value: 'text-[28px] leading-8 sm:text-[32px] sm:leading-9',
-    icon: 'h-10 w-10',
-    iconSvg: '[&>svg]:h-5 [&>svg]:w-5',
-    label: 'mt-1.5 text-[13px] leading-5',
-    hint: 'mt-2.5 pt-2 text-[11px] leading-4',
+    card: 'p-2.5',
+    value: 'text-xl leading-7 sm:text-[22px] sm:leading-7',
+    icon: 'h-8 w-8',
+    iconSvg: '[&>svg]:h-4 [&>svg]:w-4',
+    label: 'mt-1 text-xs leading-4',
+    hint: 'mt-1.5 pt-1.5 text-[11px] leading-4',
   },
   compact: {
-    card: 'p-3.5',
-    value: 'text-[22px] leading-7 sm:text-2xl sm:leading-8',
-    icon: 'h-9 w-9',
-    iconSvg: '[&>svg]:h-[18px] [&>svg]:w-[18px]',
-    label: 'mt-1 text-xs leading-5',
-    hint: 'mt-2 pt-1.5 text-[11px] leading-4',
-  },
-  mini: {
-    card: 'p-3',
-    value: 'text-lg leading-6',
+    card: 'p-2.5',
+    value: 'text-lg leading-6 sm:text-xl sm:leading-6',
     icon: 'h-7 w-7',
     iconSvg: '[&>svg]:h-3.5 [&>svg]:w-3.5',
-    label: 'mt-1 text-[11px] leading-4',
-    hint: 'mt-1.5 text-[10px] leading-3.5',
+    label: 'mt-1 text-xs leading-5',
+    hint: 'mt-1 pt-1 text-[11px] leading-4',
+  },
+  mini: {
+    card: 'p-2',
+    value: 'text-sm leading-5',
+    icon: 'h-5 w-5',
+    iconSvg: '[&>svg]:h-2.5 [&>svg]:w-2.5',
+    label: 'mt-0.5 text-[11px] leading-4',
+    hint: 'mt-0.5 text-[10px] leading-3.5',
   },
 };
 
@@ -220,11 +220,11 @@ export const StatCardSkeleton: React.FC<{ size?: StatCardSize; className?: strin
     >
       <span aria-hidden="true" className="absolute inset-x-0 top-0 h-[3px] bg-violet-200 dark:bg-violet-500/30" />
       <span className="flex items-start justify-between gap-2">
-        <span className="h-8 w-24 rounded-lg bg-slate-200/80 dark:bg-slate-700/70 sm:h-9" />
+        <span className="h-6 w-20 rounded-lg bg-slate-200/80 dark:bg-slate-700/70 sm:h-7" />
         <span className={`shrink-0 rounded-full bg-slate-200/80 dark:bg-slate-700/70 ${s.icon}`} />
       </span>
-      <span className="mt-2 block h-3.5 w-20 rounded bg-slate-200/80 dark:bg-slate-700/70" />
-      <span className="mt-2.5 block border-t border-slate-200/70 pt-2 dark:border-slate-700/60">
+      <span className="mt-1 block h-3.5 w-20 rounded bg-slate-200/80 dark:bg-slate-700/70" />
+      <span className="mt-1.5 block border-t border-slate-200/70 pt-2 dark:border-slate-700/60">
         <span className="block h-3 w-28 rounded bg-slate-200/80 dark:bg-slate-700/70" />
       </span>
     </div>

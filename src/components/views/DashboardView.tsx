@@ -2046,7 +2046,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const summaryWidgetContent: Record<DashboardSummaryWidgetId, (order: number) => React.ReactNode> = {
     receivedRevenue: order => (
       <button type="button" style={{ order }} onClick={() => onNavigate('payments')} className="dashboard-revenue-kpi">
-        <span className="dashboard-kpi-eyebrow">{dashboardCopy.receivedRevenue}</span>
         <span className="dashboard-revenue-values">
           <span><strong><DashboardCountUp
             value={receivedInRange}
@@ -2054,6 +2053,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             prefersReducedMotion={prefersReducedMotion}
           /></strong></span>
         </span>
+        <span className="dashboard-kpi-eyebrow">{dashboardCopy.receivedRevenue}</span>
         <ArrowUpRight className="dashboard-revenue-arrow" aria-hidden="true" />
       </button>
     ),
@@ -2254,13 +2254,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const gettingStartedCompletedCount = gettingStartedSteps.filter(step => step.completed).length;
 
   return (
-    <div className="dashboard-view section-layout-shell mx-auto flex max-w-[1600px] flex-col gap-4 px-3 py-3 sm:gap-5 sm:px-6 sm:py-6 xl:px-8">
+    <div className="dashboard-view section-layout-shell mx-auto flex max-w-[1600px] flex-col gap-3 px-3 py-3 sm:px-6 sm:py-4 xl:px-8">
       <header className="dashboard-page-header dashboard-page-header--v2 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="dashboard-page-header-copy min-w-0">
           <span className="dashboard-page-header-icon" aria-hidden="true"><LayoutGrid /></span>
           <div className="min-w-0">
             <p className="dashboard-page-header-eyebrow">{dashboardCopy.overview}</p>
-            <h1 className="mt-1 whitespace-nowrap text-2xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-[1.75rem]">
+            <h1 className="mt-1 whitespace-nowrap text-xl font-bold tracking-tight text-slate-950 dark:text-white sm:text-2xl">
               {dashboardCopy.title}
             </h1>
             <p className="dashboard-page-header-subtitle">
@@ -2451,7 +2451,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </section>
       )}
 
-      {dashboardDataLoading ? <div role="status" aria-live="polite" aria-busy="true" aria-label="Loading dashboard metrics" className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+      {dashboardDataLoading ? <div role="status" aria-live="polite" aria-busy="true" aria-label="Loading dashboard metrics" className="grid grid-cols-2 gap-2 xl:grid-cols-5">
         {activeDashboardLayout.summaryOrder.filter(id => !activeDashboardLayout.hidden.includes(id))
           .map((id, index) => (
             <StatCardSkeleton key={id} style={{ order: index }} />
@@ -2466,13 +2466,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       <section className="dashboard-quick-actions" aria-label="Quick actions">
         <div className="dashboard-quick-actions-heading">
-          <h2>{dashboardCopy.quickActions}</h2>
-          <span>{dashboardCopy.commonTasks}</span>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            <p className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300">
-              {language === 'bn' ? 'প্রোডাকশন মোড · ব্যবসার ডেটা' : 'Production Mode · business data'}
-            </p>
+          <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
+            <h2>{dashboardCopy.quickActions}</h2>
+            <span>{dashboardCopy.commonTasks}</span>
           </div>
+          <p className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300">
+            {language === 'bn' ? 'প্রোডাকশন মোড · ব্যবসার ডেটা' : 'Production Mode · business data'}
+          </p>
         </div>
         <div className="dashboard-quick-actions-list">
           <button type="button" onClick={() => onOpenNewSale()} className="dashboard-quick-action dashboard-quick-action--primary"><Plus aria-hidden="true" /> {dashboardCopy.addSale}</button>
