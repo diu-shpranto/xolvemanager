@@ -1359,8 +1359,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                             <ul className="mt-2 space-y-2">
                               {summary.transactions.map(transaction => (
                                 <li key={transaction.sale.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70">
-                                  <span className="min-w-0 flex-1">{saleItemLabel(transaction.sale)} · {transaction.invoice?.invoiceNumber || transaction.sale.invoiceNo}</span>
-                                  <strong>{formatCurrency(transaction.due, transaction.sale.currency)}</strong>
+                                  <span className="min-w-0 flex-1 break-words">{saleItemLabel(transaction.sale)} · {transaction.invoice?.invoiceNumber || transaction.sale.invoiceNo}</span>
+                                  <strong className="shrink-0 whitespace-nowrap">{formatCurrency(transaction.due, transaction.sale.currency)}</strong>
                                   <button type="button" onClick={() => openAddPayment(summary.customer.id, transaction.sale.id)} className="rounded-md bg-violet-700 px-2 py-1 text-[10px] font-semibold text-white hover:bg-violet-600">Record Payment</button>
                                   <button type="button" onClick={() => onNavigateSection?.('sales', transaction.sale.id)} className="rounded-md border border-slate-200 px-2 py-1 text-[10px] font-semibold dark:border-slate-700">Sale</button>
                                   {transaction.invoice && <button type="button" onClick={() => openInvoice(transaction.sale)} className="rounded-md border border-slate-200 px-2 py-1 text-[10px] font-semibold dark:border-slate-700">Invoice</button>}
@@ -1603,7 +1603,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     <td className="px-3 py-3 font-mono font-semibold text-slate-700 dark:text-slate-200">{payment.id}</td>
                     <td className="whitespace-nowrap px-3 py-3">{formatAppEventDateTime(payment.createdAt || payment.paymentDate)}</td>
                     <td className="px-3 py-3"><div className="font-semibold text-slate-900 dark:text-white"><CustomerNameWithType customer={customer} /></div><div className="text-[10px] text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
-                    <td className="px-3 py-3"><div>{invoice?.invoiceNumber || sale?.invoiceNo || '—'}</div><div className="font-mono text-[10px] text-slate-500">{sale?.id || payment.saleId || 'Unlinked legacy payment'}</div></td>
+                    <td className="px-3 py-3"><div>{invoice?.invoiceNumber || sale?.invoiceNo || '—'}</div></td>
                     <td className="px-3 py-3">{sale ? saleItemLabel(sale) : '—'}</td>
                     <td className="px-3 py-3">{methodLabel(payment.paymentMethodName || payment.paymentMethod)}</td>
                     <td className="whitespace-nowrap px-3 py-3 font-mono font-bold">{formatCurrency(payment.amount, payment.currency)}</td>
@@ -1647,7 +1647,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   const days = getAgingDays(dueReferenceDate, settings.businessProfile?.timeZone);
                   return <tr key={sale.id}>
                     <td className="px-4 py-3"><div className="font-semibold"><CustomerNameWithType customer={customer} /></div><div className="text-[10px] text-slate-500">WA: {customer?.whatsapp || customer?.phone || 'Not set'}</div></td>
-                    <td className="px-4 py-3">{invoice?.invoiceNumber || sale.invoiceNo}<div className="font-mono text-[10px] text-slate-500">{sale.id}</div></td>
+                    <td className="px-4 py-3">{invoice?.invoiceNumber || sale.invoiceNo}</td>
                     <td className="px-4 py-3">{itemLabel}</td>
                     <td className="px-4 py-3">{formatCurrency(sale.amount, sale.currency)}</td><td className="px-4 py-3">{formatCurrency(paid, sale.currency)}</td>
                     <td className="px-4 py-3 font-bold text-amber-700 dark:text-amber-300">{formatCurrency(due, sale.currency)}</td>
@@ -1894,7 +1894,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                           })} className="mt-1 h-4 w-4 shrink-0 accent-violet-600" />
                           <span className="min-w-0 flex-1">
                             <span className="flex flex-wrap items-center justify-between gap-2"><strong className="break-words text-sm">{item.invoice?.invoiceNumber || item.sale.invoiceNo} · {item.line.serviceNameSnapshot || servicesById.get(item.line.serviceId)?.name || 'Service'} · {item.line.plan}</strong>{overdue && <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">Overdue</span>}</span>
-                            <span className="mt-1 block text-[11px] text-slate-500">Sale {item.sale.id}{item.expectedDate ? ` · Due ${formatAppDate(item.expectedDate)}` : ''}</span>
+                            {item.expectedDate && <span className="mt-1 block text-[11px] text-slate-500">{language === 'bn' ? 'মেয়াদ: ' : 'Due: '}{formatAppDate(item.expectedDate, language)}</span>}
                             <span className="mt-2 grid grid-cols-2 gap-1 text-xs text-slate-600 dark:text-slate-300 sm:grid-cols-3">
                               <span>Bill total: {formatCurrency(item.line.amount, newAdvanceCurrency)}</span>
                               <span>Paid before: {formatCurrency(item.paid, newAdvanceCurrency)}</span>
@@ -2115,7 +2115,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   return (
                     <label
                       key={sale.id}
-                      className={`grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_5rem] items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-violet-500 ${
+                      className={`grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-violet-500 ${
                         selected
                           ? 'border-violet-500 bg-violet-50/70 dark:border-violet-500 dark:bg-violet-950/30'
                           : 'border-slate-200 bg-white hover:border-violet-300 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-violet-700'
@@ -2149,9 +2149,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                         </span>
                       </span>
                       <span className="flex min-w-0 flex-col items-end gap-2">
-                        <span className="max-w-full text-right leading-4 [overflow-wrap:anywhere]">
+                        <span className="max-w-full whitespace-nowrap text-right leading-4">
                           <span className="block text-[10px] font-medium text-slate-500 dark:text-slate-400">Due</span>
-                          <span className="block text-xs font-bold tabular-nums text-amber-800 dark:text-amber-300">
+                          <span className="block whitespace-nowrap text-xs font-bold tabular-nums text-amber-800 dark:text-amber-300">
                             {formatCurrency(due, sale.currency)}
                           </span>
                         </span>
