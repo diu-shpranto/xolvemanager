@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowDownLeft, ArrowDownRight, ArrowLeftRight, Download, Plus, Wallet } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDownLeft, ArrowDownRight, ArrowLeftRight, ChevronDown, Download, Plus, Wallet } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
@@ -9,6 +9,7 @@ import { convertReportCurrency } from '../../utils/reportMetrics';
 import { formatAppDate, formatCurrency, getTodayDateString } from '../../utils/dateUtils';
 import { getAccountBalance, getAccountLedger, getCashFlowSummary, getFinancialLedger } from '../../utils/financialLedger';
 import { normalizePaymentMethods } from '../../utils/paymentMethods';
+import { CASHBOOK_KIND_HELPER_LINES, getFirstCashbookFormErrorTarget, type CashbookFormErrorTarget } from '../../utils/cashbookFormHelpers';
 import { downloadCSV } from '../../utils/csvParser';
 import type { AppCurrency, FinancialAccount, FinancialAccountType } from '../../types';
 
@@ -24,8 +25,16 @@ interface CashbookViewProps {
 }
 
 const inputClass = 'control-field w-full px-3 py-2.5 text-sm';
-const labelClass = 'mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300';
+const cashbookFieldClass = (hasError: boolean) => `w-full min-h-11 rounded-xl border bg-slate-50 px-3.5 py-3 text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:bg-slate-800 dark:text-white ${hasError ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`;
 const cardClass = 'surface-card cashbook-card p-3 sm:p-4';
+const FINANCIAL_ACCOUNT_TYPE_LABELS: Record<FinancialAccountType, string> = {
+  cash: 'ক্যাশ',
+  mobile_banking: 'মোবাইল ব্যাংকিং',
+  bank: 'ব্যাংক',
+  card: 'কার্ড',
+  other: 'অন্যান্য',
+};
+
 const csvCell = (value: string | number) => {
   const text = String(value);
   const safe = /^[\s]*[=+\-@]/.test(text) ? `'${text}` : text;
@@ -62,6 +71,17 @@ export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, init
   const [reference, setReference] = useState('');
   const [vendor, setVendor] = useState('');
   const [editingAccountId, setEditingAccountId] = useState('');
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const accountNameRef = useRef<HTMLInputElement>(null);
+  const openingBalanceRef = useRef<HTMLInputElement>(null);
+  const openingBalanceDateRef = useRef<HTMLInputElement>(null);
+  const accountRef = useRef<HTMLSelectElement>(null);
+  const toAccountRef = useRef<HTMLSelectElement>(null);
+  const categoryRef = useRef<HTMLSelectElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const dateRef = useRef<HTMLInputElement>(null);
+  const descriptionRef = useRef<HTMLInputElement>(null);
 
   const methods = useMemo(() => normalizePaymentMethods(settings.paymentPreferences?.methods), [settings.paymentPreferences?.methods]);
   const financialRecords = useMemo(() => ({
@@ -114,8 +134,17 @@ export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, init
   const totalBalance = financialAccounts.reduce((sum, account) =>
     sum + getAccountBalance(account, getFinancialLedger(financialRecords, account.id), currency), 0);
 
+  const closeEntryModal = () => {
+    setModalKind(null);
+    setFormErrors({});
+    setAdvancedOpen(false);
+  };
+
   const openModal = (kind: ModalKind) => {
     setModalKind(kind);
+    setFormErrors({});
+    setAdvancedOpen(false);
+    setEditingAccountId('');
     setDate(today);
     setAccountId(enabledAccounts[0]?.id || '');
     setToAccountId(enabledAccounts.find(account =>
@@ -128,6 +157,11 @@ export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, init
     setDescription('');
     setReference('');
     setVendor('');
+    setAccountName('');
+    setAccountType('cash');
+    setAccountIdentifier('');
+    setOpeningBalance('0');
+    setOpeningBalanceDate(today);
   };
 
   useEffect(() => {
@@ -148,11 +182,105 @@ export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, init
     setEditingAccountId(account.id);
     setAccountName(account.name);
     setAccountIdentifier(account.identifier || '');
+    setFormErrors({});
+    setAdvancedOpen(false);
     setModalKind('edit-account');
+  };
+
+  // Live preview: the chosen money account and its balance as typed.
+  const chosenAccount = financialAccounts.find(item => item.id === accountId);
+  const destinationAccount = financialAccounts.find(item => item.id === toAccountId);
+  const editingAccount = modalKind === 'edit-account'
+    ? financialAccounts.find(item => item.id === editingAccountId)
+    : undefined;
+  const chosenBalance = useMemo(() => chosenAccount
+    ? getAccountBalance(chosenAccount, getFinancialLedger(financialRecords, chosenAccount.id), chosenAccount.currency)
+    : null, [chosenAccount, financialRecords]);
+  const destinationBalance = useMemo(() => destinationAccount
+    ? getAccountBalance(destinationAccount, getFinancialLedger(financialRecords, destinationAccount.id), destinationAccount.currency)
+    : null, [destinationAccount, financialRecords]);
+  const parsedAmount = Number(amount);
+  const hasValidAmount = amount.trim() !== '' && Number.isFinite(parsedAmount);
+  const resultingBalance = chosenBalance !== null && hasValidAmount
+    ? chosenBalance + (modalKind === 'expense' || modalKind === 'transfer' ? -parsedAmount : parsedAmount)
+    : null;
+  const destinationResultingBalance = destinationBalance !== null && hasValidAmount && modalKind === 'transfer'
+    ? destinationBalance + parsedAmount
+    : null;
+
+  const getErrorTarget = (): CashbookFormErrorTarget | null => {
+    if (!modalKind) return null;
+    return getFirstCashbookFormErrorTarget({
+      kind: modalKind,
+      accountName,
+      openingBalance,
+      openingBalanceDate,
+      hasAccount: Boolean(chosenAccount),
+      hasDestination: Boolean(destinationAccount),
+      sameCurrency: !destinationAccount || !chosenAccount || destinationAccount.currency === chosenAccount.currency,
+      categoryId,
+      amount,
+      date,
+      description,
+    });
+  };
+
+  const validateCashbookForm = (): Record<string, string> => {
+    const errors: Record<string, string> = {};
+    const target = getErrorTarget();
+    if (!target || !modalKind) return errors;
+    if (target === 'accountName') {
+      errors.accountName = 'টাকার অ্যাকাউন্ট (ওয়ালেট)-এর নাম দিন।';
+    } else if (target === 'openingBalance') {
+      errors.openingBalance = 'শুরুর ব্যালেন্স সঠিক সংখ্যায় দিন।';
+    } else if (target === 'openingBalanceDate') {
+      errors.openingBalanceDate = 'শুরুর ব্যালেন্সের তারিখ সঠিকভাবে দিন।';
+    } else if (target === 'account') {
+      errors.account = enabledAccounts.length === 0
+        ? 'আগে একটি টাকার অ্যাকাউন্ট (ওয়ালেট) যোগ করুন।'
+        : 'টাকার অ্যাকাউন্ট (ওয়ালেট) বাছুন।';
+    } else if (target === 'toAccount') {
+      errors.toAccount = !destinationAccount
+        ? 'কোন টাকার অ্যাকাউন্টে (ওয়ালেটে) যাবে তা বাছুন।'
+        : 'ট্রান্সফার করতে দুই টাকার অ্যাকাউন্টের (ওয়ালেটের) মুদ্রা একই হতে হবে।';
+    } else if (target === 'category') {
+      errors.category = modalKind === 'expense' ? 'খরচের খাত বাছুন।' : 'ইনকামের খাত বাছুন।';
+    } else if (target === 'amount') {
+      errors.amount = modalKind === 'adjustment'
+        ? 'টাকার পরিমাণ সঠিক সংখ্যায় দিন।'
+        : 'টাকার পরিমাণ সঠিকভাবে দিন (০-এর বেশি)।';
+    } else if (target === 'date') {
+      errors.date = 'তারিখ সঠিকভাবে দিন।';
+    } else if (target === 'description') {
+      errors.description = modalKind === 'adjustment' ? 'সমন্বয়ের কারণ লিখুন।' : 'বিবরণ লিখুন।';
+    }
+    return errors;
+  };
+
+  const jumpToFirstCashbookFormError = () => {
+    const target = getErrorTarget();
+    const ref = target === 'accountName' ? accountNameRef.current
+      : target === 'openingBalance' ? openingBalanceRef.current
+      : target === 'openingBalanceDate' ? openingBalanceDateRef.current
+      : target === 'account' ? accountRef.current
+      : target === 'toAccount' ? toAccountRef.current
+      : target === 'category' ? categoryRef.current
+      : target === 'amount' ? amountRef.current
+      : target === 'date' ? dateRef.current
+      : target === 'description' ? descriptionRef.current
+      : null;
+    ref?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    ref?.focus({ preventScroll: true });
   };
 
   const handleCreate = (event: React.FormEvent) => {
     event.preventDefault();
+    const cashbookErrors = validateCashbookForm();
+    if (Object.keys(cashbookErrors).length > 0) {
+      setFormErrors(cashbookErrors);
+      jumpToFirstCashbookFormError();
+      return;
+    }
     try {
       const numericAmount = Number(amount);
       const chosenAccount = financialAccounts.find(item => item.id === accountId);
@@ -203,6 +331,8 @@ export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, init
         showToast('Balance adjustment recorded.', 'success');
       }
       setModalKind(null);
+      setFormErrors({});
+      setAdvancedOpen(false);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not save this entry.', 'error');
     }
@@ -221,6 +351,57 @@ export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, init
   const showEntryModal = modalKind !== null;
   const expenseCategories = settings.financialPreferences?.expenseCategories?.filter(item => item.enabled) || [];
   const incomeCategories = settings.financialPreferences?.incomeCategories?.filter(item => item.enabled) || [];
+  const activeCategoryName = modalKind === 'expense'
+    ? expenseCategories.find(item => item.id === categoryId)?.name
+    : modalKind === 'income'
+      ? incomeCategories.find(item => item.id === categoryId)?.name
+      : undefined;
+  const previewTitle = modalKind === 'account'
+    ? accountName.trim() || 'টাকার অ্যাকাউন্ট (ওয়ালেট)'
+    : modalKind === 'edit-account'
+      ? accountName.trim() || editingAccount?.name || 'টাকার অ্যাকাউন্ট (ওয়ালেট)'
+      : hasValidAmount
+        ? formatCurrency(parsedAmount, chosenAccount?.currency || currency)
+        : 'টাকার পরিমাণ';
+  const previewParts: string[] = [];
+  if (modalKind === 'account') {
+    previewParts.push(FINANCIAL_ACCOUNT_TYPE_LABELS[accountType], accountCurrency);
+    if (openingBalance.trim() !== '' && Number.isFinite(Number(openingBalance))) {
+      previewParts.push(`শুরুর ব্যালেন্স ${formatCurrency(Number(openingBalance), accountCurrency)}`);
+    }
+  } else if (modalKind === 'edit-account') {
+    if (editingAccount) {
+      previewParts.push(FINANCIAL_ACCOUNT_TYPE_LABELS[editingAccount.type], editingAccount.currency);
+    }
+    if (accountIdentifier.trim()) previewParts.push(accountIdentifier.trim());
+  } else if (modalKind === 'transfer') {
+    previewParts.push(`${chosenAccount?.name || '—'} → ${destinationAccount?.name || '—'}`);
+    if (resultingBalance !== null && chosenAccount) {
+      previewParts.push(`ব্যালেন্স হবে: ${formatCurrency(resultingBalance, chosenAccount.currency)}`);
+    }
+    if (destinationResultingBalance !== null && destinationAccount) {
+      previewParts.push(`গন্তব্যের ব্যালেন্স হবে: ${formatCurrency(destinationResultingBalance, destinationAccount.currency)}`);
+    }
+  } else {
+    if (chosenAccount) previewParts.push(chosenAccount.name);
+    if (activeCategoryName) previewParts.push(activeCategoryName);
+    if (resultingBalance !== null && chosenAccount) {
+      previewParts.push(`ব্যালেন্স হবে: ${formatCurrency(resultingBalance, chosenAccount.currency)}`);
+    }
+  }
+  const previewSubtitle = previewParts.join(' · ');
+  const modalTitle = modalKind === 'account' ? 'টাকার অ্যাকাউন্ট (ওয়ালেট) যোগ করুন'
+    : modalKind === 'edit-account' ? 'টাকার অ্যাকাউন্ট (ওয়ালেট) সম্পাদনা'
+    : modalKind === 'expense' ? 'খরচ লিখুন'
+    : modalKind === 'income' ? 'ইনকাম লিখুন'
+    : modalKind === 'transfer' ? 'ট্রান্সফার করুন'
+    : 'ব্যালেন্স সমন্বয় করুন';
+  const submitLabel = modalKind === 'account' ? 'টাকার অ্যাকাউন্ট (ওয়ালেট) তৈরি করুন'
+    : modalKind === 'edit-account' ? 'পরিবর্তন সংরক্ষণ করুন'
+    : modalKind === 'expense' ? 'খরচ সংরক্ষণ করুন'
+    : modalKind === 'income' ? 'ইনকাম সংরক্ষণ করুন'
+    : modalKind === 'transfer' ? 'ট্রান্সফার সংরক্ষণ করুন'
+    : 'সমন্বয় সংরক্ষণ করুন';
 
   return (
     <div data-section="cashbook" className="cashbook-view finance-responsive-page section-layout-shell customer-list-page mx-auto flex w-full max-w-[1600px] flex-col gap-3 px-3 py-3 pb-10 sm:gap-4 sm:px-6 sm:py-6 lg:px-8">
@@ -392,28 +573,342 @@ export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, init
         </div>
       </section>
 
-      <Modal isOpen={showEntryModal} onClose={() => setModalKind(null)} title={modalKind === 'account' ? 'Add financial account' : modalKind === 'edit-account' ? 'Edit financial account' : modalKind === 'expense' ? 'Record expense' : modalKind === 'income' ? 'Record other income' : modalKind === 'transfer' ? 'Transfer between accounts' : 'Reconcile account balance'} subtitle="This record is stored locally and included in business backups." maxWidth="md">
-        <form onSubmit={handleCreate} className="cashbook-entry-form space-y-4">
-          {modalKind === 'account' || modalKind === 'edit-account' ? <>
-            <label className="block"><span className={labelClass}>Account name</span><input className={inputClass} value={accountName} onChange={event => setAccountName(event.target.value)} required maxLength={80} /></label>
-            {modalKind === 'account' && <div className="grid gap-4 sm:grid-cols-2"><label className="block"><span className={labelClass}>Type</span><select className={inputClass} value={accountType} onChange={event => setAccountType(event.target.value as FinancialAccountType)}><option value="cash">Cash</option><option value="mobile_banking">Mobile banking</option><option value="bank">Bank</option><option value="card">Card</option><option value="other">Other</option></select></label><label className="block"><span className={labelClass}>Currency</span><select className={inputClass} value={accountCurrency} onChange={event => setAccountCurrency(event.target.value as typeof currency)}><option value="BDT">BDT</option><option value="USD">USD</option></select></label></div>}
-            <label className="block"><span className={labelClass}>Account reference (optional)</span><input className={inputClass} value={accountIdentifier} onChange={event => setAccountIdentifier(event.target.value)} maxLength={100} /></label>
-            {modalKind === 'account' && <div className="grid gap-4 sm:grid-cols-2"><label className="block"><span className={labelClass}>Opening balance</span><input className={inputClass} type="number" step="0.01" value={openingBalance} onChange={event => setOpeningBalance(event.target.value)} required /></label><label className="block"><span className={labelClass}>Balance as of</span><input className={inputClass} type="date" value={openingBalanceDate} onChange={event => setOpeningBalanceDate(event.target.value)} required /></label></div>}
-          </> : <>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block"><span className={labelClass}>{modalKind === 'transfer' ? 'From account' : 'Account'}</span><select className={inputClass} value={accountId} onChange={event => { const next = event.target.value; setAccountId(next); const chosen = financialAccounts.find(item => item.id === next); if (chosen) { setAccountCurrency(chosen.currency); const destination = enabledAccounts.find(item => item.id !== next && item.currency === chosen.currency); if (destination) setToAccountId(destination.id); } }} required>{enabledAccounts.map(account => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}</select></label>
-              {modalKind === 'transfer' && <label className="block"><span className={labelClass}>To account (same currency)</span><select className={inputClass} value={toAccountId} onChange={event => setToAccountId(event.target.value)} required>{enabledAccounts.filter(account => account.id !== accountId && account.currency === financialAccounts.find(item => item.id === accountId)?.currency).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>}
-              {modalKind === 'expense' && <label className="block"><span className={labelClass}>Expense category</span><select className={inputClass} value={categoryId} onChange={event => setCategoryId(event.target.value)} required>{expenseCategories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
-              {modalKind === 'income' && <label className="block"><span className={labelClass}>Income category</span><select className={inputClass} value={categoryId} onChange={event => setCategoryId(event.target.value)} required>{incomeCategories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
-              <label className="block"><span className={labelClass}>Amount{modalKind === 'adjustment' ? ' (negative to subtract)' : ''}</span><input className={inputClass} type="number" min={modalKind === 'adjustment' ? undefined : 0.01} step="0.01" value={amount} onChange={event => setAmount(event.target.value)} required /></label>
-              <label className="block"><span className={labelClass}>Date</span><input className={inputClass} type="date" value={date} onChange={event => setDate(event.target.value)} required /></label>
+      <Modal isOpen={showEntryModal} onClose={closeEntryModal} title={modalTitle} subtitle="এই হিসাবটি স্থানীয়ভাবে সংরক্ষিত হয় এবং ব্যাকআপে অন্তর্ভুক্ত থাকে।" maxWidth="lg" footer={(
+        <div className="flex items-center justify-end gap-2">
+          <button type="button" onClick={closeEntryModal} className="cashbook-modal-cancel min-h-11 rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">বাতিল</button>
+          <button type="submit" form="cashbook-entry-form" className="cashbook-modal-submit min-h-11 rounded-lg bg-violet-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-violet-600">{submitLabel}</button>
+        </div>
+      )}>
+        <form id="cashbook-entry-form" onSubmit={handleCreate} noValidate className="cashbook-entry-form space-y-5 text-sm">
+          {modalKind && <p className="rounded-xl border border-violet-200 bg-violet-50/60 px-3.5 py-2.5 text-xs leading-6 text-violet-900 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-100">{CASHBOOK_KIND_HELPER_LINES[modalKind]}</p>}
+
+          {/* Live preview — updates as you type */}
+          <div className="flex items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50/50 p-3.5 dark:border-violet-900 dark:bg-violet-950/20">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white" aria-hidden="true">
+              <Wallet className="h-7 w-7" />
             </div>
-            {modalKind !== 'transfer' && <label className="block"><span className={labelClass}>{modalKind === 'adjustment' ? 'Reconciliation reason' : 'Description'}</span><input className={inputClass} value={description} onChange={event => setDescription(event.target.value)} maxLength={200} required /></label>}
-            {modalKind === 'expense' && <label className="block"><span className={labelClass}>Vendor (optional)</span><input className={inputClass} value={vendor} onChange={event => setVendor(event.target.value)} maxLength={100} /></label>}
-            {(modalKind === 'expense' || modalKind === 'income' || modalKind === 'transfer') && <label className="block"><span className={labelClass}>Reference (optional)</span><input className={inputClass} value={reference} onChange={event => setReference(event.target.value)} maxLength={100} /></label>}
-            <p className="cashbook-modal-note text-xs text-slate-500">Account currency: {financialAccounts.find(item => item.id === accountId)?.currency || currency}. Transfers do not count as income or expenses.</p>
+            <div className="min-w-0">
+              <p className="truncate text-base font-bold text-slate-900 dark:text-white">{previewTitle}</p>
+              {previewSubtitle && <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{previewSubtitle}</p>}
+            </div>
+          </div>
+
+          {modalKind === 'account' || modalKind === 'edit-account' ? <>
+            {/* 1. Money account name */}
+            <section aria-labelledby="cashbook-account-name-title" className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">১</span>
+                <h3 id="cashbook-account-name-title" className="text-base font-bold text-slate-900 dark:text-white">টাকার অ্যাকাউন্টের (ওয়ালেটের) নাম <span className="text-rose-500">*</span></h3>
+              </div>
+              <input
+                ref={accountNameRef}
+                id="cashbook-account-name"
+                value={accountName}
+                onChange={event => { setAccountName(event.target.value); if (formErrors.accountName) setFormErrors(previous => ({ ...previous, accountName: '' })); }}
+                maxLength={80}
+                placeholder="যেমন: বিকাশ পার্সোনাল, ক্যাশ ড্রয়ার"
+                aria-invalid={Boolean(formErrors.accountName)}
+                className={cashbookFieldClass(Boolean(formErrors.accountName))}
+              />
+              {formErrors.accountName && <span role="alert" className="block text-xs text-rose-600">{formErrors.accountName}</span>}
+            </section>
+
+            {modalKind === 'account' && <>
+              {/* 2. Type & currency */}
+              <section aria-labelledby="cashbook-account-type-title" className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">২</span>
+                  <h3 id="cashbook-account-type-title" className="text-base font-bold text-slate-900 dark:text-white">ধরন ও মুদ্রা</h3>
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">ধরন</p>
+                  <div className="flex flex-wrap gap-2" role="group" aria-label="ধরন">
+                    {(Object.keys(FINANCIAL_ACCOUNT_TYPE_LABELS) as FinancialAccountType[]).map(type => (
+                      <button
+                        key={type}
+                        type="button"
+                        aria-pressed={accountType === type}
+                        onClick={() => setAccountType(type)}
+                        className={`min-h-10 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors ${accountType === type ? 'border-violet-600 bg-violet-600 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
+                      >
+                        {FINANCIAL_ACCOUNT_TYPE_LABELS[type]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">মুদ্রা</p>
+                  <div className="flex flex-wrap gap-2" role="group" aria-label="মুদ্রা">
+                    {(['BDT', 'USD'] as const).map(code => (
+                      <button
+                        key={code}
+                        type="button"
+                        aria-pressed={accountCurrency === code}
+                        onClick={() => setAccountCurrency(code)}
+                        className={`min-h-10 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors ${accountCurrency === code ? 'border-violet-600 bg-violet-600 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
+                      >
+                        {code}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+
+              {/* 3. Opening balance */}
+              <section aria-labelledby="cashbook-opening-balance-title" className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">৩</span>
+                  <h3 id="cashbook-opening-balance-title" className="text-base font-bold text-slate-900 dark:text-white">শুরুর ব্যালেন্স</h3>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="cashbook-opening-balance" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">শুরুর ব্যালেন্স <span className="text-rose-500">*</span></label>
+                    <input
+                      ref={openingBalanceRef}
+                      id="cashbook-opening-balance"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      value={openingBalance}
+                      onChange={event => { setOpeningBalance(event.target.value); if (formErrors.openingBalance) setFormErrors(previous => ({ ...previous, openingBalance: '' })); }}
+                      aria-invalid={Boolean(formErrors.openingBalance)}
+                      className={cashbookFieldClass(Boolean(formErrors.openingBalance))}
+                    />
+                    {formErrors.openingBalance && <span role="alert" className="mt-1.5 block text-xs text-rose-600">{formErrors.openingBalance}</span>}
+                  </div>
+                  <div>
+                    <label htmlFor="cashbook-opening-balance-date" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">কোন তারিখের ব্যালেন্স <span className="text-rose-500">*</span></label>
+                    <input
+                      ref={openingBalanceDateRef}
+                      id="cashbook-opening-balance-date"
+                      type="date"
+                      value={openingBalanceDate}
+                      onChange={event => { setOpeningBalanceDate(event.target.value); if (formErrors.openingBalanceDate) setFormErrors(previous => ({ ...previous, openingBalanceDate: '' })); }}
+                      aria-invalid={Boolean(formErrors.openingBalanceDate)}
+                      className={cashbookFieldClass(Boolean(formErrors.openingBalanceDate))}
+                    />
+                    {formErrors.openingBalanceDate && <span role="alert" className="mt-1.5 block text-xs text-rose-600">{formErrors.openingBalanceDate}</span>}
+                  </div>
+                </div>
+              </section>
+            </>}
+
+            {/* Advanced settings (collapsed, optional) */}
+            <section aria-labelledby="cashbook-advanced-title" className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen(previous => !previous)}
+                aria-expanded={advancedOpen}
+                className="flex min-h-12 w-full items-center justify-between gap-3 bg-slate-50 px-4 py-3 text-left dark:bg-slate-800/60"
+              >
+                <span id="cashbook-advanced-title" className="text-sm font-bold text-slate-800 dark:text-slate-100">আরও সেটিংস (ঐচ্ছিক)</span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {advancedOpen && (
+                <div className="space-y-4 border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                  <div>
+                    <label htmlFor="cashbook-account-identifier" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">রেফারেন্স <span className="font-normal text-slate-400">ঐচ্ছিক</span></label>
+                    <input
+                      id="cashbook-account-identifier"
+                      value={accountIdentifier}
+                      onChange={event => setAccountIdentifier(event.target.value)}
+                      maxLength={100}
+                      placeholder="যেমন: বিকাশ নম্বর বা ব্যাংক হিসাব নম্বর"
+                      className={cashbookFieldClass(false)}
+                    />
+                    <p className="mt-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">চেনার জন্য — যেমন বিকাশ নম্বর বা ব্যাংক হিসাব নম্বর।</p>
+                  </div>
+                  {modalKind === 'edit-account' && editingAccount && (
+                    <div>
+                      <p className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">শুরুর তথ্য</p>
+                      <dl className="grid grid-cols-2 gap-2 text-xs">
+                        <dt className="text-slate-500">ধরন</dt><dd className="text-right font-semibold text-slate-800 dark:text-slate-100">{FINANCIAL_ACCOUNT_TYPE_LABELS[editingAccount.type]}</dd>
+                        <dt className="text-slate-500">মুদ্রা</dt><dd className="text-right font-semibold text-slate-800 dark:text-slate-100">{editingAccount.currency}</dd>
+                        <dt className="text-slate-500">শুরুর ব্যালেন্স</dt><dd className="text-right font-semibold text-slate-800 dark:text-slate-100">{formatCurrency(editingAccount.openingBalance, editingAccount.currency)}</dd>
+                        <dt className="text-slate-500">শুরুর তারিখ</dt><dd className="text-right font-semibold text-slate-800 dark:text-slate-100">{formatAppDate(editingAccount.openingBalanceDate)}</dd>
+                      </dl>
+                      <p className="mt-2 text-[11px] leading-4 text-slate-500 dark:text-slate-400">ধরন, মুদ্রা ও শুরুর ব্যালেন্স বদলানো যায় না — এগুলো এই টাকার অ্যাকাউন্টের (ওয়ালেটের) শুরুর তথ্য।</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          </> : <>
+            {/* 1. Money account */}
+            <section aria-labelledby="cashbook-entry-account-title" className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">১</span>
+                <h3 id="cashbook-entry-account-title" className="text-base font-bold text-slate-900 dark:text-white">{modalKind === 'transfer' ? 'কোন টাকার অ্যাকাউন্ট (ওয়ালেট) থেকে' : 'টাকার অ্যাকাউন্ট (ওয়ালেট)'} <span className="text-rose-500">*</span></h3>
+              </div>
+              <select
+                ref={accountRef}
+                id="cashbook-account"
+                value={accountId}
+                onChange={event => { const next = event.target.value; setAccountId(next); const chosen = financialAccounts.find(item => item.id === next); if (chosen) { setAccountCurrency(chosen.currency); const destination = enabledAccounts.find(item => item.id !== next && item.currency === chosen.currency); if (destination) setToAccountId(destination.id); } if (formErrors.account) setFormErrors(previous => ({ ...previous, account: '' })); }}
+                aria-invalid={Boolean(formErrors.account)}
+                className={cashbookFieldClass(Boolean(formErrors.account))}
+              >
+                <option value="" disabled>টাকার অ্যাকাউন্ট (ওয়ালেট) বাছুন</option>
+                {enabledAccounts.map(account => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}
+              </select>
+              {formErrors.account && <span role="alert" className="block text-xs text-rose-600">{formErrors.account}</span>}
+            </section>
+
+            {modalKind === 'transfer' && (
+              <section aria-labelledby="cashbook-entry-to-account-title" className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">২</span>
+                  <h3 id="cashbook-entry-to-account-title" className="text-base font-bold text-slate-900 dark:text-white">কোন টাকার অ্যাকাউন্টে (ওয়ালেটে) যাবে <span className="text-rose-500">*</span></h3>
+                </div>
+                <select
+                  ref={toAccountRef}
+                  id="cashbook-to-account"
+                  value={toAccountId}
+                  onChange={event => { setToAccountId(event.target.value); if (formErrors.toAccount) setFormErrors(previous => ({ ...previous, toAccount: '' })); }}
+                  aria-invalid={Boolean(formErrors.toAccount)}
+                  className={cashbookFieldClass(Boolean(formErrors.toAccount))}
+                >
+                  <option value="" disabled>টাকার অ্যাকাউন্ট (ওয়ালেট) বাছুন</option>
+                  {enabledAccounts.filter(account => account.id !== accountId && account.currency === financialAccounts.find(item => item.id === accountId)?.currency).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+                </select>
+                {formErrors.toAccount && <span role="alert" className="block text-xs text-rose-600">{formErrors.toAccount}</span>}
+                <p className="text-[11px] leading-4 text-slate-500 dark:text-slate-400">দুই টাকার অ্যাকাউন্টের (ওয়ালেটের) মুদ্রা একই হতে হবে।</p>
+              </section>
+            )}
+
+            {(modalKind === 'expense' || modalKind === 'income') && (
+              <section aria-labelledby="cashbook-entry-category-title" className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">২</span>
+                  <h3 id="cashbook-entry-category-title" className="text-base font-bold text-slate-900 dark:text-white">{modalKind === 'expense' ? 'খরচের খাত' : 'ইনকামের খাত'} <span className="text-rose-500">*</span></h3>
+                </div>
+                <select
+                  ref={categoryRef}
+                  id="cashbook-category"
+                  value={categoryId}
+                  onChange={event => { setCategoryId(event.target.value); if (formErrors.category) setFormErrors(previous => ({ ...previous, category: '' })); }}
+                  aria-invalid={Boolean(formErrors.category)}
+                  className={cashbookFieldClass(Boolean(formErrors.category))}
+                >
+                  <option value="" disabled>খাত বাছুন</option>
+                  {(modalKind === 'expense' ? expenseCategories : incomeCategories).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+                {formErrors.category && <span role="alert" className="block text-xs text-rose-600">{formErrors.category}</span>}
+              </section>
+            )}
+
+            {/* Amount & date */}
+            <section aria-labelledby="cashbook-entry-amount-title" className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">{modalKind === 'transfer' ? '৩' : modalKind === 'adjustment' ? '২' : '৩'}</span>
+                <h3 id="cashbook-entry-amount-title" className="text-base font-bold text-slate-900 dark:text-white">টাকার পরিমাণ ও তারিখ <span className="text-rose-500">*</span></h3>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="cashbook-amount" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">টাকার পরিমাণ <span className="text-rose-500">*</span></label>
+                  <input
+                    ref={amountRef}
+                    id="cashbook-amount"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    value={amount}
+                    onChange={event => { setAmount(event.target.value); if (formErrors.amount) setFormErrors(previous => ({ ...previous, amount: '' })); }}
+                    placeholder="৫০০"
+                    aria-invalid={Boolean(formErrors.amount)}
+                    className={cashbookFieldClass(Boolean(formErrors.amount))}
+                  />
+                  {formErrors.amount && <span role="alert" className="mt-1.5 block text-xs text-rose-600">{formErrors.amount}</span>}
+                  {modalKind === 'adjustment' && <p className="mt-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">বাদ দিতে মাইনাস (-) দিয়ে লিখুন, যেমন -৫০০।</p>}
+                </div>
+                <div>
+                  <label htmlFor="cashbook-date" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">তারিখ <span className="text-rose-500">*</span></label>
+                  <input
+                    ref={dateRef}
+                    id="cashbook-date"
+                    type="date"
+                    value={date}
+                    onChange={event => { setDate(event.target.value); if (formErrors.date) setFormErrors(previous => ({ ...previous, date: '' })); }}
+                    aria-invalid={Boolean(formErrors.date)}
+                    className={cashbookFieldClass(Boolean(formErrors.date))}
+                  />
+                  {formErrors.date && <span role="alert" className="mt-1.5 block text-xs text-rose-600">{formErrors.date}</span>}
+                </div>
+              </div>
+            </section>
+
+            {modalKind !== 'transfer' && (
+              <section aria-labelledby="cashbook-entry-description-title" className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">৪</span>
+                  <h3 id="cashbook-entry-description-title" className="text-base font-bold text-slate-900 dark:text-white">{modalKind === 'adjustment' ? 'সমন্বয়ের কারণ' : 'বিবরণ'} <span className="text-rose-500">*</span></h3>
+                </div>
+                <input
+                  ref={descriptionRef}
+                  id="cashbook-description"
+                  value={description}
+                  onChange={event => { setDescription(event.target.value); if (formErrors.description) setFormErrors(previous => ({ ...previous, description: '' })); }}
+                  maxLength={200}
+                  placeholder={modalKind === 'adjustment' ? 'কেন ব্যালেন্স মেলাতে হচ্ছে?' : modalKind === 'expense' ? 'কিসের খরচ? যেমন: দোকান ভাড়া' : 'কিসের ইনকাম? যেমন: কমিশন'}
+                  aria-invalid={Boolean(formErrors.description)}
+                  className={cashbookFieldClass(Boolean(formErrors.description))}
+                />
+                {formErrors.description && <span role="alert" className="block text-xs text-rose-600">{formErrors.description}</span>}
+              </section>
+            )}
+
+            {/* Advanced settings (collapsed, optional) */}
+            <section aria-labelledby="cashbook-advanced-title" className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen(previous => !previous)}
+                aria-expanded={advancedOpen}
+                className="flex min-h-12 w-full items-center justify-between gap-3 bg-slate-50 px-4 py-3 text-left dark:bg-slate-800/60"
+              >
+                <span id="cashbook-advanced-title" className="text-sm font-bold text-slate-800 dark:text-slate-100">আরও সেটিংস (ঐচ্ছিক)</span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {advancedOpen && (
+                <div className="space-y-4 border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                  {modalKind === 'expense' && (
+                    <div>
+                      <label htmlFor="cashbook-vendor" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">বিক্রেতা <span className="font-normal text-slate-400">ঐচ্ছিক</span></label>
+                      <input
+                        id="cashbook-vendor"
+                        value={vendor}
+                        onChange={event => setVendor(event.target.value)}
+                        maxLength={100}
+                        placeholder="যেমন: দোকানের নাম"
+                        className={cashbookFieldClass(false)}
+                      />
+                    </div>
+                  )}
+                  {(modalKind === 'expense' || modalKind === 'income' || modalKind === 'transfer') && (
+                    <div>
+                      <label htmlFor="cashbook-reference" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">রেফারেন্স <span className="font-normal text-slate-400">ঐচ্ছিক</span></label>
+                      <input
+                        id="cashbook-reference"
+                        value={reference}
+                        onChange={event => setReference(event.target.value)}
+                        maxLength={100}
+                        placeholder="রসিদ বা বিল নম্বর"
+                        className={cashbookFieldClass(false)}
+                      />
+                    </div>
+                  )}
+                  {modalKind === 'transfer' && (
+                    <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">ট্রান্সফার আয়-ব্যয়ের হিসাবে ধরা হয় না — শুধু টাকা এক টাকার অ্যাকাউন্ট (ওয়ালেট) থেকে আরেকটায় যায়।</p>
+                  )}
+                  {modalKind === 'adjustment' && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">সমন্বয় শুধু এই টাকার অ্যাকাউন্টের (ওয়ালেটের) ব্যালেন্স বদলায় — আয়-ব্যয়ের হিসাবে ধরা হয় না।</p>
+                      {chosenAccount && chosenBalance !== null && <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">বর্তমান ব্যালেন্স: {formatCurrency(chosenBalance, chosenAccount.currency)}</p>}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
           </>}
-          <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800"><button type="button" onClick={() => setModalKind(null)} className="cashbook-modal-cancel rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">Cancel</button><button type="submit" className="cashbook-modal-submit rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">{modalKind === 'account' ? 'Create account' : modalKind === 'edit-account' ? 'Save changes' : 'Save entry'}</button></div>
         </form>
       </Modal>
     </div>

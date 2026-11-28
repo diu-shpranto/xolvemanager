@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   KeyRound,
   Plus,
@@ -45,6 +45,7 @@ import { formatAppDate, formatCurrency, getDaysDifferenceForTimeZone, getSubscri
 import { createRecordId } from '../../services/localStorageStore';
 import { normalizeSearchText } from '../../services/globalSearch';
 import { getAccountCapacity, getAccountInventoryMetrics, getAvailableProfiles, isAccountOperational, RESOURCE_CAPACITY_THRESHOLDS } from '../../utils/resourceManagement';
+import { getFirstAccountFormErrorTarget } from '../../utils/accountFormHelpers';
 import { getSaleSubscriptionIds } from '../../utils/saleUtils';
 import { ProfileEditModal } from './ProfileEditModal';
 
@@ -372,6 +373,18 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [showPasswordInModal, setShowPasswordInModal] = useState(false);
 
+  // New single-screen form (mirrors the Add Service form): the essentials
+  // live on one screen and everything optional sits behind one collapsed
+  // "আরও সেটিংস (ঐচ্ছিক)" section.
+  const [accountFormErrors, setAccountFormErrors] = useState<Record<string, string>>({});
+  const [accountAdvancedOpen, setAccountAdvancedOpen] = useState(false);
+  const accountServiceRef = useRef<HTMLSelectElement | null>(null);
+  const accountEmailRef = useRef<HTMLInputElement | null>(null);
+  const accountProfilesRef = useRef<HTMLInputElement | null>(null);
+  const accountPurchaseDateRef = useRef<HTMLInputElement | null>(null);
+  const accountExpiryDateRef = useRef<HTMLInputElement | null>(null);
+  const accountPurchaseCostRef = useRef<HTMLInputElement | null>(null);
+
   // Profile modal
   const [profileModalAccount, setProfileModalAccount] = useState<Account | null>(null);
   const [newProfileName, setNewProfileName] = useState('');
@@ -453,6 +466,8 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
     setRequireCustomerAssignment(true);
     setAllowNewAssignment(true);
     setShowPasswordInModal(false);
+    setAccountFormErrors({});
+    setAccountAdvancedOpen(false);
     setIsAddAccountModalOpen(true);
   };
 
@@ -476,17 +491,95 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
     setRequireCustomerAssignment(acc.requireCustomerAssignment ?? true);
     setAllowNewAssignment(acc.allowNewAssignment ?? true);
     setShowPasswordInModal(false);
+    setAccountFormErrors({});
+    setAccountAdvancedOpen(false);
+  };
+
+  const jumpToFirstAccountFormError = () => {
+    const selectedService = services.find(service => service.id === accServiceId);
+    const profileSlotsRequired = Boolean(selectedService?.settings?.usesProfiles || selectedService?.settings?.profileAssignmentRequired);
+    const minimumProfiles = profileSlotsRequired ? 1 : editingAccount?.profiles.length || 0;
+    const target = getFirstAccountFormErrorTarget({
+      serviceId: accServiceId,
+      email: accEmail,
+      maxProfiles: accMaxProfiles,
+      minimumProfiles,
+      purchaseDate: accPurchaseDate,
+      expiryDate: accExpiryDate,
+      purchaseCost: accPurchaseCost,
+    });
+    if (target === 'service') {
+      accountServiceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      accountServiceRef.current?.focus({ preventScroll: true });
+    } else if (target === 'email') {
+      accountEmailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      accountEmailRef.current?.focus({ preventScroll: true });
+    } else if (target === 'profiles') {
+      accountProfilesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      accountProfilesRef.current?.focus({ preventScroll: true });
+    } else if (target === 'purchaseDate' || target === 'expiryDate' || target === 'purchaseCost') {
+      // These live inside the collapsed advanced section: open it first,
+      // then scroll to and focus the field once it is rendered.
+      setAccountAdvancedOpen(true);
+      window.setTimeout(() => {
+        const el = target === 'purchaseDate'
+          ? accountPurchaseDateRef.current
+          : target === 'expiryDate'
+            ? accountExpiryDateRef.current
+            : accountPurchaseCostRef.current;
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus({ preventScroll: true });
+      }, 60);
+    }
+  };
+
+  const validateAccountForm = (): Record<string, string> => {
+    const errors: Record<string, string> = {};
+    const selectedService = services.find(service => service.id === accServiceId);
+    const profileSlotsRequired = Boolean(selectedService?.settings?.usesProfiles || selectedService?.settings?.profileAssignmentRequired);
+    const minimumProfiles = profileSlotsRequired ? 1 : editingAccount?.profiles.length || 0;
+    const target = getFirstAccountFormErrorTarget({
+      serviceId: accServiceId,
+      email: accEmail,
+      maxProfiles: accMaxProfiles,
+      minimumProfiles,
+      purchaseDate: accPurchaseDate,
+      expiryDate: accExpiryDate,
+      purchaseCost: accPurchaseCost,
+    });
+    if (!target) return errors;
+    if (target === 'service') {
+      errors.service = language === 'bn' ? 'সার্ভিস বাছুন।' : 'Select a service.';
+    } else if (target === 'email') {
+      errors.email = language === 'bn'
+        ? 'সার্ভিস অ্যাকাউন্ট (লগইন)-এর ইমেইল দিন।'
+        : 'Enter the service account email.';
+    } else if (target === 'profiles') {
+      errors.profiles = profileSlotsRequired
+        ? language === 'bn'
+          ? 'প্রোফাইলের সংখ্যা ১ থেকে ১০০-এর মধ্যে দিন।'
+          : 'Enter a profile count between 1 and 100.'
+        : language === 'bn'
+          ? 'প্রোফাইলের সংখ্যা আগের সংরক্ষিত প্রোফাইলের চেয়ে কম হতে পারবে না।'
+          : 'Profile capacity cannot be lower than the profiles already saved.';
+    } else if (target === 'purchaseDate') {
+      errors.purchaseDate = language === 'bn' ? 'কেনার তারিখ সঠিকভাবে দিন।' : 'Enter a valid purchase date.';
+    } else if (target === 'expiryDate') {
+      errors.expiryDate = language === 'bn' ? 'মেয়াদ শেষের তারিখ সঠিকভাবে দিন।' : 'Enter a valid expiry date.';
+    } else if (target === 'purchaseCost') {
+      errors.purchaseCost = language === 'bn'
+        ? 'কেনার খরচ সঠিক সংখ্যায় দিন (০ বা তার বেশি)।'
+        : 'Enter a valid non-negative purchase cost.';
+    }
+    return errors;
   };
 
   const handleSaveAccount = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!accServiceId || !accEmail.trim()) {
-      showToast(
-        language === 'bn'
-        ? 'সার্ভিস এবং ইমেইল লিখুন।'
-        : 'Select a service and enter an email address.',
-        'error'
-      );
+    const accountErrors = validateAccountForm();
+    if (Object.keys(accountErrors).length > 0) {
+      setAccountFormErrors(accountErrors);
+      jumpToFirstAccountFormError();
       return;
     }
     const selectedService = services.find(service => service.id === accServiceId);
@@ -549,7 +642,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
         return;
       }
       showToast(
-        language === 'bn' ? 'অ্যাকাউন্ট সফলভাবে আপডেট হয়েছে।' : 'Account updated.',
+        language === 'bn' ? 'সার্ভিস অ্যাকাউন্ট (লগইন) সফলভাবে আপডেট হয়েছে।' : 'Service account (login) updated.',
         'success'
       );
       setEditingAccount(null);
@@ -1536,33 +1629,96 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
       </section>
 
       {/* 8. ADD / EDIT ACCOUNT MODAL */}
+      {/* 8. ADD / EDIT SERVICE ACCOUNT (LOGIN) MODAL — single screen, mirrors the Add Service form */}
       {(isAddAccountModalOpen || editingAccount) && (
         <Modal
           isOpen={isAddAccountModalOpen || Boolean(editingAccount)}
           onClose={() => {
             setIsAddAccountModalOpen(false);
             setEditingAccount(null);
+            setAccountFormErrors({});
+            setAccountAdvancedOpen(false);
           }}
-          title={editingAccount ? 'Edit Account' : 'Add Account'}
+          title={
+            editingAccount
+              ? language === 'bn'
+                ? 'সার্ভিস অ্যাকাউন্ট (লগইন) সম্পাদনা'
+                : 'Edit Service Account (Login)'
+              : language === 'bn'
+              ? 'সার্ভিস অ্যাকাউন্ট (লগইন) যোগ করুন'
+              : 'Add Service Account (Login)'
+          }
           subtitle={
             editingAccount
               ? language === 'bn'
-                ? 'মাস্টার সাবস্ক্রিপশন অ্যাকাউন্টের বিবরণ আপডেট করুন।'
-                : 'Update this service account.'
+                ? 'মাস্টার সাবস্ক্রিপশন লগইনের বিবরণ আপডেট করুন।'
+                : 'Update this service login.'
               : language === 'bn'
-              ? 'ইনভেন্টরিতে নতুন মাস্টার সাবস্ক্রিপশন অ্যাকাউন্ট যুক্ত করুন।'
-              : 'Add an account for one of your services.'
+              ? 'ইনভেন্টরিতে নতুন সার্ভিস লগইন যোগ করুন।'
+              : 'Add a login for one of your services.'
           }
           maxWidth="lg"
+          footer={(
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddAccountModalOpen(false);
+                  setEditingAccount(null);
+                  setAccountFormErrors({});
+                  setAccountAdvancedOpen(false);
+                }}
+                className="min-h-11 rounded-lg px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                type="submit"
+                form="account-form"
+                className="min-h-11 rounded-lg bg-violet-700 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-violet-600 active:bg-violet-800"
+              >
+                {editingAccount
+                  ? language === 'bn' ? 'সার্ভিস অ্যাকাউন্ট (লগইন) সংরক্ষণ করুন' : 'Save Service Account (Login)'
+                  : language === 'bn' ? 'সার্ভিস অ্যাকাউন্ট (লগইন) তৈরি করুন' : 'Create Service Account (Login)'}
+              </button>
+            </div>
+          )}
         >
-          <form onSubmit={handleSaveAccount} className="account-modal-form space-y-4 text-xs">
-            {/* Section 1: Service Selection */}
-            <div>
-              <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                {t('serviceName')} <span className="text-rose-500">*</span>
-              </label>
+          <form id="account-form" onSubmit={handleSaveAccount} noValidate className="space-y-5 text-sm">
+            {/* What a service account is */}
+            <p className="rounded-xl border border-violet-200 bg-violet-50/60 px-3.5 py-2.5 text-xs leading-6 text-violet-900 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-100">
+              সার্ভিস অ্যাকাউন্ট হলো আসল লগইন (ইমেইল+পাসওয়ার্ড) — এর ভেতরের প্রোফাইলগুলো কাস্টমারদের দেওয়া হয়।
+            </p>
+
+            {/* Live preview — updates as you type */}
+            <div className="flex items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50/50 p-3.5 dark:border-violet-900 dark:bg-violet-950/20">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white" aria-hidden="true">
+                <KeyRound className="h-7 w-7" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-base font-bold text-slate-900 dark:text-white">
+                  {accName.trim() || accEmail.trim() || (language === 'bn' ? 'সার্ভিস অ্যাকাউন্ট (লগইন)' : 'Service Account (Login)')}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                  {selectedAccountService?.name || (language === 'bn' ? 'সার্ভিস বাছুন' : 'Choose a service')}
+                  {accEmail.trim() && accName.trim() ? ` · ${accEmail.trim()}` : ''}
+                  {accPlan ? ` · ${accPlan}` : ''}
+                  {accountRequiresProfiles ? ` · ${accMaxProfiles} ${language === 'bn' ? 'প্রোফাইল' : 'profiles'}` : ''}
+                </p>
+              </div>
+            </div>
+
+            {/* 1. Service */}
+            <section aria-labelledby="account-service-title" className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">1</span>
+                <h3 id="account-service-title" className="text-base font-bold text-slate-900 dark:text-white">
+                  {language === 'bn' ? 'সার্ভিস' : 'Service'} <span className="text-rose-500">*</span>
+                </h3>
+              </div>
               <div className="relative">
                 <select
+                  ref={accountServiceRef}
                   value={accServiceId}
                   onChange={e => {
                     const serviceId = e.target.value;
@@ -1574,9 +1730,10 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                     setAccMaxProfiles(service?.settings?.usesProfiles || service?.settings?.profileAssignmentRequired
                       ? Math.max(editingAccount?.profiles.length || 0, 1, service.settings.profileCapacity || 1)
                       : editingAccount?.profiles.length || 0);
+                    if (accountFormErrors.service) setAccountFormErrors(prev => ({ ...prev, service: '' }));
                   }}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-violet-500 cursor-pointer appearance-none"
-                  required
+                  aria-invalid={Boolean(accountFormErrors.service)}
+                  className={`w-full min-h-11 rounded-xl border bg-slate-50 px-3.5 py-3 text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:bg-slate-800 dark:text-white ${accountFormErrors.service ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
                 >
                   {services.filter(service =>
                     (!service.isArchived && service.status === 'active') || service.id === accServiceId
@@ -1588,251 +1745,317 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               </div>
-            </div>
+              {accountFormErrors.service && <span role="alert" className="block text-xs text-rose-600">{accountFormErrors.service}</span>}
+            </section>
 
-            <div className="account-name-field">
-              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <label htmlFor="account-name" className="font-semibold text-slate-800 dark:text-slate-200">
-                  Account name <span className="font-normal text-slate-500 dark:text-slate-400">(optional)</span>
-                </label>
-                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-700 dark:text-violet-300">
-                  Inventory label
-                </span>
+            {/* 2. Login details */}
+            <section aria-labelledby="account-login-title" className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">2</span>
+                <h3 id="account-login-title" className="text-base font-bold text-slate-900 dark:text-white">
+                  {language === 'bn' ? 'লগইন তথ্য' : 'Login details'}
+                </h3>
               </div>
-              <div className="relative">
-                <Layers2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-500 dark:text-violet-300" aria-hidden="true" />
-                <input
-                  id="account-name"
-                  name="accountName"
-                  type="text"
-                  value={accName}
-                  onChange={event => setAccName(event.target.value)}
-                  placeholder="e.g. Netflix Account 01"
-                  aria-describedby="account-name-hint"
-                  className="account-name-input w-full rounded-xl border border-violet-200 bg-white py-3 pl-10 pr-3 text-sm font-semibold text-slate-900 shadow-xs placeholder:font-normal placeholder:text-slate-400 dark:border-violet-900/70 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500"
-                />
-              </div>
-              <p id="account-name-hint" className="mt-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
-                Used to identify this saved account in inventory. If blank, the account email is shown instead.
-              </p>
-            </div>
-
-            {/* Section 2: Account Email & Username */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                  {t('accountEmail')} <span className="text-rose-500">*</span>
+                <label htmlFor="account-login-email" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  {language === 'bn' ? 'সার্ভিস অ্যাকাউন্ট (লগইন)-এর ইমেইল' : 'Service account (login) email'} <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  ref={accountEmailRef}
+                  id="account-login-email"
                   type="email"
-                  placeholder="Enter account email"
+                  placeholder="service@example.com"
                   value={accEmail}
-                  onChange={e => setAccEmail(e.target.value)}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-violet-500"
-                  required
+                  onChange={e => {
+                    setAccEmail(e.target.value);
+                    if (accountFormErrors.email) setAccountFormErrors(prev => ({ ...prev, email: '' }));
+                  }}
+                  aria-invalid={Boolean(accountFormErrors.email)}
+                  className={`w-full min-h-11 rounded-xl border bg-slate-50 px-3.5 py-3 font-mono text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:bg-slate-800 dark:text-white ${accountFormErrors.email ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
                 />
+                {accountFormErrors.email && <span role="alert" className="mt-1.5 block text-xs text-rose-600">{accountFormErrors.email}</span>}
               </div>
-
               <div>
-                <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                  {t('accountUsername')} <span className="text-slate-400 font-normal">({language === 'bn' ? 'ঐচ্ছিক' : 'Optional'})</span>
+                <label htmlFor="account-login-password" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  {language === 'bn' ? 'পাসওয়ার্ড' : 'Password'} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span>
+                </label>
+                <div className="relative">
+                  <input
+                    id="account-login-password"
+                    type={showPasswordInModal ? 'text' : 'password'}
+                    placeholder={editingAccount
+                      ? language === 'bn' ? 'খালি রাখলে আগের পাসওয়ার্ড থাকবে' : 'Leave blank to keep the current password'
+                      : language === 'bn' ? 'লগইনের পাসওয়ার্ড দিন' : 'Enter account password'}
+                    value={accPassword}
+                    onChange={e => setAccPassword(e.target.value)}
+                    className="w-full min-h-11 rounded-xl border border-slate-200 bg-slate-50 py-3 pl-3.5 pr-11 font-mono text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordInModal(prev => !prev)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    title={showPasswordInModal ? 'Hide password' : 'Show password'}
+                    aria-label={showPasswordInModal ? 'Hide password' : 'Show password'}
+                  >
+                    {showPasswordInModal ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="account-login-username" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  {language === 'bn' ? 'ইউজারনেম' : 'Username'} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span>
                 </label>
                 <input
+                  id="account-login-username"
                   type="text"
                   placeholder="account_username"
                   value={accUsername}
                   onChange={e => setAccUsername(e.target.value)}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-violet-500"
+                  className="w-full min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 font-mono text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 />
               </div>
-            </div>
+            </section>
 
-            {/* Section 3: Master Password */}
-            <div>
-              <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                Password <span className="text-slate-400 font-normal">(optional)</span>
-              </label>
-              <div className="relative">
-                <input
-                  type={showPasswordInModal ? 'text' : 'password'}
-                  placeholder={editingAccount ? 'Leave blank to keep the current password' : 'Enter account password'}
-                  value={accPassword}
-                  onChange={e => setAccPassword(e.target.value)}
-                  className="w-full h-10 pl-3 pr-10 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-violet-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPasswordInModal(prev => !prev)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded"
-                  title={showPasswordInModal ? 'Hide password' : 'Show password'}
-                >
-                  {showPasswordInModal ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
+            {/* 3. Plan & profiles */}
+            <section aria-labelledby="account-plan-title" className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">3</span>
+                <h3 id="account-plan-title" className="text-base font-bold text-slate-900 dark:text-white">
+                  {language === 'bn' ? 'প্ল্যান ও প্রোফাইল' : 'Plan & profiles'}
+                </h3>
               </div>
-            </div>
-
-            {/* Plan, profiles, and status */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                  Plan
-                </label>
-                <select
-                  value={accPlanId || (accPlan ? 'legacy-plan' : '')}
-                  onChange={e => {
-                    const selectedPlan = services.find(service => service.id === accServiceId)?.planDetails?.find(plan => plan.id === e.target.value);
-                    setAccPlanId(selectedPlan?.id || '');
-                    setAccPlan(selectedPlan?.name || (e.target.value === 'legacy-plan' ? accPlan : ''));
-                  }}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-violet-500"
-                >
-                  <option value="">No plan</option>
-                  {accPlan && !services.find(service => service.id === accServiceId)?.planDetails?.some(plan => plan.id === accPlanId)
-                    && <option value="legacy-plan">{accPlan}</option>}
-                  {services.find(service => service.id === accServiceId)?.planDetails?.filter(plan => plan.status === 'active').map(plan => (
-                    <option key={plan.id} value={plan.id}>{plan.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {accountRequiresProfiles || Boolean(editingAccount?.profiles.length) ? <div>
-                <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                  Number of Profiles
-                </label>
-                <input
-                  type="number"
-                  value={accMaxProfiles}
-                  onChange={e => setAccMaxProfiles(e.target.value === '' ? 0 : Number(e.target.value))}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-violet-500"
-                  min={accountRequiresProfiles ? 1 : editingAccount?.profiles.length || 0}
-                  max={100}
-                />
-              </div> : <p className="text-xs text-slate-500">This service sells the saved account as one allocation; no profile slots are configured.</p>}
-
-              <div>
-                <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                  {t('status')}
-                </label>
-                <div className="relative">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="account-plan" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    {language === 'bn' ? 'প্ল্যান' : 'Plan'}
+                  </label>
                   <select
-                    value={accStatus}
-                    onChange={e => setAccStatus(e.target.value as AccountStatus)}
-                    className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-violet-500 cursor-pointer appearance-none"
+                    id="account-plan"
+                    value={accPlanId || (accPlan ? 'legacy-plan' : '')}
+                    onChange={e => {
+                      const selectedPlan = services.find(service => service.id === accServiceId)?.planDetails?.find(plan => plan.id === e.target.value);
+                      setAccPlanId(selectedPlan?.id || '');
+                      setAccPlan(selectedPlan?.name || (e.target.value === 'legacy-plan' ? accPlan : ''));
+                    }}
+                    className="w-full min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
-                    <option value="Available">Active</option>
-                    <option value="Inactive">Inactive</option>
-                    <option value="Suspended">Suspended</option>
+                    <option value="">{language === 'bn' ? 'কোনো প্ল্যান নেই' : 'No plan'}</option>
+                    {accPlan && !services.find(service => service.id === accServiceId)?.planDetails?.some(plan => plan.id === accPlanId)
+                      && <option value="legacy-plan">{accPlan}</option>}
+                    {services.find(service => service.id === accServiceId)?.planDetails?.filter(plan => plan.status === 'active').map(plan => (
+                      <option key={plan.id} value={plan.id}>{plan.name}</option>
+                    ))}
                   </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                </div>
+                <div>
+                  <label htmlFor="account-status" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    {language === 'bn' ? 'অবস্থা' : 'Status'}
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="account-status"
+                      value={accStatus}
+                      onChange={e => setAccStatus(e.target.value as AccountStatus)}
+                      className="w-full min-h-11 cursor-pointer appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    >
+                      <option value="Available">{language === 'bn' ? 'সক্রিয়' : 'Active'}</option>
+                      <option value="Inactive">{language === 'bn' ? 'নিষ্ক্রিয়' : 'Inactive'}</option>
+                      <option value="Suspended">{language === 'bn' ? 'স্থগিত' : 'Suspended'}</option>
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                  </div>
                 </div>
               </div>
-            </div>
+              {accountRequiresProfiles || Boolean(editingAccount?.profiles.length) ? (
+                <div>
+                  <label htmlFor="account-profiles" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    {language === 'bn' ? 'প্রোফাইলের সংখ্যা' : 'Number of Profiles'}
+                  </label>
+                  <input
+                    ref={accountProfilesRef}
+                    id="account-profiles"
+                    type="number"
+                    value={accMaxProfiles}
+                    onChange={e => {
+                      setAccMaxProfiles(e.target.value === '' ? 0 : Number(e.target.value));
+                      if (accountFormErrors.profiles) setAccountFormErrors(prev => ({ ...prev, profiles: '' }));
+                    }}
+                    aria-invalid={Boolean(accountFormErrors.profiles)}
+                    className={`w-full min-h-11 rounded-xl border bg-slate-50 px-3.5 py-3 font-mono text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:bg-slate-800 dark:text-white ${accountFormErrors.profiles ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                    min={accountRequiresProfiles ? 1 : editingAccount?.profiles.length || 0}
+                    max={100}
+                  />
+                  {accountFormErrors.profiles && <span role="alert" className="mt-1.5 block text-xs text-rose-600">{accountFormErrors.profiles}</span>}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">This service sells the saved account as one allocation; no profile slots are configured.</p>
+              )}
+            </section>
 
-            <fieldset className="grid gap-2 rounded-xl border border-slate-200 p-3 text-xs dark:border-slate-700 sm:grid-cols-3">
-              <legend className="px-1 font-semibold text-slate-600 dark:text-slate-300">Assignment Settings</legend>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={allowProfileSharing} onChange={event => setAllowProfileSharing(event.target.checked)} />Allow profile sharing</label>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={requireCustomerAssignment} onChange={event => setRequireCustomerAssignment(event.target.checked)} />Require customer assignment</label>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={allowNewAssignment} onChange={event => setAllowNewAssignment(event.target.checked)} />Allow new assignments</label>
-            </fieldset>
-
-            {/* Section 5: Dates */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                  {t('purchaseDate')}
-                </label>
-                <input
-                  type="date"
-                  value={accPurchaseDate}
-                  onChange={e => setAccPurchaseDate(e.target.value)}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-violet-500 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                  {t('expiryDate')}
-                </label>
-                <input
-                  type="date"
-                  value={accExpiryDate}
-                  onChange={e => setAccExpiryDate(e.target.value)}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-violet-500 font-mono"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]">
-              <label className="block text-slate-700 dark:text-slate-300 font-semibold">
-                Actual Account Purchase Cost
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  value={accPurchaseCost}
-                  onChange={event => setAccPurchaseCost(event.target.value)}
-                  placeholder="Leave blank if unknown"
-                  className="mt-1 block h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-xs text-slate-900 focus:border-violet-500 focus:outline-hidden dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                />
-                <span className="mt-1 block text-[10px] font-normal text-slate-500">
-                  New sales snapshot full cost, or allocate it across configured profile slots.
-                </span>
-              </label>
-              <label className="block text-slate-700 dark:text-slate-300 font-semibold">
-                Cost Currency
-                <select
-                  value={accPurchaseCostCurrency}
-                  onChange={event => setAccPurchaseCostCurrency(event.target.value as AppCurrency)}
-                  className="mt-1 block h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs text-slate-900 focus:border-violet-500 focus:outline-hidden dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                >
-                  <option value="BDT">BDT</option>
-                  <option value="USD">USD</option>
-                </select>
-              </label>
-            </div>
-
-            {/* Section 6: Notes */}
-            <div>
-              <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                {t('notes')}
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Billing card, Turkish/Nigerian region, renewal notes, customer restrictions..."
-                value={accNotes}
-                onChange={e => setAccNotes(e.target.value)}
-                className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-violet-500"
-              />
-            </div>
-
-            {/* Modal Actions */}
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            {/* 4. More settings (collapsed, optional) */}
+            <section aria-labelledby="account-advanced-title" className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
               <button
                 type="button"
-                onClick={() => {
-                  setIsAddAccountModalOpen(false);
-                  setEditingAccount(null);
-                }}
-                className="px-4 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold text-xs transition-colors cursor-pointer"
+                onClick={() => setAccountAdvancedOpen(previous => !previous)}
+                aria-expanded={accountAdvancedOpen}
+                className="flex min-h-12 w-full items-center justify-between gap-3 bg-slate-50 px-4 py-3 text-left dark:bg-slate-800/60"
               >
-                {t('cancel')}
+                <span id="account-advanced-title" className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                  {language === 'bn' ? 'আরও সেটিংস (ঐচ্ছিক)' : 'More settings (optional)'}
+                </span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${accountAdvancedOpen ? 'rotate-180' : ''}`} />
               </button>
-              <button
-                type="submit"
-                className="min-h-11 px-5 py-2 bg-violet-700 hover:bg-violet-600 active:bg-violet-800 text-white font-semibold text-xs rounded-lg shadow-sm transition-all cursor-pointer"
-              >
-                Save Account
-              </button>
-            </div>
+              {accountAdvancedOpen && (
+                <div className="space-y-4 border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                  <div>
+                    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <label htmlFor="account-name" className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        {language === 'bn' ? 'লেবেল' : 'Label'} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span>
+                      </label>
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-700 dark:text-violet-300">
+                        {language === 'bn' ? 'ইনভেন্টরি লেবেল' : 'Inventory label'}
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <Layers2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-500 dark:text-violet-300" aria-hidden="true" />
+                      <input
+                        id="account-name"
+                        name="accountName"
+                        type="text"
+                        value={accName}
+                        onChange={event => setAccName(event.target.value)}
+                        placeholder="e.g. Netflix Account 01"
+                        aria-describedby="account-name-hint"
+                        className="w-full min-h-11 rounded-xl border border-violet-200 bg-white py-3 pl-10 pr-3 text-sm font-semibold text-slate-900 shadow-xs placeholder:font-normal placeholder:text-slate-400 dark:border-violet-900/70 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500"
+                      />
+                    </div>
+                    <p id="account-name-hint" className="mt-1.5 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
+                      {language === 'bn'
+                        ? 'ইনভেন্টরিতে চেনার জন্য। খালি থাকলে ইমেইল দেখাবে।'
+                        : 'Used to identify this saved login in inventory. If blank, the email is shown instead.'}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="account-purchase-date" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        {language === 'bn' ? 'কেনার তারিখ' : 'Purchase Date'}
+                      </label>
+                      <input
+                        ref={accountPurchaseDateRef}
+                        id="account-purchase-date"
+                        type="date"
+                        value={accPurchaseDate}
+                        onChange={e => {
+                          setAccPurchaseDate(e.target.value);
+                          if (accountFormErrors.purchaseDate) setAccountFormErrors(prev => ({ ...prev, purchaseDate: '' }));
+                        }}
+                        aria-invalid={Boolean(accountFormErrors.purchaseDate)}
+                        className={`w-full min-h-11 rounded-xl border bg-slate-50 px-3.5 py-3 font-mono text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:bg-slate-800 dark:text-white ${accountFormErrors.purchaseDate ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                      />
+                      {accountFormErrors.purchaseDate && <span role="alert" className="mt-1.5 block text-xs text-rose-600">{accountFormErrors.purchaseDate}</span>}
+                    </div>
+                    <div>
+                      <label htmlFor="account-expiry-date" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        {language === 'bn' ? 'মেয়াদ শেষের তারিখ' : 'Expiry Date'}
+                      </label>
+                      <input
+                        ref={accountExpiryDateRef}
+                        id="account-expiry-date"
+                        type="date"
+                        value={accExpiryDate}
+                        onChange={e => {
+                          setAccExpiryDate(e.target.value);
+                          if (accountFormErrors.expiryDate) setAccountFormErrors(prev => ({ ...prev, expiryDate: '' }));
+                        }}
+                        aria-invalid={Boolean(accountFormErrors.expiryDate)}
+                        className={`w-full min-h-11 rounded-xl border bg-slate-50 px-3.5 py-3 font-mono text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:bg-slate-800 dark:text-white ${accountFormErrors.expiryDate ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                      />
+                      {accountFormErrors.expiryDate && <span role="alert" className="mt-1.5 block text-xs text-rose-600">{accountFormErrors.expiryDate}</span>}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]">
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {language === 'bn' ? 'কেনার খরচ' : 'Purchase Cost'}
+                      <input
+                        ref={accountPurchaseCostRef}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputMode="decimal"
+                        value={accPurchaseCost}
+                        onChange={event => {
+                          setAccPurchaseCost(event.target.value);
+                          if (accountFormErrors.purchaseCost) setAccountFormErrors(prev => ({ ...prev, purchaseCost: '' }));
+                        }}
+                        aria-invalid={Boolean(accountFormErrors.purchaseCost)}
+                        placeholder={language === 'bn' ? 'না জানলে খালি রাখুন' : 'Leave blank if unknown'}
+                        className={`mt-1 block min-h-11 w-full rounded-xl border bg-slate-50 px-3.5 py-3 font-mono text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:bg-slate-800 dark:text-white ${accountFormErrors.purchaseCost ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                      />
+                      <span className="mt-1 block text-[11px] font-normal leading-4 text-slate-500">
+                        {language === 'bn'
+                          ? 'নতুন বিক্রিতে পুরো খরচের হিসাব, অথবা প্রোফাইল স্লটগুলোতে ভাগ করে নিন।'
+                          : 'New sales snapshot full cost, or allocate it across configured profile slots.'}
+                      </span>
+                      {accountFormErrors.purchaseCost && <span role="alert" className="mt-1.5 block text-xs text-rose-600">{accountFormErrors.purchaseCost}</span>}
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {language === 'bn' ? 'মুদ্রা' : 'Currency'}
+                      <select
+                        value={accPurchaseCostCurrency}
+                        onChange={event => setAccPurchaseCostCurrency(event.target.value as AppCurrency)}
+                        className="mt-1 block min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      >
+                        <option value="BDT">BDT</option>
+                        <option value="USD">USD</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div>
+                    <h4 className="mb-2 text-sm font-bold text-slate-900 dark:text-white">
+                      {language === 'bn' ? 'বরাদ্দের সেটিংস' : 'Assignment Settings'}
+                    </h4>
+                    <div className="space-y-2">
+                      <label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800">
+                        <span className="text-sm text-slate-700 dark:text-slate-300">{language === 'bn' ? 'প্রোফাইল শেয়ার করা যাবে' : 'Allow profile sharing'}</span>
+                        <input type="checkbox" checked={allowProfileSharing} onChange={event => setAllowProfileSharing(event.target.checked)} className="h-4 w-4 accent-violet-600" />
+                      </label>
+                      <label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800">
+                        <span className="text-sm text-slate-700 dark:text-slate-300">{language === 'bn' ? 'কাস্টমার বরাদ্দ বাধ্যতামূলক' : 'Require customer assignment'}</span>
+                        <input type="checkbox" checked={requireCustomerAssignment} onChange={event => setRequireCustomerAssignment(event.target.checked)} className="h-4 w-4 accent-violet-600" />
+                      </label>
+                      <label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800">
+                        <span className="text-sm text-slate-700 dark:text-slate-300">{language === 'bn' ? 'নতুন বরাদ্দ দেওয়া যাবে' : 'Allow new assignments'}</span>
+                        <input type="checkbox" checked={allowNewAssignment} onChange={event => setAllowNewAssignment(event.target.checked)} className="h-4 w-4 accent-violet-600" />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="account-notes" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {language === 'bn' ? 'নোট' : 'Notes'}
+                    </label>
+                    <textarea
+                      id="account-notes"
+                      rows={2}
+                      placeholder="Billing card, Turkish/Nigerian region, renewal notes, customer restrictions..."
+                      value={accNotes}
+                      onChange={e => setAccNotes(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    />
+                  </div>
+                </div>
+              )}
+            </section>
           </form>
         </Modal>
       )}
-
       {/* 9. ADD PROFILE SLOT TO ACCOUNT MODAL */}
       {profileModalAccount && (
         <Modal
@@ -1998,3 +2221,4 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
     </div>
   );
 };
+

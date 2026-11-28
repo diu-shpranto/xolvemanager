@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { BellRing, CalendarClock, Check, Clock3, Plus, Search, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { BellRing, CalendarClock, Check, ChevronDown, Clock3, Plus, Search, X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { getCustomerOptionLabel } from '../../utils/relationships';
+import { getFirstReminderFormErrorTarget, REMINDER_HELPER_LINE, type ReminderFormErrorTarget } from '../../utils/reminderFormHelpers';
 import { Modal } from '../common/Modal';
 import { StatCard, type StatCardTone } from '../common/StatCard';
 import { useToast } from '../common/Toast';
@@ -30,6 +31,15 @@ const filters: Array<{ id: ReminderFilter; label: string }> = [
   { id: 'snoozed', label: 'Snoozed' },
   { id: 'all', label: 'All' },
 ];
+
+const priorityLabels: Record<ReminderPriority, string> = {
+  low: 'কম',
+  medium: 'মাঝারি',
+  high: 'বেশি',
+  critical: 'জরুরি',
+};
+
+const reminderFieldClass = (hasError: boolean) => `w-full min-h-11 rounded-xl border bg-slate-50 px-3.5 py-3 text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:bg-slate-800 dark:text-white ${hasError ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`;
 
 const priorityClass: Record<ReminderPriority, string> = {
   low: 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
@@ -87,6 +97,11 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
   const [customerId, setCustomerId] = useState('');
   const [dueAt, setDueAt] = useState(() => getLocalDateTimeValue(new Date()));
   const [priority, setPriority] = useState<ReminderPriority>('medium');
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const customerRef = useRef<HTMLSelectElement>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const dueAtRef = useRef<HTMLInputElement>(null);
   const [completionTarget, setCompletionTarget] = useState<Reminder | null>(null);
   const [outcome, setOutcome] = useState('');
   const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
@@ -165,8 +180,47 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
     perform(() => snoozeReminder(reminder.id, until.toISOString()), 'Reminder snoozed.');
   };
 
+  const getReminderErrorTarget = (): ReminderFormErrorTarget | null => {
+    const customer = customerId ? customerById.get(customerId) : undefined;
+    return getFirstReminderFormErrorTarget({
+      hasCustomer: Boolean(customer),
+      title,
+      dueAt,
+    });
+  };
+
+  const validateReminderForm = (): Record<string, string> => {
+    const errors: Record<string, string> = {};
+    const target = getReminderErrorTarget();
+    if (!target) return errors;
+    if (target === 'customer') {
+      errors.customer = 'কাস্টমার বাছুন।';
+    } else if (target === 'title') {
+      errors.title = 'ফলো-আপের কারণ লিখুন।';
+    } else if (target === 'dueAt') {
+      errors.dueAt = 'সঠিক তারিখ ও সময় দিন।';
+    }
+    return errors;
+  };
+
+  const jumpToFirstReminderFormError = () => {
+    const target = getReminderErrorTarget();
+    const ref = target === 'customer' ? customerRef.current
+      : target === 'title' ? titleRef.current
+      : target === 'dueAt' ? dueAtRef.current
+      : null;
+    ref?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    ref?.focus({ preventScroll: true });
+  };
+
   const submitReminder = (event: React.FormEvent) => {
     event.preventDefault();
+    const reminderErrors = validateReminderForm();
+    if (Object.keys(reminderErrors).length > 0) {
+      setFormErrors(reminderErrors);
+      jumpToFirstReminderFormError();
+      return;
+    }
     const customer = customerId ? customerById.get(customerId) : undefined;
     if (!customer) {
       showToast('Select an existing customer.', 'error');
@@ -197,7 +251,15 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
       setDescription('');
       setCustomerId('');
       setDueAt(getLocalDateTimeValue(new Date()));
+      setFormErrors({});
+      setAdvancedOpen(false);
     }, 'Follow-up reminder created.');
+  };
+
+  const closeCreate = () => {
+    setShowCreate(false);
+    setFormErrors({});
+    setAdvancedOpen(false);
   };
 
   const openCreate = (nextCustomerId = '') => {
@@ -206,6 +268,8 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
     setDescription('');
     setDueAt(getLocalDateTimeValue(new Date()));
     setPriority('medium');
+    setFormErrors({});
+    setAdvancedOpen(false);
     setShowCreate(true);
   };
 
@@ -322,19 +386,124 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
 
       <Modal
         isOpen={showCreate}
-        onClose={() => setShowCreate(false)}
-        title="Schedule customer follow-up"
+        onClose={closeCreate}
+        title="ফলো-আপ সময় নির্ধারণ করুন"
+        subtitle="কাস্টমারকে কখন মনে করিয়ে দেবেন তা লিখুন।"
         maxWidth="lg"
-      >
-        <form onSubmit={submitReminder} className="space-y-4">
-          <label className="block text-xs font-semibold">Follow-up reason *<input required maxLength={120} value={title} onChange={event => setTitle(event.target.value)} placeholder="e.g. Discuss renewal options" className="sv-field--v2 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
-          <label className="block text-xs font-semibold">Customer *<select required value={customerId} onChange={event => setCustomerId(event.target.value)} className="sv-field--v2 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800"><option value="">Select a customer</option>{customers.filter(customer => !customer.isArchived && customer.status !== 'archived').map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}</select></label>
-          <label className="block text-xs font-semibold">Notes<textarea maxLength={1000} value={description} onChange={event => setDescription(event.target.value)} rows={3} className="sv-field--v2 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-xs font-semibold">Due date &amp; time *<input type="datetime-local" required value={dueAt} onChange={event => setDueAt(event.target.value)} className="sv-field--v2 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>
-            <label className="block text-xs font-semibold">Priority<select value={priority} onChange={event => setPriority(event.target.value as ReminderPriority)} className="sv-field--v2 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800">{(['low', 'medium', 'high', 'critical'] as const).map(value => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</select></label>
+        footer={(
+          <div className="flex items-center justify-end gap-2">
+            <button type="button" onClick={closeCreate} className="min-h-11 rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">বাতিল</button>
+            <button type="submit" form="reminder-form" className="customer-primary-action min-h-11 rounded-lg bg-violet-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-violet-600">ফলো-আপ সংরক্ষণ করুন</button>
           </div>
-          <footer className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setShowCreate(false)} className="sv-btn-ghost--v2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold dark:border-slate-700">Cancel</button><button type="submit" disabled={!title.trim() || !customerId || !dueAt} className="sv-btn-primary--v2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Save Follow-up</button></footer>
+        )}
+      >
+        <form id="reminder-form" className="rem-form--v2 space-y-5 text-sm" onSubmit={submitReminder} noValidate>
+          <p className="rounded-xl border border-violet-200 bg-violet-50/60 px-3.5 py-2.5 text-xs leading-6 text-violet-900 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-100">{REMINDER_HELPER_LINE}</p>
+
+          {/* Live preview — the follow-up card, updates as you type */}
+          <div className="rem-preview rounded-2xl border border-violet-200 bg-violet-50/50 p-3.5 dark:border-violet-900 dark:bg-violet-950/20">
+            <p className="text-xs text-slate-500 dark:text-slate-400">ফলো-আপের পূর্বরূপ</p>
+            <p className="mt-1 font-semibold text-slate-900 dark:text-white">{title.trim() || 'ফলো-আপের কারণ'}</p>
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{customerId && customerById.get(customerId) ? customerById.get(customerId)!.name : 'কাস্টমার বাছুন'}{dueAt && Number.isFinite(new Date(dueAt).getTime()) ? ` · ${formatDateTime(new Date(dueAt).toISOString())}` : ' · সময় বাছুন'}</p>
+            <span className="mt-2 inline-block rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[10px] font-bold uppercase text-violet-700 dark:border-violet-900 dark:bg-slate-900 dark:text-violet-300">{priorityLabels[priority]} গুরুত্ব</span>
+          </div>
+
+          {/* ১. কাস্টমার */}
+          <section aria-labelledby="reminder-customer-title" className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">১</span>
+              <h3 id="reminder-customer-title" className="text-base font-bold text-slate-900 dark:text-white">কাস্টমার <span className="text-rose-500">*</span></h3>
+            </div>
+            <select
+              ref={customerRef}
+              id="reminder-customer"
+              value={customerId}
+              onChange={event => { setCustomerId(event.target.value); if (formErrors.customer) setFormErrors(previous => ({ ...previous, customer: '' })); }}
+              aria-invalid={Boolean(formErrors.customer)}
+              className={reminderFieldClass(Boolean(formErrors.customer))}
+            >
+              <option value="">কাস্টমার বাছুন</option>
+              {customers.filter(customer => !customer.isArchived && customer.status !== 'archived').map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}
+            </select>
+            {formErrors.customer && <span role="alert" className="block text-xs text-rose-600">{formErrors.customer}</span>}
+          </section>
+
+          {/* ২. ফলো-আপের কারণ */}
+          <section aria-labelledby="reminder-title" className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">২</span>
+              <h3 id="reminder-title" className="text-base font-bold text-slate-900 dark:text-white">ফলো-আপের কারণ <span className="text-rose-500">*</span></h3>
+            </div>
+            <input
+              ref={titleRef}
+              id="reminder-reason"
+              value={title}
+              onChange={event => { setTitle(event.target.value); if (formErrors.title) setFormErrors(previous => ({ ...previous, title: '' })); }}
+              maxLength={120}
+              placeholder="যেমন: পেমেন্টের কথা মনে করিয়ে দেওয়া"
+              aria-invalid={Boolean(formErrors.title)}
+              className={reminderFieldClass(Boolean(formErrors.title))}
+            />
+            {formErrors.title && <span role="alert" className="block text-xs text-rose-600">{formErrors.title}</span>}
+          </section>
+
+          {/* ৩. কখন মনে করিয়ে দেবেন */}
+          <section aria-labelledby="reminder-due-title" className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">৩</span>
+              <h3 id="reminder-due-title" className="text-base font-bold text-slate-900 dark:text-white">কখন মনে করিয়ে দেবেন <span className="text-rose-500">*</span></h3>
+            </div>
+            <input
+              ref={dueAtRef}
+              id="reminder-due"
+              type="datetime-local"
+              value={dueAt}
+              onChange={event => { setDueAt(event.target.value); if (formErrors.dueAt) setFormErrors(previous => ({ ...previous, dueAt: '' })); }}
+              aria-invalid={Boolean(formErrors.dueAt)}
+              className={reminderFieldClass(Boolean(formErrors.dueAt))}
+            />
+            {formErrors.dueAt && <span role="alert" className="block text-xs text-rose-600">{formErrors.dueAt}</span>}
+          </section>
+
+          {/* আরও সেটিংস (ঐচ্ছিক) — collapsed, holds ALL advanced content */}
+          <section aria-labelledby="reminder-advanced-title" className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen(previous => !previous)}
+              aria-expanded={advancedOpen}
+              className="flex min-h-12 w-full items-center justify-between gap-3 bg-slate-50 px-4 py-3 text-left dark:bg-slate-800/60"
+            >
+              <span id="reminder-advanced-title" className="text-sm font-bold text-slate-800 dark:text-slate-100">আরও সেটিংস (ঐচ্ছিক)</span>
+              <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {advancedOpen && (
+              <div className="space-y-4 border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                <div>
+                  <label htmlFor="reminder-notes" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">নোট <span className="font-normal text-slate-400">ঐচ্ছিক</span></label>
+                  <textarea
+                    id="reminder-notes"
+                    rows={3}
+                    maxLength={1000}
+                    value={description}
+                    onChange={event => setDescription(event.target.value)}
+                    placeholder="এই ফলো-আপ নিয়ে কিছু লিখে রাখুন"
+                    className={reminderFieldClass(false)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="reminder-priority" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">গুরুত্ব <span className="font-normal text-slate-400">ঐচ্ছিক</span></label>
+                  <select
+                    id="reminder-priority"
+                    value={priority}
+                    onChange={event => setPriority(event.target.value as ReminderPriority)}
+                    className={reminderFieldClass(false)}
+                  >
+                    {(['low', 'medium', 'high', 'critical'] as const).map(value => <option key={value} value={value}>{priorityLabels[value]}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
+          </section>
         </form>
       </Modal>
       <Modal

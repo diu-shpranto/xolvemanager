@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   UserCheck,
   Search,
@@ -34,6 +34,7 @@ import { StatCard } from '../common/StatCard';
 import { AccountProfile, ServiceCategory } from '../../types';
 import { normalizeSearchText } from '../../services/globalSearch';
 import { getAccountCapacity, getProfileStatus, isAccountOperational } from '../../utils/resourceManagement';
+import { getFirstProfileFormErrorTarget, ProfileFormErrorTarget } from '../../utils/profileFormHelpers';
 import { ProfileEditModal } from './ProfileEditModal';
 
 interface ServiceAccent {
@@ -297,6 +298,18 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
   const [newProfileExpiryDate, setNewProfileExpiryDate] = useState('');
   const [newProfileNotes, setNewProfileNotes] = useState('');
   const [editingProfile, setEditingProfile] = useState<{ accountId: string; profile: AccountProfile } | null>(null);
+  const [profileFormErrors, setProfileFormErrors] = useState<Partial<Record<ProfileFormErrorTarget, string>>>({});
+  const [profileAdvancedOpen, setProfileAdvancedOpen] = useState(false);
+  const profileAccountRef = useRef<HTMLSelectElement>(null);
+  const profileNameRef = useRef<HTMLInputElement>(null);
+  const profilePinRef = useRef<HTMLInputElement>(null);
+  const profileStartDateRef = useRef<HTMLInputElement>(null);
+  const profileExpiryDateRef = useRef<HTMLInputElement>(null);
+
+  // A fresh Add Profile attempt starts with no validation errors.
+  useEffect(() => {
+    if (isAddModalOpen) setProfileFormErrors({});
+  }, [isAddModalOpen]);
   const [assigningProfile, setAssigningProfile] = useState<{ accountId: string; profileId: string } | null>(null);
   const [assignCustomerId, setAssignCustomerId] = useState('');
   const [assignSubscriptionId, setAssignSubscriptionId] = useState('');
@@ -358,10 +371,72 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const closeAddProfileModal = () => {
+    setIsAddModalOpen(false);
+    setProfileFormErrors({});
+    setProfileAdvancedOpen(false);
+  };
+
+  const jumpToFirstProfileFormError = () => {
+    const target = getFirstProfileFormErrorTarget({
+      accountId: targetAccountId,
+      profileName: newProfileName,
+      pin: newProfilePin,
+      startDate: newProfileStartDate,
+      expiryDate: newProfileExpiryDate,
+    });
+    if (target === 'account') {
+      profileAccountRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      profileAccountRef.current?.focus({ preventScroll: true });
+    } else if (target === 'profileName') {
+      profileNameRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      profileNameRef.current?.focus({ preventScroll: true });
+    } else if (target === 'pin' || target === 'dates') {
+      // These live inside the collapsed advanced section: open it first,
+      // then scroll to and focus the field once it is rendered.
+      setProfileAdvancedOpen(true);
+      window.setTimeout(() => {
+        const el = target === 'pin'
+          ? profilePinRef.current
+          : [newProfileStartDate, newProfileExpiryDate].some(date => date && !Number.isFinite(Date.parse(`${date}T00:00:00`)))
+            ? (newProfileStartDate && !Number.isFinite(Date.parse(`${newProfileStartDate}T00:00:00`)) ? profileStartDateRef.current : profileExpiryDateRef.current)
+            : profileExpiryDateRef.current;
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus({ preventScroll: true });
+      }, 60);
+    }
+  };
+
+  const validateProfileForm = (): Partial<Record<ProfileFormErrorTarget, string>> => {
+    const errors: Partial<Record<ProfileFormErrorTarget, string>> = {};
+    const target = getFirstProfileFormErrorTarget({
+      accountId: targetAccountId,
+      profileName: newProfileName,
+      pin: newProfilePin,
+      startDate: newProfileStartDate,
+      expiryDate: newProfileExpiryDate,
+    });
+    if (!target) return errors;
+    if (target === 'account') {
+      errors.account = language === 'bn' ? 'সার্ভিস অ্যাকাউন্ট (লগইন) বাছুন।' : 'Select a service account (login).';
+    } else if (target === 'profileName') {
+      errors.profileName = language === 'bn' ? 'প্রোফাইলের নাম লিখুন।' : 'Enter a profile name.';
+    } else if (target === 'pin') {
+      errors.pin = language === 'bn' ? 'PIN সর্বোচ্চ ৬ অঙ্কের হতে পারে।' : 'PIN can be at most 6 characters.';
+    } else if (target === 'dates') {
+      errors.dates = [newProfileStartDate, newProfileExpiryDate].some(date => date && !Number.isFinite(Date.parse(`${date}T00:00:00`)))
+        ? (language === 'bn' ? 'তারিখ সঠিকভাবে দিন।' : 'Enter valid dates.')
+        : (language === 'bn' ? 'মেয়াদ শেষের তারিখ শুরুর তারিখের পরে হতে হবে।' : 'Expiry date must be on or after the start date.');
+    }
+    return errors;
+  };
+
   const handleAddProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!targetAccountId || !newProfileName.trim()) {
-      showToast('Please select an account and provide a profile name.', 'error');
+    const profileErrors = validateProfileForm();
+    if (Object.keys(profileErrors).length > 0) {
+      setProfileFormErrors(profileErrors);
+      jumpToFirstProfileFormError();
       return;
     }
     try {
@@ -376,6 +451,8 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
     }
     showToast(t('profileSavedSuccess'), 'success');
     setIsAddModalOpen(false);
+    setProfileFormErrors({});
+    setProfileAdvancedOpen(false);
     setNewProfileName('');
     setNewProfilePin('');
     setNewProfileStartDate('');
@@ -902,26 +979,87 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
       {isAddModalOpen && (
         <Modal
           isOpen={isAddModalOpen}
-          onClose={() => setIsAddModalOpen(false)}
+          onClose={closeAddProfileModal}
           title={t('addProfile')}
           subtitle={
             language === 'bn'
-              ? 'মাস্টার অ্যাকাউন্টে নতুন স্ক্রিন প্রোফাইল স্লট যোগ করুন।'
-              : 'Add a new screen profile slot to a master fulfillment account.'
+              ? 'একটি সার্ভিস অ্যাকাউন্টে (লগইন) নতুন প্রোফাইল স্লট যোগ করুন।'
+              : 'Add a new screen profile slot to a service account (login).'
           }
-          maxWidth="md"
+          maxWidth="lg"
+          footer={(
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeAddProfileModal}
+                className="min-h-11 rounded-lg px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                type="submit"
+                form="profile-form"
+                className="min-h-11 rounded-lg bg-emerald-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500 active:bg-emerald-700"
+              >
+                {language === 'bn' ? 'প্রোফাইল তৈরি করুন' : 'Create Profile'}
+              </button>
+            </div>
+          )}
         >
-          <form onSubmit={handleAddProfile} className="profile-modal-form space-y-4 text-xs">
-            <div>
-              <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                {language === 'bn' ? 'মাস্টার অ্যাকাউন্ট নির্বাচন করুন' : 'Select Target Account'} <span className="text-rose-500">*</span>
-              </label>
+          <form id="profile-form" onSubmit={handleAddProfile} noValidate className="space-y-5 text-sm">
+            {/* What a profile is */}
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-3.5 py-2.5 text-xs leading-6 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
+              প্রোফাইল হলো একটি সার্ভিস অ্যাকাউন্টের ভেতরের একটি স্লট — এটাই কাস্টমারকে দেওয়া হয়।
+            </p>
+
+            {/* Live preview — updates as you type */}
+            {(() => {
+              const selectedAccount = accounts.find(acc => acc.id === targetAccountId);
+              const selectedService = services.find(s => s.id === selectedAccount?.serviceId);
+              return (
+                <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-3.5 dark:border-emerald-900 dark:bg-emerald-950/20">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white" aria-hidden="true">
+                    <UserCheck className="h-7 w-7" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-bold text-slate-900 dark:text-white">
+                      {newProfileName.trim() || (language === 'bn' ? 'প্রোফাইলের নাম' : 'Profile name')}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                      {selectedAccount
+                        ? `${selectedService?.name || ''} · ${selectedAccount.email}${selectedAccount.plan ? ` · ${selectedAccount.plan}` : ''}`
+                        : (language === 'bn' ? 'সার্ভিস অ্যাকাউন্ট (লগইন) বাছুন' : 'Choose a service account (login)')}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                      {newProfilePin.trim()
+                        ? (language === 'bn' ? 'পিন সুরক্ষিত' : 'PIN protected')
+                        : (language === 'bn' ? 'পিন নেই' : 'No PIN')}
+                      {newProfileStartDate || newProfileExpiryDate
+                        ? ` · ${newProfileStartDate || '…'} → ${newProfileExpiryDate || '…'}` : ''}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* 1. Service account (login) */}
+            <section aria-labelledby="profile-account-title" className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">1</span>
+                <h3 id="profile-account-title" className="text-base font-bold text-slate-900 dark:text-white">
+                  {language === 'bn' ? 'সার্ভিস অ্যাকাউন্ট (লগইন)' : 'Service Account (Login)'} <span className="text-rose-500">*</span>
+                </h3>
+              </div>
               <div className="relative">
                 <select
+                  ref={profileAccountRef}
                   value={targetAccountId}
-                  onChange={e => setTargetAccountId(e.target.value)}
-                  className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500 cursor-pointer appearance-none"
-                  required
+                  onChange={e => {
+                    setTargetAccountId(e.target.value);
+                    if (profileFormErrors.account) setProfileFormErrors(prev => ({ ...prev, account: '' }));
+                  }}
+                  aria-invalid={Boolean(profileFormErrors.account)}
+                  className={`w-full min-h-11 cursor-pointer appearance-none rounded-xl border bg-slate-50 px-3.5 py-3 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none dark:bg-slate-800 dark:text-white ${profileFormErrors.account ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
                 >
                   {accountsWithCapacity.map(acc => {
                     const srv = services.find(s => s.id === acc.serviceId);
@@ -934,57 +1072,123 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               </div>
-            </div>
+              {profileFormErrors.account && <span role="alert" className="block text-xs text-rose-600">{profileFormErrors.account}</span>}
+            </section>
 
-            <div>
-              <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                {t('profileName')} <span className="text-rose-500">*</span>
-              </label>
+            {/* 2. Profile name */}
+            <section aria-labelledby="profile-name-title" className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">2</span>
+                <h3 id="profile-name-title" className="text-base font-bold text-slate-900 dark:text-white">
+                  {language === 'bn' ? 'প্রোফাইলের নাম' : 'Profile name'} <span className="text-rose-500">*</span>
+                </h3>
+              </div>
               <input
+                ref={profileNameRef}
+                id="profile-name"
                 type="text"
-                placeholder="Enter profile name"
+                placeholder={language === 'bn' ? 'যেমন: Profile 1' : 'e.g. Profile 1'}
                 value={newProfileName}
-                onChange={e => setNewProfileName(e.target.value)}
-                className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
-                required
+                onChange={e => {
+                  setNewProfileName(e.target.value);
+                  if (profileFormErrors.profileName) setProfileFormErrors(prev => ({ ...prev, profileName: '' }));
+                }}
+                aria-invalid={Boolean(profileFormErrors.profileName)}
+                className={`w-full min-h-11 rounded-xl border bg-slate-50 px-3.5 py-3 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none dark:bg-slate-800 dark:text-white ${profileFormErrors.profileName ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
               />
-            </div>
+              {profileFormErrors.profileName && <span role="alert" className="block text-xs text-rose-600">{profileFormErrors.profileName}</span>}
+            </section>
 
-            <div>
-              <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                {t('profilePin')} <span className="text-slate-400 font-normal">({language === 'bn' ? 'ঐচ্ছিক' : 'Optional'})</span>
-              </label>
-              <input
-                type="password"
-                placeholder="e.g. 1423"
-                value={newProfilePin}
-                onChange={e => setNewProfilePin(e.target.value)}
-                className="w-full h-10 px-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs sm:text-sm focus:outline-hidden focus:border-emerald-500"
-                maxLength={6}
-              />
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="font-semibold text-slate-700 dark:text-slate-300">Start Date<input type="date" value={newProfileStartDate} onChange={event => setNewProfileStartDate(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-normal dark:border-slate-700 dark:bg-slate-800" /></label>
-              <label className="font-semibold text-slate-700 dark:text-slate-300">Expiry Date<input type="date" value={newProfileExpiryDate} onChange={event => setNewProfileExpiryDate(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-normal dark:border-slate-700 dark:bg-slate-800" /></label>
-            </div>
-            <label className="block font-semibold text-slate-700 dark:text-slate-300">Notes<textarea rows={2} value={newProfileNotes} onChange={event => setNewProfileNotes(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-normal dark:border-slate-700 dark:bg-slate-800" /></label>
-
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            {/* 3. More settings (collapsed, optional) */}
+            <section aria-labelledby="profile-advanced-title" className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
               <button
                 type="button"
-                onClick={() => setIsAddModalOpen(false)}
-                className="px-4 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold text-xs transition-colors cursor-pointer"
+                onClick={() => setProfileAdvancedOpen(previous => !previous)}
+                aria-expanded={profileAdvancedOpen}
+                className="flex min-h-12 w-full items-center justify-between gap-3 bg-slate-50 px-4 py-3 text-left dark:bg-slate-800/60"
               >
-                {t('cancel')}
+                <span id="profile-advanced-title" className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                  {language === 'bn' ? 'আরও সেটিংস (ঐচ্ছিক)' : 'More settings (optional)'}
+                </span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${profileAdvancedOpen ? 'rotate-180' : ''}`} />
               </button>
-              <button
-                type="submit"
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold text-xs rounded-lg shadow-sm transition-all cursor-pointer"
-              >
-                {t('save')}
-              </button>
-            </div>
+              {profileAdvancedOpen && (
+                <div className="space-y-4 border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                  <div>
+                    <label htmlFor="profile-pin" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {t('profilePin')} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span>
+                    </label>
+                    <input
+                      ref={profilePinRef}
+                      id="profile-pin"
+                      type="password"
+                      inputMode="numeric"
+                      placeholder="e.g. 1423"
+                      value={newProfilePin}
+                      onChange={e => {
+                        setNewProfilePin(e.target.value);
+                        if (profileFormErrors.pin) setProfileFormErrors(prev => ({ ...prev, pin: '' }));
+                      }}
+                      aria-invalid={Boolean(profileFormErrors.pin)}
+                      maxLength={6}
+                      className={`w-full min-h-11 rounded-xl border bg-slate-50 px-3.5 py-3 font-mono text-sm text-slate-900 focus:border-emerald-500 focus:outline-none dark:bg-slate-800 dark:text-white ${profileFormErrors.pin ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                    />
+                    {profileFormErrors.pin && <span role="alert" className="mt-1.5 block text-xs text-rose-600">{profileFormErrors.pin}</span>}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="profile-start-date" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        {language === 'bn' ? 'শুরুর তারিখ' : 'Start date'}
+                      </label>
+                      <input
+                        ref={profileStartDateRef}
+                        id="profile-start-date"
+                        type="date"
+                        value={newProfileStartDate}
+                        onChange={e => {
+                          setNewProfileStartDate(e.target.value);
+                          if (profileFormErrors.dates) setProfileFormErrors(prev => ({ ...prev, dates: '' }));
+                        }}
+                        aria-invalid={Boolean(profileFormErrors.dates)}
+                        className={`w-full min-h-11 rounded-xl border bg-slate-50 px-3.5 py-3 font-mono text-sm text-slate-900 focus:border-emerald-500 focus:outline-none dark:bg-slate-800 dark:text-white ${profileFormErrors.dates ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="profile-expiry-date" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        {language === 'bn' ? 'মেয়াদ শেষের তারিখ' : 'Expiry date'}
+                      </label>
+                      <input
+                        ref={profileExpiryDateRef}
+                        id="profile-expiry-date"
+                        type="date"
+                        value={newProfileExpiryDate}
+                        onChange={e => {
+                          setNewProfileExpiryDate(e.target.value);
+                          if (profileFormErrors.dates) setProfileFormErrors(prev => ({ ...prev, dates: '' }));
+                        }}
+                        aria-invalid={Boolean(profileFormErrors.dates)}
+                        className={`w-full min-h-11 rounded-xl border bg-slate-50 px-3.5 py-3 font-mono text-sm text-slate-900 focus:border-emerald-500 focus:outline-none dark:bg-slate-800 dark:text-white ${profileFormErrors.dates ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                      />
+                    </div>
+                  </div>
+                  {profileFormErrors.dates && <span role="alert" className="block text-xs text-rose-600">{profileFormErrors.dates}</span>}
+
+                  <div>
+                    <label htmlFor="profile-notes" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {language === 'bn' ? 'নোট' : 'Notes'}
+                    </label>
+                    <textarea
+                      id="profile-notes"
+                      rows={2}
+                      value={newProfileNotes}
+                      onChange={e => setNewProfileNotes(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    />
+                  </div>
+                </div>
+              )}
+            </section>
           </form>
         </Modal>
       )}

@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { CalendarDays, CalendarRange, Download, Eye, Hash, Pencil, Plus, ReceiptText, Scale, Search, TrendingDown, XCircle } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { CalendarDays, CalendarRange, ChevronDown, Download, Eye, Hash, Pencil, Plus, ReceiptText, Scale, Search, TrendingDown, XCircle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
@@ -10,6 +10,7 @@ import { formatAppDate, formatCurrency, getTodayDateString } from '../../utils/d
 import { convertReportCurrency } from '../../utils/reportMetrics';
 import { getAccountBalance, getFinancialLedger } from '../../utils/financialLedger';
 import { normalizePaymentMethods } from '../../utils/paymentMethods';
+import { EXPENSE_HELPER_LINE, getFirstExpenseFormErrorTarget, type ExpenseFormErrorTarget } from '../../utils/expenseFormHelpers';
 import { downloadCSV } from '../../utils/csvParser';
 import type { NavSection } from '../navigation/Sidebar';
 
@@ -25,6 +26,7 @@ type ExpenseDraft = Pick<Expense,
 
 const cardClass = 'rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4';
 const inputClass = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white';
+const expenseFieldClass = (hasError: boolean) => `w-full min-h-11 rounded-xl border bg-slate-50 px-3.5 py-3 text-sm text-slate-900 focus:border-violet-500 focus:outline-none dark:bg-slate-800 dark:text-white ${hasError ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`;
 const labelClass = 'mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300';
 const csvCell = (value: string | number): string => {
   const text = String(value);
@@ -68,6 +70,13 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [voidTarget, setVoidTarget] = useState<Expense | null>(null);
   const [voidReason, setVoidReason] = useState('');
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const accountRef = useRef<HTMLSelectElement>(null);
+  const categoryRef = useRef<HTMLSelectElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const dateRef = useRef<HTMLInputElement>(null);
+  const descriptionRef = useRef<HTMLInputElement>(null);
 
   const inBusiness = <T extends { businessId?: string }>(records: T[]): T[] =>
     records.filter(record => !currentBusiness?.businessId || !record.businessId || record.businessId === currentBusiness.businessId);
@@ -154,8 +163,17 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
     };
   }, [postedExpenses, currency]);
 
+  const closeExpenseForm = () => {
+    setDraft(null);
+    setEditingExpense(null);
+    setFormErrors({});
+    setAdvancedOpen(false);
+  };
+
   const startCreate = () => {
     setEditingExpense(null);
+    setFormErrors({});
+    setAdvancedOpen(false);
     setDraft({
       accountId: scopedAccounts.find(account => account.enabled)?.id || '',
       categoryId: activeCategories[0]?.id || '',
@@ -175,9 +193,57 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
     onCreateRequestHandled?.();
   }, [createRequest]);
 
+  const getExpenseErrorTarget = (): ExpenseFormErrorTarget | null => {
+    if (!draft) return null;
+    const account = accountById.get(draft.accountId);
+    return getFirstExpenseFormErrorTarget({
+      hasAccount: Boolean(account && account.enabled),
+      hasCategory: activeCategories.some(category => category.id === draft.categoryId),
+      amount: String(draft.amount ?? ''),
+      date: draft.date,
+      description: draft.description,
+    });
+  };
+
+  const validateExpenseForm = (): Record<string, string> => {
+    const errors: Record<string, string> = {};
+    const target = getExpenseErrorTarget();
+    if (!target) return errors;
+    if (target === 'account') {
+      errors.account = 'টাকার অ্যাকাউন্ট (ওয়ালেট) বাছুন।';
+    } else if (target === 'category') {
+      errors.category = 'খরচের খাত বাছুন।';
+    } else if (target === 'amount') {
+      errors.amount = 'টাকার পরিমাণ সঠিকভাবে দিন (০-এর বেশি)।';
+    } else if (target === 'date') {
+      errors.date = 'তারিখ সঠিকভাবে দিন।';
+    } else if (target === 'description') {
+      errors.description = 'বিবরণ লিখুন।';
+    }
+    return errors;
+  };
+
+  const jumpToFirstExpenseFormError = () => {
+    const target = getExpenseErrorTarget();
+    const ref = target === 'account' ? accountRef.current
+      : target === 'category' ? categoryRef.current
+      : target === 'amount' ? amountRef.current
+      : target === 'date' ? dateRef.current
+      : target === 'description' ? descriptionRef.current
+      : null;
+    ref?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    ref?.focus({ preventScroll: true });
+  };
+
   const saveExpense = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft) return;
+    const expenseErrors = validateExpenseForm();
+    if (Object.keys(expenseErrors).length > 0) {
+      setFormErrors(expenseErrors);
+      jumpToFirstExpenseFormError();
+      return;
+    }
     const account = accountById.get(draft.accountId);
     if (!account || !account.enabled) {
       showToast('Choose an enabled financial account for this business.', 'error');
@@ -218,6 +284,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
       }
       setDraft(null);
       setEditingExpense(null);
+      setFormErrors({});
+      setAdvancedOpen(false);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Could not save this expense.', 'error');
     }
@@ -227,6 +295,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
     if (expense.status !== 'posted') return;
     setSelectedExpense(null);
     setEditingExpense(expense);
+    setFormErrors({});
+    setAdvancedOpen(false);
     setDraft({
       accountId: expense.accountId,
       categoryId: expense.categoryId,
@@ -404,29 +474,175 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
         </>}
       </section>
 
-      <Modal isOpen={Boolean(draft)} onClose={() => { setDraft(null); setEditingExpense(null); }} title={editingExpense ? 'Edit Expense' : 'Add Expense'} subtitle="Changes update the existing Cashbook ledger record.">
-        {draft && <form className="exp-form--v2 space-y-4" onSubmit={saveExpense}>
-          <label className="block"><span className={labelClass}>Expense Account *</span><select className={inputClass} value={draft.accountId} onChange={event => {
-            const account = accountById.get(event.target.value);
-            setDraft({ ...draft, accountId: event.target.value, currency: account?.currency || currency });
-          }} required><option value="">Select account</option>{scopedAccounts.filter(account => account.enabled).map(account => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}</select></label>
-          <label className="block"><span className={labelClass}>Category *</span><select className={inputClass} value={draft.categoryId} onChange={event => setDraft({ ...draft, categoryId: event.target.value })} required><option value="">Select category</option>{activeCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-          {formAccount && projectedBalance !== undefined && <div className="exp-balance-strip grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-800/70">
-            <div><p className="text-slate-500">Current balance</p><p className="mt-1 font-mono font-semibold">{formatCurrency((accountBalances.get(formAccount.id) || 0) + (editingExpense?.status === 'posted' && editingExpense.accountId === formAccount.id ? editingExpense.amount : 0), formAccount.currency)}</p></div>
-            <div><p className="text-slate-500">Expense amount</p><p className="mt-1 font-mono font-semibold">{formatCurrency(Number(draft.amount) || 0, formAccount.currency)}</p></div>
-            <div><p className="text-slate-500">After expense</p><p className={`mt-1 font-mono font-semibold ${projectedBalance < 0 ? 'text-rose-700 dark:text-rose-300' : 'text-slate-900 dark:text-white'}`}>{formatCurrency(projectedBalance, formAccount.currency)}</p></div>
+      <Modal isOpen={Boolean(draft)} onClose={closeExpenseForm} title={editingExpense ? 'খরচ সম্পাদনা করুন' : 'খরচ লিখুন'} subtitle="সংরক্ষণ করলে Cashbook-এর হিসাবও আপডেট হবে।" maxWidth="lg" footer={(
+        <div className="flex items-center justify-end gap-2">
+          <button type="button" onClick={closeExpenseForm} className="min-h-11 rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">বাতিল</button>
+          <button type="submit" form="expense-form" className="customer-primary-action min-h-11 rounded-lg bg-violet-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-violet-600">{editingExpense ? 'পরিবর্তন সংরক্ষণ করুন' : 'খরচ সংরক্ষণ করুন'}</button>
+        </div>
+      )}>
+        {draft && <form id="expense-form" className="exp-form--v2 space-y-5 text-sm" onSubmit={saveExpense} noValidate>
+          <p className="rounded-xl border border-violet-200 bg-violet-50/60 px-3.5 py-2.5 text-xs leading-6 text-violet-900 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-100">{EXPENSE_HELPER_LINE}</p>
+
+          {/* Live preview — the balance strip, updates as you type */}
+          {formAccount && projectedBalance !== undefined && <div className="exp-balance-strip grid grid-cols-3 gap-2 rounded-2xl border border-violet-200 bg-violet-50/50 p-3.5 text-xs dark:border-violet-900 dark:bg-violet-950/20">
+            <div><p className="text-slate-500 dark:text-slate-400">বর্তমান ব্যালেন্স</p><p className="mt-1 font-mono font-semibold text-slate-900 dark:text-white">{formatCurrency((accountBalances.get(formAccount.id) || 0) + (editingExpense?.status === 'posted' && editingExpense.accountId === formAccount.id ? editingExpense.amount : 0), formAccount.currency)}</p></div>
+            <div><p className="text-slate-500 dark:text-slate-400">খরচের পরিমাণ</p><p className="mt-1 font-mono font-semibold text-slate-900 dark:text-white">{formatCurrency(Number(draft.amount) || 0, formAccount.currency)}</p></div>
+            <div><p className="text-slate-500 dark:text-slate-400">খরচের পর ব্যালেন্স</p><p className={`mt-1 font-mono font-semibold ${projectedBalance < 0 ? 'text-rose-700 dark:text-rose-300' : 'text-slate-900 dark:text-white'}`}>{formatCurrency(projectedBalance, formAccount.currency)}</p></div>
           </div>}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label><span className={labelClass}>Amount *</span><input className={inputClass} type="number" min="0.01" step="0.01" value={draft.amount || ''} onChange={event => setDraft({ ...draft, amount: Number(event.target.value), currency: formAccount?.currency || currency })} required /></label>
-            <label><span className={labelClass}>Date *</span><input className={inputClass} type="date" value={draft.date} onChange={event => setDraft({ ...draft, date: event.target.value })} required /></label>
-          </div>
-          <label className="block"><span className={labelClass}>Description *</span><input className={inputClass} maxLength={200} value={draft.description} onChange={event => setDraft({ ...draft, description: event.target.value })} required /></label>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label><span className={labelClass}>Vendor</span><input className={inputClass} maxLength={120} value={draft.vendor || ''} onChange={event => setDraft({ ...draft, vendor: event.target.value })} /></label>
-            <label><span className={labelClass}>Reference</span><input className={inputClass} maxLength={120} value={draft.reference || ''} onChange={event => setDraft({ ...draft, reference: event.target.value })} /></label>
-          </div>
-          <label className="block"><span className={labelClass}>Notes</span><textarea className={inputClass} rows={3} maxLength={1000} value={draft.notes || ''} onChange={event => setDraft({ ...draft, notes: event.target.value })} /></label>
-          <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800"><button type="button" onClick={() => { setDraft(null); setEditingExpense(null); }} className="min-h-11 rounded-lg border border-slate-200 px-4 text-sm font-semibold dark:border-slate-700">Cancel</button><button type="submit" className="customer-primary-action min-h-11 rounded-lg bg-violet-700 px-4 text-sm font-semibold text-white">{editingExpense ? 'Save Changes' : 'Record Expense'}</button></div>
+
+          {/* ১. টাকার অ্যাকাউন্ট (ওয়ালেট) */}
+          <section aria-labelledby="expense-account-title" className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">১</span>
+              <h3 id="expense-account-title" className="text-base font-bold text-slate-900 dark:text-white">টাকার অ্যাকাউন্ট (ওয়ালেট) <span className="text-rose-500">*</span></h3>
+            </div>
+            <select
+              ref={accountRef}
+              id="expense-account"
+              value={draft.accountId}
+              onChange={event => {
+                const account = accountById.get(event.target.value);
+                setDraft({ ...draft, accountId: event.target.value, currency: account?.currency || currency });
+                if (formErrors.account) setFormErrors(previous => ({ ...previous, account: '' }));
+              }}
+              aria-invalid={Boolean(formErrors.account)}
+              className={expenseFieldClass(Boolean(formErrors.account))}
+            >
+              <option value="" disabled>টাকার অ্যাকাউন্ট (ওয়ালেট) বাছুন</option>
+              {scopedAccounts.filter(account => account.enabled).map(account => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}
+            </select>
+            {formErrors.account && <span role="alert" className="block text-xs text-rose-600">{formErrors.account}</span>}
+          </section>
+
+          {/* ২. খরচের খাত */}
+          <section aria-labelledby="expense-category-title" className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">২</span>
+              <h3 id="expense-category-title" className="text-base font-bold text-slate-900 dark:text-white">খরচের খাত <span className="text-rose-500">*</span></h3>
+            </div>
+            <select
+              ref={categoryRef}
+              id="expense-category"
+              value={draft.categoryId}
+              onChange={event => { setDraft({ ...draft, categoryId: event.target.value }); if (formErrors.category) setFormErrors(previous => ({ ...previous, category: '' })); }}
+              aria-invalid={Boolean(formErrors.category)}
+              className={expenseFieldClass(Boolean(formErrors.category))}
+            >
+              <option value="" disabled>খাত বাছুন</option>
+              {activeCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+            {formErrors.category && <span role="alert" className="block text-xs text-rose-600">{formErrors.category}</span>}
+          </section>
+
+          {/* ৩. টাকার পরিমাণ ও তারিখ */}
+          <section aria-labelledby="expense-amount-title" className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">৩</span>
+              <h3 id="expense-amount-title" className="text-base font-bold text-slate-900 dark:text-white">টাকার পরিমাণ ও তারিখ <span className="text-rose-500">*</span></h3>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="expense-amount" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">টাকার পরিমাণ <span className="text-rose-500">*</span></label>
+                <input
+                  ref={amountRef}
+                  id="expense-amount"
+                  type="number"
+                  inputMode="decimal"
+                  min="0.01"
+                  step="0.01"
+                  value={draft.amount || ''}
+                  onChange={event => { setDraft({ ...draft, amount: Number(event.target.value), currency: formAccount?.currency || currency }); if (formErrors.amount) setFormErrors(previous => ({ ...previous, amount: '' })); }}
+                  placeholder="৫০০"
+                  aria-invalid={Boolean(formErrors.amount)}
+                  className={expenseFieldClass(Boolean(formErrors.amount))}
+                />
+                {formErrors.amount && <span role="alert" className="mt-1.5 block text-xs text-rose-600">{formErrors.amount}</span>}
+              </div>
+              <div>
+                <label htmlFor="expense-date" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">তারিখ <span className="text-rose-500">*</span></label>
+                <input
+                  ref={dateRef}
+                  id="expense-date"
+                  type="date"
+                  value={draft.date}
+                  onChange={event => { setDraft({ ...draft, date: event.target.value }); if (formErrors.date) setFormErrors(previous => ({ ...previous, date: '' })); }}
+                  aria-invalid={Boolean(formErrors.date)}
+                  className={expenseFieldClass(Boolean(formErrors.date))}
+                />
+                {formErrors.date && <span role="alert" className="mt-1.5 block text-xs text-rose-600">{formErrors.date}</span>}
+              </div>
+            </div>
+          </section>
+
+          {/* ৪. বিবরণ */}
+          <section aria-labelledby="expense-description-title" className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">৪</span>
+              <h3 id="expense-description-title" className="text-base font-bold text-slate-900 dark:text-white">বিবরণ <span className="text-rose-500">*</span></h3>
+            </div>
+            <input
+              ref={descriptionRef}
+              id="expense-description"
+              value={draft.description}
+              onChange={event => { setDraft({ ...draft, description: event.target.value }); if (formErrors.description) setFormErrors(previous => ({ ...previous, description: '' })); }}
+              maxLength={200}
+              placeholder="কিসের খরচ? যেমন: দোকান ভাড়া"
+              aria-invalid={Boolean(formErrors.description)}
+              className={expenseFieldClass(Boolean(formErrors.description))}
+            />
+            {formErrors.description && <span role="alert" className="block text-xs text-rose-600">{formErrors.description}</span>}
+          </section>
+
+          {/* আরও সেটিংস (ঐচ্ছিক) — collapsed, holds ALL advanced content */}
+          <section aria-labelledby="expense-advanced-title" className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen(previous => !previous)}
+              aria-expanded={advancedOpen}
+              className="flex min-h-12 w-full items-center justify-between gap-3 bg-slate-50 px-4 py-3 text-left dark:bg-slate-800/60"
+            >
+              <span id="expense-advanced-title" className="text-sm font-bold text-slate-800 dark:text-slate-100">আরও সেটিংস (ঐচ্ছিক)</span>
+              <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {advancedOpen && (
+              <div className="space-y-4 border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                <div>
+                  <label htmlFor="expense-vendor" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">বিক্রেতা <span className="font-normal text-slate-400">ঐচ্ছিক</span></label>
+                  <input
+                    id="expense-vendor"
+                    value={draft.vendor || ''}
+                    onChange={event => setDraft({ ...draft, vendor: event.target.value })}
+                    maxLength={120}
+                    placeholder="যেমন: দোকানের নাম"
+                    className={expenseFieldClass(false)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="expense-reference" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">রেফারেন্স <span className="font-normal text-slate-400">ঐচ্ছিক</span></label>
+                  <input
+                    id="expense-reference"
+                    value={draft.reference || ''}
+                    onChange={event => setDraft({ ...draft, reference: event.target.value })}
+                    maxLength={120}
+                    placeholder="রসিদ বা বিল নম্বর"
+                    className={expenseFieldClass(false)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="expense-notes" className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-300">নোট <span className="font-normal text-slate-400">ঐচ্ছিক</span></label>
+                  <textarea
+                    id="expense-notes"
+                    rows={3}
+                    maxLength={1000}
+                    value={draft.notes || ''}
+                    onChange={event => setDraft({ ...draft, notes: event.target.value })}
+                    placeholder="এই খরচ নিয়ে কিছু লিখে রাখুন"
+                    className={expenseFieldClass(false)}
+                  />
+                </div>
+              </div>
+            )}
+          </section>
         </form>}
       </Modal>
 

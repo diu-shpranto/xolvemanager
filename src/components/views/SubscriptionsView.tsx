@@ -15,6 +15,7 @@ import {
   ArrowRight,
   ArrowLeft,
   ChevronRight,
+  ChevronDown,
   MoreVertical,
   ExternalLink,
   MessageCircle,
@@ -88,6 +89,14 @@ import { getDefaultPaymentMethod, normalizePaymentMethods, paymentMethodRequires
 import { getAccountCapacity, getAvailableProfiles, isAccountOperational } from '../../utils/resourceManagement';
 import { normalizePhoneDigits, normalizeSearchText } from '../../services/globalSearch';
 import { downloadCSV } from '../../utils/csvParser';
+import {
+  SUBSCRIPTION_DURATION_CHIPS,
+  getActiveDurationChip,
+  getFirstEditSubscriptionFormErrorTarget,
+  getFirstNewSubscriptionFormErrorTarget,
+  type EditSubscriptionFormErrorTarget,
+  type NewSubscriptionFormErrorTarget,
+} from '../../utils/subscriptionFormHelpers';
 
 interface SubscriptionsViewProps {
   onOpenNewSale: (customerId?: string, serviceId?: string) => void;
@@ -218,7 +227,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   const [editPaymentStatus, setEditPaymentStatus] = useState<PaymentStatus>('paid');
   const [editNotes, setEditNotes] = useState<string>('');
 
-  // + New Subscription Form State (Progressive Disclosure)
+  // + New Subscription Form State (single screen)
   const [newSubCustomerId, setNewSubCustomerId] = useState<string>('');
   const [newSubServiceId, setNewSubServiceId] = useState<string>('');
   const [newSubPlan, setNewSubPlan] = useState<string>('');
@@ -232,6 +241,91 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   const [newSubPaymentStatus, setNewSubPaymentStatus] = useState<PaymentStatus>('paid');
   const [newSubTrxId, setNewSubTrxId] = useState<string>('');
   const [newSubNotes, setNewSubNotes] = useState<string>('');
+
+  // New/Edit Subscription single-screen forms (mirrors the Add Service form):
+  // essentials live on one screen, everything optional sits behind one
+  // collapsed "আরও সেটিংস (ঐচ্ছিক)" section, with Bangla inline errors and
+  // jump-to-first-error. The save handlers and saved shapes are unchanged.
+  const [newSubFormErrors, setNewSubFormErrors] = useState<Record<string, string>>({});
+  const [newSubAdvancedOpen, setNewSubAdvancedOpen] = useState(false);
+  const newSubCustomerSelectRef = useRef<HTMLSelectElement | null>(null);
+  const newSubServiceSelectRef = useRef<HTMLSelectElement | null>(null);
+  const newSubAccountSelectRef = useRef<HTMLSelectElement | null>(null);
+  const newSubProfileSelectRef = useRef<HTMLSelectElement | null>(null);
+  const newSubStartDateInputRef = useRef<HTMLInputElement | null>(null);
+  const newSubDurationInputRef = useRef<HTMLInputElement | null>(null);
+  const newSubPriceInputRef = useRef<HTMLInputElement | null>(null);
+  const [editFormErrors, setEditFormErrors] = useState<Record<string, string>>({});
+  const [editAdvancedOpen, setEditAdvancedOpen] = useState(false);
+  const editPlanInputRef = useRef<HTMLInputElement | null>(null);
+  const editStartDateInputRef = useRef<HTMLInputElement | null>(null);
+  const editDurationInputRef = useRef<HTMLInputElement | null>(null);
+  const editPriceInputRef = useRef<HTMLInputElement | null>(null);
+  const editCurrencySelectRef = useRef<HTMLSelectElement | null>(null);
+
+  const newSubFormErrorMessages: Record<NewSubscriptionFormErrorTarget, string> = {
+    customer: 'একজন কাস্টমার বেছে নিন।',
+    service: 'একটি সক্রিয় সার্ভিস বেছে নিন।',
+    account: 'এই সার্ভিসের একটি সার্ভিস অ্যাকাউন্ট (লগইন) বেছে নিন।',
+    profile: 'এই কাস্টমারের জন্য একটি খালি প্রোফাইল বেছে নিন।',
+    startDate: 'একটি সঠিক শুরুর তারিখ দিন।',
+    duration: 'মেয়াদ কমপক্ষে ১ দিন হতে হবে।',
+    price: 'সঠিক দাম দিন।',
+  };
+
+  const editFormErrorMessages: Record<EditSubscriptionFormErrorTarget, string> = {
+    plan: 'প্ল্যানের নাম দিন।',
+    startDate: 'একটি সঠিক শুরুর তারিখ দিন।',
+    duration: 'মেয়াদ কমপক্ষে ১ দিন হতে হবে।',
+    price: 'সঠিক দাম দিন।',
+  };
+
+  const jumpToNewSubFormError = (target: NewSubscriptionFormErrorTarget) => {
+    if (target === 'account' || target === 'profile') {
+      // Both live inside the collapsed advanced section: open it first,
+      // then scroll to and focus the field once it is rendered.
+      setNewSubAdvancedOpen(true);
+      window.setTimeout(() => {
+        const el = target === 'account' ? newSubAccountSelectRef.current : newSubProfileSelectRef.current;
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus({ preventScroll: true });
+      }, 60);
+      return;
+    }
+    const el =
+      target === 'customer'
+        ? newSubCustomerSelectRef.current
+        : target === 'service'
+          ? newSubServiceSelectRef.current
+          : target === 'startDate'
+            ? newSubStartDateInputRef.current
+            : target === 'duration'
+              ? newSubDurationInputRef.current
+              : newSubPriceInputRef.current;
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el?.focus({ preventScroll: true });
+  };
+
+  const jumpToEditFormError = (target: EditSubscriptionFormErrorTarget) => {
+    const el =
+      target === 'plan'
+        ? editPlanInputRef.current
+        : target === 'startDate'
+          ? editStartDateInputRef.current
+          : target === 'duration'
+            ? editDurationInputRef.current
+            : editPriceInputRef.current;
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el?.focus({ preventScroll: true });
+  };
+
+  const clearNewSubFormError = (key: string) => {
+    if (newSubFormErrors[key]) setNewSubFormErrors(previous => ({ ...previous, [key]: '' }));
+  };
+
+  const clearEditFormError = (key: string) => {
+    if (editFormErrors[key]) setEditFormErrors(previous => ({ ...previous, [key]: '' }));
+  };
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedSearchQuery(searchQuery.trim()), 180);
@@ -805,6 +899,8 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     setEditCurrency(sub.currency || currency);
     setEditPaymentStatus(sub.paymentStatus || 'paid');
     setEditNotes(sub.notes || '');
+    setEditFormErrors({});
+    setEditAdvancedOpen(false);
     setIsEditDrawerOpen(true);
     setIsMoreMenuOpen(false);
   };
@@ -813,6 +909,19 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   const handleSaveEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSub) return;
+
+    const editErrorTarget = getFirstEditSubscriptionFormErrorTarget({
+      plan: editPlan,
+      startDate: editStartDate,
+      duration: Number(editDuration),
+      price: Number(editPrice),
+    });
+    if (editErrorTarget) {
+      setEditFormErrors({ [editErrorTarget]: editFormErrorMessages[editErrorTarget] });
+      jumpToEditFormError(editErrorTarget);
+      return;
+    }
+    setEditFormErrors({});
 
     const newExpiry = calculateExpiryDate(editStartDate, Number(editDuration));
     updateSubscription(selectedSub.id, {
@@ -901,7 +1010,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     setIsChangeProfileDrawerOpen(false);
   };
 
-  // + New Subscription Workflow with Progressive Disclosure & Smart Validation
+  // + New Subscription Workflow (single screen & Smart Validation)
   const handleOpenNewSubDrawer = () => {
     setNewSubCustomerId(customers[0]?.id || '');
     setNewSubServiceId(services[0]?.id || '');
@@ -916,6 +1025,8 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     setNewSubPaymentStatus('paid');
     setNewSubTrxId('');
     setNewSubNotes('');
+    setNewSubFormErrors({});
+    setNewSubAdvancedOpen(false);
     setIsNewSubDrawerOpen(true);
   };
 
@@ -935,6 +1046,39 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
   // Execute New Subscription Creation
   const handleCreateNewSubscription = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 0. Single-screen validation: plain Bangla inline error + jump to the
+    // first wrong field. The toast checks below stay as a safety net.
+    const newSubSelectedAccount = newSubAccountId
+      ? accounts.find(a => a.id === newSubAccountId)
+      : undefined;
+    const newSubSelectedProfile = newSubSelectedAccount && newSubProfileId
+      ? newSubSelectedAccount.profiles?.find(p => p.id === newSubProfileId)
+      : undefined;
+    const newSubErrorTarget = getFirstNewSubscriptionFormErrorTarget({
+      customerId: newSubCustomerId,
+      customerExists: customers.some(c => c.id === newSubCustomerId),
+      serviceId: newSubServiceId,
+      serviceArchived: services.find(s => s.id === newSubServiceId)?.isArchived ?? false,
+      accountId: newSubAccountId,
+      accountExists: !newSubAccountId || !!newSubSelectedAccount,
+      accountBelongsToService: !newSubAccountId || newSubSelectedAccount?.serviceId === newSubServiceId,
+      profileId: newSubProfileId,
+      profileExists: !newSubProfileId || !!newSubSelectedProfile,
+      profileAssignedToOtherCustomer:
+        !!newSubSelectedProfile &&
+        newSubSelectedProfile.status === 'Assigned' &&
+        newSubSelectedProfile.assignedCustomerId !== newSubCustomerId,
+      startDate: newSubStartDate,
+      duration: Number(newSubDuration),
+      price: Number(newSubPrice),
+    });
+    if (newSubErrorTarget) {
+      setNewSubFormErrors({ [newSubErrorTarget]: newSubFormErrorMessages[newSubErrorTarget] });
+      jumpToNewSubFormError(newSubErrorTarget);
+      return;
+    }
+    setNewSubFormErrors({});
 
     // 1. Smart Validation
     if (!newSubCustomerId) {
@@ -2412,98 +2556,186 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       {/* ========================================================================= */}
       <Modal
         isOpen={isEditDrawerOpen}
-        onClose={() => setIsEditDrawerOpen(false)}
+        onClose={() => { setIsEditDrawerOpen(false); setEditFormErrors({}); setEditAdvancedOpen(false); }}
         title={language === 'bn' ? 'সাবস্ক্রিপশন সম্পাদনা' : 'Edit Subscription'}
         maxWidth="md"
-      >
-        <form onSubmit={handleSaveEdit} className="subscription-modal-form--v2 subscription-edit-form--v2 space-y-3.5 text-xs">
-          <div>
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Plan</label>
-            <input
-              type="text"
-              required
-              value={editPlan}
-              onChange={e => setEditPlan(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Start Date</label>
-              <input
-                type="date"
-                required
-                value={editStartDate}
-                onChange={e => setEditStartDate(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-mono text-slate-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Duration (Days)</label>
-              <input
-                type="number"
-                min="1"
-                required
-                value={editDuration}
-                onChange={e => setEditDuration(Math.max(1, Number(e.target.value)))}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-mono font-bold text-slate-900 dark:text-white"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Price</label>
-              <input
-                type="number"
-                min="0"
-                required
-                value={editPrice}
-                onChange={e => setEditPrice(Math.max(0, Number(e.target.value)))}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-mono font-bold text-slate-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Payment Status</label>
-              <select
-                value={editPaymentStatus}
-                onChange={e => setEditPaymentStatus(e.target.value as any)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold text-slate-900 dark:text-white"
-              >
-                <option value="paid">Paid</option>
-                <option value="pending">Pending</option>
-                <option value="partial">Partial</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Notes</label>
-            <textarea
-              rows={2}
-              value={editNotes}
-              onChange={e => setEditNotes(e.target.value)}
-              placeholder="Internal fulfillment or renewal notes..."
-              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white resize-none"
-            />
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+        footer={(
+          <div className="flex items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => setIsEditDrawerOpen(false)}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-xl cursor-pointer"
+              onClick={() => { setIsEditDrawerOpen(false); setEditFormErrors({}); setEditAdvancedOpen(false); }}
+              className="min-h-11 rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             >
-              Cancel
+              {t('cancel')}
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-xs cursor-pointer"
+              form="subscription-edit-form"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500"
             >
-              Save Changes
+              {language === 'bn' ? 'পরিবর্তন সংরক্ষণ করুন' : 'Save Changes'}
             </button>
           </div>
+        )}
+      >
+        <form id="subscription-edit-form" onSubmit={handleSaveEdit} noValidate className="subscription-modal-form--v2 subscription-edit-form--v2 space-y-5 text-sm">
+          {/* What a subscription is */}
+          <p className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-3.5 py-2.5 text-xs leading-6 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
+            সাবস্ক্রিপশন হলো কাস্টমারের ব্যবহারের মেয়াদ — সেল হলে শুরু হয়, মেয়াদ শেষে শেষ হয়।
+          </p>
+
+          {/* Live preview — updates as you type */}
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-3.5 dark:border-emerald-900 dark:bg-emerald-950/20">
+            <p className="truncate text-base font-bold text-slate-900 dark:text-white">
+              {selectedCustomer ? getCustomerDisplayName(selectedCustomer) : ''}{selectedService?.name ? ` · ${selectedService.name}` : ''}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+              {editPlan.trim() || (language === 'bn' ? 'প্ল্যানের নাম' : 'Plan name')}
+              {' · '}
+              {editStartDate ? formatAppDate(editStartDate, language) : '—'}
+              {' → '}
+              {formatAppDate(calculateExpiryDate(editStartDate, Number(editDuration) || 30), language)}
+              {' · '}
+              {formatCurrency(Number(editPrice) || 0, editCurrency)}
+            </p>
+          </div>
+
+          {/* 1. Plan */}
+          <section aria-labelledby="edit-plan-title" className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">1</span>
+              <h3 id="edit-plan-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'প্ল্যান' : 'Plan'}</h3>
+            </div>
+            <input
+              ref={editPlanInputRef}
+              type="text"
+              value={editPlan}
+              onChange={e => { setEditPlan(e.target.value); clearEditFormError('plan'); }}
+              aria-invalid={!!editFormErrors.plan}
+              className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 text-base font-bold text-slate-900 dark:bg-slate-800 dark:text-white ${editFormErrors.plan ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+            />
+            {editFormErrors.plan && <p role="alert" className="text-xs text-rose-600">{editFormErrors.plan}</p>}
+          </section>
+
+          {/* 2. Duration */}
+          <section aria-labelledby="edit-duration-title" className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">2</span>
+              <h3 id="edit-duration-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'মেয়াদ' : 'Duration'}</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'শুরুর তারিখ' : 'Start Date'} <span className="text-rose-500">*</span></span>
+                <input
+                  ref={editStartDateInputRef}
+                  type="date"
+                  value={editStartDate}
+                  onChange={e => { setEditStartDate(e.target.value); clearEditFormError('startDate'); }}
+                  aria-invalid={!!editFormErrors.startDate}
+                  className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 text-sm text-slate-900 dark:bg-slate-800 dark:text-white ${editFormErrors.startDate ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                />
+                {editFormErrors.startDate && <span role="alert" className="block text-xs text-rose-600">{editFormErrors.startDate}</span>}
+              </label>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'মেয়াদ (দিন)' : 'Duration (Days)'} <span className="text-rose-500">*</span></span>
+                <input
+                  ref={editDurationInputRef}
+                  type="number"
+                  min="1"
+                  value={editDuration}
+                  onChange={e => { setEditDuration(Math.max(1, Number(e.target.value))); clearEditFormError('duration'); }}
+                  aria-invalid={!!editFormErrors.duration}
+                  className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 text-sm font-bold text-slate-900 dark:bg-slate-800 dark:text-white ${editFormErrors.duration ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                />
+                {editFormErrors.duration && <span role="alert" className="block text-xs text-rose-600">{editFormErrors.duration}</span>}
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2" role="group" aria-label={language === 'bn' ? 'মেয়াদ বাছুন' : 'Pick a duration'}>
+              {SUBSCRIPTION_DURATION_CHIPS.map(days => (
+                <button
+                  key={days}
+                  type="button"
+                  aria-pressed={getActiveDurationChip(Number(editDuration)) === days}
+                  onClick={() => { setEditDuration(days); clearEditFormError('duration'); }}
+                  className={`min-h-10 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors ${getActiveDurationChip(Number(editDuration)) === days ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
+                >
+                  {formatDurationDays(days)}
+                </button>
+              ))}
+            </div>
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50/50 px-3.5 py-2.5 text-xs font-bold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300">
+              {language === 'bn' ? 'মেয়াদ শেষ: ' : 'Expires: '}{formatAppDate(calculateExpiryDate(editStartDate, Number(editDuration) || 30), language)}
+            </p>
+          </section>
+
+          {/* 3. Price & payment */}
+          <section aria-labelledby="edit-price-title" className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">3</span>
+              <h3 id="edit-price-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'টাকা ও পেমেন্ট' : 'Price & payment'}</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'দাম' : 'Price'}</span>
+                <input
+                  ref={editPriceInputRef}
+                  type="number"
+                  min="0"
+                  value={editPrice}
+                  onChange={e => { setEditPrice(Math.max(0, Number(e.target.value))); clearEditFormError('price'); }}
+                  aria-invalid={!!editFormErrors.price}
+                  className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 text-sm font-bold text-slate-900 dark:bg-slate-800 dark:text-white ${editFormErrors.price ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                />
+                {editFormErrors.price && <span role="alert" className="block text-xs text-rose-600">{editFormErrors.price}</span>}
+              </label>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'পেমেন্ট অবস্থা' : 'Payment Status'}</span>
+                <select
+                  value={editPaymentStatus}
+                  onChange={e => setEditPaymentStatus(e.target.value as any)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  <option value="paid">{language === 'bn' ? 'পরিশোধিত' : 'Paid'}</option>
+                  <option value="pending">{language === 'bn' ? 'বাকি' : 'Pending'}</option>
+                  <option value="partial">{language === 'bn' ? 'আংশিক' : 'Partial'}</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          {/* Advanced settings (collapsed, optional) */}
+          <section aria-labelledby="subscription-edit-advanced-title" className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+            <button type="button" onClick={() => setEditAdvancedOpen(previous => !previous)} aria-expanded={editAdvancedOpen} className="flex min-h-12 w-full items-center justify-between gap-3 bg-slate-50 px-4 py-3 text-left dark:bg-slate-800/60">
+              <span id="subscription-edit-advanced-title" className="text-sm font-bold text-slate-800 dark:text-slate-100">{language === 'bn' ? 'আরও সেটিংস (ঐচ্ছিক)' : 'More settings (optional)'}</span>
+              <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${editAdvancedOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {editAdvancedOpen && (
+              <div className="space-y-4 border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'মুদ্রা' : 'Currency'}</span>
+                  <select
+                    ref={editCurrencySelectRef}
+                    value={editCurrency}
+                    onChange={e => setEditCurrency(e.target.value as any)}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  >
+                    <option value="BDT">BDT (৳)</option>
+                    <option value="USD">USD ($)</option>
+                  </select>
+                </label>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'নোট' : 'Notes'} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span></span>
+                  <textarea
+                    rows={2}
+                    value={editNotes}
+                    onChange={e => setEditNotes(e.target.value)}
+                    placeholder={language === 'bn' ? 'ভেতরের নোট লিখুন...' : 'Internal fulfillment or renewal notes...'}
+                    className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </label>
+              </div>
+            )}
+          </section>
         </form>
       </Modal>
 
@@ -2642,270 +2874,323 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       </Modal>
 
       {/* ========================================================================= */}
-      {/* 7. + NEW SUBSCRIPTION DRAWER (Progressive Disclosure & Smart Validation)  */}
+      {/* 7. + NEW SUBSCRIPTION DRAWER (single screen, mirrors Add Service)  */}
       {/* ========================================================================= */}
       <Modal
         isOpen={isNewSubDrawerOpen}
-        onClose={() => setIsNewSubDrawerOpen(false)}
+        onClose={() => { setIsNewSubDrawerOpen(false); setNewSubFormErrors({}); setNewSubAdvancedOpen(false); }}
         title={language === 'bn' ? '+ নতুন সাবস্ক্রিপশন তৈরি করুন' : '+ New Subscription'}
         maxWidth="xl"
-      >
-        <form onSubmit={handleCreateNewSubscription} className="subscription-modal-form--v2 subscription-new-form--v2 space-y-4 text-xs">
-          {/* Step 1: Customer Selection */}
-          <div>
-            <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-              1. Customer <span className="text-rose-500">*</span>
-            </label>
-            <select
-              required
-              value={newSubCustomerId}
-              onChange={e => setNewSubCustomerId(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold text-slate-900 dark:text-white"
+        footer={(
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => { setIsNewSubDrawerOpen(false); setNewSubFormErrors({}); setNewSubAdvancedOpen(false); }}
+              className="min-h-11 rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             >
-              <option value="" disabled>-- Select Customer --</option>
+              {t('cancel')}
+            </button>
+            <button
+              type="submit"
+              form="subscription-form"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>{language === 'bn' ? 'সাবস্ক্রিপশন তৈরি করুন' : 'Create Subscription'}</span>
+            </button>
+          </div>
+        )}
+      >
+        <form id="subscription-form" onSubmit={handleCreateNewSubscription} noValidate className="subscription-modal-form--v2 subscription-new-form--v2 space-y-5 text-sm">
+          {/* What a subscription is */}
+          <p className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-3.5 py-2.5 text-xs leading-6 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
+            সাবস্ক্রিপশন হলো কাস্টমারের ব্যবহারের মেয়াদ — সেল হলে শুরু হয়, মেয়াদ শেষে শেষ হয়।
+          </p>
+
+          {/* Live preview — updates as you pick */}
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-3.5 dark:border-emerald-900 dark:bg-emerald-950/20">
+            <p className="truncate text-base font-bold text-slate-900 dark:text-white">
+              {customers.find(c => c.id === newSubCustomerId)
+                ? getCustomerDisplayName(customers.find(c => c.id === newSubCustomerId)!)
+                : (language === 'bn' ? 'কাস্টমার বেছে নিন' : 'Pick a customer')}
+              {services.find(s => s.id === newSubServiceId)?.name ? ` · ${services.find(s => s.id === newSubServiceId)!.name}` : ''}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+              {newSubPlan || (language === 'bn' ? 'প্ল্যান বেছে নিন' : 'Pick a plan')}
+              {' · '}
+              {newSubStartDate ? formatAppDate(newSubStartDate, language) : '—'}
+              {' → '}
+              {formatAppDate(calculateExpiryDate(newSubStartDate, Number(newSubDuration) || 30), language)}
+              {' · '}
+              {formatCurrency(Number(newSubPrice) || 0, newSubCurrency)}
+            </p>
+          </div>
+
+          {/* 1. Customer */}
+          <section aria-labelledby="new-sub-customer-title" className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">1</span>
+              <h3 id="new-sub-customer-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'কাস্টমার' : 'Customer'} <span className="text-rose-500">*</span></h3>
+            </div>
+            <select
+              ref={newSubCustomerSelectRef}
+              value={newSubCustomerId}
+              onChange={e => { setNewSubCustomerId(e.target.value); clearNewSubFormError('customer'); }}
+              aria-invalid={!!newSubFormErrors.customer}
+              className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 text-sm font-semibold text-slate-900 dark:bg-slate-800 dark:text-white ${newSubFormErrors.customer ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+            >
+              <option value="" disabled>{language === 'bn' ? '-- কাস্টমার বেছে নিন --' : '-- Select Customer --'}</option>
               {customers.map(c => (
                 <option key={c.id} value={c.id}>
                   {getCustomerOptionLabel(c)}
                 </option>
               ))}
             </select>
-          </div>
+            {newSubFormErrors.customer && <p role="alert" className="text-xs text-rose-600">{newSubFormErrors.customer}</p>}
+          </section>
 
-          {/* Step 2 & 3: Service & Plan Selection */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                2. Service <span className="text-rose-500">*</span>
-              </label>
-              <select
-                required
-                value={newSubServiceId}
-                onChange={e => {
-                  const sId = e.target.value;
-                  setNewSubServiceId(sId);
-                  const matched = services.find(s => s.id === sId);
-                  if (matched) {
-                    setNewSubPlan(matched.plans[0] || 'Standard');
-                    setNewSubPrice(matched.defaultPriceBDT || 350);
-                  }
-                  setNewSubAccountId('');
-                  setNewSubProfileId('');
-                }}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold text-slate-900 dark:text-white"
-              >
-                <option value="" disabled>-- Select Service --</option>
-                {services.filter(s => !s.isArchived).map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.category})
-                  </option>
-                ))}
-              </select>
+          {/* 2. Service & plan */}
+          <section aria-labelledby="new-sub-service-title" className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">2</span>
+              <h3 id="new-sub-service-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'সার্ভিস ও প্ল্যান' : 'Service & plan'} <span className="text-rose-500">*</span></h3>
             </div>
-
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                3. Plan <span className="text-rose-500">*</span>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'সার্ভিস' : 'Service'}</span>
+                <select
+                  ref={newSubServiceSelectRef}
+                  value={newSubServiceId}
+                  onChange={e => {
+                    const sId = e.target.value;
+                    setNewSubServiceId(sId);
+                    const matched = services.find(s => s.id === sId);
+                    if (matched) {
+                      setNewSubPlan(matched.plans[0] || 'Standard');
+                      setNewSubPrice(matched.defaultPriceBDT || 350);
+                    }
+                    setNewSubAccountId('');
+                    setNewSubProfileId('');
+                    clearNewSubFormError('service');
+                  }}
+                  aria-invalid={!!newSubFormErrors.service}
+                  className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 text-sm font-semibold text-slate-900 dark:bg-slate-800 dark:text-white ${newSubFormErrors.service ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                >
+                  <option value="" disabled>{language === 'bn' ? '-- সার্ভিস বেছে নিন --' : '-- Select Service --'}</option>
+                  {services.filter(s => !s.isArchived).map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.category})
+                    </option>
+                  ))}
+                </select>
+                {newSubFormErrors.service && <span role="alert" className="block text-xs text-rose-600">{newSubFormErrors.service}</span>}
               </label>
-              <select
-                required
-                value={newSubPlan}
-                onChange={e => setNewSubPlan(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
-              >
-                {services.find(s => s.id === newSubServiceId)?.plans.map(p => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                )) || <option value="Standard">Standard</option>}
-              </select>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'প্ল্যান' : 'Plan'}</span>
+                <select
+                  value={newSubPlan}
+                  onChange={e => setNewSubPlan(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  {services.find(s => s.id === newSubServiceId)?.plans.map(p => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  )) || <option value="Standard">Standard</option>}
+                </select>
+              </label>
             </div>
-          </div>
+          </section>
 
-          {/* Step 4 & 5: Progressive Account & Profile Selection */}
-          {newSubServiceId && (
-            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-700 space-y-3">
-              <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                Account & Profile Allocation (Progressive Disclosure)
-              </span>
+          {/* 3. Duration */}
+          <section aria-labelledby="new-sub-duration-title" className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">3</span>
+              <h3 id="new-sub-duration-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'মেয়াদ' : 'Duration'} <span className="text-rose-500">*</span></h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'শুরুর তারিখ' : 'Start Date'}</span>
+                <input
+                  ref={newSubStartDateInputRef}
+                  type="date"
+                  value={newSubStartDate}
+                  onChange={e => { setNewSubStartDate(e.target.value); clearNewSubFormError('startDate'); }}
+                  aria-invalid={!!newSubFormErrors.startDate}
+                  className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 text-sm text-slate-900 dark:bg-slate-800 dark:text-white ${newSubFormErrors.startDate ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                />
+                {newSubFormErrors.startDate && <span role="alert" className="block text-xs text-rose-600">{newSubFormErrors.startDate}</span>}
+              </label>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'মেয়াদ (দিন)' : 'Duration (Days)'}</span>
+                <input
+                  ref={newSubDurationInputRef}
+                  type="number"
+                  min="1"
+                  value={newSubDuration}
+                  onChange={e => { setNewSubDuration(Math.max(1, Number(e.target.value))); clearNewSubFormError('duration'); }}
+                  aria-invalid={!!newSubFormErrors.duration}
+                  className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 text-sm font-bold text-slate-900 dark:bg-slate-800 dark:text-white ${newSubFormErrors.duration ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                />
+                {newSubFormErrors.duration && <span role="alert" className="block text-xs text-rose-600">{newSubFormErrors.duration}</span>}
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2" role="group" aria-label={language === 'bn' ? 'মেয়াদ বাছুন' : 'Pick a duration'}>
+              {SUBSCRIPTION_DURATION_CHIPS.map(days => (
+                <button
+                  key={days}
+                  type="button"
+                  aria-pressed={getActiveDurationChip(Number(newSubDuration)) === days}
+                  onClick={() => { setNewSubDuration(days); clearNewSubFormError('duration'); }}
+                  className={`min-h-10 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors ${getActiveDurationChip(Number(newSubDuration)) === days ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
+                >
+                  {formatDurationDays(days)}
+                </button>
+              ))}
+            </div>
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50/50 px-3.5 py-2.5 text-xs font-bold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300">
+              {language === 'bn' ? 'মেয়াদ শেষ: ' : 'Expires: '}{formatAppDate(calculateExpiryDate(newSubStartDate, Number(newSubDuration) || 30), language)}
+            </p>
+          </section>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    4. Inventory Account (Optional)
-                  </label>
-                  <select
-                    value={newSubAccountId}
-                    onChange={e => {
-                      setNewSubAccountId(e.target.value);
-                      setNewSubProfileId('');
-                    }}
-                    className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-                  >
-                    <option value="">-- No Account Linked --</option>
-                    {availableAccountsForNewSub.map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.email} ({a.plan})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+          {/* 4. Price & payment */}
+          <section aria-labelledby="new-sub-price-title" className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">4</span>
+              <h3 id="new-sub-price-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'টাকা ও পেমেন্ট' : 'Price & payment'}</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'দাম' : 'Price'}</span>
+                <input
+                  ref={newSubPriceInputRef}
+                  type="number"
+                  min="0"
+                  value={newSubPrice}
+                  onChange={e => { setNewSubPrice(Math.max(0, Number(e.target.value))); clearNewSubFormError('price'); }}
+                  aria-invalid={!!newSubFormErrors.price}
+                  className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 text-sm font-bold text-slate-900 dark:bg-slate-800 dark:text-white ${newSubFormErrors.price ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                />
+                {newSubFormErrors.price && <span role="alert" className="block text-xs text-rose-600">{newSubFormErrors.price}</span>}
+              </label>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'মুদ্রা' : 'Currency'}</span>
+                <select
+                  value={newSubCurrency}
+                  onChange={e => setNewSubCurrency(e.target.value as any)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  <option value="BDT">BDT (৳)</option>
+                  <option value="USD">USD ($)</option>
+                </select>
+              </label>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'পেমেন্ট মাধ্যম' : 'Method'}</span>
+                <select
+                  value={newSubPaymentMethod}
+                  onChange={e => setNewSubPaymentMethod(e.target.value as any)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  <option value="bKash">bKash</option>
+                  <option value="Nagad">Nagad</option>
+                  <option value="Rocket">Rocket</option>
+                  <option value="Bank">{language === 'bn' ? 'ব্যাংক ট্রান্সফার' : 'Bank Transfer'}</option>
+                  <option value="Card">{language === 'bn' ? 'কার্ড' : 'Card'}</option>
+                  <option value="Cash">{language === 'bn' ? 'নগদ' : 'Cash'}</option>
+                </select>
+              </label>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'পেমেন্ট অবস্থা' : 'Status'}</span>
+                <select
+                  value={newSubPaymentStatus}
+                  onChange={e => setNewSubPaymentStatus(e.target.value as any)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  <option value="paid">{language === 'bn' ? 'পরিশোধিত' : 'Paid'}</option>
+                  <option value="pending">{language === 'bn' ? 'বাকি' : 'Pending'}</option>
+                  <option value="partial">{language === 'bn' ? 'আংশিক' : 'Partial'}</option>
+                </select>
+              </label>
+            </div>
+          </section>
 
-                {newSubAccountId && (
-                  <div>
-                    <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                      5. Profile Slot (Optional)
-                    </label>
+          {/* Advanced settings (collapsed, optional) */}
+          <section aria-labelledby="subscription-advanced-title" className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+            <button type="button" onClick={() => setNewSubAdvancedOpen(previous => !previous)} aria-expanded={newSubAdvancedOpen} className="flex min-h-12 w-full items-center justify-between gap-3 bg-slate-50 px-4 py-3 text-left dark:bg-slate-800/60">
+              <span id="subscription-advanced-title" className="text-sm font-bold text-slate-800 dark:text-slate-100">{language === 'bn' ? 'আরও সেটিংস (ঐচ্ছিক)' : 'More settings (optional)'}</span>
+              <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${newSubAdvancedOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {newSubAdvancedOpen && (
+              <div className="space-y-4 border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'সার্ভিস অ্যাকাউন্ট (লগইন)' : 'Service account (login)'} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span></span>
                     <select
-                      value={newSubProfileId}
-                      onChange={e => setNewSubProfileId(e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                      ref={newSubAccountSelectRef}
+                      value={newSubAccountId}
+                      onChange={e => { setNewSubAccountId(e.target.value); setNewSubProfileId(''); clearNewSubFormError('account'); }}
+                      aria-invalid={!!newSubFormErrors.account}
+                      className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 text-sm text-slate-900 dark:bg-slate-800 dark:text-white ${newSubFormErrors.account ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
                     >
-                      <option value="">-- Select Profile Slot --</option>
-                      {availableProfilesForNewSub.map(p => (
-                        <option
-                          key={p.id}
-                          value={p.id}
-                          disabled={p.status === 'Assigned'}
-                        >
-                          {p.profileName} {p.status === 'Assigned' ? '(Occupied)' : '(Available)'}
+                      <option value="">{language === 'bn' ? '-- অ্যাকাউন্ট ছাড়া --' : '-- No Account Linked --'}</option>
+                      {availableAccountsForNewSub.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.email} ({a.plan})
                         </option>
                       ))}
                     </select>
-                  </div>
-                )}
+                    {newSubFormErrors.account && <span role="alert" className="block text-xs text-rose-600">{newSubFormErrors.account}</span>}
+                  </label>
+                  {newSubAccountId && (
+                    <label className="block space-y-1.5">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'প্রোফাইল' : 'Profile'} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span></span>
+                      <select
+                        ref={newSubProfileSelectRef}
+                        value={newSubProfileId}
+                        onChange={e => { setNewSubProfileId(e.target.value); clearNewSubFormError('profile'); }}
+                        aria-invalid={!!newSubFormErrors.profile}
+                        className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 text-sm text-slate-900 dark:bg-slate-800 dark:text-white ${newSubFormErrors.profile ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'}`}
+                      >
+                        <option value="">{language === 'bn' ? '-- প্রোফাইল বেছে নিন --' : '-- Select Profile Slot --'}</option>
+                        {availableProfilesForNewSub.map(p => (
+                          <option
+                            key={p.id}
+                            value={p.id}
+                            disabled={p.status === 'Assigned'}
+                          >
+                            {p.profileName} {p.status === 'Assigned' ? (language === 'bn' ? '(ব্যবহৃত)' : '(Occupied)') : (language === 'bn' ? '(খালি)' : '(Available)')}
+                          </option>
+                        ))}
+                      </select>
+                      {newSubFormErrors.profile && <span role="alert" className="block text-xs text-rose-600">{newSubFormErrors.profile}</span>}
+                    </label>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">TrxID <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span></span>
+                    <input
+                      type="text"
+                      value={newSubTrxId}
+                      onChange={e => setNewSubTrxId(e.target.value)}
+                      placeholder="e.g. TXN123456"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    />
+                  </label>
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'নোট' : 'Notes'} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span></span>
+                    <input
+                      type="text"
+                      value={newSubNotes}
+                      onChange={e => setNewSubNotes(e.target.value)}
+                      placeholder={language === 'bn' ? 'বিশেষ শর্ত লিখুন...' : 'Special client terms...'}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    />
+                  </label>
+                </div>
               </div>
-            </div>
-          )}
-
-          {/* Step 6: Duration & Dates with Live Expiry Calculation */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                Start Date <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="date"
-                required
-                value={newSubStartDate}
-                onChange={e => setNewSubStartDate(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-mono text-slate-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                Duration (Days) <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="number"
-                min="1"
-                required
-                value={newSubDuration}
-                onChange={e => setNewSubDuration(Math.max(1, Number(e.target.value)))}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-mono font-bold text-slate-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                Calculated Expiry
-              </label>
-              <div className="px-3 py-2 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-mono font-bold">
-                {calculateExpiryDate(newSubStartDate, Number(newSubDuration) || 30)}
-              </div>
-            </div>
-          </div>
-
-          {/* Step 7: Price, Payment & Currency */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Price</label>
-              <input
-                type="number"
-                min="0"
-                required
-                value={newSubPrice}
-                onChange={e => setNewSubPrice(Math.max(0, Number(e.target.value)))}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-mono font-bold text-slate-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Currency</label>
-              <select
-                value={newSubCurrency}
-                onChange={e => setNewSubCurrency(e.target.value as any)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
-              >
-                <option value="BDT">BDT (৳)</option>
-                <option value="USD">USD ($)</option>
-              </select>
-            </div>
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Method</label>
-              <select
-                value={newSubPaymentMethod}
-                onChange={e => setNewSubPaymentMethod(e.target.value as any)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold text-slate-900 dark:text-white"
-              >
-                <option value="bKash">bKash</option>
-                <option value="Nagad">Nagad</option>
-                <option value="Rocket">Rocket</option>
-                <option value="Bank">Bank Transfer</option>
-                <option value="Card">Card</option>
-                <option value="Cash">Cash</option>
-              </select>
-            </div>
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Status</label>
-              <select
-                value={newSubPaymentStatus}
-                onChange={e => setNewSubPaymentStatus(e.target.value as any)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
-              >
-                <option value="paid">Paid</option>
-                <option value="pending">Pending</option>
-                <option value="partial">Partial</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">TrxID (Optional)</label>
-              <input
-                type="text"
-                value={newSubTrxId}
-                onChange={e => setNewSubTrxId(e.target.value)}
-                placeholder="e.g. TXN123456"
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-mono text-slate-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Notes</label>
-              <input
-                type="text"
-                value={newSubNotes}
-                onChange={e => setNewSubNotes(e.target.value)}
-                placeholder="Special client terms..."
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={() => setIsNewSubDrawerOpen(false)}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-xl cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4 stroke-[2.5]" />
-              <span>Create Subscription</span>
-            </button>
-          </div>
+            )}
+          </section>
         </form>
       </Modal>
       {selectedInvoiceData && (

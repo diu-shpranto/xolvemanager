@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Users,
   Search,
@@ -47,6 +47,7 @@ import { StatCard } from '../common/StatCard';
 import type { Customer, CustomerType, Subscription } from '../../types';
 import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import { getCustomerType } from '../../utils/relationships';
+import { getFirstCustomerFormErrorTarget } from '../../utils/customerFormHelpers';
 import { buildCustomerTimeline } from '../../utils/customerTimeline';
 import {
   buildCustomerStatement,
@@ -305,6 +306,35 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // New single-screen form (mirrors the Add Service form): the essentials
+  // live on one screen and everything optional sits behind one collapsed
+  // "আরও সেটিংস (ঐচ্ছিক)" section.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const phoneInputRef = useRef<HTMLInputElement | null>(null);
+  const emailInputRef = useRef<HTMLInputElement | null>(null);
+  const facebookInputRef = useRef<HTMLInputElement | null>(null);
+
+  const jumpToFirstFormError = () => {
+    const target = getFirstCustomerFormErrorTarget({ name, phone, email, facebookUrl });
+    if (target === 'name') {
+      nameInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      nameInputRef.current?.focus({ preventScroll: true });
+    } else if (target === 'phone') {
+      phoneInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      phoneInputRef.current?.focus({ preventScroll: true });
+    } else if (target === 'email' || target === 'facebook') {
+      // Both live inside the collapsed advanced section: open it first,
+      // then scroll to and focus the field once it is rendered.
+      setAdvancedOpen(true);
+      window.setTimeout(() => {
+        const el = target === 'email' ? emailInputRef.current : facebookInputRef.current;
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.focus({ preventScroll: true });
+      }, 60);
+    }
+  };
+
   const openCustomerDetails = (customerId: string) => {
     setDetailedCustomerId(customerId);
     onViewCustomerDetails?.(customerId);
@@ -337,6 +367,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     setDuplicateCustomer(null);
     setAllowDuplicate(false);
     setDuplicateOfCustomerId(undefined);
+    setAdvancedOpen(false);
     setIsAddModalOpen(true);
   };
 
@@ -359,6 +390,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     setDuplicateCustomer(null);
     setAllowDuplicate(false);
     setDuplicateOfCustomerId(undefined);
+    setAdvancedOpen(false);
   };
 
   // Validate form fields
@@ -400,7 +432,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
   const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (!validateForm()) {
+      jumpToFirstFormError();
+      return;
+    }
 
     if (!allowDuplicate) {
       const normalizedPhone = normalizePhoneDigits(phone);
@@ -2862,7 +2897,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         )
       )}
 
-      {/* 7. ADD / EDIT CUSTOMER MODAL */}
+      {/* 7. ADD / EDIT CUSTOMER MODAL — single screen, mirrors the Add Service form */}
       {(isAddModalOpen || editingCustomer) && (
         <Modal
           isOpen={isAddModalOpen || !!editingCustomer}
@@ -2872,6 +2907,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             setFormErrors({});
             setDuplicateCustomer(null);
             setAllowDuplicate(false);
+            setAdvancedOpen(false);
           }}
           title={
             editingCustomer
@@ -2891,6 +2927,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   setIsAddModalOpen(false);
                   setEditingCustomer(null);
                   setFormErrors({});
+                  setAdvancedOpen(false);
                 }}
                 className="min-h-11 rounded-lg px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
               >
@@ -2912,7 +2949,12 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </div>
           )}
         >
-          <form id="customer-profile-form" onSubmit={handleSaveCustomer} className="space-y-4">
+          <form id="customer-profile-form" onSubmit={handleSaveCustomer} noValidate className="space-y-5 text-sm">
+            {/* How a customer fits in: Service → Plan → Sale → Subscription → Service Account (login) → Profile */}
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-3.5 py-2.5 text-xs leading-6 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
+              কাস্টমার হলেন যিনি কিনবেন — তার নামে সেল হবে, সাবস্ক্রিপশন চালু হবে, আর সার্ভিস অ্যাকাউন্টের একটি প্রোফাইল তাকে দেওয়া হবে।
+            </p>
+
             {duplicateCustomer && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
                 <div className="font-semibold">
@@ -2961,190 +3003,270 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                 </div>
               </div>
             )}
-            {/* Full Name * */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                {t('customerName')} <span className="text-rose-500">*</span>
-              </label>
+
+            {/* Live preview — updates as you type */}
+            <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-3.5 dark:border-emerald-900 dark:bg-emerald-950/20">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-base font-bold text-white" aria-hidden="true">
+                {getInitials(name)}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-base font-bold text-slate-900 dark:text-white">
+                  {name.trim() || (language === 'bn' ? 'কাস্টমারের নাম' : 'Customer name')}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                  {phone.trim() || (language === 'bn' ? 'ফোন নম্বর' : 'Phone number')}
+                  {customerType === 'Reseller' ? ` · ${language === 'bn' ? 'রিসেলার' : 'Reseller'}` : ''}
+                </p>
+              </div>
+            </div>
+
+            {/* 1. Customer name */}
+            <section aria-labelledby="customer-name-title" className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">1</span>
+                <h3 id="customer-name-title" className="text-base font-bold text-slate-900 dark:text-white">{t('customerName')} <span className="text-rose-500">*</span></h3>
+              </div>
               <input
+                ref={nameInputRef}
                 type="text"
                 value={name}
                 onChange={e => {
                   setName(e.target.value);
                   if (formErrors.name) setFormErrors(prev => ({ ...prev, name: '' }));
                 }}
-                placeholder="e.g. Tanvir Hasan"
-                className={`w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border rounded-lg text-sm text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500 transition-colors ${
+                placeholder={language === 'bn' ? 'যেমন: তানভীর হাসান' : 'e.g. Tanvir Hasan'}
+                className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 text-base text-slate-900 focus:border-emerald-500 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 dark:bg-slate-800 dark:text-white ${
                   formErrors.name ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'
                 }`}
               />
               {formErrors.name && (
-                <p className="text-[11px] text-rose-500 mt-1">{formErrors.name}</p>
+                <p role="alert" className="text-xs text-rose-600">{formErrors.name}</p>
               )}
-            </div>
+            </section>
 
-            <div>
-              <label htmlFor="customer-type" className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Customer Type
-              </label>
-              <select
-                id="customer-type"
-                value={customerType}
-                onChange={event => setCustomerType(event.target.value as CustomerType)}
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-violet-500 focus:outline-hidden focus:ring-2 focus:ring-violet-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            {/* 2. Phone & WhatsApp */}
+            <section aria-labelledby="customer-phone-title" className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">2</span>
+                <h3 id="customer-phone-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'ফোন ও হোয়াটসঅ্যাপ' : 'Phone & WhatsApp'}</h3>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{t('phone')} <span className="text-rose-500">*</span></span>
+                  <input
+                    ref={phoneInputRef}
+                    type="text"
+                    inputMode="tel"
+                    value={phone}
+                    onChange={e => {
+                      setPhone(e.target.value);
+                      setAllowDuplicate(false);
+                      if (formErrors.phone) setFormErrors(prev => ({ ...prev, phone: '' }));
+                    }}
+                    placeholder="+880 1711-223344"
+                    className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 font-mono text-sm text-slate-900 focus:border-emerald-500 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 dark:bg-slate-800 dark:text-white ${
+                      formErrors.phone ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'
+                    }`}
+                  />
+                  {formErrors.phone && (
+                    <span role="alert" className="block text-xs text-rose-600">{formErrors.phone}</span>
+                  )}
+                </label>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{t('whatsappNumber')} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span></span>
+                  <input
+                    type="text"
+                    inputMode="tel"
+                    value={whatsapp}
+                    onChange={e => setWhatsapp(e.target.value)}
+                    placeholder={language === 'bn' ? 'ফোন নম্বরই ব্যবহার হবে' : 'Defaults to Phone'}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 font-mono text-sm text-slate-900 focus:border-emerald-500 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </label>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {language === 'bn'
+                  ? 'হোয়াটসঅ্যাপ নম্বর না দিলে ফোন নম্বরটাই হোয়াটসঅ্যাপ হিসেবে ব্যবহার হবে।'
+                  : 'If left blank, the phone number is used as the WhatsApp number.'}
+              </p>
+            </section>
+
+            {/* 3. Customer type */}
+            <section aria-labelledby="customer-type-title" className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">3</span>
+                <h3 id="customer-type-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'ধরন' : 'Customer type'}</h3>
+              </div>
+              <div className="flex flex-wrap gap-2" role="group" aria-label={language === 'bn' ? 'ধরন' : 'Customer type'}>
+                {(['Customer', 'Reseller'] as const).map(type => (
+                  <button
+                    key={type}
+                    type="button"
+                    aria-pressed={customerType === type}
+                    onClick={() => setCustomerType(type)}
+                    className={`min-h-11 rounded-full border px-4 py-2.5 text-sm font-semibold transition-colors ${
+                      customerType === type
+                        ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+                    }`}
+                  >
+                    {type === 'Customer'
+                      ? (language === 'bn' ? 'কাস্টমার' : 'Customer')
+                      : (language === 'bn' ? 'রিসেলার' : 'Reseller')}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* 4. More settings (collapsed, optional) */}
+            <section aria-labelledby="customer-advanced-title" className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen(previous => !previous)}
+                aria-expanded={advancedOpen}
+                className="flex min-h-12 w-full items-center justify-between gap-3 bg-slate-50 px-4 py-3 text-left dark:bg-slate-800/60"
               >
-                <option value="Customer">Customer</option>
-                <option value="Reseller">Reseller</option>
-              </select>
-            </div>
+                <span id="customer-advanced-title" className="text-sm font-bold text-slate-800 dark:text-slate-100">{language === 'bn' ? 'আরও সেটিংস (ঐচ্ছিক)' : 'More settings (optional)'}</span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {advancedOpen && (
+                <div className="space-y-4 border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                  {/* Email */}
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{t('email')} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span></span>
+                    <input
+                      ref={emailInputRef}
+                      type="email"
+                      value={email}
+                      onChange={e => {
+                        setEmail(e.target.value);
+                        setAllowDuplicate(false);
+                        if (formErrors.email) setFormErrors(prev => ({ ...prev, email: '' }));
+                      }}
+                      placeholder="tanvir@example.com"
+                      className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 text-sm text-slate-900 focus:border-emerald-500 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 dark:bg-slate-800 dark:text-white ${
+                        formErrors.email ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'
+                      }`}
+                    />
+                    {formErrors.email && (
+                      <span role="alert" className="block text-xs text-rose-600">{formErrors.email}</span>
+                    )}
+                  </label>
 
-            {/* Phone * & WhatsApp */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  {t('phone')} <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={phone}
-                  onChange={e => {
-                    setPhone(e.target.value);
-                    setAllowDuplicate(false);
-                    if (formErrors.phone) setFormErrors(prev => ({ ...prev, phone: '' }));
-                  }}
-                  placeholder="+880 1711-223344"
-                  className={`w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border rounded-lg text-sm text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500 font-mono transition-colors ${
-                    formErrors.phone ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'
-                  }`}
-                />
-                {formErrors.phone && (
-                  <p className="text-[11px] text-rose-500 mt-1">{formErrors.phone}</p>
-                )}
-              </div>
+                  {/* Facebook profile & ID */}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="block space-y-1.5">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{t('facebookProfile')} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span></span>
+                      <input
+                        ref={facebookInputRef}
+                        type="text"
+                        value={facebookUrl}
+                        onChange={e => {
+                          setFacebookUrl(e.target.value);
+                          if (formErrors.facebookUrl) setFormErrors(prev => ({ ...prev, facebookUrl: '' }));
+                        }}
+                        placeholder="https://facebook.com/username"
+                        className={`w-full rounded-xl border bg-slate-50 px-3.5 py-3 text-sm text-slate-900 focus:border-emerald-500 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 dark:bg-slate-800 dark:text-white ${
+                          formErrors.facebookUrl ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'
+                        }`}
+                      />
+                      {formErrors.facebookUrl && (
+                        <span role="alert" className="block text-xs text-rose-600">{formErrors.facebookUrl}</span>
+                      )}
+                    </label>
+                    <label className="block space-y-1.5">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{t('facebookId')} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span></span>
+                      <input
+                        type="text"
+                        value={facebookId}
+                        onChange={e => setFacebookId(e.target.value)}
+                        placeholder="tanvir.prime"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-900 focus:border-emerald-500 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 dark:bg-slate-800 dark:text-white"
+                      />
+                    </label>
+                  </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  {t('whatsappNumber')}
-                </label>
-                <input
-                  type="text"
-                  value={whatsapp}
-                  onChange={e => setWhatsapp(e.target.value)}
-                  placeholder="Defaults to Phone"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500 font-mono"
-                />
-              </div>
-            </div>
+                  {/* Address */}
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{t('address')} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span></span>
+                    <input
+                      type="text"
+                      value={address}
+                      onChange={e => setAddress(e.target.value)}
+                      placeholder={language === 'bn' ? 'ধানমন্ডি, ঢাকা' : 'Dhanmondi, Dhaka'}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-900 focus:border-emerald-500 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 dark:bg-slate-800 dark:text-white"
+                    />
+                  </label>
 
-            {/* Email */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                {t('email')}
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => {
-                  setEmail(e.target.value);
-                  setAllowDuplicate(false);
-                  if (formErrors.email) setFormErrors(prev => ({ ...prev, email: '' }));
-                }}
-                placeholder="tanvir@example.com"
-                className={`w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border rounded-lg text-sm text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500 transition-colors ${
-                  formErrors.email ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'
-                }`}
-              />
-              {formErrors.email && (
-                <p className="text-[11px] text-rose-500 mt-1">{formErrors.email}</p>
+                  {/* Notes */}
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{t('notes')} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span></span>
+                    <textarea
+                      rows={2}
+                      value={notes}
+                      onChange={e => setNotes(e.target.value)}
+                      placeholder={language === 'bn' ? 'ভিআইপি ক্রেতা, বিকাশে পেমেন্ট পছন্দ করেন...' : 'VIP buyer, prefers bKash payment...'}
+                      className="w-full resize-y rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 dark:bg-slate-800 dark:text-white"
+                    />
+                  </label>
+
+                  {/* Contact preferences */}
+                  <fieldset className="space-y-3 rounded-xl border border-slate-200 p-3.5 dark:border-slate-700">
+                    <legend className="px-1 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      {language === 'bn' ? 'যোগাযোগের পছন্দ' : 'Contact Preferences'}
+                    </legend>
+                    <div>
+                      <p className="mb-2 text-[11px] font-medium text-slate-500">{language === 'bn' ? 'কোন মাধ্যমে যোগাযোগ করবেন' : 'Preferred contact'}</p>
+                      <div className="flex flex-wrap gap-2" role="group" aria-label={language === 'bn' ? 'যোগাযোগের মাধ্যম' : 'Preferred contact'}>
+                        {(['phone', 'whatsapp', 'email', 'other'] as const).map(method => (
+                          <button
+                            key={method}
+                            type="button"
+                            aria-pressed={contactMethod === method}
+                            onClick={() => setContactMethod(method)}
+                            className={`min-h-10 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors ${
+                              contactMethod === method
+                                ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
+                                : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+                            }`}
+                          >
+                            {method === 'phone' ? (language === 'bn' ? 'ফোন' : 'Phone')
+                              : method === 'whatsapp' ? 'WhatsApp'
+                              : method === 'email' ? (language === 'bn' ? 'ইমেইল' : 'Email')
+                              : (language === 'bn' ? 'অন্যান্য' : 'Other')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <label className="block space-y-1">
+                        <span className="text-[11px] font-medium text-slate-500">{language === 'bn' ? 'যোগাযোগের অনুমতি' : 'Contact permission'}</span>
+                        <select
+                          value={contactAllowed === undefined ? 'unset' : contactAllowed ? 'allowed' : 'not-allowed'}
+                          onChange={event => setContactAllowed(event.target.value === 'unset' ? undefined : event.target.value === 'allowed')}
+                          className="min-h-11 w-full rounded-lg border border-slate-200 bg-transparent px-2.5 py-2 text-sm dark:border-slate-700"
+                        >
+                          <option value="unset">{language === 'bn' ? 'ঠিক করা হয়নি' : 'Not set'}</option>
+                          <option value="allowed">{language === 'bn' ? 'অনুমতি আছে' : 'Allowed'}</option>
+                          <option value="not-allowed">{language === 'bn' ? 'অনুমতি নেই' : 'Not allowed'}</option>
+                        </select>
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="text-[11px] font-medium text-slate-500">{language === 'bn' ? 'পছন্দের ভাষা' : 'Preferred language'}</span>
+                        <select
+                          value={preferredLanguage}
+                          onChange={event => setPreferredLanguage(event.target.value as typeof preferredLanguage)}
+                          className="min-h-11 w-full rounded-lg border border-slate-200 bg-transparent px-2.5 py-2 text-sm dark:border-slate-700"
+                        >
+                          <option value="en">English</option>
+                          <option value="bn">Bangla</option>
+                        </select>
+                      </label>
+                    </div>
+                  </fieldset>
+                </div>
               )}
-            </div>
-
-            {/* Facebook URL & Facebook ID */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  {t('facebookProfile')}
-                </label>
-                <input
-                  type="text"
-                  value={facebookUrl}
-                  onChange={e => {
-                    setFacebookUrl(e.target.value);
-                    if (formErrors.facebookUrl) setFormErrors(prev => ({ ...prev, facebookUrl: '' }));
-                  }}
-                  placeholder="https://facebook.com/username"
-                  className={`w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border rounded-lg text-sm text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500 transition-colors ${
-                    formErrors.facebookUrl ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'
-                  }`}
-                />
-                {formErrors.facebookUrl && (
-                  <p className="text-[11px] text-rose-500 mt-1">{formErrors.facebookUrl}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  {t('facebookId')}
-                </label>
-                <input
-                  type="text"
-                  value={facebookId}
-                  onChange={e => setFacebookId(e.target.value)}
-                  placeholder="tanvir.prime"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-            </div>
-
-            {/* Address */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                {t('address')}
-              </label>
-              <input
-                type="text"
-                value={address}
-                onChange={e => setAddress(e.target.value)}
-                placeholder="Dhanmondi, Dhaka"
-                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-
-            {/* Admin Notes */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                {t('notes')}
-              </label>
-              <textarea
-                rows={2}
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="VIP buyer, prefers bKash payment..."
-                className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-
-            <fieldset className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700 sm:grid-cols-3">
-              <legend className="px-1 text-xs font-semibold text-slate-700 dark:text-slate-300">Contact Preferences</legend>
-              <div>
-                <label htmlFor="customer-contact-method" className="mb-1 block text-[11px] font-medium text-slate-500">Preferred contact</label>
-                <select id="customer-contact-method" value={contactMethod} onChange={event => setContactMethod(event.target.value as typeof contactMethod)} className="w-full rounded-lg border border-slate-200 bg-transparent px-2.5 py-2 text-xs dark:border-slate-700">
-                  <option value="phone">Phone</option><option value="whatsapp">WhatsApp</option><option value="email">Email</option><option value="other">Other</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="customer-contact-permission" className="mb-1 block text-[11px] font-medium text-slate-500">Contact permission</label>
-                <select id="customer-contact-permission" value={contactAllowed === undefined ? 'unset' : contactAllowed ? 'allowed' : 'not-allowed'} onChange={event => setContactAllowed(event.target.value === 'unset' ? undefined : event.target.value === 'allowed')} className="w-full rounded-lg border border-slate-200 bg-transparent px-2.5 py-2 text-xs dark:border-slate-700">
-                  <option value="unset">Not set</option><option value="allowed">Allowed</option><option value="not-allowed">Not allowed</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="customer-language" className="mb-1 block text-[11px] font-medium text-slate-500">Preferred language</label>
-                <select id="customer-language" value={preferredLanguage} onChange={event => setPreferredLanguage(event.target.value as typeof preferredLanguage)} className="w-full rounded-lg border border-slate-200 bg-transparent px-2.5 py-2 text-xs dark:border-slate-700">
-                  <option value="en">English</option><option value="bn">Bangla</option>
-                </select>
-              </div>
-            </fieldset>
+            </section>
 
           </form>
         </Modal>
@@ -3243,3 +3365,4 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     </div>
   );
 };
+
