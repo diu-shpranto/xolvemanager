@@ -7,6 +7,7 @@ import {
   BookOpenText,
   ChevronRight,
   CircleHelp,
+  Globe,
   Menu,
   ShieldCheck,
   Sparkles,
@@ -14,17 +15,69 @@ import {
   X,
 } from 'lucide-react';
 import { productBrand } from '../../config/brand';
+import type { LandingLanguage } from './landingLanguage';
 
-const navigationItems = [
-  { label: 'Features', href: '#features', icon: Sparkles },
-  { label: 'How it works', href: '#how-it-works', icon: Workflow },
-  { label: 'FAQ', href: '#faq', icon: CircleHelp },
-  { label: 'Privacy & Data', href: '/legal/privacy', icon: ShieldCheck },
-];
+type NavigationItem = { label: string; href: string; icon: typeof Sparkles };
 
-export function HomepageNavigation() {
+function getNavigationItems(language: LandingLanguage): NavigationItem[] {
+  return language === 'bn'
+    ? [
+        { label: 'সুবিধা', href: '#features', icon: Sparkles },
+        { label: 'কীভাবে কাজ করে', href: '#how-it-works', icon: Workflow },
+        { label: 'সচরাচর জিজ্ঞাসা', href: '#faq', icon: CircleHelp },
+        { label: 'গোপনীয়তা আর ডেটা', href: '/legal/privacy', icon: ShieldCheck },
+      ]
+    : [
+        { label: 'Features', href: '#features', icon: Sparkles },
+        { label: 'How it works', href: '#how-it-works', icon: Workflow },
+        { label: 'FAQ', href: '#faq', icon: CircleHelp },
+        { label: 'Privacy & Data', href: '/legal/privacy', icon: ShieldCheck },
+      ];
+}
+
+function LanguageToggle({
+  language,
+  onToggleLanguage,
+}: {
+  language: LandingLanguage;
+  onToggleLanguage: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggleLanguage}
+      aria-label={language === 'bn' ? 'Switch language to English' : 'ভাষা বাংলায় বদলান'}
+      className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-violet-200 bg-white px-1.5 py-1 text-xs font-bold shadow-sm transition hover:border-violet-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
+    >
+      <Globe className="ml-1 h-4 w-4 text-violet-700" aria-hidden="true" />
+      <span
+        aria-hidden="true"
+        className={`rounded-full px-2.5 py-1.5 ${language === 'bn' ? 'bg-violet-600 text-white' : 'text-slate-600'}`}
+      >
+        বাংলা
+      </span>
+      <span
+        aria-hidden="true"
+        className={`rounded-full px-2.5 py-1.5 ${language === 'en' ? 'bg-violet-600 text-white' : 'text-slate-600'}`}
+      >
+        EN
+      </span>
+    </button>
+  );
+}
+
+export function HomepageNavigation({
+  language,
+  onToggleLanguage,
+}: {
+  language: LandingLanguage;
+  onToggleLanguage: () => void;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const navigationItems = getNavigationItems(language);
+  const signInLabel = language === 'bn' ? 'সাইন-ইন করুন' : 'Sign in';
+  const getStartedLabel = language === 'bn' ? 'ফ্রিতে শুরু করুন' : 'Get started free';
 
   useEffect(() => {
     if (!isOpen) return;
@@ -53,7 +106,7 @@ export function HomepageNavigation() {
       <div className="mx-auto flex h-[68px] max-w-7xl items-center justify-between gap-3 px-4 sm:px-8">
         <Link
           href="/"
-          aria-label="XolveManager home"
+          aria-label={language === 'bn' ? 'XolveManager হোম' : 'XolveManager home'}
           className="inline-flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-violet-600"
           onClick={closeMenu}
         >
@@ -67,7 +120,7 @@ export function HomepageNavigation() {
           />
         </Link>
 
-        <nav aria-label="Main navigation" className="hidden items-center gap-6 lg:flex">
+        <nav aria-label={language === 'bn' ? 'প্রধান মেনু' : 'Main navigation'} className="hidden items-center gap-6 lg:flex">
           {navigationItems.map(item => (
             <a
               key={item.href}
@@ -80,25 +133,27 @@ export function HomepageNavigation() {
         </nav>
 
         <div className="hidden items-center gap-2 lg:flex">
+          <LanguageToggle language={language} onToggleLanguage={onToggleLanguage} />
           <Link
             href="/login"
             className="inline-flex min-h-10 items-center justify-center rounded-lg px-3 text-sm font-bold text-slate-700 transition-colors hover:bg-violet-50 hover:text-violet-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
           >
-            Sign in
+            {signInLabel}
           </Link>
           <Link
             href="/signup"
             className="inline-flex min-h-10 items-center justify-center rounded-lg bg-gradient-to-r from-violet-600 to-blue-700 px-4 text-sm font-bold text-white shadow-sm shadow-violet-900/20 transition hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
           >
-            Get started free
+            {getStartedLabel}
           </Link>
         </div>
 
-        <div ref={menuRef} className="relative lg:hidden">
+        <div ref={menuRef} className="relative flex items-center gap-2 lg:hidden">
+          <LanguageToggle language={language} onToggleLanguage={onToggleLanguage} />
           <button
             type="button"
             className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200/90 bg-white text-slate-700 shadow-sm shadow-slate-900/5 transition duration-200 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
-            aria-label={isOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-label={isOpen ? (language === 'bn' ? 'মেনু বন্ধ করুন' : 'Close navigation menu') : (language === 'bn' ? 'মেনু খুলুন' : 'Open navigation menu')}
             aria-expanded={isOpen}
             aria-controls="mobile-home-navigation"
             onClick={() => setIsOpen(value => !value)}
@@ -108,14 +163,16 @@ export function HomepageNavigation() {
           {isOpen && (
             <nav
               id="mobile-home-navigation"
-              aria-label="Mobile navigation"
+              aria-label={language === 'bn' ? 'মোবাইল মেনু' : 'Mobile navigation'}
               className="absolute right-0 top-12 z-50 w-[min(19rem,calc(100vw-2rem))] overflow-hidden rounded-[1.35rem] border border-white/90 bg-white/95 p-2.5 shadow-2xl shadow-slate-950/15 ring-1 ring-violet-950/5 backdrop-blur-xl"
             >
               <div className="flex items-center justify-between px-3 pb-2 pt-2">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Explore</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                  {language === 'bn' ? 'ঘুরে দেখুন' : 'Explore'}
+                </p>
                 <BookOpenText aria-hidden="true" className="h-4 w-4 text-violet-500" />
               </div>
-              <nav className="flex flex-col gap-0.5" aria-label="Explore">
+              <nav className="flex flex-col gap-0.5" aria-label={language === 'bn' ? 'ঘুরে দেখুন' : 'Explore'}>
                 {navigationItems.map(({ label, href, icon: Icon }) => (
                   <a
                     key={href}
@@ -137,14 +194,14 @@ export function HomepageNavigation() {
                   onClick={closeMenu}
                   className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm shadow-slate-900/5 transition-colors hover:border-violet-200 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600"
                 >
-                  Sign in
+                  {signInLabel}
                 </Link>
                 <Link
                   href="/signup"
                   onClick={closeMenu}
                   className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-blue-700 px-3 text-sm font-bold text-white shadow-md shadow-violet-900/20 transition duration-200 hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
                 >
-                  Get started
+                  {language === 'bn' ? 'শুরু করুন' : 'Get started'}
                 </Link>
               </div>
             </nav>
