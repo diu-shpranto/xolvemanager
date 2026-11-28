@@ -25,6 +25,7 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useReducedMotionPreference } from '../../hooks/useReducedMotionPreference';
 import { useToast } from '../common/Toast';
+import { StatCard } from '../common/StatCard';
 import {
   formatAppDate,
   formatCurrency,
@@ -94,7 +95,6 @@ type DueSort = 'due' | 'oldest' | 'customer';
 
 const cardClass = 'surface-card p-3 sm:p-4';
 const labelClass = 'text-xs font-medium text-slate-500 dark:text-slate-400';
-const numberClass = 'mt-1 block truncate font-mono text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-white';
 const paymentStatuses: PaymentStatus[] = ['paid', 'partial', 'pending', 'failed', 'refunded', 'voided'];
 
 const normalizeDate = (value?: string): string => value?.slice(0, 10) || '';
@@ -140,27 +140,32 @@ function MetricCard({
   detail?: string;
   tone?: 'slate' | 'green' | 'amber' | 'blue';
 }) {
-  const tones = {
-    slate: 'text-slate-900 dark:text-white',
-    green: 'text-emerald-700 dark:text-emerald-300',
-    amber: 'text-amber-700 dark:text-amber-300',
-    blue: 'text-violet-700 dark:text-violet-300',
-  };
-  const icons = {
-    slate: <BarChart3 className="h-4 w-4" />,
-    green: <TrendingUp className="h-4 w-4" />,
-    amber: <AlertTriangle className="h-4 w-4" />,
-    blue: <Wallet className="h-4 w-4" />,
-  };
+  // Old tone names → StatCard tones. The old component also coloured the
+  // VALUE by tone; StatCard does that via valueTone (slate keeps the
+  // default near-black value, matching the old slate value colour).
+  const toneMap = {
+    slate: { tone: 'slate', valueTone: undefined, icon: <BarChart3 className="h-5 w-5" /> },
+    green: { tone: 'emerald', valueTone: 'emerald', icon: <TrendingUp className="h-5 w-5" /> },
+    amber: { tone: 'amber', valueTone: 'amber', icon: <AlertTriangle className="h-5 w-5" /> },
+    blue: { tone: 'violet', valueTone: 'violet', icon: <Wallet className="h-5 w-5" /> },
+  } as const;
+  const mapped = toneMap[tone];
+  // Reports grids run up to 8 columns wide, so cards can be ~120px: the
+  // dense mini treatment (no icon badge, full-width value) is the only way
+  // money values and the word "Unavailable" read in full at 1440px and
+  // 390px. Tones are preserved via the accent bar + hint dot.
   return (
-    <div className={`${cardClass} rep-v2-kpi`}>
-      <div className="rep-v2-kpi-head">
-        <span className={`rep-v2-kpi-icon rep-v2-kpi-icon--${tone}`}>{icons[tone]}</span>
-        <span className="rep-v2-kpi-label">{label}</span>
-      </div>
-      <span className={`${numberClass} ${tones[tone]}`}>{value}</span>
-      {detail && <span className="rep-v2-kpi-hint">{detail}</span>}
-    </div>
+    <StatCard
+      icon={mapped.icon}
+      label={label}
+      value={value}
+      hint={detail}
+      tone={mapped.tone}
+      valueTone={mapped.valueTone}
+      size="mini"
+      hideIcon
+      valueClassName="text-lg sm:text-xl"
+    />
   );
 }
 

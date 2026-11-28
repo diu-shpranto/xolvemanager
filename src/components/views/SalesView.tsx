@@ -21,6 +21,7 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
+import { StatCard, type StatCardTone } from '../common/StatCard';
 import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
 import {
@@ -658,28 +659,24 @@ export const SalesView: React.FC<SalesViewProps> = ({
           { label: 'Outstanding', amounts: salesStats.due, context: 'Balance due', icon: DollarSign, tone: 'rose' },
           { label: 'Refunded', amounts: salesStats.refunded, context: 'Recorded refunds', icon: RefreshCw, tone: 'slate' },
         ].map(item => (
-          <article key={item.label} className={`sales-summary-card sales-summary-card--${item.tone} flex min-h-[86px] min-w-0 flex-col justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:p-3.5`}>
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${item.tone === 'violet' ? 'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300' : item.tone === 'emerald' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : item.tone === 'amber' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' : item.tone === 'rose' ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
-                  <item.icon className="h-3.5 w-3.5" />
-                </span>
-                <h2 className="min-w-0 text-[11px] font-semibold leading-tight text-slate-600 dark:text-slate-300">{item.label}</h2>
-              </div>
-              {item.value !== undefined && <p className="mt-1 text-xl font-bold tabular-nums text-slate-900 dark:text-white">{item.value}</p>}
-              {item.amounts && (
-                <div className="mt-1 space-y-0.5 pl-9">
-                  {(['BDT', 'USD'] as const).map(unit => (
-                    <p key={unit} className="truncate text-[11px] font-semibold tabular-nums text-slate-700 dark:text-slate-200">
-                      <span className="mr-1 text-[9px] font-semibold text-slate-400">{unit}</span>
-                      {formatCurrency(item.amounts[unit], unit)}
-                    </p>
-                  ))}
-                </div>
-              )}
-              <span className="mt-0.5 block pl-9 text-[10px] text-slate-400">{item.context}</span>
-            </div>
-          </article>
+          <StatCard
+            key={item.label}
+            icon={<item.icon className="h-5 w-5" />}
+            label={item.label}
+            value={item.value !== undefined ? item.value : item.amounts ? formatCurrency(item.amounts.BDT, 'BDT') : '—'}
+            hint={item.context}
+            tone={item.tone as StatCardTone}
+            extra={item.amounts ? (
+              <span className="mt-2 block space-y-0.5">
+                {(item.value !== undefined ? (['BDT', 'USD'] as const) : (['USD'] as const)).map(unit => (
+                  <span key={unit} className="block truncate text-[11px] font-semibold tabular-nums text-slate-700 dark:text-slate-200">
+                    <span className="mr-1 text-[9px] font-semibold text-slate-400">{unit}</span>
+                    {formatCurrency(item.amounts[unit], unit)}
+                  </span>
+                ))}
+              </span>
+            ) : undefined}
+          />
         ))}
       </section>
 

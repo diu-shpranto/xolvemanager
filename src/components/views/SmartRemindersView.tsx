@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { getCustomerOptionLabel } from '../../utils/relationships';
 import { Modal } from '../common/Modal';
+import { StatCard, type StatCardTone } from '../common/StatCard';
 import { useToast } from '../common/Toast';
 import { useWhatsAppCommunication } from '../whatsapp/WhatsAppCommunication';
 import type { Reminder, ReminderPriority, ReminderStatus, ReminderType } from '../../types';
@@ -255,9 +256,7 @@ export const SmartRemindersView: React.FC<SmartRemindersViewProps> = ({
           ['High Priority', highPriorityCount, 'amber', 'High or critical'],
           ['Completed', countFor('completed'), 'slate', 'Finished'],
           ['Snoozed', countFor('snoozed'), 'violet', 'Paused for now'],
-        ].map(([label, value, tone, hint]) => <div key={label} className={`sv-kpi--v2 sv-kpi-tone--${tone} rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900`}>
-          <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{label}</p><p className="sv-kpi-value mt-1 text-xl font-bold">{value}</p><p className="text-[11px] text-slate-500 dark:text-slate-400">{hint}</p>
-        </div>)}
+        ].map(([label, value, tone, hint]) => <StatCard key={label} label={label} value={String(value)} hint={hint} tone={tone as StatCardTone} icon={null} hideIcon />)}
       </section>
 
       <section className="sv-panel--v2 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">

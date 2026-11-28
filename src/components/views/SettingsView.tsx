@@ -23,6 +23,7 @@ import { initialSettings } from '../../data/mockData';
 import { productBrand, APP_VERSION } from '../../config/brand';
 import { ProductLogo } from '../common/BrandLockup';
 import { AboutExperience } from './AboutExperience';
+import { StatCard } from '../common/StatCard';
 import { InstallAppPrompt } from '../common/InstallAppPrompt';
 import type { NavSection } from '../navigation/Sidebar';
 import { createPaymentMethodId, normalizePaymentMethods } from '../../utils/paymentMethods';
@@ -1442,7 +1443,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
     { icon: Database, label: 'Total records', value: totalRecords, hint: 'Customers, sales, payments & more', tone: 'violet' },
     { icon: Users, label: 'Customers', value: customers.length, hint: 'In this business', tone: 'emerald' },
     { icon: Layers, label: 'Services', value: services.length, hint: 'In the service catalogue', tone: 'amber' },
-    { icon: SlidersHorizontal, label: 'Subscriptions', value: subscriptions.length, hint: 'All statuses', tone: 'sky' },
+    { icon: SlidersHorizontal, label: 'Subscriptions', value: subscriptions.length, hint: 'All statuses', tone: 'blue' },
   ] as const;
   return <main data-section="settings" className="settings-view--v2 section-layout-shell mx-auto max-w-[1600px] space-y-5 px-3 py-3 sm:px-6 sm:py-6 lg:px-8">
     <header className="settings-page-header--v2">
@@ -1459,11 +1460,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialSection, onOp
       </div>
     </header>
     <div className="settings-kpi-row--v2" aria-label="Business summary">
-      {summaryCards.map(({ icon: Icon, label, value, hint, tone }) => <div key={label} className={`settings-kpi--v2 settings-kpi--${tone}`}>
-        <div className="settings-kpi-top"><span className="settings-kpi-icon"><Icon className="h-4 w-4" /></span><span className="settings-kpi-label">{label}</span></div>
-        <div className="settings-kpi-value">{value}</div>
-        <div className="settings-kpi-hint">{hint}</div>
-      </div>)}
+      {summaryCards.map(({ icon: Icon, label, value, hint, tone }) => <StatCard key={label} label={label} value={String(value)} hint={hint} tone={tone} icon={<Icon className="h-5 w-5" />} />)}
     </div>
     <div className="settings-layout--v2 grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
       <nav aria-label="Settings sections" className="settings-section-nav settings-nav--v2 flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">

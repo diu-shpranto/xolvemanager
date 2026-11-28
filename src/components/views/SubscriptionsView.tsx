@@ -46,6 +46,7 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
+import { StatCard, type StatCardTone } from '../common/StatCard';
 import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
 import {
@@ -1116,24 +1117,15 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
           { label: language === 'bn' ? 'বকেয়া পেমেন্ট' : 'Pending Payments', hint: language === 'bn' ? 'পেমেন্ট সংগ্রহ করুন' : 'Payment to collect', value: pendingPaymentCount, icon: DollarSign, tone: 'amber' },
           { label: language === 'bn' ? 'নবায়ন বাকি' : 'Renewals Due', hint: language === 'bn' ? 'মেয়াদ শেষ বা শেষের পথে' : 'Expiring or expired', value: statusCounts.renewalsDue, icon: RefreshCw, tone: 'violet' },
         ].map(item => {
-          const toneClasses = {
-            slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-            emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
-            amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
-            rose: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300',
-            violet: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300',
-          }[item.tone];
           return (
-          <div key={item.label} className={`subscription-summary-card flex min-h-[68px] min-w-0 items-center justify-between gap-2 rounded-xl border p-3 transition-colors ${item.tone === 'slate' ? 'border-violet-200 bg-violet-50/70 dark:border-violet-900/60 dark:bg-violet-950/25' : 'border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900'}`}>
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold leading-tight text-slate-500 dark:text-slate-400">{item.label}</p>
-              <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-slate-950 dark:text-white">{item.value}</p>
-              <p className="subscription-summary-hint mt-0.5 text-[11px] leading-4 text-slate-400 dark:text-slate-500">{item.hint}</p>
-            </div>
-            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${toneClasses}`}>
-              <item.icon className="h-3.5 w-3.5" />
-            </span>
-          </div>
+            <StatCard
+              key={item.label}
+              icon={<item.icon className="h-5 w-5" />}
+              label={item.label}
+              value={item.value}
+              hint={item.hint}
+              tone={item.tone === 'slate' ? 'violet' : (item.tone as StatCardTone)}
+            />
           );
         })}
       </section>

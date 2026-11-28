@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowRight, Search } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { StatCard } from '../common/StatCard';
 import type { GlobalSearchResult, SearchEntity } from '../../services/globalSearch';
 import {
   buildSearchIndex, getSearchEntityLabel, SEARCH_ENTITY_ORDER, searchRecords,
@@ -137,7 +138,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({ query, onS
 
     <section aria-label={copy.counts} className="sv-kpi-grid--v2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
       {(['customers', 'services', 'moneyAccounts', 'subscriptions', 'sales', 'payments', 'invoices'] as const).map(entity =>
-          <div key={entity} className="sv-kpi--v2 sv-kpi--mini rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"><div className="sv-kpi-value text-lg font-bold">{counts[entity]}</div><div className="text-xs text-slate-500">{getSearchEntityLabel(entity, language)}</div></div>
+          <StatCard key={entity} size="mini" label={getSearchEntityLabel(entity, language)} value={String(counts[entity])} icon={null} hideIcon />
       )}
     </section>
 

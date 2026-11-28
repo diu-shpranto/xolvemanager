@@ -46,6 +46,7 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
+import { StatCard } from '../common/StatCard';
 import {
   Account,
   Service,
@@ -1243,31 +1244,14 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             { label: 'Active Subscriptions', value: summary.activeSubscriptions, icon: Users, iconTone: 'amber', hint: 'Across all services' },
             { label: 'Monthly Revenue', value: summary.monthlyRevenue, icon: DollarSign, iconTone: 'violet', currency: true, hint: 'This month' },
           ].map(({ label, value, icon: SummaryIcon, iconTone, currency: isCurrency, hint }) => (
-            <div
+            <StatCard
               key={label}
-              className="service-summary-card min-w-0 rounded-xl border border-slate-200/80 bg-white px-3.5 py-3 shadow-2xs dark:border-slate-800 dark:bg-slate-900"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <span className="line-clamp-2 min-h-7 text-[10px] font-semibold uppercase leading-3.5 tracking-wide text-slate-500 dark:text-slate-400">
-                  {label}
-                </span>
-                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${
-                  iconTone === 'emerald'
-                    ? 'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300 dark:ring-emerald-900/60'
-                    : iconTone === 'blue'
-                    ? 'bg-blue-50 text-blue-700 ring-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:ring-blue-900/60'
-                    : iconTone === 'teal'
-                    ? 'bg-teal-50 text-teal-700 ring-teal-100 dark:bg-teal-950/50 dark:text-teal-300 dark:ring-teal-900/60'
-                    : iconTone === 'amber'
-                    ? 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-900/60'
-                    : 'bg-violet-50 text-violet-700 ring-violet-100 dark:bg-violet-950/50 dark:text-violet-300 dark:ring-violet-900/60'
-                }`}>
-                  <SummaryIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                </span>
-              </div>
-              <div className="mt-1 truncate text-lg font-bold tabular-nums text-slate-900 dark:text-white">{isCurrency ? formatCurrency(value, currency) : value}</div>
-              <div className="service-summary-hint mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">{hint}</div>
-            </div>
+              icon={<SummaryIcon className="h-5 w-5" aria-hidden="true" />}
+              label={label}
+              value={isCurrency ? <span className="text-xl leading-7">{formatCurrency(value, currency)}</span> : value}
+              hint={hint}
+              tone={iconTone as 'violet' | 'emerald' | 'blue' | 'teal' | 'amber'}
+            />
           ))}
         </section>
       )}
@@ -2085,76 +2069,99 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             )}
 
             {/* Quick KPI stats grid */}
-            <div className="service-detail-kpis service-detail-kpis--v2 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-              <div className="rounded-xl border border-slate-200/80 bg-white p-3 text-center dark:border-slate-800 dark:bg-slate-800">
-                <div className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Total Plans</div>
-                <div className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white">{detailedService.planDetails?.length || detailedService.plans?.length || 0}</div>
-              </div>
-              <div className="rounded-xl border border-slate-200/80 bg-white p-3 text-center dark:border-slate-800 dark:bg-slate-800">
-                <div className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Active Plans</div>
-                <div className="mt-0.5 text-lg font-bold text-emerald-600">{detailedService.planDetails?.filter(plan => plan.status === 'active').length || 0}</div>
-              </div>
-              <button type="button" onClick={() => onNavigateToServiceSubscriptions ? onNavigateToServiceSubscriptions(detailedService.id) : onNavigateSection?.('subscriptions')} className="rounded-xl border border-slate-200/80 bg-white p-3 text-center hover:border-emerald-300 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-800 dark:bg-slate-800">
-                <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">
-                  Active Subscriptions
-                </div>
-                <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                  {detailedPerformance?.activeSubscriptions || 0}
-                </div>
-                <div className="mt-1 text-[10px] text-slate-500">Ending soon {detailedEndingSoon} · Expired {detailedExpiredCount}</div>
-              </button>
-
-              <button type="button" onClick={() => onNavigateToServiceAccounts ? onNavigateToServiceAccounts(detailedService.id) : onNavigateSection?.('accounts')} className="rounded-xl border border-slate-200/80 bg-white p-3 text-center hover:border-emerald-300 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-800 dark:bg-slate-800">
-                <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">
-                  Total Accounts
-                </div>
-                <div className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
-                  {detailedAccounts.length}
-                </div>
-              </button>
-              <button type="button" onClick={() => onNavigateToServiceProfiles ? onNavigateToServiceProfiles(detailedService.id) : onNavigateSection?.('profiles')} className="rounded-xl border border-slate-200/80 bg-white p-3 text-center hover:border-emerald-300 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-800 dark:bg-slate-800">
-                <div className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
-                  Available Profiles
-                  </div>
-                <div className="mt-0.5 text-lg font-bold text-emerald-600 dark:text-emerald-400">
-                  {detailedCapacity.available}
-                </div>
-                </button>
-
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-center">
-                <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">
-                  Total Sales
-                </div>
-                <div className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
-                  {detailedSales.length}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 text-center">
-                <div className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">
-                  Revenue
-                </div>
-                <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-0.5 font-mono">
-                  {formatCurrency(detailedPerformance?.revenue || 0, currency)}
-                </div>
-                <div className="service-revenue-summary mt-1 text-[10px] text-slate-500">
-                  <span className="service-revenue-paid">Paid {formatCurrency(detailedPerformance?.paid || 0, currency)}</span>
-                  <span aria-hidden="true"> · </span>
-                  <span className="service-revenue-due">Due {formatCurrency(detailedPerformance?.due || 0, currency)}</span>
-                </div>
-              </div>
-              <button type="button" onClick={() => onNavigateToServiceCustomers ? onNavigateToServiceCustomers(detailedService.id) : onNavigateSection?.('customers')} className="rounded-xl border border-slate-200/80 bg-white p-3 text-center hover:border-emerald-300 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-800 dark:bg-slate-800">
-                <div className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Customers</div>
-                <div className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white">{detailedActiveCustomerCount} <span className="text-xs font-normal text-slate-500">active / {detailedCustomers.length} total</span></div>
-              </button>
-              <button type="button" onClick={() => onNavigateToServiceCustomers ? onNavigateToServiceCustomers(detailedService.id) : onNavigateSection?.('customers')} className="rounded-xl border border-slate-200/80 bg-white p-3 text-center hover:border-emerald-300 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-800 dark:bg-slate-800">
-                <div className="text-[10px] font-medium uppercase tracking-wider text-slate-500">New customers this month</div>
-                <div className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white">{detailedNewCustomerCount}</div>
-              </button>
-              <button type="button" onClick={() => onNavigateToServiceCustomers ? onNavigateToServiceCustomers(detailedService.id) : onNavigateSection?.('customers')} className="rounded-xl border border-slate-200/80 bg-white p-3 text-center hover:border-emerald-300 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-800 dark:bg-slate-800">
-                <div className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Renewal customers</div>
-                <div className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white">{detailedRenewalCustomerCount}</div>
-              </button>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+              <StatCard
+                icon={<></>}
+                hideIcon
+                size="compact"
+                label="Total Plans"
+                value={detailedService.planDetails?.length || detailedService.plans?.length || 0}
+                tone="violet"
+              />
+              <StatCard
+                icon={<></>}
+                hideIcon
+                size="compact"
+                label="Active Plans"
+                value={detailedService.planDetails?.filter(plan => plan.status === 'active').length || 0}
+                tone="emerald"
+                valueTone="emerald"
+              />
+              <StatCard
+                icon={<></>}
+                hideIcon
+                size="compact"
+                label="Active Subscriptions"
+                value={detailedPerformance?.activeSubscriptions || 0}
+                hint={`Ending soon ${detailedEndingSoon} · Expired ${detailedExpiredCount}`}
+                tone="emerald"
+                valueTone="emerald"
+                onClick={() => onNavigateToServiceSubscriptions ? onNavigateToServiceSubscriptions(detailedService.id) : onNavigateSection?.('subscriptions')}
+              />
+              <StatCard
+                icon={<></>}
+                hideIcon
+                size="compact"
+                label="Total Accounts"
+                value={detailedAccounts.length}
+                tone="violet"
+                onClick={() => onNavigateToServiceAccounts ? onNavigateToServiceAccounts(detailedService.id) : onNavigateSection?.('accounts')}
+              />
+              <StatCard
+                icon={<></>}
+                hideIcon
+                size="compact"
+                label="Available Profiles"
+                value={detailedCapacity.available}
+                tone="emerald"
+                valueTone="emerald"
+                onClick={() => onNavigateToServiceProfiles ? onNavigateToServiceProfiles(detailedService.id) : onNavigateSection?.('profiles')}
+              />
+              <StatCard
+                icon={<></>}
+                hideIcon
+                size="compact"
+                label="Total Sales"
+                value={detailedSales.length}
+                tone="violet"
+              />
+              <StatCard
+                icon={<></>}
+                hideIcon
+                size="compact"
+                label="Revenue"
+                value={formatCurrency(detailedPerformance?.revenue || 0, currency)}
+                hint={`Paid ${formatCurrency(detailedPerformance?.paid || 0, currency)} · Due ${formatCurrency(detailedPerformance?.due || 0, currency)}`}
+                tone="emerald"
+                valueTone="emerald"
+              />
+              <StatCard
+                icon={<></>}
+                hideIcon
+                size="compact"
+                label="Customers"
+                value={<>{detailedActiveCustomerCount} <span className="text-xs font-normal text-slate-500">active / {detailedCustomers.length} total</span></>}
+                tone="violet"
+                onClick={() => onNavigateToServiceCustomers ? onNavigateToServiceCustomers(detailedService.id) : onNavigateSection?.('customers')}
+              />
+              <StatCard
+                icon={<></>}
+                hideIcon
+                size="compact"
+                label="New customers this month"
+                value={detailedNewCustomerCount}
+                tone="violet"
+                onClick={() => onNavigateToServiceCustomers ? onNavigateToServiceCustomers(detailedService.id) : onNavigateSection?.('customers')}
+              />
+              <StatCard
+                icon={<></>}
+                hideIcon
+                size="compact"
+                label="Renewal customers"
+                value={detailedRenewalCustomerCount}
+                tone="violet"
+                onClick={() => onNavigateToServiceCustomers ? onNavigateToServiceCustomers(detailedService.id) : onNavigateSection?.('customers')}
+              />
             </div>
 
             <nav aria-label="Service detail sections" className="service-detail-nav service-detail-nav--v2 sticky top-0 z-10 -mx-2 flex gap-1 overflow-x-auto border-y border-slate-200 bg-white/95 px-2 py-2 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
