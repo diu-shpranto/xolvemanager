@@ -10,6 +10,7 @@ interface ReceivingAccountSelectorProps {
   paymentMethods: PaymentMethodConfig[];
   onSelect: (accountId: string) => void;
   onCreateAccount: () => void;
+  language?: 'bn' | 'en';
 }
 
 const accountTypeLabels: Record<FinancialAccount['type'], string> = {
@@ -27,6 +28,7 @@ export const ReceivingAccountSelector: React.FC<ReceivingAccountSelectorProps> =
   paymentMethods,
   onSelect,
   onCreateAccount,
+  language = 'en',
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
@@ -124,16 +126,16 @@ export const ReceivingAccountSelector: React.FC<ReceivingAccountSelectorProps> =
   if (accounts.length === 0) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/25">
-        <p className="text-sm font-semibold text-amber-950 dark:text-amber-100">No receiving account available</p>
+        <p className="text-sm font-semibold text-amber-950 dark:text-amber-100">{language === 'bn' ? 'কোনো ওয়ালেট নেই' : 'No receiving account available'}</p>
         <p className="mt-1 text-xs leading-5 text-amber-900 dark:text-amber-200">
-          Create or activate an account in the required currency before recording this payment.
+          {language === 'bn' ? 'টাকাটা জমা দেওয়ার আগে এই মুদ্রার একটি ওয়ালেট বানান বা চালু করুন।' : 'Create or activate an account in the required currency before recording this payment.'}
         </p>
         <button
           type="button"
           onClick={onCreateAccount}
           className="mt-3 min-h-11 rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
         >
-          Create Account
+          {language === 'bn' ? 'ওয়ালেট বানান' : 'Create Account'}
         </button>
       </div>
     );

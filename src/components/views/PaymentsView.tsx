@@ -1950,6 +1950,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                       selectedAccountId={collectionDestinationAccount?.id || ''}
                       currency={newAdvanceCurrency}
                       paymentMethods={paymentMethods}
+                      language={language}
                       onSelect={setCollectionFinancialAccountId}
                       onCreateAccount={() => {
                         setIsAddPaymentOpen(false);
@@ -2204,7 +2205,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 {paymentFormErrors.method && <span role="alert" className="mt-1 block text-xs text-rose-600">{paymentFormErrors.method}</span>}
               </label>
             </>}
-            {newPaymentMode !== 'apply-advance' && paymentAccounts.length > 0 && (
+            {newPaymentMode !== 'apply-advance' && (
               <div className="min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-200">
                 <span className="mb-1.5 block">{language === 'bn' ? 'টাকার অ্যাকাউন্ট (ওয়ালেট)' : 'Receiving account (wallet)'}</span>
                 <ReceivingAccountSelector
@@ -2212,6 +2213,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   selectedAccountId={paymentDestinationAccount?.id || ''}
                   currency={paymentCurrency}
                   paymentMethods={paymentMethods}
+                  language={language}
                   onSelect={setPaymentFinancialAccountId}
                   onCreateAccount={() => {
                     setIsAddPaymentOpen(false);
@@ -2219,9 +2221,11 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     onNavigateSection?.('cashbook', `action:account:${paymentCurrency}`);
                   }}
                 />
+                {paymentAccounts.length > 0 && (
                 <p className="mt-1 text-[11px] font-normal leading-5 text-slate-500 dark:text-slate-400">
                   {language === 'bn' ? 'টাকাটা এই ওয়ালেটে জমা হবে। না বাছলে পেমেন্ট মাধ্যমের ওয়ালেটেই যাবে।' : 'The money will go to this wallet. If you don’t choose, it goes to the payment method’s wallet.'}
                 </p>
+                )}
               </div>
             )}
             {newPaymentMode === 'apply-advance' && (
