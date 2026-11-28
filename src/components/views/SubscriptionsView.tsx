@@ -267,7 +267,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
     customer: 'একজন কাস্টমার বেছে নিন।',
     service: 'একটি সক্রিয় সার্ভিস বেছে নিন।',
     account: 'এই সার্ভিসের একটি সার্ভিস অ্যাকাউন্ট (লগইন) বেছে নিন।',
-    profile: 'এই কাস্টমারের জন্য একটি খালি প্রোফাইল বেছে নিন।',
+    profile: 'দেওয়ার মতো খালি প্রোফাইল বেছে নিন।',
     startDate: 'একটি সঠিক শুরুর তারিখ দিন।',
     duration: 'মেয়াদ কমপক্ষে ১ দিন হতে হবে।',
     price: 'সঠিক দাম দিন।',
@@ -813,7 +813,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       || !renewalPaymentMethods.includes(renewPaymentMethod)
       || (paymentMethodRequiresTransactionId(renewPaymentMethod, renewalPaymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) && !renewTrxId.trim())
       || amountPaid > total) {
-      showToast('Renewal could not be completed. Check the plan, account, profile, dates, and payment details.', 'error');
+      showToast(language === 'bn' ? 'নবায়ন করা যায়নি। প্ল্যান, অ্যাকাউন্ট, প্রোফাইল, তারিখ আর টাকার তথ্য দেখে নিন।' : 'Renewal could not be completed. Check the plan, account, profile, dates, and payment details.', 'error');
       return;
     }
 
@@ -849,41 +849,24 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
           previousProfileReleaseFailed = true;
         }
       }
-      const renewalRecord = {
-        id: renewalOperationId.current,
-        renewalDate: getTodayDateString(settings.businessProfile?.timeZone),
-        previousEndDate: selectedSub.expiryDate,
-        newStartDate: renewal.subscription.startDate,
-        newEndDate: renewal.subscription.expiryDate,
-        plan: renewal.subscription.plan,
-        planId: renewal.subscription.planId,
-        amount: renewal.sale.amount,
-        amountPaid: renewal.payment.amount,
-        amountDue: Math.max(0, renewal.sale.amount - renewal.payment.amount),
-        currency: renewal.sale.currency,
-        paymentStatus: renewal.payment.paymentStatus,
-        saleId: renewal.sale.id,
-        paymentId: renewal.payment.id,
-        subscriptionId: renewal.subscription.id,
-      };
-      if (!selectedSub.renewalHistory?.some(item => item.id === renewalRecord.id)) {
-        updateSubscription(selectedSub.id, {
-          renewalHistory: [...(selectedSub.renewalHistory || []), renewalRecord],
-        });
-      }
+      // Renewal history is already recorded atomically inside createSale: it
+      // appends the renewal record to the previous subscription in the same
+      // write that creates the new subscription. Do NOT call
+      // updateSubscription here — it reads the pre-renewal subscription list
+      // and would overwrite (delete) the new subscription record.
       setSelectedSubId(renewal.subscription.id);
       setMobileView('detail');
       setIsRenewDrawerOpen(false);
       if (onClearRenewTarget) onClearRenewTarget();
       showToast(
         previousProfileReleaseFailed
-          ? 'Renewal completed, but the previous profile could not be released.'
-          : 'Renewal completed successfully.',
+          ? (language === 'bn' ? 'নবায়ন হয়েছে, তবে আগের প্রোফাইলটা ছাড়ানো যায়নি।' : 'Renewal completed, but the previous profile could not be released.')
+          : (language === 'bn' ? 'নবায়ন হয়ে গেছে।' : 'Renewal completed successfully.'),
         previousProfileReleaseFailed ? 'error' : 'success'
       );
     } catch (error) {
       console.error('Subscription renewal failed', error);
-      showToast('Renewal could not be completed. Please try again.', 'error');
+      showToast(language === 'bn' ? 'নবায়ন করা যায়নি। আবার চেষ্টা করুন।' : 'Renewal could not be completed. Please try again.', 'error');
     } finally {
       setIsRenewing(false);
     }
@@ -1247,7 +1230,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             className="subscription-export-action inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-2 focus-visible:outline-violet-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
           >
             <Download className="h-4 w-4 shrink-0" />
-            <span>Export CSV</span>
+            <span>{language === 'bn' ? 'CSV ডাউনলোড' : 'Export CSV'}</span>
           </button>
         </div>
       </div>
@@ -1256,9 +1239,9 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         {[
           { label: language === 'bn' ? 'মোট সাবস্ক্রিপশন' : 'Total Subscriptions', hint: language === 'bn' ? `${statusCounts.active}টি সক্রিয়` : `${statusCounts.active} active`, value: statusCounts.all, icon: Layers, tone: 'slate' },
           { label: language === 'bn' ? 'সক্রিয়' : 'Active', hint: statusCounts.all ? (language === 'bn' ? `মোটের ${Math.round((statusCounts.active / statusCounts.all) * 100)}%` : `${Math.round((statusCounts.active / statusCounts.all) * 100)}% of total`) : (language === 'bn' ? 'কোনো সাবস্ক্রিপশন নেই' : 'No subscriptions'), value: statusCounts.active, icon: CheckCircle2, tone: 'emerald' },
-          { label: language === 'bn' ? 'শীঘ্রই শেষ' : 'Ending Soon', hint: language === 'bn' ? 'নবায়নের সময় ঘনিয়ে এসেছে' : 'Renewal window open', value: statusCounts.expiring, icon: Clock, tone: 'amber' },
+          { label: language === 'bn' ? 'শীঘ্রই শেষ' : 'Ending Soon', hint: language === 'bn' ? `${settings.reminderNoticeDays || 7} দিনের মধ্যে শেষ হবে` : 'Renewal window open', value: statusCounts.expiring, icon: Clock, tone: 'amber' },
           { label: language === 'bn' ? 'মেয়াদ শেষ' : 'Expired', hint: language === 'bn' ? 'এখনই নবায়ন প্রয়োজন' : 'Renewal overdue', value: statusCounts.expired, icon: AlertCircle, tone: 'rose' },
-          { label: language === 'bn' ? 'বকেয়া পেমেন্ট' : 'Pending Payments', hint: language === 'bn' ? 'পেমেন্ট সংগ্রহ করুন' : 'Payment to collect', value: pendingPaymentCount, icon: DollarSign, tone: 'amber' },
+          { label: language === 'bn' ? 'বকেয়া পেমেন্ট' : 'Pending Payments', hint: language === 'bn' ? 'টাকা তুলতে হবে' : 'Payment to collect', value: pendingPaymentCount, icon: DollarSign, tone: 'amber' },
           { label: language === 'bn' ? 'নবায়ন বাকি' : 'Renewals Due', hint: language === 'bn' ? 'মেয়াদ শেষ বা শেষের পথে' : 'Expiring or expired', value: statusCounts.renewalsDue, icon: RefreshCw, tone: 'violet' },
         ].map(item => {
           return (
@@ -1301,7 +1284,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               action: () => { setQuickExpiry('expired'); setStatusFilter('expired'); setResourceFilter('all'); },
             },
             {
-              label: language === 'bn' ? 'রিসোর্স বরাদ্দ নেই' : 'No account assigned',
+              label: language === 'bn' ? 'কোনো অ্যাকাউন্ট দেওয়া হয়নি' : 'No account assigned',
               active: resourceFilter === 'unassigned',
               action: () => { setResourceFilter('unassigned'); setStatusFilter('all'); setQuickExpiry('all'); },
             },
@@ -1337,11 +1320,11 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       <div className="-mx-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Subscription statuses">
         <div className="subscription-status-tabs--v2 flex w-max min-w-full gap-1.5 rounded-xl border border-slate-200/80 bg-white p-1.5 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:gap-2 sm:p-2">
         {[
-          { id: 'all', label: 'All', count: statusCounts.all },
-          { id: 'active', label: 'Active', count: statusCounts.active },
-          { id: 'expiring_soon', label: 'Ending Soon', count: statusCounts.expiring },
-          { id: 'expired', label: 'Expired', count: statusCounts.expired },
-          { id: 'cancelled', label: 'Cancelled', count: statusCounts.cancelled },
+          { id: 'all', label: language === 'bn' ? 'সবগুলো' : 'All', count: statusCounts.all },
+          { id: 'active', label: language === 'bn' ? 'সক্রিয়' : 'Active', count: statusCounts.active },
+          { id: 'expiring_soon', label: language === 'bn' ? 'শীঘ্রই শেষ' : 'Ending Soon', count: statusCounts.expiring },
+          { id: 'expired', label: language === 'bn' ? 'মেয়াদ শেষ' : 'Expired', count: statusCounts.expired },
+          { id: 'cancelled', label: language === 'bn' ? 'বাতিল' : 'Cancelled', count: statusCounts.cancelled },
         ].map(tab => (
           <button
             key={tab.id}
@@ -1416,16 +1399,16 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
               className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer font-medium text-[11px]"
             >
               <Filter className="w-3 h-3 text-slate-400" />
-              <span>{showAdvancedFilters ? 'Hide Service & Payment Filters' : 'More Filters (Service, Payment, Currency)'}</span>
+              <span>{showAdvancedFilters ? (language === 'bn' ? 'ফিল্টার লুকান' : 'Hide Service & Payment Filters') : (language === 'bn' ? 'আরও ফিল্টার (সার্ভিস, পেমেন্ট, মুদ্রা)' : 'More Filters (Service, Payment, Currency)')}</span>
             </button>
             <span className="text-[11px] font-mono text-slate-400">
-              {filteredSubscriptions.length} found
+              {language === 'bn' ? `${filteredSubscriptions.length}টি পাওয়া গেছে` : `${filteredSubscriptions.length} found`}
             </span>
           </div>
           <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-            <span>Sort by</span>
+            <span>{language === 'bn' ? 'সাজান' : 'Sort by'}</span>
             <select aria-label="Sort subscriptions" value={sortBy} onChange={event => setSortBy(event.target.value as typeof sortBy)} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-            <option value="expiring">Expiring soon</option><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="renewed">Recently renewed</option><option value="highest">Highest value</option><option value="lowest">Lowest value</option><option value="customer">Customer name</option><option value="service">Service name</option>
+            <option value="expiring">{language === 'bn' ? 'মেয়াদ শেষের ক্রমে' : 'Expiring soon'}</option><option value="newest">{language === 'bn' ? 'নতুন আগে' : 'Newest'}</option><option value="oldest">{language === 'bn' ? 'পুরোনো আগে' : 'Oldest'}</option><option value="renewed">{language === 'bn' ? 'সম্প্রতি নবায়ন করা' : 'Recently renewed'}</option><option value="highest">{language === 'bn' ? 'বেশি দাম আগে' : 'Highest value'}</option><option value="lowest">{language === 'bn' ? 'কম দাম আগে' : 'Lowest value'}</option><option value="customer">{language === 'bn' ? 'কাস্টমারের নাম' : 'Customer name'}</option><option value="service">{language === 'bn' ? 'সার্ভিসের নাম' : 'Service name'}</option>
             </select>
           </label>
 
@@ -1434,13 +1417,13 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
             <div className="subscription-filters--v2 p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-2xs space-y-2 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Service</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{language === 'bn' ? 'সার্ভিস' : 'Service'}</label>
                   <select
                     value={serviceFilter}
                     onChange={e => setServiceFilter(e.target.value)}
                     className="w-full h-8 px-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs border border-slate-200/80 dark:border-slate-700 outline-none text-slate-800 dark:text-slate-200"
                   >
-                    <option value="all">All Services</option>
+                    <option value="all">{language === 'bn' ? 'সব সার্ভিস' : 'All Services'}</option>
                     {services.map(s => (
                       <option key={s.id} value={s.id}>
                         {s.name}
@@ -1449,70 +1432,70 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Plan</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{language === 'bn' ? 'প্ল্যান' : 'Plan'}</label>
                   <select
                     value={planFilter}
                     onChange={e => setPlanFilter(e.target.value)}
                     className="w-full h-8 px-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs border border-slate-200/80 dark:border-slate-700 outline-none text-slate-800 dark:text-slate-200"
                   >
-                    <option value="all">All Plans</option>
+                    <option value="all">{language === 'bn' ? 'সব প্ল্যান' : 'All Plans'}</option>
                     {services.flatMap(service => service.planDetails || []).map(plan => (
                       <option key={plan.id} value={plan.id}>{plan.name}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Payment</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{language === 'bn' ? 'পেমেন্ট' : 'Payment'}</label>
                   <select
                     value={paymentStatusFilter}
                     onChange={e => setPaymentStatusFilter(e.target.value as typeof paymentStatusFilter)}
                     className="w-full h-8 px-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs border border-slate-200/80 dark:border-slate-700 outline-none text-slate-800 dark:text-slate-200"
                   >
-                    <option value="all">All Payment Status</option>
-                    <option value="paid">Paid</option>
-                    <option value="pending">Pending</option>
-                    <option value="partial">Partial</option>
-                    <option value="failed">Failed</option>
-                    <option value="due">Due</option>
+                    <option value="all">{language === 'bn' ? 'সব পেমেন্ট' : 'All Payment Status'}</option>
+                    <option value="paid">{language === 'bn' ? 'টাকা পাওয়া গেছে' : 'Paid'}</option>
+                    <option value="pending">{language === 'bn' ? 'বাকি আছে' : 'Pending'}</option>
+                    <option value="partial">{language === 'bn' ? 'আংশিক পাওয়া' : 'Partial'}</option>
+                    <option value="failed">{language === 'bn' ? 'ব্যর্থ' : 'Failed'}</option>
+                    <option value="due">{language === 'bn' ? 'বকেয়া' : 'Due'}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Currency</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{language === 'bn' ? 'মুদ্রা' : 'Currency'}</label>
                   <select
                     value={currencyFilter}
                     onChange={e => setCurrencyFilter(e.target.value as any)}
                     className="w-full h-8 px-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs border border-slate-200/80 dark:border-slate-700 outline-none text-slate-800 dark:text-slate-200"
                   >
-                    <option value="all">All Currencies</option>
+                    <option value="all">{language === 'bn' ? 'সব মুদ্রা' : 'All Currencies'}</option>
                     <option value="BDT">BDT (৳)</option>
                     <option value="USD">USD ($)</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Date field</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{language === 'bn' ? 'তারিখের ধরন' : 'Date field'}</label>
                   <select aria-label="Subscription date filter field" value={dateFilterField} onChange={event => setDateFilterField(event.target.value as typeof dateFilterField)} className="w-full h-8 px-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-200">
-                    <option value="expiryDate">Expiry date</option><option value="startDate">Start date</option>
+                    <option value="expiryDate">{language === 'bn' ? 'মেয়াদের শেষ তারিখ' : 'Expiry date'}</option><option value="startDate">{language === 'bn' ? 'শুরুর তারিখ' : 'Start date'}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">From</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{language === 'bn' ? 'শুরু' : 'From'}</label>
                   <input type="date" value={startDateFilter} onChange={e => setStartDateFilter(e.target.value)} className="w-full h-8 px-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-200" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">To</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{language === 'bn' ? 'শেষ' : 'To'}</label>
                   <input type="date" value={endDateFilter} onChange={e => setEndDateFilter(e.target.value)} className="w-full h-8 px-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-200" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Customer</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{language === 'bn' ? 'কাস্টমার' : 'Customer'}</label>
                   <select value={customerFilter} onChange={event => setCustomerFilter(event.target.value)} className="w-full h-8 px-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-200">
-                    <option value="all">All customers</option>
+                    <option value="all">{language === 'bn' ? 'সব কাস্টমার' : 'All customers'}</option>
                     {customers.filter(customer => !customer.isArchived).map(customer => <option key={customer.id} value={customer.id}>{getCustomerOptionLabel(customer)}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Resource</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">{language === 'bn' ? 'অ্যাকাউন্ট' : 'Resource'}</label>
                   <select value={resourceFilter} onChange={event => setResourceFilter(event.target.value as typeof resourceFilter)} className="w-full h-8 px-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs border border-slate-200/80 dark:border-slate-700 text-slate-800 dark:text-slate-200">
-                    <option value="all">All resources</option><option value="assigned">Assigned</option><option value="unassigned">Unassigned</option><option value="expiring">Resource expiring</option>
+                    <option value="all">{language === 'bn' ? 'সব অ্যাকাউন্ট' : 'All resources'}</option><option value="assigned">{language === 'bn' ? 'দেওয়া হয়েছে' : 'Assigned'}</option><option value="unassigned">{language === 'bn' ? 'দেওয়া হয়নি' : 'Unassigned'}</option><option value="expiring">{language === 'bn' ? 'অ্যাকাউন্টের মেয়াদ শেষের পথে' : 'Resource expiring'}</option>
                   </select>
                 </div>
               </div>
@@ -1609,7 +1592,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                         </span>
                       </div>
                       <div className="basis-full truncate text-[10px] text-slate-500 dark:text-slate-400">
-                        {row?.account?.name || row?.account?.email || 'Unassigned'}{row?.profile?.profileName ? ` · ${row.profile.profileName}` : ''}
+                        {row?.account?.name || row?.account?.email || (language === 'bn' ? 'কোনো অ্যাকাউন্ট দেওয়া হয়নি' : 'Unassigned')}{row?.profile?.profileName ? ` · ${row.profile.profileName}` : ''}
                       </div>
                     </div>
 
@@ -1619,13 +1602,13 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                         <span className={`w-2 h-2 rounded-full shrink-0 ${badge.dotClass}`} />
                         <span className="font-medium text-slate-600 dark:text-slate-300 truncate">
                           {isCancelled
-                            ? 'Cancelled'
+                            ? (language === 'bn' ? 'বাতিল করা হয়েছে' : 'Cancelled')
                             : daysDiff < 0
                             ? language === 'bn'
-                              ? `${formatDurationDays(Math.abs(daysDiff))} আগে মেয়াদ শেষ`
+                              ? `মেয়াদ শেষ হয়েছে ${formatDurationDays(Math.abs(daysDiff))} আগে — নবায়ন করলে আবার চালু হবে`
                               : `Expired ${formatNumber(Math.abs(daysDiff))}d ago`
                             : daysDiff === 0
-                            ? 'Expires today'
+                            ? (language === 'bn' ? 'আজই শেষ হবে' : 'Expires today')
                             : daysDiff === 1
                               ? language === 'bn' ? `${formatDurationDays(1)} বাকি` : '1 day left'
                               : language === 'bn'
@@ -1645,7 +1628,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                           className="px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white text-[10px] font-bold shadow-2xs flex items-center gap-1 cursor-pointer transition-colors shrink-0"
                         >
                           <Zap className="w-3 h-3 fill-current" />
-                          <span>Renew</span>
+                          <span>{language === 'bn' ? 'নবায়ন করুন' : 'Renew'}</span>
                         </button>
                       ) : (
                         <span className="text-[10px] font-mono text-slate-400">
@@ -1655,10 +1638,10 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                     </div>
                     {filteredSubscriptions.length > pageSize && (
                       <nav aria-label="Subscription pages" className="subscription-pagination--v2 flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-900">
-                        <span className="text-slate-500">Page {currentPage} of {totalPages}</span>
+                        <span className="text-slate-500">{language === 'bn' ? `পাতা ${currentPage} / ${totalPages}` : `Page ${currentPage} of ${totalPages}`}</span>
                         <div className="flex gap-2">
-                          <button type="button" onClick={() => setCurrentPage(page => Math.max(1, page - 1))} disabled={currentPage === 1} className="min-h-8 rounded-lg border border-slate-200 px-3 font-semibold text-slate-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200">Previous</button>
-                          <button type="button" onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages} className="min-h-8 rounded-lg border border-slate-200 px-3 font-semibold text-slate-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200">Next</button>
+                          <button type="button" onClick={() => setCurrentPage(page => Math.max(1, page - 1))} disabled={currentPage === 1} className="min-h-8 rounded-lg border border-slate-200 px-3 font-semibold text-slate-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200">{language === 'bn' ? 'আগের পাতা' : 'Previous'}</button>
+                          <button type="button" onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages} className="min-h-8 rounded-lg border border-slate-200 px-3 font-semibold text-slate-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200">{language === 'bn' ? 'পরের পাতা' : 'Next'}</button>
                         </div>
                       </nav>
                     )}
@@ -1687,7 +1670,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                   className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-emerald-600 p-1 cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
-                  <span>Back to Subscription List</span>
+                  <span>{language === 'bn' ? 'সাবস্ক্রিপশনের তালিকায় ফিরুন' : 'Back to Subscription List'}</span>
                 </button>
                 <span className="text-xs font-mono text-slate-400">
                   {selectedSub.id}
@@ -1724,7 +1707,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                         )}
                       </div>
                       <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        <span>Customer:</span>
+                        <span>{language === 'bn' ? 'কাস্টমার:' : 'Customer:'}</span>
                         <button
                           type="button"
                           onClick={() => {
@@ -1784,7 +1767,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                         type="button"
                         onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
                         className="sub-hero-more p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
-                        title="More Actions"
+                        title={language === 'bn' ? 'আরও কাজ' : 'More Actions'}
                       >
                         <MoreVertical className="w-4 h-4" />
                       </button>
@@ -1801,7 +1784,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                               className="w-full text-left px-3.5 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center gap-2 cursor-pointer"
                             >
                               <UserCheck className="w-3.5 h-3.5 text-slate-400" />
-                              <span>Change Profile Slot</span>
+                              <span>{language === 'bn' ? 'প্রোফাইল বদলান' : 'Change Profile Slot'}</span>
                             </button>
                           )}
 
@@ -1829,7 +1812,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                               className="w-full text-left px-3.5 py-2 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2 cursor-pointer border-t border-slate-100 dark:border-slate-800"
                             >
                               <XCircle className="w-3.5 h-3.5" />
-                              <span>Cancel Subscription</span>
+                              <span>{language === 'bn' ? 'সাবস্ক্রিপশন বাতিল করুন' : 'Cancel Subscription'}</span>
                             </button>
                           )}
 
@@ -1843,17 +1826,17 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                 <div className={`subscription-detail-stats--v2 sub-stats--${selectedSubStatus} grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs`}>
                   <div className="p-3 bg-violet-50/60 dark:bg-violet-950/20 rounded-xl border border-violet-100 dark:border-violet-900/50">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                      Days Remaining
+                      {language === 'bn' ? 'বাকি দিন' : 'Days Remaining'}
                     </span>
                     <span className="font-mono font-extrabold text-sm sm:text-base text-slate-900 dark:text-white tabular-nums block mt-0.5">
                       {selectedSubStatus === 'cancelled'
-                        ? 'Cancelled'
+                        ? (language === 'bn' ? 'বাতিল করা হয়েছে' : 'Cancelled')
                         : getDaysDifference(selectedSub.expiryDate) < 0
                         ? language === 'bn'
-                          ? `${formatDurationDays(Math.abs(getDaysDifference(selectedSub.expiryDate)))} আগে মেয়াদ শেষ`
+                          ? `মেয়াদ শেষ হয়েছে ${formatDurationDays(Math.abs(getDaysDifference(selectedSub.expiryDate)))} আগে — নবায়ন করলে আবার চালু হবে`
                           : `Expired ${formatNumber(Math.abs(getDaysDifference(selectedSub.expiryDate)))}d ago`
                         : getDaysDifference(selectedSub.expiryDate) === 0
-                        ? 'Expires today'
+                        ? (language === 'bn' ? 'আজই শেষ হবে' : 'Expires today')
                         : getDaysDifference(selectedSub.expiryDate) === 1
                         ? language === 'bn' ? `${formatDurationDays(1)} বাকি` : '1 day left'
                         : formatDurationDays(getDaysDifference(selectedSub.expiryDate))}
@@ -1862,7 +1845,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
 
                   <div className="p-3 bg-slate-50 dark:bg-slate-800/70 rounded-xl border border-slate-100 dark:border-slate-700">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                      Amount
+                      {language === 'bn' ? 'টাকা' : 'Amount'}
                     </span>
                     <span className="font-mono font-extrabold text-sm sm:text-base text-emerald-600 dark:text-emerald-400 tabular-nums block mt-0.5">
                       {formatCurrency(selectedSub.price, selectedSub.currency || currency)}
@@ -1871,7 +1854,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
 
                   <div className="p-3 bg-slate-50 dark:bg-slate-800/70 rounded-xl border border-slate-100 dark:border-slate-700">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                      Started
+                      {language === 'bn' ? 'শুরু হয়েছে' : 'Started'}
                     </span>
                     <span className="font-semibold text-xs text-slate-800 dark:text-slate-200 block mt-0.5">
                       {formatAppDate(selectedSub.startDate, language)}
@@ -1880,7 +1863,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
 
                   <div className="p-3 bg-slate-50 dark:bg-slate-800/70 rounded-xl border border-slate-100 dark:border-slate-700">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                      Expires
+                      {language === 'bn' ? 'মেয়াদ শেষ' : 'Expires'}
                     </span>
                     <span className="font-semibold text-xs text-slate-800 dark:text-slate-200 block mt-0.5">
                       {formatAppDate(selectedSub.expiryDate, language)}
@@ -1896,12 +1879,14 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                     <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     <span className="font-bold text-slate-900 dark:text-white">
                       {selectedSubStatus === 'cancelled'
-                        ? 'Subscription Status: Cancelled'
-                        : `Subscription ${selectedSubBadge?.label?.toLocaleLowerCase() || `expires in ${formatDurationDays(getDaysDifference(selectedSub.expiryDate))}`}`}
+                        ? (language === 'bn' ? 'সাবস্ক্রিপশন: বাতিল করা হয়েছে' : 'Subscription Status: Cancelled')
+                        : (language === 'bn'
+                          ? `সাবস্ক্রিপশন ${selectedSubBadge?.label?.toLocaleLowerCase() || `${formatDurationDays(getDaysDifference(selectedSub.expiryDate))} পরে মেয়াদ শেষ হবে`}`
+                          : `Subscription ${selectedSubBadge?.label?.toLocaleLowerCase() || `expires in ${formatDurationDays(getDaysDifference(selectedSub.expiryDate))}`}`)}
                     </span>
                   </div>
                   <span className="font-mono font-semibold text-slate-400 text-[11px]">
-                    Cycle: {selectedSub.durationDays || 30} days
+                    {language === 'bn' ? `মেয়াদ: ${selectedSub.durationDays || 30} দিন` : `Cycle: ${selectedSub.durationDays || 30} days`}
                   </span>
                 </div>
 
@@ -1931,7 +1916,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                 )}
                 {selectedSubStatus === 'cancelled' && selectedSub.cancellationReason && (
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-                    Reason: {selectedSub.cancellationReason}
+                    {language === 'bn' ? `কারণ: ${selectedSub.cancellationReason}` : `Reason: ${selectedSub.cancellationReason}`}
                   </p>
                 )}
               </div>
@@ -2274,7 +2259,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                         <span className="font-bold text-slate-900 dark:text-white">Renewal · {renewal.plan}</span>
                         <span className="text-slate-500">{formatAppEventDateTime(renewal.renewalAt || renewal.renewalDate)}</span>
                       </div>
-                      <p className="mt-1 text-slate-600 dark:text-slate-300">Previous end {formatAppDate(renewal.previousEndDate, language)} · New period {formatAppDate(renewal.newStartDate, language)} – {formatAppDate(renewal.newEndDate, language)}</p>
+                      <p className="mt-1 text-slate-600 dark:text-slate-300">{language === 'bn' ? `আগের মেয়াদ শেষ ${formatAppDate(renewal.previousEndDate, language)} · নতুন মেয়াদ ${formatAppDate(renewal.newStartDate, language)} – ${formatAppDate(renewal.newEndDate, language)}` : `Previous end ${formatAppDate(renewal.previousEndDate, language)} · New period ${formatAppDate(renewal.newStartDate, language)} – ${formatAppDate(renewal.newEndDate, language)}`}</p>
                       <p className="mt-1 text-slate-600 dark:text-slate-300">{formatCurrency(renewal.amount, renewal.currency || selectedSub.currency)} · {formatCurrency(renewal.amountPaid, renewal.currency || selectedSub.currency)} paid · {formatCurrency(renewal.amountDue, renewal.currency || selectedSub.currency)} due · {renewal.paymentStatus}</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <button type="button" onClick={() => onNavigateSection?.('sales', renewal.saleId)} className="font-semibold text-emerald-700 underline dark:text-emerald-300">View Sale</button>
@@ -2330,10 +2315,10 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                 <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
                   {subscriptions.length
                     ? (language === 'bn'
-                      ? 'গ্রাহক, পেমেন্ট, অ্যাকাউন্ট এবং নবায়নের তথ্য দেখতে বাম পাশের তালিকা থেকে একটি সাবস্ক্রিপশন নির্বাচন করুন।'
+                      ? 'বাম দিক থেকে একটা সাবস্ক্রিপশন বেছে নিন।'
                       : 'Select a subscription from the list to review its customer, payment, account and renewal details.')
                     : (language === 'bn'
-                      ? 'একটি নতুন বিক্রয় তৈরি করুন—গ্রাহক, প্ল্যান, মেয়াদ এবং পেমেন্টের তথ্য থেকে সাবস্ক্রিপশন তৈরি হবে।'
+                      ? 'নতুন বিক্রয় করলেই সাবস্ক্রিপশন তৈরি হবে — আলাদা করে বানাতে হয় না।'
                       : 'Create a sale to record its customer, plan, term and payment details together with the subscription.')}
                 </p>
                 {!subscriptions.length && (
@@ -2365,7 +2350,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
       <Modal
         isOpen={isRenewDrawerOpen}
         onClose={() => setIsRenewDrawerOpen(false)}
-        title={language === 'bn' ? 'সাবস্ক্রিপশন রিনিউয়াল ওয়ার্কস্পেস' : 'Renew Subscription'}
+        title={language === 'bn' ? 'মেয়াদ বাড়ান (নবায়ন)' : 'Renew Subscription'}
         maxWidth="lg"
       >
         {selectedSub && selectedService && (
@@ -2378,14 +2363,14 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                     {selectedService.name} · {selectedSub.plan}
                   </span>
                   <span className="text-xs text-slate-500 dark:text-slate-400">
-                    Customer: <strong className="text-slate-800 dark:text-slate-200">{getCustomerDisplayName(selectedCustomer || undefined)}</strong>
+                    {language === 'bn' ? 'কাস্টমার: ' : 'Customer: '}<strong className="text-slate-800 dark:text-slate-200">{getCustomerDisplayName(selectedCustomer || undefined)}</strong>
                   </span>
                   <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
-                    Current resource: {selectedAccount?.name || selectedAccount?.email || 'Unassigned'}{selectedProfile ? ` · ${selectedProfile.profileName}` : ''}
+                    {language === 'bn' ? 'এখনকার অ্যাকাউন্ট: ' : 'Current resource: '}{selectedAccount?.name || selectedAccount?.email || (language === 'bn' ? 'দেওয়া হয়নি' : 'Unassigned')}{selectedProfile ? ` · ${selectedProfile.profileName}` : ''}
                   </span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Current Expiry</span>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">{language === 'bn' ? 'এখনকার মেয়াদ শেষ' : 'Current Expiry'}</span>
                   <span className="font-mono font-bold text-slate-900 dark:text-white text-xs">
                     {formatAppDate(selectedSub.expiryDate, language)}
                   </span>
@@ -2395,7 +2380,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-1.5 font-bold text-slate-700 dark:text-slate-300">
-                <span>Plan</span>
+                <span>{language === 'bn' ? 'প্ল্যান' : 'Plan'}</span>
                 <select value={renewPlanId} onChange={event => {
                   const plan = renewalPlanOptions.find(item => item.id === event.target.value);
                   setRenewPlanId(plan?.id || '');
@@ -2406,21 +2391,21 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                     setRenewDiscount(0);
                   }
                 }} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
-                  {!renewalPlanOptions.length && <option value="" disabled>No active plans available</option>}
-                  {renewalPlanOptions.map(plan => <option key={plan.id} value={plan.id}>{plan.name} · {plan.durationDays} days</option>)}
+                  {!renewalPlanOptions.length && <option value="" disabled>{language === 'bn' ? 'চালু কোনো প্ল্যান নেই' : 'No active plans available'}</option>}
+                  {renewalPlanOptions.map(plan => <option key={plan.id} value={plan.id}>{plan.name} · {formatDurationDays(plan.durationDays)}</option>)}
                 </select>
               </label>
               <label className="space-y-1.5 font-bold text-slate-700 dark:text-slate-300">
-                <span>Start Date</span>
+                <span>{language === 'bn' ? 'শুরুর তারিখ' : 'Start Date'}</span>
                 <input type="date" value={renewStartDate} onChange={event => setRenewStartDate(event.target.value)} required className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
               </label>
             </div>
-            {!renewalPlanOptions.length && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">No active plan is available for renewal. Activate a plan in Services first.</p>}
-            {renewalCurrentProfileUnavailable && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">The current profile is no longer available. Choose a new profile to continue.</p>}
-            {renewalCurrentFulfillmentUnavailable && !renewalCurrentProfileUnavailable && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">The current account is no longer available. Choose another available account.</p>}
+            {!renewalPlanOptions.length && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{language === 'bn' ? 'নবায়নের জন্য চালু কোনো প্ল্যান নেই। আগে সার্ভিসে গিয়ে একটা প্ল্যান চালু করুন।' : 'No active plan is available for renewal. Activate a plan in Services first.'}</p>}
+            {renewalCurrentProfileUnavailable && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{language === 'bn' ? 'আগের প্রোফাইলটা আর পাওয়া যাচ্ছে না। এগিয়ে যেতে নতুন প্রোফাইল বেছে নিন।' : 'The current profile is no longer available. Choose a new profile to continue.'}</p>}
+            {renewalCurrentFulfillmentUnavailable && !renewalCurrentProfileUnavailable && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{language === 'bn' ? 'আগের অ্যাকাউন্টটা আর পাওয়া যাচ্ছে না। আরেকটা খালি অ্যাকাউন্ট বেছে নিন।' : 'The current account is no longer available. Choose another available account.'}</p>}
             {(selectedService.settings?.usesAccounts || selectedService.settings?.usesProfiles || renewalAccountOptions.length > 0) && <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-1.5 font-bold text-slate-700 dark:text-slate-300">
-                <span>Account</span>
+                <span>{language === 'bn' ? 'অ্যাকাউন্ট' : 'Account'}</span>
                 <select value={renewAccountId} onChange={event => {
                   const accountId = event.target.value;
                   setRenewAccountId(accountId);
@@ -2429,66 +2414,66 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                     || account?.profiles.find(item => item.status === 'Available');
                   setRenewProfileId(profile?.id || '');
                 }} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
-                  <option value="">Select account</option>
+                  <option value="">{language === 'bn' ? 'অ্যাকাউন্ট বেছে নিন' : 'Select account'}</option>
                   {renewalAccountOptions.map(account => <option key={account.id} value={account.id}>{account.email}</option>)}
                 </select>
               </label>
               {(selectedService.settings?.usesProfiles || selectedService.settings?.profileAssignmentRequired || Boolean(renewalSelectedAccount?.profiles.length)) && <label className="space-y-1.5 font-bold text-slate-700 dark:text-slate-300">
-                <span>Profile</span>
+                <span>{language === 'bn' ? 'প্রোফাইল' : 'Profile'}</span>
                 <select value={renewProfileId} onChange={event => setRenewProfileId(event.target.value)} disabled={!renewalSelectedAccount} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 font-semibold text-slate-900 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
-                  <option value="">Select available profile</option>
-                  {renewalProfileOptions.map(profile => <option key={profile.id} value={profile.id}>{profile.profileName}{profile.assignedCustomerId === selectedSub.customerId ? ' · Current' : ''}</option>)}
+                  <option value="">{language === 'bn' ? 'খালি প্রোফাইল বেছে নিন' : 'Select available profile'}</option>
+                  {renewalProfileOptions.map(profile => <option key={profile.id} value={profile.id}>{profile.profileName}{profile.assignedCustomerId === selectedSub.customerId ? (language === 'bn' ? ' · এখনকারটা' : ' · Current') : ''}</option>)}
                 </select>
               </label>}
             </div>}
 
             <div className="grid gap-2 rounded-xl border border-slate-200 p-3 text-xs dark:border-slate-700 sm:grid-cols-2">
-              <div><p className="text-slate-500">Current plan</p><p className="mt-1 font-semibold text-slate-900 dark:text-white">{selectedSub.plan} · {selectedSub.durationDays} days · {formatCurrency(selectedSub.price, selectedSub.currency)}</p></div>
-              <div><p className="text-slate-500">Renewal plan</p><p className="mt-1 font-semibold text-emerald-800 dark:text-emerald-300">{renewalSelectedPlan ? `${renewalSelectedPlan.name} · ${renewalSelectedPlan.durationDays} days · ${formatCurrency(renewalSelectedPlan.price, renewalSelectedPlan.currency)}` : 'Select an active plan'}</p></div>
+              <div><p className="text-slate-500">{language === 'bn' ? 'এখনকার প্ল্যান' : 'Current plan'}</p><p className="mt-1 font-semibold text-slate-900 dark:text-white">{selectedSub.plan} · {formatDurationDays(selectedSub.durationDays)} · {formatCurrency(selectedSub.price, selectedSub.currency)}</p></div>
+              <div><p className="text-slate-500">{language === 'bn' ? 'নতুন প্ল্যান' : 'Renewal plan'}</p><p className="mt-1 font-semibold text-emerald-800 dark:text-emerald-300">{renewalSelectedPlan ? `${renewalSelectedPlan.name} · ${formatDurationDays(renewalSelectedPlan.durationDays)} · ${formatCurrency(renewalSelectedPlan.price, renewalSelectedPlan.currency)}` : (language === 'bn' ? 'চালু প্ল্যান বেছে নিন' : 'Select an active plan')}</p></div>
             </div>
 
             {/* Live New Expiry Calculation */}
             <div className="sub-renew-expiry--v2 p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
               <div>
                 <span className="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 block">
-                  New Expiry Date
+                  {language === 'bn' ? 'নতুন মেয়াদ শেষ' : 'New Expiry Date'}
                 </span>
                 <span className="font-mono font-extrabold text-sm text-emerald-700 dark:text-emerald-400">
                   {formatAppDate(previewNewExpiryDate, language)}
                 </span>
               </div>
               <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/60 px-2.5 py-1 rounded-lg">
-                {renewDuration} days
+                {formatDurationDays(renewDuration)}
               </span>
             </div>
 
             {/* Plan-controlled renewal price */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div><span className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Renewal Price</span><p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{renewalSelectedPlan ? formatCurrency(renewalSelectedPlan.price, renewalSelectedPlan.currency) : 'Select a plan'}</p></div>
+              <div><span className="font-bold text-slate-700 dark:text-slate-300 block mb-1">{language === 'bn' ? 'নবায়নের দাম' : 'Renewal Price'}</span><p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{renewalSelectedPlan ? formatCurrency(renewalSelectedPlan.price, renewalSelectedPlan.currency) : (language === 'bn' ? 'প্ল্যান বেছে নিন' : 'Select a plan')}</p></div>
               <div>
-                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Discount</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">{language === 'bn' ? 'ছাড়' : 'Discount'}</label>
                 <input type="number" min="0" max={Math.max(0, renewPrice - 0.01)} step={renewCurrency === 'USD' ? '0.01' : '1'} value={renewDiscount} onChange={event => setRenewDiscount(Number(event.target.value))} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-mono font-bold text-slate-900 dark:text-white text-xs" />
               </div>
-              <div><span className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Duration · Currency</span><p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{renewalSelectedPlan ? `${renewalSelectedPlan.durationDays} days · ${renewalSelectedPlan.currency}` : 'Select a plan'}</p></div>
+              <div><span className="font-bold text-slate-700 dark:text-slate-300 block mb-1">{language === 'bn' ? 'মেয়াদ · মুদ্রা' : 'Duration · Currency'}</span><p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{renewalSelectedPlan ? `${formatDurationDays(renewalSelectedPlan.durationDays)} · ${renewalSelectedPlan.currency}` : (language === 'bn' ? 'প্ল্যান বেছে নিন' : 'Select a plan')}</p></div>
             </div>
 
             {/* Payment Method & TrxID */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Payment Method
+                  {language === 'bn' ? 'টাকা দেওয়ার মাধ্যম' : 'Payment Method'}
                 </label>
                 <select
                   value={renewPaymentMethod}
                   onChange={e => setRenewPaymentMethod(e.target.value as PaymentMethod)}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white"
                 >
-                  {renewalPaymentMethods.map(method => <option key={method} value={method}>{method === 'Bank' ? 'Bank Transfer' : method}</option>)}
+                  {renewalPaymentMethods.map(method => <option key={method} value={method}>{method === 'Bank' ? (language === 'bn' ? 'ব্যাংক ট্রান্সফার' : 'Bank Transfer') : method}</option>)}
                 </select>
-                {!renewalPaymentMethods.length && <span className="mt-1 block text-rose-700 dark:text-rose-300">Enable a payment method in Settings before renewing.</span>}
+                {!renewalPaymentMethods.length && <span className="mt-1 block text-rose-700 dark:text-rose-300">{language === 'bn' ? 'নবায়নের আগে সেটিংসে গিয়ে টাকা দেওয়ার একটা মাধ্যম চালু করুন।' : 'Enable a payment method in Settings before renewing.'}</span>}
               </div>
               <div>
-                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Payment Status</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">{language === 'bn' ? 'টাকা দেওয়ার অবস্থা' : 'Payment Status'}</label>
                 <select value={renewPaymentStatus} onChange={event => {
                   const status = event.target.value as PaymentStatus;
                   setRenewPaymentStatus(status);
@@ -2496,37 +2481,37 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                   else if (status === 'partial') setRenewAmountPaid(String(Math.floor(renewalTotal / 2)));
                   else setRenewAmountPaid('0');
                 }} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white">
-                  <option value="paid">Paid</option><option value="partial">Partial</option><option value="pending">Pending</option>
+                  <option value="paid">{language === 'bn' ? 'পুরো দেওয়া' : 'Paid'}</option><option value="partial">{language === 'bn' ? 'আংশিক দেওয়া' : 'Partial'}</option><option value="pending">{language === 'bn' ? 'বাকি' : 'Pending'}</option>
                 </select>
               </div>
               {renewPaymentStatus === 'partial' && <div>
-                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">Amount Paid</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">{language === 'bn' ? 'যত টাকা দেওয়া হয়েছে' : 'Amount Paid'}</label>
                 <input type="number" min="0.01" max={renewalTotal} step={renewCurrency === 'USD' ? '0.01' : '1'} value={renewAmountPaid} onChange={event => setRenewAmountPaid(event.target.value)} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-mono text-xs text-slate-900 dark:text-white" />
               </div>}
               <div>
                 <label className="font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Transaction ID {paymentMethodRequiresTransactionId(renewPaymentMethod, renewalPaymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) ? '(Required)' : '(Optional)'}
+                  {language === 'bn' ? 'ট্রান্স্যাকশন আইডি' : 'Transaction ID'} {paymentMethodRequiresTransactionId(renewPaymentMethod, renewalPaymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) ? (language === 'bn' ? '(দিতে হবে)' : '(Required)') : (language === 'bn' ? '(ঐচ্ছিক)' : '(Optional)')}
                 </label>
                 <input
                   type="text"
                   required={paymentMethodRequiresTransactionId(renewPaymentMethod, renewalPaymentMethodConfigs, settings.paymentPreferences?.requireTransactionId)}
                   value={renewTrxId}
                   onChange={e => setRenewTrxId(e.target.value)}
-                  placeholder="e.g. TXN987654"
+                  placeholder={language === 'bn' ? 'যেমন: TXN987654' : 'e.g. TXN987654'}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-mono text-xs text-slate-900 dark:text-white"
                 />
               </div>
             </div>
 
             <dl className="sub-renew-totals--v2 grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-800/60">
-              <div><dt className="text-slate-500">Total</dt><dd className="mt-1 font-bold text-slate-900 dark:text-white">{formatCurrency(renewalTotal, renewCurrency)}</dd></div>
-              <div><dt className="text-slate-500">Paid</dt><dd className="mt-1 font-bold text-slate-900 dark:text-white">{formatCurrency(renewalPaid, renewCurrency)}</dd></div>
-              <div><dt className="text-slate-500">Due</dt><dd className="mt-1 font-bold text-slate-900 dark:text-white">{formatCurrency(renewalDue, renewCurrency)}</dd></div>
+              <div><dt className="text-slate-500">{language === 'bn' ? 'মোট' : 'Total'}</dt><dd className="mt-1 font-bold text-slate-900 dark:text-white">{formatCurrency(renewalTotal, renewCurrency)}</dd></div>
+              <div><dt className="text-slate-500">{language === 'bn' ? 'দেওয়া হয়েছে' : 'Paid'}</dt><dd className="mt-1 font-bold text-slate-900 dark:text-white">{formatCurrency(renewalPaid, renewCurrency)}</dd></div>
+              <div><dt className="text-slate-500">{language === 'bn' ? 'বাকি' : 'Due'}</dt><dd className="mt-1 font-bold text-slate-900 dark:text-white">{formatCurrency(renewalDue, renewCurrency)}</dd></div>
             </dl>
             <div className="rounded-xl border border-slate-200 p-3 text-xs dark:border-slate-700">
-              <p className="font-bold text-slate-800 dark:text-slate-200">Review Renewal</p>
+              <p className="font-bold text-slate-800 dark:text-slate-200">{language === 'bn' ? 'নবায়ন দেখে নিন' : 'Review Renewal'}</p>
               <p className="mt-1 text-slate-600 dark:text-slate-300">{getCustomerDisplayName(selectedCustomer || undefined)} · {selectedService.name} · {renewalSelectedPlan?.name || selectedSub.plan}</p>
-              <p className="mt-1 text-slate-500">{renewalSelectedAccount?.email || 'Manual fulfillment'}{renewalSelectedAccount?.profiles.find(profile => profile.id === renewProfileId) ? ` · ${renewalSelectedAccount.profiles.find(profile => profile.id === renewProfileId)?.profileName}` : ''}</p>
+              <p className="mt-1 text-slate-500">{renewalSelectedAccount?.email || (language === 'bn' ? 'হাতে দিতে হবে' : 'Manual fulfillment')}{renewalSelectedAccount?.profiles.find(profile => profile.id === renewProfileId) ? ` · ${renewalSelectedAccount.profiles.find(profile => profile.id === renewProfileId)?.profileName}` : ''}</p>
               <p className="mt-1 text-slate-500">{formatAppDate(renewStartDate, language)} – {formatAppDate(previewNewExpiryDate, language)}</p>
             </div>
 
@@ -2536,7 +2521,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                 onClick={() => setIsRenewDrawerOpen(false)}
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl cursor-pointer"
               >
-                Cancel
+                {t('cancel')}
               </button>
               <button
                 type="submit"
@@ -2544,7 +2529,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                 className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 disabled:cursor-wait disabled:opacity-60"
               >
                 {isRenewing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4 fill-current" />}
-                <span>{isRenewing ? 'Renewing…' : 'Confirm Renewal'}</span>
+                <span>{isRenewing ? (language === 'bn' ? 'নবায়ন হচ্ছে…' : 'Renewing…') : (language === 'bn' ? 'নবায়ন নিশ্চিত করুন' : 'Confirm Renewal')}</span>
               </button>
             </div>
           </form>
@@ -2904,6 +2889,9 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
         <form id="subscription-form" onSubmit={handleCreateNewSubscription} noValidate className="subscription-modal-form--v2 subscription-new-form--v2 space-y-5 text-sm">
           {/* What a subscription is */}
           <p className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-3.5 py-2.5 text-xs leading-6 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
+            সাধারণত বিক্রয় করলেই সাবস্ক্রিপশন তৈরি হয়। শুধু পুরোনো/বাইরের হিসাব তুলতে চাইলে এখানে হাতে লিখুন।
+          </p>
+          <p className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-3.5 py-2.5 text-xs leading-6 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
             সাবস্ক্রিপশন হলো কাস্টমারের ব্যবহারের মেয়াদ — সেল হলে শুরু হয়, মেয়াদ শেষে শেষ হয়।
           </p>
 
@@ -3158,7 +3146,7 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({
                             value={p.id}
                             disabled={p.status === 'Assigned'}
                           >
-                            {p.profileName} {p.status === 'Assigned' ? (language === 'bn' ? '(ব্যবহৃত)' : '(Occupied)') : (language === 'bn' ? '(খালি)' : '(Available)')}
+                            {p.profileName} {p.status === 'Assigned' ? (language === 'bn' ? '(দেওয়া হয়েছে)' : '(Occupied)') : (language === 'bn' ? '(খালি আছে)' : '(Available)')}
                           </option>
                         ))}
                       </select>

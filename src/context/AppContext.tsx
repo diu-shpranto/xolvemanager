@@ -192,6 +192,7 @@ export interface NewSalePayload {
   paymentNote?: string;
   currency: AppCurrency;
   paymentMethod: PaymentMethod;
+  financialAccountId?: string;
   paymentStatus: PaymentStatus;
   transactionId?: string;
   senderNumber?: string;
@@ -3971,6 +3972,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
       } : {}),
       currency: payload.currency,
       paymentMethod: payload.paymentMethod,
+      financialAccountId: payload.financialAccountId || getPaymentMethodSnapshot(payload.paymentMethod).financialAccountId,
       transactionId: payload.transactionId || '',
       senderNumber: payload.senderNumber || '',
       paymentDate,
