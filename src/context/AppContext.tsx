@@ -718,6 +718,12 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
+    // Keep settings.language in sync (same pattern as toggleDarkMode):
+    // the toggle used to write only the local LANG key, so the cloud
+    // snapshot kept language 'en' and every auto-sync restore forced the
+    // app back to English. Writing it into settings makes the choice
+    // upload with the snapshot, so restores return the chosen language.
+    setSettings(current => (current.language === lang ? current : { ...current, language: lang }));
     try {
       writeRawValue(STORAGE_KEYS.LANG, lang);
     } catch (error) {
