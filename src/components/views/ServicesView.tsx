@@ -64,6 +64,7 @@ import { formatAppDate, formatCurrency, getDaysDifference, getSubscriptionStatus
 import { createRecordId } from '../../services/localStorageStore';
 import { getAccountCapacity, getServiceResourceSummary, isAccountOperational } from '../../utils/resourceManagement';
 import { getSaleLineItems } from '../../utils/saleUtils';
+import { applyDurationChip, getActiveDurationChip, getFirstServiceFormErrorTarget, SERVICE_DURATION_CHIPS } from '../../utils/serviceFormHelpers';
 import { calculatePlanPerformance, calculateSalesFinancialSummary, calculateServicePerformance, getLocalDateString } from '../../utils/reportMetrics';
 import { exportServicesCSV } from '../../services/dataBackupService';
 import { downloadCSV } from '../../utils/csvParser';
@@ -492,6 +493,87 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   const [formTab, setFormTab] = useState<ServiceFormTab>('Basic Information');
   const [formDuplicate, setFormDuplicate] = useState<Service | null>(null);
 
+  // New single-screen form: advanced settings live in one collapsed section.
+  // formTab is kept so the detail view's "Edit Settings" buttons (which set a
+  // tab after openEditModal) still open the matching advanced group.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedHighlight, setAdvancedHighlight] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const plansSectionRef = useRef<HTMLElement | null>(null);
+  const advancedSectionRef = useRef<HTMLElement | null>(null);
+
+  const advancedGroupClass = (group: string) =>
+    `space-y-3 rounded-xl border p-3.5 ${advancedHighlight === group ? 'border-violet-400 bg-violet-50/50 ring-2 ring-violet-500/30 dark:border-violet-700 dark:bg-violet-950/20' : 'border-slate-200 dark:border-slate-800'}`;
+
+  const scrollToAdvancedGroup = (group: string) => {
+    setAdvancedOpen(true);
+    setAdvancedHighlight(group);
+    window.setTimeout(() => {
+      const el = advancedSectionRef.current?.querySelector(
+        `[data-advanced-group="${group}"]`,
+      ) as HTMLElement | null;
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      (el?.querySelector('input, select, textarea') as HTMLElement | null)?.focus({ preventScroll: true });
+    }, 60);
+  };
+
+  const jumpToFirstFormError = () => {
+    const target = getFirstServiceFormErrorTarget({
+      name: formName,
+      description: formDescription,
+      logoUrl: formLogoUrl,
+      reminderEnabled: formSettings.renewalReminderEnabled,
+      reminderDays: formSettings.reminderDays,
+      usesProfiles: formSettings.usesProfiles,
+      profileCapacity: formSettings.profileCapacity,
+      plans: formPlans,
+      defaultDirectCostType: formDefaultDirectCostType,
+      defaultDirectCostAmount: formDefaultDirectCostAmount,
+    });
+    if (target === 'name') {
+      nameInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      nameInputRef.current?.focus({ preventScroll: true });
+    } else if (target === 'description') {
+      scrollToAdvancedGroup('description');
+    } else if (target === 'logo') {
+      logoInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      logoInputRef.current?.focus({ preventScroll: true });
+    } else if (target === 'reminder') {
+      scrollToAdvancedGroup('subscription');
+    } else if (target === 'profiles') {
+      scrollToAdvancedGroup('accounts');
+    } else if (target === 'plans' || target === 'planCost') {
+      plansSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (target === 'defaultCost') {
+      scrollToAdvancedGroup('cost');
+    }
+  };
+
+  // Detail view "Edit Settings" buttons open the modal and set a tab; with the
+  // tabbed form gone, that tab now opens the matching advanced group instead.
+  useEffect(() => {
+    if (!isAddModalOpen && !editingService) return;
+    const groupByTab: Partial<Record<ServiceFormTab, string>> = {
+      'Subscription Settings': 'subscription',
+      'Account & Profile Settings': 'accounts',
+      'Customer Settings': 'customer',
+      'Renewal Message': 'renewal',
+      'Invoice Settings': 'invoice',
+      'Advanced Settings': 'advanced',
+    };
+    const group = groupByTab[formTab];
+    if (!group) return;
+    setAdvancedOpen(true);
+    setAdvancedHighlight(group);
+    const timer = window.setTimeout(() => {
+      advancedSectionRef.current
+        ?.querySelector(`[data-advanced-group="${group}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [formTab, isAddModalOpen, editingService]);
+
   useEffect(() => {
     if (!createRequest) return;
     openAddModal();
@@ -565,35 +647,35 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
     } else if (formName.trim().length < 2) {
       errors.name = language === 'bn' ? 'নাম কমপক্ষে ২ অক্ষরের হতে হবে' : 'Service name must have at least 2 characters.';
     } else if (formName.trim().length > 80) {
-      errors.name = 'Service name must be 80 characters or fewer.';
+      errors.name = language === 'bn' ? 'নাম ৮০ অক্ষরের বেশি হতে পারবে না।' : 'Service name must be 80 characters or fewer.';
     }
     if (formDescription.length > 500) {
-      errors.description = 'Description must be 500 characters or fewer.';
+      errors.description = language === 'bn' ? 'বিবরণ ৫০০ অক্ষরের বেশি হতে পারবে না।' : 'Description must be 500 characters or fewer.';
     }
     if (formLogoUrl.trim()) {
       if (!isValidHttpUrl(formLogoUrl.trim())) {
-        errors.logoUrl = 'Enter a valid image URL beginning with http:// or https://.';
+        errors.logoUrl = language === 'bn' ? 'ছবির লিংক http:// বা https:// দিয়ে শুরু হতে হবে।' : 'Enter a valid image URL beginning with http:// or https://.';
       }
     }
     if (formSettings.renewalReminderEnabled
       && (!Number.isInteger(formSettings.reminderDays) || formSettings.reminderDays < 1)) {
-      errors.reminderDays = 'Reminder days must be a positive whole number.';
+      errors.reminderDays = language === 'bn' ? 'জানানোর দিন সংখ্যা ১ বা তার বেশি হতে হবে।' : 'Reminder days must be a positive whole number.';
     }
     if (formSettings.usesProfiles
       && (!Number.isInteger(formSettings.profileCapacity) || formSettings.profileCapacity < 1)) {
-      errors.profileCapacity = 'Profile capacity must be at least 1 when profiles are enabled.';
+      errors.profileCapacity = language === 'bn' ? 'প্রোফাইল চালু থাকলে প্রতি অ্যাকাউন্টে কমপক্ষে ১টি প্রোফাইল থাকতে হবে।' : 'Profile capacity must be at least 1 when profiles are enabled.';
     }
     if (formPlans.some(plan => !Number.isFinite(plan.price) || plan.price <= 0
       || !Number.isFinite(plan.durationDays) || plan.durationDays <= 0)) {
-      errors.plans = 'Each plan must have a positive price and duration.';
+      errors.plans = language === 'bn' ? 'প্রতিটি প্ল্যানের দাম ও মেয়াদ ০-এর বেশি হতে হবে।' : 'Each plan must have a positive price and duration.';
     }
     if (formDefaultDirectCostType !== 'none' &&
       (formDefaultDirectCostAmount === '' || !Number.isFinite(Number(formDefaultDirectCostAmount)) || Number(formDefaultDirectCostAmount) < 0)) {
-      errors.plans = 'Enter a valid non-negative service default cost.';
+      errors.plans = language === 'bn' ? 'ডিফল্ট খরচের সঠিক মান দিন (০ বা তার বেশি)।' : 'Enter a valid non-negative service default cost.';
     }
     if (formPlans.some(plan => plan.directCostType && plan.directCostType !== 'none'
       && (!Number.isFinite(plan.directCostAmount) || Number(plan.directCostAmount) < 0))) {
-      errors.plans = 'Each plan cost override must be a valid non-negative amount.';
+      errors.plans = language === 'bn' ? 'প্রতিটি প্ল্যানের খরচের সঠিক মান দিন (০ বা তার বেশি)।' : 'Each plan cost override must be a valid non-negative amount.';
     }
 
     setFormErrors(errors);
@@ -603,19 +685,12 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   const saveService = async (createAnyway = false) => {
     if (isSubmitting) return;
     if (formPlanDraft) {
-      setFormTab('Plans & Pricing');
-      setFormErrors(previous => ({ ...previous, planDraft: 'Save or cancel the plan before saving this service.' }));
+      plansSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setFormErrors(previous => ({ ...previous, planDraft: language === 'bn' ? 'সার্ভিস সংরক্ষণের আগে প্ল্যানটি সংরক্ষণ করুন বা বাতিল করুন।' : 'Save or cancel the plan before saving this service.' }));
       return;
     }
     if (!validateForm()) {
-      if (!formName.trim() || formName.trim().length < 2 || formName.trim().length > 80) setFormTab('Basic Information');
-      else if (formDescription.length > 500) setFormTab('Basic Information');
-      else if (formLogoUrl.trim() && !isValidHttpUrl(formLogoUrl.trim())) setFormTab('Branding');
-      else if (formSettings.usesProfiles
-        && (!Number.isInteger(formSettings.profileCapacity) || formSettings.profileCapacity < 1)) setFormTab('Account & Profile Settings');
-      else if (formPlans.some(plan => !Number.isFinite(plan.price) || plan.price <= 0 || !Number.isFinite(plan.durationDays) || plan.durationDays <= 0)) setFormTab('Plans & Pricing');
-      else if (formSettings.renewalReminderEnabled
-        && (!Number.isInteger(formSettings.reminderDays) || formSettings.reminderDays < 1)) setFormTab('Subscription Settings');
+      jumpToFirstFormError();
       return;
     }
 
@@ -705,20 +780,20 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   const saveFormPlan = () => {
     if (!formPlanDraft) return;
     if (!formPlanDraft.name.trim()) {
-      setFormErrors(previous => ({ ...previous, planDraft: 'Please enter the plan name.' }));
+      setFormErrors(previous => ({ ...previous, planDraft: language === 'bn' ? 'প্ল্যানের নাম লিখুন।' : 'Please enter the plan name.' }));
       return;
     }
     if (formPlanDraft.price === '' || !Number.isFinite(Number(formPlanDraft.price)) || Number(formPlanDraft.price) <= 0) {
-      setFormErrors(previous => ({ ...previous, planDraft: 'Enter a valid positive price.' }));
+      setFormErrors(previous => ({ ...previous, planDraft: language === 'bn' ? 'সঠিক দাম দিন (০-এর বেশি হতে হবে)।' : 'Enter a valid positive price.' }));
       return;
     }
     if (formPlanDraft.duration === '' || !Number.isSafeInteger(Number(formPlanDraft.duration)) || Number(formPlanDraft.duration) <= 0) {
-      setFormErrors(previous => ({ ...previous, planDraft: 'Enter a valid positive duration.' }));
+      setFormErrors(previous => ({ ...previous, planDraft: language === 'bn' ? 'সঠিক মেয়াদ দিন (০-এর বেশি হতে হবে)।' : 'Enter a valid positive duration.' }));
       return;
     }
     if (formPlanDraft.directCostType && formPlanDraft.directCostType !== 'none'
       && (!Number.isFinite(Number(formPlanDraft.directCostAmount)) || Number(formPlanDraft.directCostAmount) < 0)) {
-      setFormErrors(previous => ({ ...previous, planDraft: 'Enter a valid non-negative direct cost.' }));
+      setFormErrors(previous => ({ ...previous, planDraft: language === 'bn' ? 'খরচের সঠিক মান দিন (০ বা তার বেশি)।' : 'Enter a valid non-negative direct cost.' }));
       return;
     }
     const durationMultipliers: Record<DurationUnit, number> = { Days: 1, Weeks: 7, Months: 30, Years: 365 };
@@ -738,7 +813,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         : undefined,
     };
     if (formPlans.some(existing => existing.id !== plan.id && existing.name.trim().toLowerCase() === plan.name.toLowerCase())) {
-      setFormErrors(previous => ({ ...previous, planDraft: 'A plan with this name already exists.' }));
+      setFormErrors(previous => ({ ...previous, planDraft: language === 'bn' ? 'এই নামের প্ল্যান আগেই আছে।' : 'A plan with this name already exists.' }));
       return;
     }
     setFormPlans(previous => formPlanDraft.id
@@ -2515,172 +2590,343 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           }
         >
           <form id="service-form" onSubmit={handleSaveService} className="space-y-5 text-sm">
-            <nav aria-label="Service configuration sections" className="-mx-2 flex gap-1 overflow-x-auto border-b border-slate-200 px-2 pb-2 dark:border-slate-800">
-              {SERVICE_FORM_TABS.map(tab => (
-                <button
-                  type="button"
-                  key={tab}
-                  onClick={() => setFormTab(tab)}
-                  aria-current={formTab === tab ? 'step' : undefined}
-                  className={`service-form-tab shrink-0 rounded-lg px-3 py-2 text-xs font-semibold ${formTab === tab ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </nav>
+            {/* Live preview — updates as you type */}
+            <div className="flex items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50/50 p-3.5 dark:border-violet-900 dark:bg-violet-950/20">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl text-xl font-bold text-white" style={{ backgroundColor: formColor }}>
+                {formLogoUrl && !logoPreviewFailed && !formErrors.logoUrl ? (
+                  <img src={formLogoUrl} alt="" className="h-full w-full object-cover" onError={() => setLogoPreviewFailed(true)} />
+                ) : (
+                  (() => {
+                    const PreviewIcon = PRESET_ICONS.find(preset => preset.name === formIconName)?.icon ?? getCategoryIcon(formCategory);
+                    return <PreviewIcon className="h-7 w-7" aria-hidden="true" />;
+                  })()
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-base font-bold text-slate-900 dark:text-white">{formName.trim() || (language === 'bn' ? 'সার্ভিসের নাম' : 'Service name')}</p>
+                <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                  {formCategory}
+                  {formPlans.length > 0 ? ` · ${formPlans[0].name} — ${formatCurrency(formPlans[0].price, formPlans[0].currency)} · ${formatDurationDays(formPlans[0].durationDays)}` : ''}
+                  {formPlans.length > 1 ? ` · +${formPlans.length - 1}` : ''}
+                </p>
+              </div>
+            </div>
 
-            {formTab === 'Basic Information' && (
-              <section className="space-y-4" aria-labelledby="service-basic-title">
-                <div>
-                  <h4 id="service-basic-title" className="section-title">Basic Information</h4>
-                  <p className="mt-1 text-xs text-slate-500">Set the name, category, description, and availability of this service.</p>
-                </div>
-                <label className="block space-y-1.5">
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">Service Name *</span>
-                  <input
-                    value={formName}
-                    onChange={event => {
-                      setFormName(event.target.value);
-                      setFormDuplicate(null);
-                      setFormErrors(previous => ({ ...previous, name: '' }));
-                    }}
-                    maxLength={80}
-                    placeholder="Enter service name"
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-3 text-base text-slate-900 focus:border-emerald-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                  />
-                  {formErrors.name && <span role="alert" className="block text-xs text-rose-600">{formErrors.name}</span>}
-                </label>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block space-y-1.5">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">Category</span>
-                    <select value={formCategory} onChange={event => setFormCategory(event.target.value as ServiceCategory)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white">
-                      {CATEGORIES_LIST.map(category => <option key={category} value={category}>{category}</option>)}
-                    </select>
-                  </label>
-                  <label className="block space-y-1.5">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">Status</span>
-                    <select value={formStatus} onChange={event => setFormStatus(event.target.value as 'active' | 'inactive')} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white">
-                      <option value="active">Active</option><option value="inactive">Inactive</option>
-                    </select>
-                  </label>
-                </div>
-                <label className="block space-y-1.5">
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">Description <span className="font-normal text-slate-400">Optional · up to 500 characters</span></span>
-                  <textarea rows={4} maxLength={500} value={formDescription} onChange={event => setFormDescription(event.target.value)} placeholder="Describe what this service includes" className="w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
-                  <span className="text-xs text-slate-400">{formDescription.length}/500</span>
-                  {formErrors.description && <span role="alert" className="block text-xs text-rose-600">{formErrors.description}</span>}
-                </label>
-              </section>
-            )}
+            {/* 1. Service name */}
+            <section aria-labelledby="service-name-title" className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">1</span>
+                <h3 id="service-name-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'সার্ভিসের নাম' : 'Service name'}</h3>
+              </div>
+              <input
+                ref={nameInputRef}
+                value={formName}
+                onChange={event => {
+                  setFormName(event.target.value);
+                  setFormDuplicate(null);
+                  setFormErrors(previous => ({ ...previous, name: '' }));
+                }}
+                maxLength={80}
+                placeholder={language === 'bn' ? 'যেমন: Netflix Premium' : 'e.g. Netflix Premium'}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-base text-slate-900 focus:border-violet-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              />
+              {formErrors.name && <span role="alert" className="block text-xs text-rose-600">{formErrors.name}</span>}
+            </section>
 
-            {formTab === 'Branding' && (
-              <section className="space-y-4">
-                <div><h4 className="section-title">Branding</h4><p className="mt-1 text-xs text-slate-500">Customize how the service appears in your workspace.</p></div>
-                <div className="flex items-center gap-4 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl text-xl font-bold text-white" style={{ backgroundColor: formColor }}>
-                    {formLogoUrl && !logoPreviewFailed && !formErrors.logoUrl ? <img src={formLogoUrl} alt={`${formName || 'Service'} logo preview`} className="h-full w-full object-cover" onError={() => setLogoPreviewFailed(true)} /> : (formName.trim().charAt(0).toUpperCase() || '?')}
-                  </div>
-                  <p className="text-xs text-slate-500">Preview. Without a logo, the service’s first letter appears.</p>
+            {/* 2. Category */}
+            <section aria-labelledby="service-category-title" className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">2</span>
+                <h3 id="service-category-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'ক্যাটাগরি' : 'Category'}</h3>
+              </div>
+              <div className="flex flex-wrap gap-2" role="group" aria-label={language === 'bn' ? 'ক্যাটাগরি' : 'Category'}>
+                {CATEGORIES_LIST.map(category => (
+                  <button
+                    key={category}
+                    type="button"
+                    aria-pressed={formCategory === category}
+                    onClick={() => setFormCategory(category)}
+                    className={`min-h-10 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors ${formCategory === category ? 'border-violet-600 bg-violet-600 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:border-violet-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'}`}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* 3. Logo, icon & color */}
+            <section aria-labelledby="service-logo-title" className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">3</span>
+                <h3 id="service-logo-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'লোগো ও রং' : 'Logo & color'} <span className="text-xs font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক' : 'Optional'}</span></h3>
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'আইকন বাছুন' : 'Pick an icon'}</p>
+                <div className="flex flex-wrap gap-2">
+                  {PRESET_ICONS.map(preset => {
+                    const PresetIcon = preset.icon;
+                    const selected = formIconName === preset.name;
+                    return (
+                      <button
+                        key={preset.name}
+                        type="button"
+                        title={preset.label}
+                        aria-label={preset.label}
+                        aria-pressed={selected}
+                        onClick={() => setFormIconName(preset.name)}
+                        className={`flex h-11 w-11 items-center justify-center rounded-xl border transition-colors ${selected ? 'border-violet-600 bg-violet-50 text-violet-700 ring-2 ring-violet-500/30 dark:bg-violet-950/40 dark:text-violet-300' : 'border-slate-200 bg-white text-slate-500 hover:border-violet-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'}`}
+                      >
+                        <PresetIcon className="h-5 w-5" />
+                      </button>
+                    );
+                  })}
                 </div>
-                <label className="block space-y-1.5">
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">Logo Image URL</span>
-                  <input type="url" value={formLogoUrl} onChange={event => { setFormLogoUrl(event.target.value); setLogoPreviewFailed(false); setFormErrors(previous => ({ ...previous, logoUrl: '' })); }} placeholder="https://example.com/logo.png" className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
-                  {formErrors.logoUrl && <span role="alert" className="block text-xs text-rose-600">{formErrors.logoUrl}</span>}
-                </label>
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'রং বাছুন' : 'Pick a color'}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {COLOR_PRESETS.map(color => (
+                    <button
+                      key={color}
+                      type="button"
+                      aria-label={`Select ${color} accent`}
+                      aria-pressed={formColor.toLowerCase() === color.toLowerCase()}
+                      onClick={() => setFormColor(color)}
+                      className={`h-9 w-9 rounded-full border border-slate-200 ${formColor.toLowerCase() === color.toLowerCase() ? 'ring-2 ring-violet-600 ring-offset-2 dark:ring-offset-slate-900' : ''}`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                  <label className="flex min-h-9 items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs dark:border-slate-700">
+                    {language === 'bn' ? 'নিজের রং' : 'Custom'}
+                    <input type="color" value={formColor} onChange={event => setFormColor(event.target.value)} className="h-6 w-7 cursor-pointer border-0 bg-transparent p-0" />
+                  </label>
+                </div>
+              </div>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'অথবা ছবির লিংক দিন' : 'Or paste an image URL'}</span>
+                <input
+                  ref={logoInputRef}
+                  type="text"
+                  inputMode="url"
+                  value={formLogoUrl}
+                  onChange={event => { setFormLogoUrl(event.target.value); setLogoPreviewFailed(false); setFormErrors(previous => ({ ...previous, logoUrl: '' })); }}
+                  placeholder="https://example.com/logo.png"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+                {formErrors.logoUrl && <span role="alert" className="block text-xs text-rose-600">{formErrors.logoUrl}</span>}
+              </label>
+            </section>
+
+            {/* 4. Plans & pricing */}
+            <section aria-labelledby="service-plans-title" ref={plansSectionRef} className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-bold text-white">4</span>
+                <h3 id="service-plans-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'প্ল্যান ও দাম' : 'Plans & pricing'}</h3>
+              </div>
+              <p className="text-xs text-slate-500">{language === 'bn' ? 'একটা প্ল্যান দিয়ে শুরু করুন — পরে আরও যোগ করা যাবে।' : 'Start with one plan — you can add more later.'}</p>
+              {formErrors.plans && <p role="alert" className="text-xs text-rose-600">{formErrors.plans}</p>}
+              {formPlans.length > 0 && (
                 <div className="space-y-2">
-                  <span className="block font-semibold text-slate-700 dark:text-slate-300">Accent Color</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {COLOR_PRESETS.map(color => <button key={color} type="button" aria-label={`Select ${color} accent`} aria-pressed={formColor.toLowerCase() === color.toLowerCase()} onClick={() => setFormColor(color)} className={`h-9 w-9 rounded-lg border border-slate-200 ${formColor.toLowerCase() === color.toLowerCase() ? 'ring-2 ring-emerald-500 ring-offset-2' : ''}`} style={{ backgroundColor: color }} />)}
-                    <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs dark:border-slate-700">Custom Color<input type="color" value={formColor} onChange={event => setFormColor(event.target.value)} className="h-7 w-8 cursor-pointer border-0 bg-transparent p-0" /></label>
+                  {formPlans.map(plan => (
+                    <div key={plan.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-slate-900 dark:text-white">{plan.name}</p>
+                        <p className="text-xs text-slate-500">{formatCurrency(plan.price, plan.currency)} · {plan.duration || plan.durationDays} {plan.durationUnit || 'Days'} · {plan.status === 'active' ? (language === 'bn' ? 'সক্রিয়' : 'Active') : (language === 'bn' ? 'নিষ্ক্রিয়' : 'Inactive')}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setFormPlanDraft({ ...plan, duration: plan.duration ?? plan.durationDays, durationUnit: plan.durationUnit || 'Days' })} className="min-h-9 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold dark:border-slate-700">{language === 'bn' ? 'বদলান' : 'Edit'}</button>
+                        <button type="button" onClick={() => setFormPlans(previous => previous.map(item => item.id === plan.id ? { ...item, status: item.status === 'active' ? 'inactive' : 'active' } : item))} className="min-h-9 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold dark:border-slate-700">{plan.status === 'active' ? (language === 'bn' ? 'বন্ধ করুন' : 'Deactivate') : (language === 'bn' ? 'চালু করুন' : 'Activate')}</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {formPlanDraft ? (
+                <div className="space-y-3 rounded-2xl border border-violet-300 bg-violet-50/50 p-4 dark:border-violet-800 dark:bg-violet-950/20">
+                  <h4 className="font-semibold text-slate-900 dark:text-white">{formPlanDraft.id ? (language === 'bn' ? 'প্ল্যান বদলান' : 'Edit Plan') : (language === 'bn' ? 'নতুন প্ল্যান' : 'New Plan')}</h4>
+                  <label className="block space-y-1">
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'প্ল্যানের নাম' : 'Plan name'} *</span>
+                    <input autoFocus maxLength={80} value={formPlanDraft.name} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, name: event.target.value } : previous)} placeholder={language === 'bn' ? 'যেমন: ১ মাস' : 'e.g. 1 Month'} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-white" />
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block space-y-1">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'দাম' : 'Price'} *</span>
+                      <div className="flex gap-2">
+                        <input type="number" min="0.01" step="any" value={formPlanDraft.price} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, price: event.target.value === '' ? '' : Number(event.target.value) } : previous)} placeholder="0" className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-white" />
+                        <select value={formPlanDraft.currency} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, currency: event.target.value as AppCurrency } : previous)} className="rounded-lg border border-slate-300 bg-white px-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-white">
+                          <option value={currency}>{currency}</option>
+                          <option value={currency === 'BDT' ? 'USD' : 'BDT'}>{currency === 'BDT' ? 'USD' : 'BDT'}</option>
+                        </select>
+                      </div>
+                    </label>
+                    <div className="space-y-1">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'মেয়াদ' : 'Duration'} *</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {SERVICE_DURATION_CHIPS.map(days => (
+                          <button
+                            key={days}
+                            type="button"
+                            aria-pressed={getActiveDurationChip(formPlanDraft.duration, formPlanDraft.durationUnit) === days}
+                            onClick={() => setFormPlanDraft(previous => previous ? applyDurationChip(previous, days) : previous)}
+                            className={`min-h-9 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${getActiveDurationChip(formPlanDraft.duration, formPlanDraft.durationUnit) === days ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-violet-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200'}`}
+                          >
+                            {days} {language === 'bn' ? 'দিন' : 'days'}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <input type="number" min="1" step="1" value={formPlanDraft.duration} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, duration: event.target.value === '' ? '' : Number(event.target.value) } : previous)} aria-label={language === 'bn' ? 'নিজের মেয়াদ' : 'Custom duration'} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-white" />
+                        <select value={formPlanDraft.durationUnit} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, durationUnit: event.target.value as DurationUnit } : previous)} className="rounded-lg border border-slate-300 bg-white px-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-white">
+                          {(['Days', 'Weeks', 'Months', 'Years'] as const).map(unit => <option key={unit}>{unit}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-900">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'সক্রিয় প্ল্যান' : 'Active plan'}</span>
+                      <input type="checkbox" checked={formPlanDraft.status === 'active'} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, status: event.target.checked ? 'active' : 'inactive' } : previous)} className="h-4 w-4 accent-emerald-600" />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'খরচ (ঐচ্ছিক)' : 'Expected cost (optional)'}</span>
+                      <select aria-label={language === 'bn' ? 'প্ল্যানের খরচ' : 'Plan direct cost'} value={formPlanDraft.directCostType || ''} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, directCostType: event.target.value ? event.target.value as NonNullable<ServicePlan['directCostType']> : undefined } : previous)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-xs dark:border-slate-600 dark:bg-slate-900 dark:text-white">
+                        <option value="">{language === 'bn' ? 'সার্ভিসের ডিফল্ট ব্যবহার করুন' : 'Use service default'}</option>
+                        <option value="none">{language === 'bn' ? 'কোনো খরচ নেই' : 'No expected cost'}</option>
+                        <option value="fixed_per_sale">{language === 'bn' ? 'প্রতি বিক্রিতে নির্দিষ্ট' : 'Fixed per sale'}</option>
+                        <option value="fixed_per_cycle">{language === 'bn' ? 'প্রতি চক্রে নির্দিষ্ট' : 'Fixed per cycle'}</option>
+                        <option value="percentage_of_sale">{language === 'bn' ? 'বিক্রির শতাংশ' : 'Percentage of sale'}</option>
+                      </select>
+                    </label>
+                  </div>
+                  {formPlanDraft.directCostType && formPlanDraft.directCostType !== 'none' && (
+                    <label className="block max-w-xs space-y-1">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{formPlanDraft.directCostType === 'percentage_of_sale' ? (language === 'bn' ? 'খরচের হার (%)' : 'Cost percentage (%)') : (language === 'bn' ? 'খরচের পরিমাণ' : 'Cost amount')}</span>
+                      <input aria-label={language === 'bn' ? 'খরচের পরিমাণ' : 'Direct cost amount'} type="number" min="0" step="any" value={formPlanDraft.directCostAmount ?? ''} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, directCostAmount: event.target.value === '' ? undefined : Number(event.target.value) } : previous)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-xs dark:border-slate-600 dark:bg-slate-900 dark:text-white" />
+                    </label>
+                  )}
+                  {formErrors.planDraft && <p role="alert" className="text-xs text-rose-600">{formErrors.planDraft}</p>}
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setFormPlanDraft(null)} className="min-h-10 rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'বাতিল করুন' : 'Cancel'}</button>
+                    <button type="button" onClick={saveFormPlan} className="min-h-10 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500">{language === 'bn' ? 'প্ল্যান সংরক্ষণ করুন' : 'Save Plan'}</button>
                   </div>
                 </div>
-              </section>
-            )}
+              ) : (
+                <button type="button" onClick={() => { setFormPlanDraft({ name: '', price: '', currency, duration: settings.serviceDefaults?.durationDays ?? 30, durationUnit: 'Days', status: 'active' }); setFormErrors(previous => ({ ...previous, planDraft: '' })); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/40 px-4 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:bg-violet-950/20 dark:text-violet-300">
+                  <Plus className="h-4 w-4" />{formPlans.length === 0 ? (language === 'bn' ? 'প্রথম প্ল্যান যোগ করুন' : 'Add your first plan') : (language === 'bn' ? 'আরেকটি প্ল্যান যোগ করুন' : 'Add another plan')}
+                </button>
+              )}
+            </section>
 
-            {formTab === 'Plans & Pricing' && (
-              <section className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="section-title">Plans & Pricing</h4><p className="mt-1 text-xs text-slate-500">Add one or more sale plans. Plans can also be added later.</p></div><button type="button" onClick={() => { setFormPlanDraft({ name: '', price: '', currency, duration: settings.serviceDefaults?.durationDays ?? 30, durationUnit: 'Days', status: 'active' }); setFormErrors(previous => ({ ...previous, planDraft: '' })); }} className="service-btn-primary rounded-lg bg-emerald-600 px-3.5 py-2.5 text-xs font-semibold text-white hover:bg-emerald-500">+ Add Plan</button></div>
-                <div className="grid gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-800 sm:grid-cols-2">
-                  <label className="block space-y-1"><span className="text-xs font-semibold">Service default direct cost</span><select aria-label="Service default direct cost type" value={formDefaultDirectCostType} onChange={event => setFormDefaultDirectCostType(event.target.value as NonNullable<Service['defaultDirectCostType']>)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="none">None</option><option value="fixed_per_sale">Fixed per sale</option><option value="fixed_per_cycle">Fixed per cycle</option><option value="percentage_of_sale">Percentage of sale</option></select></label>
-                  {formDefaultDirectCostType !== 'none' && <label className="block space-y-1"><span className="text-xs font-semibold">{formDefaultDirectCostType === 'percentage_of_sale' ? 'Cost percentage (%)' : 'Cost amount'}</span><input aria-label="Service default direct cost amount" type="number" min="0" step="any" value={formDefaultDirectCostAmount} onChange={event => setFormDefaultDirectCostAmount(event.target.value === '' ? '' : Number(event.target.value))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>}
-                  <p className="text-[11px] text-slate-500 sm:col-span-2">Expected cost only. A plan can override this; actual cost records are tracked separately in Profitability.</p>
+            {/* 5. Advanced settings (collapsed, optional) */}
+            <section ref={advancedSectionRef} aria-labelledby="service-advanced-title" className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+              <button type="button" onClick={() => { setAdvancedOpen(previous => { if (previous) setAdvancedHighlight(null); return !previous; }); }} aria-expanded={advancedOpen} className="flex min-h-12 w-full items-center justify-between gap-3 bg-slate-50 px-4 py-3 text-left dark:bg-slate-800/60">
+                <span id="service-advanced-title" className="text-sm font-bold text-slate-800 dark:text-slate-100">{language === 'bn' ? 'আরও সেটিংস (ঐচ্ছিক)' : 'More settings (optional)'}</span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {advancedOpen && (
+                <div className="space-y-4 border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                  {/* Description & status */}
+                  <div data-advanced-group="description" className={advancedGroupClass('description')}>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'বিবরণ ও অবস্থা' : 'Description & status'}</h4>
+                    <label className="block space-y-1.5">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'বিবরণ' : 'Description'} <span className="font-normal text-slate-400">{language === 'bn' ? 'ঐচ্ছিক · সর্বোচ্চ ৫০০ অক্ষর' : 'Optional · up to 500 characters'}</span></span>
+                      <textarea rows={3} maxLength={500} value={formDescription} onChange={event => setFormDescription(event.target.value)} placeholder={language === 'bn' ? 'এই সার্ভিসে কী কী আছে লিখুন' : 'Describe what this service includes'} className="w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                      <span className="text-xs text-slate-400">{formDescription.length}/500</span>
+                      {formErrors.description && <span role="alert" className="block text-xs text-rose-600">{formErrors.description}</span>}
+                    </label>
+                    <label className="block max-w-xs space-y-1.5">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'অবস্থা' : 'Status'}</span>
+                      <select value={formStatus} onChange={event => setFormStatus(event.target.value as 'active' | 'inactive')} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+                        <option value="active">{language === 'bn' ? 'সক্রিয়' : 'Active'}</option>
+                        <option value="inactive">{language === 'bn' ? 'নিষ্ক্রিয়' : 'Inactive'}</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  {/* Subscription settings */}
+                  <div data-advanced-group="subscription" className={advancedGroupClass('subscription')}>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'সাবস্ক্রিপশন সেটিংস' : 'Subscription Settings'}</h4>
+                    {([
+                      ['subscriptionEnabled', language === 'bn' ? 'সাবস্ক্রিপশন চালু' : 'Subscription Enabled'],
+                      ['renewalEnabled', language === 'bn' ? 'রিনিউ চালু' : 'Renewal Enabled'],
+                      ['autoCalculateExpiry', language === 'bn' ? 'মেয়াদ শেষের তারিখ অটো হিসাব' : 'Auto-calculate expiry date'],
+                      ['renewalReminderEnabled', language === 'bn' ? 'রিনিউয়ের আগে জানান' : 'Enable renewal reminder'],
+                    ] as const).map(([key, label]) => <label key={key} className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span className="text-sm text-slate-700 dark:text-slate-300">{label}</span><input type="checkbox" checked={formSettings[key]} onChange={event => setFormSettings(previous => ({ ...previous, [key]: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>)}
+                    {formSettings.renewalReminderEnabled && <label className="block max-w-xs space-y-1.5"><span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'মেয়াদ শেষের কত দিন আগে জানাবেন' : 'Reminder days before expiry'}</span><select value={formSettings.reminderDays} onChange={event => setFormSettings(previous => ({ ...previous, reminderDays: Number(event.target.value) }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{[3, 5, 7, 14, 30].map(days => <option key={days} value={days}>{formatDurationDays(days)}</option>)}</select>{formErrors.reminderDays && <span role="alert" className="text-xs text-rose-600">{formErrors.reminderDays}</span>}</label>}
+                  </div>
+
+                  {/* Account & profile settings */}
+                  <div data-advanced-group="accounts" className={advancedGroupClass('accounts')}>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'অ্যাকাউন্ট ও প্রোফাইল' : 'Account & Profile Settings'}</h4>
+                    <label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span className="text-sm text-slate-700 dark:text-slate-300">{language === 'bn' ? 'অ্যাকাউন্ট ব্যবহার করে' : 'Uses Accounts'}</span><input type="checkbox" checked={formSettings.usesAccounts} onChange={event => setFormSettings(previous => ({ ...previous, usesAccounts: event.target.checked, usesProfiles: event.target.checked ? previous.usesProfiles : false }))} className="h-4 w-4 accent-emerald-600" /></label>
+                    {formSettings.usesAccounts && <><label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span className="text-sm text-slate-700 dark:text-slate-300">{language === 'bn' ? 'প্রোফাইল ব্যবহার করে' : 'Uses Profiles'}</span><input type="checkbox" checked={formSettings.usesProfiles} onChange={event => setFormSettings(previous => ({ ...previous, usesProfiles: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>{formSettings.usesProfiles && <label className="block max-w-xs space-y-1.5"><span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'প্রতি অ্যাকাউন্টে প্রোফাইল' : 'Default Profiles Per Account'} *</span><input type="number" min="1" step="1" value={formSettings.profileCapacity} onChange={event => setFormSettings(previous => ({ ...previous, profileCapacity: event.target.value === '' ? 0 : Number(event.target.value) }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />{formErrors.profileCapacity && <span role="alert" className="text-xs text-rose-600">{formErrors.profileCapacity}</span>}</label>}<label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span className="text-sm text-slate-700 dark:text-slate-300">{language === 'bn' ? 'অ্যাকাউন্ট শেয়ার করা যাবে' : 'Allow Account Sharing'}</span><input type="checkbox" checked={formSettings.allowAccountSharing} onChange={event => setFormSettings(previous => ({ ...previous, allowAccountSharing: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label><label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span className="text-sm text-slate-700 dark:text-slate-300">{language === 'bn' ? 'প্রোফাইল বরাদ্দ বাধ্যতামূলক' : 'Profile Assignment Required'}</span><input type="checkbox" checked={formSettings.profileAssignmentRequired} onChange={event => setFormSettings(previous => ({ ...previous, profileAssignmentRequired: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label></>}
+                  </div>
+
+                  {/* Customer settings */}
+                  <div data-advanced-group="customer" className={advancedGroupClass('customer')}>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'কাস্টমার সেটিংস' : 'Customer Settings'}</h4>
+                    {([
+                      ['customerRequired', language === 'bn' ? 'কাস্টমার বাধ্যতামূলক' : 'Customer Required'],
+                      ['emailRequired', language === 'bn' ? 'ইমেইল বাধ্যতামূলক' : 'Email Required'],
+                      ['phoneRequired', language === 'bn' ? 'ফোন বাধ্যতামূলক' : 'Phone Required'],
+                      ['allowMultipleActiveSubscriptions', language === 'bn' ? 'একাধিক সক্রিয় সাবস্ক্রিপশন' : 'Allow Multiple Active Subscriptions'],
+                      ['allowRenewal', language === 'bn' ? 'রিনিউ করা যাবে' : 'Allow Renewal'],
+                      ['allowEarlyRenewal', language === 'bn' ? 'আগে থেকে রিনিউ করা যাবে' : 'Allow Early Renewal'],
+                    ] as const).map(([key, label]) => <label key={key} className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span className="text-sm text-slate-700 dark:text-slate-300">{label}</span><input type="checkbox" checked={formSettings[key]} onChange={event => setFormSettings(previous => ({ ...previous, [key]: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>)}
+                  </div>
+
+                  {/* Renewal message */}
+                  <div data-advanced-group="renewal" className={advancedGroupClass('renewal')}>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'রিনিউ মেসেজ' : 'Renewal Message'}</h4>
+                    <label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span className="text-sm text-slate-700 dark:text-slate-300">{language === 'bn' ? 'রিনিউ মেসেজ চালু' : 'Enable Renewal Message'}</span><input type="checkbox" checked={formRenewalMessage.enabled} onChange={event => setFormRenewalMessage(previous => ({ ...previous, enabled: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>
+                    {formRenewalMessage.enabled && <><label className="block space-y-1.5"><span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'মেসেজের নমুনা' : 'Message Template'}</span><textarea rows={6} value={formRenewalMessage.template} onChange={event => setFormRenewalMessage(previous => ({ ...previous, template: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label><div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800"><p className="mb-2 text-xs font-semibold text-slate-700 dark:text-slate-200">{language === 'bn' ? 'ব্যবহার করা যাবে' : 'Available Variables'}</p><p className="break-words text-xs leading-6 text-slate-500">{['customerName', 'customerPhone', 'customerEmail', 'serviceName', 'planName', 'startDate', 'expiryDate', 'invoiceNumber', 'amount', 'currency'].map(variable => `{${variable}}`).join('  ')}</p></div></>}
+                  </div>
+
+                  {/* Invoice settings */}
+                  <div data-advanced-group="invoice" className={advancedGroupClass('invoice')}>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'ইনভয়েস সেটিংস' : 'Invoice Settings'}</h4>
+                    {([
+                      ['showLogo', language === 'bn' ? 'ইনভয়েসে লোগো' : 'Show Service Logo'],
+                      ['showDescription', language === 'bn' ? 'ইনভয়েসে বিবরণ' : 'Show Service Description'],
+                      ['showPlan', language === 'bn' ? 'ইনভয়েসে প্ল্যানের নাম' : 'Show Plan Name'],
+                      ['showSubscriptionPeriod', language === 'bn' ? 'ইনভয়েসে সময়কাল' : 'Show Subscription Period'],
+                      ['showPaymentMethod', language === 'bn' ? 'ইনভয়েসে পেমেন্টের মাধ্যম' : 'Show Payment Method'],
+                      ['showCustomerPhone', language === 'bn' ? 'ইনভয়েসে কাস্টমারের ফোন' : 'Show Customer Phone'],
+                      ['showCustomerEmail', language === 'bn' ? 'ইনভয়েসে কাস্টমারের ইমেইল' : 'Show Customer Email'],
+                    ] as const).map(([key, label]) => <label key={key} className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span className="text-sm text-slate-700 dark:text-slate-300">{label}</span><input type="checkbox" checked={formInvoiceSettings[key]} onChange={event => setFormInvoiceSettings(previous => ({ ...previous, [key]: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>)}
+                    <p className="text-xs text-slate-500">{language === 'bn' ? 'অ্যাকাউন্টের পাসওয়ার্ড ও প্রোফাইলের পিন কখনো ইনভয়েসে আসে না।' : 'Account passwords and profile PINs are never included in service or invoice settings.'}</p>
+                  </div>
+
+                  {/* Advanced settings */}
+                  <div data-advanced-group="advanced" className={advancedGroupClass('advanced')}>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'অ্যাডভান্সড সেটিংস' : 'Advanced Settings'}</h4>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="block space-y-1.5"><span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'সার্ভিসের নিজস্ব কোড' : 'Internal Service Code'}</span><input value={formAdvanced.internalCode} onChange={event => setFormAdvanced(previous => ({ ...previous, internalCode: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+                      <label className="block space-y-1.5"><span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'সাজানোর ক্রম' : 'Sort Order'}</span><input type="number" value={formAdvanced.sortOrder} onChange={event => setFormAdvanced(previous => ({ ...previous, sortOrder: Number(event.target.value) }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+                    </div>
+                    {([
+                      ['showInNewSale', language === 'bn' ? 'নতুন বিক্রিতে দেখান' : 'Display on New Sale'],
+                      ['showOnDashboard', language === 'bn' ? 'ড্যাশবোর্ডে দেখান' : 'Display on Dashboard'],
+                      ['allowNewSubscriptions', language === 'bn' ? 'নতুন সাবস্ক্রিপশন দেওয়া যাবে' : 'Allow New Subscriptions'],
+                      ['allowManualRenewal', language === 'bn' ? 'নিজে রিনিউ করা যাবে' : 'Allow Manual Renewal'],
+                    ] as const).map(([key, label]) => <label key={key} className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span className="text-sm text-slate-700 dark:text-slate-300">{label}</span><input type="checkbox" checked={formAdvanced[key]} onChange={event => setFormAdvanced(previous => ({ ...previous, [key]: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>)}
+                    <label className="block space-y-1.5"><span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'নোট' : 'Notes'}</span><textarea rows={3} value={formAdvanced.notes} onChange={event => setFormAdvanced(previous => ({ ...previous, notes: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
+                  </div>
+
+                  {/* Service default direct cost */}
+                  <div data-advanced-group="cost" className={advancedGroupClass('cost')}>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'ডিফল্ট খরচ' : 'Default direct cost'}</h4>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block space-y-1"><span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'খরচের ধরন' : 'Service default direct cost'}</span><select aria-label={language === 'bn' ? 'খরচের ধরন' : 'Service default direct cost type'} value={formDefaultDirectCostType} onChange={event => setFormDefaultDirectCostType(event.target.value as NonNullable<Service['defaultDirectCostType']>)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="none">{language === 'bn' ? 'নেই' : 'None'}</option><option value="fixed_per_sale">{language === 'bn' ? 'প্রতি বিক্রিতে নির্দিষ্ট' : 'Fixed per sale'}</option><option value="fixed_per_cycle">{language === 'bn' ? 'প্রতি চক্রে নির্দিষ্ট' : 'Fixed per cycle'}</option><option value="percentage_of_sale">{language === 'bn' ? 'বিক্রির শতাংশ' : 'Percentage of sale'}</option></select></label>
+                      {formDefaultDirectCostType !== 'none' && <label className="block space-y-1"><span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{formDefaultDirectCostType === 'percentage_of_sale' ? (language === 'bn' ? 'খরচের হার (%)' : 'Cost percentage (%)') : (language === 'bn' ? 'খরচের পরিমাণ' : 'Cost amount')}</span><input aria-label={language === 'bn' ? 'খরচের পরিমাণ' : 'Service default direct cost amount'} type="number" min="0" step="any" value={formDefaultDirectCostAmount} onChange={event => setFormDefaultDirectCostAmount(event.target.value === '' ? '' : Number(event.target.value))} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>}
+                    </div>
+                    <p className="text-[11px] text-slate-500">{language === 'bn' ? 'শুধু আনুমানিক খরচ। কোনো প্ল্যান আলাদা খরচ দিলে সেটাই প্রযোজ্য হবে।' : 'Expected cost only. A plan can override this; actual cost records are tracked separately in Profitability.'}</p>
+                  </div>
                 </div>
-                {formErrors.plans && <p role="alert" className="text-xs text-rose-600">{formErrors.plans}</p>}
-                {formPlans.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">No plans yet. Add plans now or later from service details.</div> : <div className="space-y-2">{formPlans.map(plan => <div key={plan.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-800"><div className="min-w-0"><p className="truncate font-semibold text-slate-900 dark:text-white">{plan.name}</p><p className="text-xs text-slate-500">{formatCurrency(plan.price, plan.currency)} · {plan.duration || plan.durationDays} {plan.durationUnit || 'Days'} · {plan.status === 'active' ? 'Active' : 'Inactive'}</p></div><div className="flex gap-2"><button type="button" onClick={() => setFormPlanDraft({ ...plan, duration: plan.duration ?? plan.durationDays, durationUnit: plan.durationUnit || 'Days' })} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">Edit</button><button type="button" onClick={() => setFormPlans(previous => previous.map(item => item.id === plan.id ? { ...item, status: item.status === 'active' ? 'inactive' : 'active' } : item))} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold dark:border-slate-700">{plan.status === 'active' ? 'Deactivate' : 'Activate'}</button></div></div>)}</div>}
-                {formPlanDraft && <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20"><h5 className="font-semibold text-slate-900 dark:text-white">{formPlanDraft.id ? 'Edit Plan' : 'Add Plan'}</h5><label className="block space-y-1"><span className="text-xs font-medium">Plan Name *</span><input autoFocus maxLength={80} value={formPlanDraft.name} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, name: event.target.value } : previous)} placeholder="Enter plan name" className="control-field w-full px-3 py-2.5" /></label><div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1"><span className="text-xs font-medium">Price *</span><input type="number" min="0.01" step="any" value={formPlanDraft.price} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, price: event.target.value === '' ? '' : Number(event.target.value) } : previous)} placeholder="Enter price" className="control-field w-full px-3 py-2.5" /></label><label className="block space-y-1"><span className="text-xs font-medium">Currency</span><select value={formPlanDraft.currency} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, currency: event.target.value as AppCurrency } : previous)} className="control-field w-full px-3 py-2.5"><option value={currency}>{currency} (Business currency)</option><option value={currency === 'BDT' ? 'USD' : 'BDT'}>{currency === 'BDT' ? 'USD' : 'BDT'}</option></select></label><label className="block space-y-1"><span className="text-xs font-medium">Duration *</span><input type="number" min="1" step="1" value={formPlanDraft.duration} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, duration: event.target.value === '' ? '' : Number(event.target.value) } : previous)} className="control-field w-full px-3 py-2.5" /></label><label className="block space-y-1"><span className="text-xs font-medium">Duration Unit</span><select value={formPlanDraft.durationUnit} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, durationUnit: event.target.value as DurationUnit } : previous)} className="control-field w-full px-3 py-2.5">{(['Days', 'Weeks', 'Months', 'Years'] as const).map(unit => <option key={unit}>{unit}</option>)}</select></label><label className="block space-y-1"><span className="text-xs font-medium">Status</span><select value={formPlanDraft.status} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, status: event.target.value as 'active' | 'inactive' } : previous)} className="control-field w-full px-3 py-2.5"><option value="active">Active</option><option value="inactive">Inactive</option></select></label></div><div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1"><span className="text-xs font-medium">Plan direct cost override</span><select aria-label="Plan direct cost override type" value={formPlanDraft.directCostType || ''} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, directCostType: event.target.value ? event.target.value as NonNullable<ServicePlan['directCostType']> : undefined } : previous)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white"><option value="">Use service default</option><option value="none">No expected cost</option><option value="fixed_per_sale">Fixed per sale</option><option value="fixed_per_cycle">Fixed per cycle</option><option value="percentage_of_sale">Percentage of sale</option></select></label>{formPlanDraft.directCostType && formPlanDraft.directCostType !== 'none' && <label className="block space-y-1"><span className="text-xs font-medium">{formPlanDraft.directCostType === 'percentage_of_sale' ? 'Cost percentage (%)' : 'Cost amount'}</span><input aria-label="Plan direct cost amount" type="number" min="0" step="any" value={formPlanDraft.directCostAmount ?? ''} onChange={event => setFormPlanDraft(previous => previous ? { ...previous, directCostAmount: event.target.value === '' ? undefined : Number(event.target.value) } : previous)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>}</div>{formErrors.planDraft && <p role="alert" className="text-xs text-rose-600">{formErrors.planDraft}</p>}<div className="flex justify-end gap-2"><button type="button" onClick={() => setFormPlanDraft(null)} className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-600">Cancel</button><button type="button" onClick={saveFormPlan} className="service-btn-primary rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Save Plan</button></div></div>}
-              </section>
-            )}
+              )}
+            </section>
 
-            {formTab === 'Subscription Settings' && (
-              <section className="space-y-4"><div><h4 className="section-title">Subscription Settings</h4><p className="mt-1 text-xs text-slate-500">Define expiry and renewal behavior for this service.</p></div>
-                {([
-                  ['subscriptionEnabled', 'Subscription Enabled'],
-                  ['renewalEnabled', 'Renewal Enabled'],
-                  ['autoCalculateExpiry', 'Auto-calculate expiry date'],
-                  ['renewalReminderEnabled', 'Enable renewal reminder'],
-                ] as const).map(([key, label]) => <label key={key} className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span className="text-sm text-slate-700 dark:text-slate-300">{label}</span><input type="checkbox" checked={formSettings[key]} onChange={event => setFormSettings(previous => ({ ...previous, [key]: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>)}
-                {formSettings.renewalReminderEnabled && <label className="block max-w-xs space-y-1.5"><span className="font-medium">Reminder days before expiry</span><select value={formSettings.reminderDays} onChange={event => setFormSettings(previous => ({ ...previous, reminderDays: Number(event.target.value) }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">{[3, 5, 7, 14, 30].map(days => <option key={days} value={days}>{formatDurationDays(days)}</option>)}</select>{formErrors.reminderDays && <span role="alert" className="text-xs text-rose-600">{formErrors.reminderDays}</span>}</label>}
-              </section>
-            )}
-
-            {formTab === 'Account & Profile Settings' && (
-              <section className="space-y-4"><div><h4 className="section-title">Account & Profile Settings</h4><p className="mt-1 text-xs text-slate-500">Choose whether sales for this service use managed accounts and profiles.</p></div>
-                <label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span>Uses Accounts</span><input type="checkbox" checked={formSettings.usesAccounts} onChange={event => setFormSettings(previous => ({ ...previous, usesAccounts: event.target.checked, usesProfiles: event.target.checked ? previous.usesProfiles : false }))} className="h-4 w-4 accent-emerald-600" /></label>
-                {formSettings.usesAccounts && <><label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span>Uses Profiles</span><input type="checkbox" checked={formSettings.usesProfiles} onChange={event => setFormSettings(previous => ({ ...previous, usesProfiles: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>{formSettings.usesProfiles && <label className="block max-w-xs space-y-1.5"><span>Default Profiles Per Account *</span><input type="number" min="1" step="1" value={formSettings.profileCapacity} onChange={event => setFormSettings(previous => ({ ...previous, profileCapacity: event.target.value === '' ? 0 : Number(event.target.value) }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />{formErrors.profileCapacity && <span role="alert" className="text-xs text-rose-600">{formErrors.profileCapacity}</span>}</label>}<label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span>Allow Account Sharing</span><input type="checkbox" checked={formSettings.allowAccountSharing} onChange={event => setFormSettings(previous => ({ ...previous, allowAccountSharing: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label><label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span>Profile Assignment Required</span><input type="checkbox" checked={formSettings.profileAssignmentRequired} onChange={event => setFormSettings(previous => ({ ...previous, profileAssignmentRequired: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label></>}
-              </section>
-            )}
-
-            {formTab === 'Customer Settings' && (
-              <section className="space-y-4"><div><h4 className="section-title">Customer Settings</h4><p className="mt-1 text-xs text-slate-500">Control customer details and subscription rules.</p></div>
-                {([
-                  ['customerRequired', 'Customer Required'],
-                  ['emailRequired', 'Email Required'],
-                  ['phoneRequired', 'Phone Required'],
-                  ['allowMultipleActiveSubscriptions', 'Allow Multiple Active Subscriptions'],
-                  ['allowRenewal', 'Allow Renewal'],
-                  ['allowEarlyRenewal', 'Allow Early Renewal'],
-                ] as const).map(([key, label]) => <label key={key} className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span>{label}</span><input type="checkbox" checked={formSettings[key]} onChange={event => setFormSettings(previous => ({ ...previous, [key]: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>)}
-              </section>
-            )}
-
-            {formTab === 'Renewal Message' && (
-              <section className="space-y-4"><div><h4 className="section-title">Renewal Message</h4><p className="mt-1 text-xs text-slate-500">Set an optional reusable message for renewals.</p></div>
-                <label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span>Enable Renewal Message</span><input type="checkbox" checked={formRenewalMessage.enabled} onChange={event => setFormRenewalMessage(previous => ({ ...previous, enabled: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>
-                {formRenewalMessage.enabled && <><label className="block space-y-1.5"><span className="font-semibold">Message Template</span><textarea rows={6} value={formRenewalMessage.template} onChange={event => setFormRenewalMessage(previous => ({ ...previous, template: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label><div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800"><p className="mb-2 font-semibold">Available Variables</p><p className="break-words text-xs leading-6 text-slate-500">{['customerName', 'customerPhone', 'customerEmail', 'serviceName', 'planName', 'startDate', 'expiryDate', 'invoiceNumber', 'amount', 'currency'].map(variable => `{${variable}}`).join('  ')}</p></div></>}
-              </section>
-            )}
-
-            {formTab === 'Invoice Settings' && (
-              <section className="space-y-4"><div><h4 className="section-title">Invoice Settings</h4><p className="mt-1 text-xs text-slate-500">Select which non-sensitive service and customer details may appear on invoices.</p></div>
-                {([
-                  ['showLogo', 'Show Service Logo'],
-                  ['showDescription', 'Show Service Description'],
-                  ['showPlan', 'Show Plan Name'],
-                  ['showSubscriptionPeriod', 'Show Subscription Period'],
-                  ['showPaymentMethod', 'Show Payment Method'],
-                  ['showCustomerPhone', 'Show Customer Phone'],
-                  ['showCustomerEmail', 'Show Customer Email'],
-                ] as const).map(([key, label]) => <label key={key} className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span>{label}</span><input type="checkbox" checked={formInvoiceSettings[key]} onChange={event => setFormInvoiceSettings(previous => ({ ...previous, [key]: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>)}
-                <p className="text-xs text-slate-500">Account passwords and profile PINs are never included in service or invoice settings.</p>
-              </section>
-            )}
-
-            {formTab === 'Advanced Settings' && (
-              <section className="space-y-4"><div><h4 className="section-title">Advanced Settings</h4><p className="mt-1 text-xs text-slate-500">Optional display and internal workflow settings.</p></div>
-                <details className="rounded-xl border border-slate-200 p-4 dark:border-slate-800"><summary className="cursor-pointer font-semibold">Show advanced options</summary><div className="mt-4 space-y-4">
-                  <div className="grid gap-4 sm:grid-cols-2"><label className="block space-y-1.5"><span>Internal Service Code</span><input value={formAdvanced.internalCode} onChange={event => setFormAdvanced(previous => ({ ...previous, internalCode: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label><label className="block space-y-1.5"><span>Sort Order</span><input type="number" value={formAdvanced.sortOrder} onChange={event => setFormAdvanced(previous => ({ ...previous, sortOrder: Number(event.target.value) }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label></div>
-                  {([
-                    ['showInNewSale', 'Display on New Sale'],
-                    ['showOnDashboard', 'Display on Dashboard'],
-                    ['allowNewSubscriptions', 'Allow New Subscriptions'],
-                    ['allowManualRenewal', 'Allow Manual Renewal'],
-                  ] as const).map(([key, label]) => <label key={key} className="flex min-h-12 items-center justify-between gap-4 rounded-lg border border-slate-200 px-3.5 dark:border-slate-800"><span>{label}</span><input type="checkbox" checked={formAdvanced[key]} onChange={event => setFormAdvanced(previous => ({ ...previous, [key]: event.target.checked }))} className="h-4 w-4 accent-emerald-600" /></label>)}
-                  <label className="block space-y-1.5"><span>Notes</span><textarea rows={3} value={formAdvanced.notes} onChange={event => setFormAdvanced(previous => ({ ...previous, notes: event.target.value }))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></label>
-                </div></details>
-              </section>
-            )}
-
-            {formDuplicate && <div role="alert" className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><p>A service with this name already exists.</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => { setDetailedServiceId(formDuplicate.id); setFormDuplicate(null); setIsAddModalOpen(false); setEditingService(null); }} className="rounded-lg border border-amber-400 px-3 py-2 text-xs font-semibold">View Existing</button><button type="button" onClick={() => { setFormDuplicate(null); void saveService(true); }} className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-semibold text-white">{editingService ? 'Save Anyway' : 'Create Anyway'}</button></div></div>}
+            {formDuplicate && <div role="alert" className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><p>{language === 'bn' ? 'এই নামের সার্ভিস আগেই আছে।' : 'A service with this name already exists.'}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => { setDetailedServiceId(formDuplicate.id); setFormDuplicate(null); setIsAddModalOpen(false); setEditingService(null); }} className="rounded-lg border border-amber-400 px-3 py-2 text-xs font-semibold">{language === 'bn' ? 'আগেরটা দেখুন' : 'View Existing'}</button><button type="button" onClick={() => { setFormDuplicate(null); void saveService(true); }} className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-semibold text-white">{editingService ? (language === 'bn' ? 'তবুও সংরক্ষণ করুন' : 'Save Anyway') : (language === 'bn' ? 'তবুও তৈরি করুন' : 'Create Anyway')}</button></div></div>}
 
           </form>
         </Modal>

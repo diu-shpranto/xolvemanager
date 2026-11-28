@@ -200,6 +200,13 @@ export interface NewSalePayload {
   operationId?: string;
   lineItems?: NewSaleLineItemPayload[];
   paymentLineAllocations?: number[];
+  /**
+   * Express Sale only: allows line-item unit prices that differ from the
+   * plan catalog price (a custom price for this customer). Callers that do
+   * not pass this keep the strict catalog-price rule — renewals and the
+   * wizard never set it.
+   */
+  allowCustomPrices?: boolean;
 }
 
 export interface NewSaleLineItemPayload {
@@ -3389,7 +3396,7 @@ export const AppProvider: React.FC<{ children: ReactNode; currentUser: CurrentAd
         || (item.planId && (!itemPlan
           || itemPlan.name !== item.plan
           || itemPlan.durationDays !== item.durationDays
-          || itemPlan.price !== item.unitPrice
+          || (!payload.allowCustomPrices && itemPlan.price !== item.unitPrice)
           || itemPlan.currency !== payload.currency))) {
         throw new Error(`The selected service or plan "${item.plan}" is no longer available.`);
       }

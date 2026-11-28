@@ -57,6 +57,8 @@ export interface Customer {
   notesHistory?: CustomerNote[];
   preferences?: CustomerPreferences;
   duplicateOfCustomerId?: string;
+  /** Custom prices remembered per plan (keyed by plan id) for this customer. */
+  rememberedPlanPrices?: Record<string, RememberedPlanPrice>;
 }
 
 export type CustomerType = 'Customer' | 'Reseller';
@@ -101,6 +103,16 @@ export interface CustomerPreferences {
   contactMethod?: 'phone' | 'whatsapp' | 'email' | 'other';
   contactAllowed?: boolean;
   language?: 'en' | 'bn';
+}
+
+/**
+ * A custom price the seller charged a customer for one plan. Remembered
+ * per customer + plan so the next sale to the same customer pre-fills it.
+ * The plan catalog price stays the official price; this is only a pre-fill.
+ */
+export interface RememberedPlanPrice {
+  price: number;
+  currency: AppCurrency;
 }
 
 export type DurationUnit = 'Days' | 'Weeks' | 'Months' | 'Years';

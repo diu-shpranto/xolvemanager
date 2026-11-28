@@ -60,6 +60,11 @@ import {
   parseAmountToMinorUnits,
 } from '../../utils/saleUtils';
 import { createRecordId } from '../../services/localStorageStore';
+import {
+  applyPriceMemoryUpdates,
+  getRememberedPrice,
+  resolveEffectivePrice,
+} from '../../services/customerPriceMemory';
 import type { NewSaleLineItemPayload } from '../../context/AppContext';
 
 interface SaleItemDraft extends NewSaleLineItemPayload {
@@ -99,7 +104,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   onAddService,
 }) => {
   const { formatCurrency, formatDate: formatAppDate, formatDurationDays } = useAppFormatting();
-  const { currentBusiness, customers, services, accounts, subscriptions, sales, payments, orders, createSale, createOrderQuotation, updateOrderQuotation, addCustomer, addAccount, logActivity, settings, currency: globalCurrency, t, language } = useApp();
+  const { currentBusiness, customers, services, accounts, subscriptions, sales, payments, orders, createSale, createOrderQuotation, updateOrderQuotation, addCustomer, updateCustomer, addAccount, logActivity, settings, currency: globalCurrency, t, language } = useApp();
   const getDaysDifference = getDaysDifferenceForTimeZone(settings.businessProfile?.timeZone);
   const getSubscriptionStatus = getSubscriptionStatusForTimeZone(settings.businessProfile?.timeZone);
   const { showToast } = useToast();
@@ -144,6 +149,13 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   // Quick sale shares all wizard state (customer, items, totals, payment) so
   // switching modes never loses data. Only the layout changes.
   const [saleMode, setSaleMode] = useState<'wizard' | 'quick'>('wizard');
+  // Express Sale (quick mode): editable per-item price with per-customer
+  // memory. `quickPriceSource` tracks where the shown price came from so the
+  // UI can say so and offer a reset to the catalog price.
+  const [quickPriceInput, setQuickPriceInput] = useState('');
+  const [quickPriceSource, setQuickPriceSource] = useState<'catalog' | 'memory' | 'custom'>('catalog');
+  const quickPriceManuallyEditedRef = useRef(false);
+  const amountReceivedTouchedRef = useRef(false);
   const [customerSearch, setCustomerSearch] = useState('');
   const [debouncedCustomerSearch, setDebouncedCustomerSearch] = useState('');
   const [serviceSearch, setServiceSearch] = useState('');
@@ -200,6 +212,13 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   useEffect(() => {
     if (isOpen) setDurationDays(settings.subscriptionDefaults?.durationDays ?? 30);
   }, [isOpen, settings.subscriptionDefaults?.durationDays]);
+
+  // Express Sale: a fresh modal always starts with untouched price/payment state.
+  useEffect(() => {
+    if (!isOpen) return;
+    quickPriceManuallyEditedRef.current = false;
+    amountReceivedTouchedRef.current = false;
+  }, [isOpen]);
 
   useEffect(() => {
     if (preselectedCustomerId) {
@@ -355,9 +374,30 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     }
   };
 
+  // Express Sale (quick mode only): after picking a plan, pre-fill this
+  // customer's remembered price for the plan when one exists, otherwise the
+  // catalog price. The wizard keeps the plain catalog price via
+  // handlePlanChange and never reads the memory.
+  const handleQuickPlanChange = (pickedPlan: NonNullable<(typeof services)[number]['planDetails']>[number]) => {
+    handlePlanChange(pickedPlan);
+    quickPriceManuallyEditedRef.current = false;
+    const effective = resolveEffectivePrice(selectedCustomer, pickedPlan);
+    setPrice(effective.price);
+    setQuickPriceInput(String(effective.price));
+    setQuickPriceSource(effective.fromMemory ? 'memory' : 'catalog');
+  };
+
   const switchToQuickSale = () => {
     setStepError('');
     setSaleMode('quick');
+    // Express Sale hides the sale discount and advance controls, so any values
+    // carried over from the wizard must not silently apply here. The paid
+    // amount is re-derived from the bill by the quick-mode effect below.
+    setDiscountMode('fixed');
+    setDiscountValue(0);
+    setApplyExistingAdvance(false);
+    setAdvanceCreditInput('0');
+    amountReceivedTouchedRef.current = false;
   };
 
   const switchToWizard = () => {
@@ -392,6 +432,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     setPlanId('');
     setItemQuantity(1);
     setItemDiscountInput('0');
+    setQuickPriceInput('');
+    setQuickPriceSource('catalog');
+    quickPriceManuallyEditedRef.current = false;
     setItemAllocations([{ accountId: '', profileId: '' }]);
     setStartDate(getTodayDateString(settings.businessProfile?.timeZone));
     setExpectedPaymentDate('');
@@ -635,6 +678,19 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     setExpectedPaymentDate(item.expectedPaymentDate || '');
     setCurrency(item.currency);
     setPrice(item.unitPrice);
+    // Express Sale: the line keeps its own price while editing, so a customer
+    // change must not rewrite it. The source label reflects what the price is.
+    setQuickPriceInput(String(item.unitPrice));
+    const editedCatalogPrice = services
+      .find(service => service.id === item.serviceId)?.planDetails
+      ?.find(plan => plan.id === item.planId)?.price;
+    const editedRemembered = getRememberedPrice(selectedCustomer, item.planId || '');
+    setQuickPriceSource(
+      editedRemembered && editedRemembered.price === item.unitPrice && editedRemembered.currency === item.currency
+        ? 'memory'
+        : item.unitPrice !== editedCatalogPrice ? 'custom' : 'catalog'
+    );
+    quickPriceManuallyEditedRef.current = true;
     setItemDiscountInput(String(item.discount || 0));
     setStep(2);
   };
@@ -651,6 +707,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       setPlanId('');
       setItemQuantity(1);
       setItemDiscountInput('0');
+      setQuickPriceInput('');
+      setQuickPriceSource('catalog');
+      quickPriceManuallyEditedRef.current = false;
       setExpectedPaymentDate('');
       setStep(1);
     } else if (editingItemIndex !== null && index < editingItemIndex) {
@@ -670,6 +729,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     setPlanId('');
     setItemQuantity(1);
     setItemDiscountInput('0');
+    setQuickPriceInput('');
+    setQuickPriceSource('catalog');
+    quickPriceManuallyEditedRef.current = false;
     setItemAllocations([{ accountId: '', profileId: '' }]);
     setStartDate(getTodayDateString(settings.businessProfile?.timeZone));
     setExpectedPaymentDate('');
@@ -714,6 +776,30 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   const advanceCreditToApply = applyExistingAdvance && advanceInputValid && parsedAdvanceMinor !== null
     ? minorUnitsToAmount(parsedAdvanceMinor)
     : 0;
+
+  // Express Sale (quick mode only): when the customer changes while an item is
+  // being configured and the price was not set by hand, re-apply the new
+  // customer's remembered price (or the catalog price) so one customer's
+  // custom price never leaks to another customer.
+  useEffect(() => {
+    if (saleMode !== 'quick' || !isCurrentItemActive || !selectedPlan || !customerId) return;
+    if (quickPriceManuallyEditedRef.current) return;
+    const effective = resolveEffectivePrice(selectedCustomer, selectedPlan);
+    setPrice(effective.price);
+    setQuickPriceInput(String(effective.price));
+    setQuickPriceSource(effective.fromMemory ? 'memory' : 'catalog');
+  }, [customerId]);
+
+  // Express Sale (quick mode only): the paid amount defaults to the full bill
+  // until the seller types a different amount or picks Paid/Partial/Due.
+  useEffect(() => {
+    if (saleMode !== 'quick' || amountReceivedTouchedRef.current) return;
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) return;
+    const fullDueMinor = Math.max(0, amountToMinorUnits(totalAmount) - amountToMinorUnits(advanceCreditToApply));
+    setAmountReceivedInput(String(minorUnitsToAmount(fullDueMinor)));
+    setPaymentStatusChoice(fullDueMinor > 0 ? 'paid' : 'due');
+  }, [saleMode, totalAmount, advanceCreditToApply]);
+
   const paymentLineDrafts: SaleItemDraft[] = itemDrafts.filter((_, index) => index !== editingItemIndex);
   if (isCurrentItemActive && selectedService) {
     paymentLineDrafts.push({
@@ -1132,6 +1218,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
     setItemAllocations([{ accountId: '', profileId: '' }]);
     setItemQuantity(1);
     setItemDiscountInput('0');
+    setQuickPriceInput('');
+    setQuickPriceSource('catalog');
+    quickPriceManuallyEditedRef.current = false;
     setStartDate(getTodayDateString(settings.businessProfile?.timeZone));
     setExpectedPaymentDate('');
     currentItemDraftId.current = createRecordId('sale-line-draft');
@@ -1172,7 +1261,11 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       return;
     }
     if (isCurrentItemActive && selectedServicePlan
-      && (Number(durationDays) !== selectedServicePlan.durationDays || Number(price) !== selectedServicePlan.price || currency !== selectedServicePlan.currency)) {
+      && (Number(durationDays) !== selectedServicePlan.durationDays
+        // Express Sale (quick mode) intentionally allows a custom price that
+        // differs from the catalog price; the wizard keeps the strict rule.
+        || (saleMode === 'wizard' && Number(price) !== selectedServicePlan.price)
+        || currency !== selectedServicePlan.currency)) {
       reportValidationError('Price and duration must match the selected plan. Select the correct active plan.', 2);
       return;
     }
@@ -1316,6 +1409,9 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
         notes,
         operationId: saleOperationId.current,
         paymentLineAllocations: paymentLineCashMinor.map(minorUnitsToAmount),
+        // Express Sale (quick mode) allows intentional custom prices; the
+        // wizard keeps the strict catalog-price rule inside createSale.
+        allowCustomPrices: saleMode === 'quick',
         ...(requestedItems.length > 1 || requestedItems.some(item => item.quantity > 1 || (item.discount || 0) > 0 || item.expectedPaymentDate) ? {
           lineItems: requestedItems.map(({ currency: _currency, draftId: _draftId, ...item }) => ({
             ...item,
@@ -1334,6 +1430,16 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
           console.error('Sale was created, but its quotation status could not be updated.', error);
           showToast('Sale and invoice were created, but the quotation status needs attention.', 'error');
         }
+      }
+
+      // Express price memory: remember custom prices for this customer + plan
+      // (and clear the memory when a plan is sold at its catalog price again).
+      // Never blocks the sale: a memory failure must not fail the invoice flow.
+      try {
+        const memoryUpdates = applyPriceMemoryUpdates(selectedCustomer, requestedItems, services);
+        if (memoryUpdates) await updateCustomer(customerId, memoryUpdates);
+      } catch (error) {
+        console.error('Could not remember custom prices for this customer.', error);
       }
 
       const cust = customers.find(c => c.id === customerId);
@@ -2250,7 +2356,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                         {selectedService.planDetails?.some(item => item.status === 'active') ? (
                           <div className="grid gap-2 sm:grid-cols-2">
                             {selectedService.planDetails.filter(item => item.status === 'active').map(servicePlan => (
-                              <button key={servicePlan.id} type="button" onClick={() => handlePlanChange(servicePlan)} aria-pressed={planId === servicePlan.id} className={`flex min-h-14 items-center justify-between gap-3 rounded-xl border px-3.5 py-3 text-left text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-violet-600 ${planId === servicePlan.id ? 'border-violet-500 bg-violet-50 text-violet-950 ring-1 ring-violet-500/20 dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-100' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'}`}>
+                              <button key={servicePlan.id} type="button" onClick={() => handleQuickPlanChange(servicePlan)} aria-pressed={planId === servicePlan.id} className={`flex min-h-14 items-center justify-between gap-3 rounded-xl border px-3.5 py-3 text-left text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-violet-600 ${planId === servicePlan.id ? 'border-violet-500 bg-violet-50 text-violet-950 ring-1 ring-violet-500/20 dark:border-violet-700 dark:bg-violet-950/40 dark:text-violet-100' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'}`}>
                                 <span className="min-w-0"><span className="block break-words font-semibold">{servicePlan.name}</span><span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-slate-400">{formatCurrency(servicePlan.price, servicePlan.currency)} · {formatDurationDays(servicePlan.durationDays)}{servicePlan.profileCapacity ? ` · ${servicePlan.profileCapacity} profiles` : ''}</span></span>
                                 {planId === servicePlan.id && <CheckCircle2 className="h-4 w-4 shrink-0 text-violet-700 dark:text-violet-300" />}
                               </button>
@@ -2263,14 +2369,41 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                         {selectedPlan && (
                           <>
                             <div className="grid gap-3 sm:grid-cols-3">
-                              <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">{language === 'bn' ? 'প্রতি ইউনিটের দাম' : 'Price per unit'}</span><p className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-mono text-base font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{formatCurrency(selectedPlan.price, selectedPlan.currency)}</p></div>
+                              <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+                                <span className="block">{language === 'bn' ? 'প্রতি ইউনিটের দাম' : 'Price per unit'}</span>
+                                <input aria-label={`${selectedService.name} price per unit`} type="number" min={0} step={currency === 'USD' ? '0.01' : '1'} value={quickPriceInput} onChange={event => {
+                                  const value = event.target.value;
+                                  setQuickPriceInput(value);
+                                  const parsed = value === '' ? 0 : Number(value);
+                                  setPrice(Number.isFinite(parsed) && parsed >= 0 ? parsed : 0);
+                                  setQuickPriceSource('custom');
+                                  quickPriceManuallyEditedRef.current = true;
+                                }} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-base font-bold text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                                {quickPriceSource === 'memory' && selectedPlan && (
+                                  <span className="block text-[11px] font-normal leading-relaxed text-violet-700 dark:text-violet-300">{language === 'bn' ? 'এই কাস্টমারের মনে রাখা দাম' : 'Remembered price for this customer'} · <button type="button" onClick={() => {
+                                    setPrice(selectedPlan.price);
+                                    setQuickPriceInput(String(selectedPlan.price));
+                                    setQuickPriceSource('catalog');
+                                    quickPriceManuallyEditedRef.current = true;
+                                  }} className="font-semibold underline focus-visible:outline-2 focus-visible:outline-violet-600">{language === 'bn' ? `ক্যাটালগ দাম ${formatCurrency(selectedPlan.price, selectedPlan.currency)} ব্যবহার করুন` : `Use catalog ${formatCurrency(selectedPlan.price, selectedPlan.currency)}`}</button></span>
+                                )}
+                                {quickPriceSource === 'custom' && (
+                                  <span className="block text-[11px] font-normal leading-relaxed text-slate-500 dark:text-slate-400">{language === 'bn' ? 'কাস্টম দাম — সেল হলে এই কাস্টমারের জন্য মনে রাখা হবে।' : 'Custom price — it will be remembered for this customer when the sale is saved.'}</span>
+                                )}
+                              </div>
                               <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">{language === 'bn' ? 'মেয়াদ' : 'Duration'}</span><p className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white">{formatDurationDays(selectedPlan.durationDays)}</p></div>
-                              <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{language === 'bn' ? 'পরিমাণ' : 'Quantity'}</span><input aria-label={`${selectedService.name} quantity`} type="number" min={1} max={serviceUsesAccounts ? allocationCapacity : undefined} step={1} value={itemQuantity} onChange={event => updateQuantity(Number(event.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /><span className="block text-[11px] font-normal">{serviceUsesAccounts ? `${allocationCapacity} ${allocationCapacity === 1 ? 'unit' : 'units'} available.` : language === 'bn' ? 'এই সার্ভিসে ইনভেন্টরি লাগে না।' : 'This service does not require tracked inventory.'}</span></label>
+                              <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+                                <span className="block">{language === 'bn' ? 'পরিমাণ' : 'Quantity'}</span>
+                                <div className="flex items-center gap-1">
+                                  <button type="button" aria-label="Decrease quantity" disabled={itemQuantity <= 1} onClick={() => updateQuantity(itemQuantity - 1)} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">−</button>
+                                  <span aria-label={`${selectedService.name} quantity`} className="min-w-8 flex-1 text-center font-mono text-base font-bold text-slate-900 dark:text-white">{itemQuantity}</span>
+                                  <button type="button" aria-label="Increase quantity" onClick={() => updateQuantity(itemQuantity + 1)} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">+</button>
+                                </div>
+                                <span className="block text-[11px] font-normal">{serviceUsesAccounts ? `${allocationCapacity} ${allocationCapacity === 1 ? 'unit' : 'units'} available.` : language === 'bn' ? 'এই সার্ভিসে ইনভেন্টরি লাগে না।' : 'This service does not require tracked inventory.'}</span>
+                              </div>
                             </div>
                             <div className="grid gap-3 sm:grid-cols-2">
-                              <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{language === 'bn' ? 'শুরুর তারিখ' : 'Subscription start date'}</span><input aria-label={`${selectedService.name} start date`} type="date" value={startDate} onChange={event => setStartDate(event.target.value)} className="w-full min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white" /></label>
                               <div className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span className="block">{language === 'bn' ? 'মেয়াদ শেষ' : 'Calculated expiry date'}</span><p className="min-h-11 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">{startDate ? formatAppDate(calculatedExpiryDate, language) : '—'}</p></div>
-                              <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{language === 'bn' ? 'আইটেম ছাড়' : 'Item discount'}</span><input aria-label={`${selectedService.name} item discount`} type="number" min={0} max={currentItemSubtotal} step={currency === 'USD' ? '0.01' : '1'} value={itemDiscountInput} onChange={event => setItemDiscountInput(event.target.value)} aria-invalid={!currentItemDiscountValid} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />{!currentItemDiscountValid && <span role="alert" className="block text-[11px] font-medium text-rose-700 dark:text-rose-300">{language === 'bn' ? 'ছাড় লাইনের মোটের বেশি হতে পারবে না।' : 'Discount cannot exceed this line subtotal.'}</span>}</label>
                               <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg bg-violet-50 px-3 py-2.5 text-xs dark:bg-violet-950/30"><span className="font-semibold text-violet-900 dark:text-violet-200">{language === 'bn' ? 'লাইনের মোট' : 'Line total'}</span><span className="font-mono text-base font-bold tabular-nums text-violet-800 dark:text-violet-200">{formatCurrency(minorUnitsToAmount(Math.max(0, amountToMinorUnits(currentItemSubtotal) - amountToMinorUnits(currentItemDiscount))), currency)}</span></div>
                             </div>
                           </>
@@ -2280,10 +2413,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                     )}
 
                     {selectedServiceCount > 0 && (
-                      <div className="grid gap-3 rounded-xl border border-violet-200 bg-violet-50/40 p-3.5 dark:border-violet-800 dark:bg-violet-950/20 sm:grid-cols-2">
-                        <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{language === 'bn' ? 'বিক্রির ছাড়' : 'Sale discount'}</span><div className="flex gap-2"><input aria-label="Discount amount" type="number" min={0} max={discountMode === 'percentage' ? 100 : minorUnitsToAmount(globalDiscountableMinor)} step={currency === 'USD' ? '0.01' : '1'} value={discountValue} onChange={event => setDiscountValue(Number(event.target.value))} aria-invalid={discountValue < 0 || (discountMode === 'fixed' && amountToMinorUnits(discountValue) > globalDiscountableMinor) || (discountMode === 'percentage' && discountValue > 100)} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" /><select aria-label="Discount type" value={discountMode} onChange={event => setDiscountMode(event.target.value as 'fixed' | 'percentage')} className="rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white"><option value="fixed">{language === 'bn' ? 'নির্দিষ্ট' : 'Fixed'}</option><option value="percentage">{language === 'bn' ? 'শতাংশ' : 'Percent'}</option></select></div><span className="block text-[11px] font-normal">{language === 'bn' ? 'পুরো বিক্রির ওপর প্রযোজ্য।' : 'Applied to the full sale.'}</span></label>
-                        <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3 text-xs dark:border-slate-700 dark:bg-slate-900"><div className="flex justify-between"><span className="text-slate-500">{language === 'bn' ? 'মোট' : 'Order subtotal'}</span><span>{formatCurrency(subtotal || 0, currency)}</span></div><div className="flex justify-between"><span className="text-slate-500">{language === 'bn' ? 'ছাড়' : 'Sale discount'}</span><span>−{formatCurrency(discountAmount, currency)}</span></div><div className="flex justify-between border-t border-slate-200 pt-2 font-bold dark:border-slate-700"><span>{language === 'bn' ? 'সর্বমোট' : 'Grand total'}</span><span className="text-violet-700 dark:text-violet-300">{formatCurrency(totalAmount, currency)}</span></div></div>
-                      </div>
+                      <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3 text-xs dark:border-slate-700 dark:bg-slate-900"><div className="flex justify-between"><span className="text-slate-500">{language === 'bn' ? 'মোট' : 'Order subtotal'}</span><span>{formatCurrency(subtotal || 0, currency)}</span></div><div className="flex justify-between"><span className="text-slate-500">{language === 'bn' ? 'ছাড়' : 'Sale discount'}</span><span>−{formatCurrency(discountAmount, currency)}</span></div><div className="flex justify-between border-t border-slate-200 pt-2 font-bold dark:border-slate-700"><span>{language === 'bn' ? 'সর্বমোট' : 'Grand total'}</span><span className="text-violet-700 dark:text-violet-300">{formatCurrency(totalAmount, currency)}</span></div></div>
                     )}
                   </section>
                 )}
@@ -2620,6 +2750,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                 {(step === 5 || saleMode === 'quick') && (
                   <section aria-labelledby="sale-payment-title" className="space-y-4">
                     <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5"><div><h2 id="sale-payment-title" className="text-base font-bold text-slate-900 dark:text-white">Payment details</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose an enabled method. {settings.paymentPreferences?.requireTransactionId && amountReceived > 0 ? 'A transaction ID is required for received cash.' : 'A transaction ID is optional when no cash is received.'}</p></div>
+                      {saleMode !== 'quick' && (
                       <div className="space-y-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
                         <div>
                           <h3 className="text-xs font-semibold text-slate-800 dark:text-slate-100">Expected payment dates (optional)</h3>
@@ -2632,6 +2763,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                           </label>
                         ))}
                       </div>
+                      )}
                       <div className="grid gap-3 sm:grid-cols-2">
                         <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{t('paymentMethod')}</span><select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white">{paymentMethods.length ? paymentMethods.map(method => <option key={method} value={method}>{method === 'Bank' ? 'Bank transfer' : method}</option>) : <option value="">No active payment methods</option>}</select></label>
                         <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Payment date</span><input aria-label="Payment date" type="date" max={getTodayDateString(settings.businessProfile?.timeZone)} value={paymentDate} onChange={event => setPaymentDate(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
@@ -2645,6 +2777,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                                 { value: 'due', label: 'Due' },
                               ] as const).map(option => (
                                 <button key={option.value} type="button" aria-pressed={paymentStatusChoice === option.value} onClick={() => {
+                                  amountReceivedTouchedRef.current = true;
                                   setPaymentStatusChoice(option.value);
                                   if (option.value === 'paid') {
                                     setAmountReceivedInput(String(minorUnitsToAmount(Math.max(
@@ -2665,6 +2798,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                           <label className="block space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
                             <span>Amount received</span>
                             <input aria-label="Total cash received" type="number" min={0} step={currency === 'USD' ? '0.01' : '1'} value={amountReceivedInput} onChange={event => {
+                              amountReceivedTouchedRef.current = true;
                               const value = event.target.value;
                               setAmountReceivedInput(value);
                               const valueMinor = parseAmountToMinorUnits(value);
@@ -2677,6 +2811,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                           </label>
                           <p className="rounded-lg border border-violet-200 bg-violet-50/60 p-3 text-xs text-violet-900 dark:border-violet-900/60 dark:bg-violet-950/20 dark:text-violet-200">Payment is applied to services in the order shown. Any extra money is saved as an advance payment.</p>
                         </div>
+                        {saleMode !== 'quick' && (
                         <div className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700 sm:col-span-2">
                           <label className="flex items-start gap-2 text-xs font-semibold text-slate-800 dark:text-slate-100"><input type="checkbox" checked={applyExistingAdvance} disabled={availableCustomerAdvance <= 0 || totalAmount <= 0} onChange={event => {
                             const shouldApply = event.target.checked;
@@ -2685,6 +2820,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                           }} className="mt-0.5 h-4 w-4 accent-violet-600" /><span>Use advance payment <span className="block pt-0.5 font-normal text-slate-500 dark:text-slate-400">Available: {formatCurrency(availableCustomerAdvance, currency)} · paid earlier.</span></span></label>
                           {applyExistingAdvance && <label className="block space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Advance payment to use (up to {formatCurrency(maxAdvanceToApply, currency)})</span><input aria-label="Advance payment to use" type="number" min={0} max={maxAdvanceToApply} step={currency === 'USD' ? '0.01' : '1'} value={advanceCreditInput} onChange={event => setAdvanceCreditInput(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />{!advanceInputValid && <span className="block text-rose-700 dark:text-rose-300">Enter no more than the available balance or sale total.</span>}</label>}
                         </div>
+                        )}
                         <div className="grid gap-2 rounded-xl border border-violet-200 bg-violet-50/60 p-3 text-xs dark:border-violet-900/60 dark:bg-violet-950/20 sm:col-span-2 sm:grid-cols-2">
                           <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-300">Total bill</span><span className="font-semibold">{formatCurrency(totalAmount, currency)}</span></div>
                           <div className="flex justify-between"><span className="text-slate-600 dark:text-slate-300">New cash received</span><span>{formatCurrency(amountReceived, currency)}</span></div>
@@ -2694,10 +2830,18 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
                           <div className="flex justify-between font-semibold text-emerald-700 dark:text-emerald-300"><span>Extra advance payment</span><span>{formatCurrency(tenderAllocation.advanceCreditCreated, currency)}</span></div>
                           <div className="sm:col-span-2"><span className="inline-flex rounded-full bg-white px-2.5 py-1 font-bold capitalize text-violet-800 dark:bg-slate-900 dark:text-violet-200">{paymentStatus === 'paid' ? 'Fully paid' : paymentStatus === 'partial' ? 'Partially paid' : 'Unpaid'}</span>{tenderAllocation.advanceCreditCreated > 0 && <p className="mt-1.5 text-slate-600 dark:text-slate-300">Extra money is saved as an advance payment for this customer.</p>}</div>
                         </div>
+                        {(saleMode !== 'quick' || (amountReceived > 0 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId))) && (
                         <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{t('transactionId')} <span className="font-normal text-slate-400">({amountReceived > 0 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId) ? 'required' : 'optional'})</span></span><input aria-label="Transaction ID" required={amountReceived > 0 && paymentMethodRequiresTransactionId(paymentMethod, paymentMethodConfigs, settings.paymentPreferences?.requireTransactionId)} type="text" value={transactionId} onChange={e => setTransactionId(e.target.value)} placeholder="Enter transaction ID" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
+                        )}
+                        {saleMode !== 'quick' && (
                         <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>{t('senderNumber')} <span className="font-normal text-slate-400">(optional)</span></span><input aria-label="Payment sender number" type="tel" value={senderNumber} onChange={e => setSenderNumber(e.target.value)} placeholder="Enter sender number" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
+                        )}
+                        {saleMode !== 'quick' && (
                         <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Payment note (optional)</span><textarea aria-label="Payment note" value={paymentNote} onChange={e => setPaymentNote(e.target.value)} rows={2} className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
+                        )}
+                        {saleMode !== 'quick' && (
                         <label className="space-y-1.5 text-xs font-medium text-slate-600 dark:text-slate-300"><span>Internal sale notes <span className="font-normal text-slate-400">(optional)</span></span><textarea aria-label="Internal sale notes" value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-600 dark:border-slate-700 dark:bg-slate-950 dark:text-white" /></label>
+                        )}
                       </div>
                     </div>
                   </section>
