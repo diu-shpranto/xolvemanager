@@ -60,7 +60,7 @@ import {
   type CustomerDueFollowUps,
   type CustomerDueFollowUpStatus,
 } from '../../utils/dueCollection';
-import { getFirstPaymentFormErrorTarget, type PaymentFormErrorTarget } from '../../utils/paymentFormHelpers';
+import { getFirstPaymentFormErrorTarget, resolveMappedWalletAccountId, resolvePaymentWalletAccountId, type PaymentFormErrorTarget } from '../../utils/paymentFormHelpers';
 
 interface PaymentsViewProps {
   isActive?: boolean;
@@ -194,6 +194,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     applyCustomerAdvanceToSale,
     recordPaymentRefund,
     addPayment,
+    updatePayment,
     logActivity,
     language,
     t,
@@ -247,9 +248,10 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const [newCustomerFilter, setNewCustomerFilter] = useState('all');
   const [customerSearch, setCustomerSearch] = useState('');
   const [collectionFinancialAccountId, setCollectionFinancialAccountId] = useState('');
+  const [paymentFinancialAccountId, setPaymentFinancialAccountId] = useState('');
+  const [pendingWalletOverride, setPendingWalletOverride] = useState<{ paymentId: string; accountId: string } | null>(null);
   const [selectedCollectionLineIds, setSelectedCollectionLineIds] = useState<Record<string, string[]>>({});
   const [applyExistingCollectionAdvance, setApplyExistingCollectionAdvance] = useState(false);
-  const [collectionStep, setCollectionStep] = useState<1 | 2 | 3>(1);
   const [collectionReceipt, setCollectionReceipt] = useState<CustomerCollectionReceipt | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [possibleDuplicateConfirmed, setPossibleDuplicateConfirmed] = useState(false);
@@ -309,6 +311,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     setNewAmount('');
     setNewStatus('paid');
     setNewMethod((getDefaultPaymentMethod(normalizePaymentMethods(settings.paymentPreferences?.methods), settings.paymentPreferences?.defaultMethodId) || 'Cash') as PaymentMethod);
+    setPaymentFinancialAccountId('');
     setNewTransactionId('');
     setNewPaymentDate(getTodayDateString(settings.businessProfile?.timeZone));
     setNewNotes('');
@@ -383,9 +386,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
   const paymentMethods = useMemo(() => normalizePaymentMethods(settings.paymentPreferences?.methods), [settings.paymentPreferences?.methods]);
   const activePaymentMethods = paymentMethods.filter(method => method.enabled).map(method => method.name) as PaymentMethod[];
-  const mappedCollectionAccountId = paymentMethods.find(method => method.name === newMethod)?.financialAccountId
-    || financialAccounts.find(account => account.name.toLocaleLowerCase() === newMethod.toLocaleLowerCase())?.id
-    || '';
+  const mappedCollectionAccountId = resolveMappedWalletAccountId(newMethod, paymentMethods, financialAccounts);
   const collectionAccounts = financialAccounts.filter(account => account.enabled && account.currency === newAdvanceCurrency);
   const collectionDestinationAccount = collectionAccounts.find(account =>
     account.id === (collectionFinancialAccountId || mappedCollectionAccountId)
@@ -396,6 +397,19 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     lastResumedCollectionRequest.current = resumeCollectionRequest;
     setIsAddPaymentOpen(true);
   }, [isActive, resumeCollectionRequest]);
+
+  // Applies a seller-picked wallet after a sale / advance save: the save
+  // itself stamps the payment method's wallet, so the pick is corrected
+  // here once the saved payment is in state. Clears itself after one pass.
+  useEffect(() => {
+    if (!pendingWalletOverride) return;
+    const saved = payments.find(payment => payment.id === pendingWalletOverride.paymentId);
+    if (!saved) return;
+    if (saved.financialAccountId !== pendingWalletOverride.accountId) {
+      updatePayment(saved.id, { financialAccountId: pendingWalletOverride.accountId });
+    }
+    setPendingWalletOverride(null);
+  }, [pendingWalletOverride, payments, updatePayment]);
   const methodOptions = useMemo(
     () => [...new Set([...paymentMethods.map(method => method.name), ...payments.map(payment => payment.paymentMethodName || payment.paymentMethod)])],
     [paymentMethods, payments]
@@ -680,6 +694,17 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     parsedNewAmountMinor === null ? 0 : minorUnitsToAmount(parsedNewAmountMinor),
     newSaleDue
   );
+  // Wallet picker for the sale / advance modes: the seller's pick wins,
+  // otherwise the wallet mapped to the chosen payment method (today's
+  // behaviour). recordSalePayment / addPayment always stamp the method's
+  // wallet on the record, so an explicit pick is applied right after the
+  // save, once the new payment is in state (see the effect below).
+  const mappedPaymentAccountId = resolveMappedWalletAccountId(newMethod, paymentMethods, financialAccounts);
+  const paymentCurrency = newPaymentMode === 'sale' && newSale ? newSale.currency : newAdvanceCurrency;
+  const paymentAccounts = financialAccounts.filter(account => account.enabled && account.currency === paymentCurrency);
+  const paymentDestinationAccount = paymentAccounts.find(account =>
+    account.id === resolvePaymentWalletAccountId(paymentFinancialAccountId, mappedPaymentAccountId)
+  );
   const duplicateTransaction = useMemo(() => {
     const transactionId = newTransactionId.trim().toLocaleLowerCase();
     if (!transactionId) return null;
@@ -765,6 +790,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     setNewAmount('');
     setNewStatus('paid');
     setNewMethod((getDefaultPaymentMethod(paymentMethods, settings.paymentPreferences?.defaultMethodId) || 'Cash') as PaymentMethod);
+    setPaymentFinancialAccountId('');
     setNewTransactionId('');
     setNewPaymentDate(getTodayDateString(settings.businessProfile?.timeZone));
     setNewNotes('');
@@ -784,9 +810,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   const openCustomerCollection = (customerId?: string) => {
     const customer = customerId ? customersById.get(customerId) : undefined;
     const defaultMethod = getDefaultPaymentMethod(paymentMethods, settings.paymentPreferences?.defaultMethodId) || 'Cash';
-    const defaultMethodAccountId = paymentMethods.find(method => method.name === defaultMethod)?.financialAccountId
-      || financialAccounts.find(account => account.name.toLocaleLowerCase() === defaultMethod.toLocaleLowerCase())?.id
-      || '';
+    const defaultMethodAccountId = resolveMappedWalletAccountId(defaultMethod, paymentMethods, financialAccounts);
     setNewPaymentMode('collect');
     setNewSaleId('');
     setSaleSearch('');
@@ -801,7 +825,6 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     setCustomerSearch(customer ? getCustomerOptionLabel(customer) : '');
     setSelectedCollectionLineIds({});
     setApplyExistingCollectionAdvance(false);
-    setCollectionStep(1);
     setCollectionReceipt(null);
     setNewAdvanceCurrency(currency);
     setPossibleDuplicateConfirmed(false);
@@ -816,36 +839,36 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
     if (isSaving || isSavingRef.current) return;
     if (newPaymentMode === 'collect') {
       if (!collectionCustomer) {
-        showToast('Choose a customer before recording payment.', 'error');
+        showToast(language === 'bn' ? 'আগে একজন কাস্টমার বাছুন।' : 'Choose a customer before recording payment.', 'error');
         return;
       }
       if (parsedNewAmountMinor === null || parsedNewAmountMinor <= 0) {
-        showToast('Enter a valid amount received with no more than two decimal places.', 'error');
+        showToast(language === 'bn' ? 'সঠিক টাকার পরিমাণ দিন।' : 'Enter a valid amount received with no more than two decimal places.', 'error');
         return;
       }
       if (!isValidDate(newPaymentDate) || newPaymentDate > getTodayDateString(settings.businessProfile?.timeZone)) {
-        showToast('Choose a valid payment date that is not in the future.', 'error');
+        showToast(language === 'bn' ? 'আজকের বা আগের একটি সঠিক তারিখ দিন।' : 'Choose a valid payment date that is not in the future.', 'error');
         return;
       }
       if (!activePaymentMethods.includes(newMethod)) {
-        showToast('Choose an active payment method from Settings.', 'error');
+        showToast(language === 'bn' ? 'সেটিংস থেকে একটি চালু পেমেন্ট মাধ্যম বাছুন।' : 'Choose an active payment method from Settings.', 'error');
         return;
       }
       if (!collectionDestinationAccount) {
-        showToast('Choose an active account in this currency before recording payment.', 'error');
+        showToast(language === 'bn' ? 'এই মুদ্রার একটি চালু ওয়ালেট বাছুন।' : 'Choose an active account in this currency before recording payment.', 'error');
         return;
       }
       if (paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId)
         && !newTransactionId.trim()) {
-        showToast('Enter the required transaction ID.', 'error');
+        showToast(language === 'bn' ? 'ট্রানজাকশন আইডি দিন।' : 'Enter the required transaction ID.', 'error');
         return;
       }
       if (duplicateTransaction) {
-        showToast('A payment with this transaction ID already exists. Review it before continuing.', 'error');
+        showToast(language === 'bn' ? 'এই ট্রানজাকশন আইডিতে আগেই একটি পেমেন্ট আছে। দেখে নিন।' : 'A payment with this transaction ID already exists. Review it before continuing.', 'error');
         return;
       }
       if (possibleDuplicate && !possibleDuplicateConfirmed) {
-        showToast('Review the similar payment and confirm this is a separate receipt before continuing.', 'error');
+        showToast(language === 'bn' ? 'একই রকম একটি পেমেন্ট আছে — দেখে নিশ্চিত করুন এটা আলাদা পেমেন্ট।' : 'Review the similar payment and confirm this is a separate receipt before continuing.', 'error');
         return;
       }
       isSavingRef.current = true;
@@ -990,7 +1013,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         );
         showToast(`${formatCurrency(appliedAmount, newSale.currency)} advance payment used for the sale. No new cash was recorded.`, 'success');
       } else if (newPaymentMode === 'advance') {
-        addPayment({
+        const createdPayment = addPayment({
           operationId: operationId.current,
           customerId: newCustomerFilter,
           amount,
@@ -1003,9 +1026,13 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           advanceCreditAmount: amount,
           notes: newNotes.trim() || undefined,
         });
+        const effectiveWalletId = resolvePaymentWalletAccountId(paymentFinancialAccountId, mappedPaymentAccountId);
+        if (effectiveWalletId && createdPayment.financialAccountId !== effectiveWalletId) {
+          setPendingWalletOverride({ paymentId: createdPayment.id, accountId: effectiveWalletId });
+        }
         showToast('Customer advance recorded. It is stored as credit, not revenue.', 'success');
       } else if (newSale) {
-        recordSalePayment(newSale.id, {
+        const createdPayment = recordSalePayment(newSale.id, {
           operationId: operationId.current,
           customerId: newSale.customerId,
           amount,
@@ -1016,6 +1043,10 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           paymentStatus: newStatus,
           notes: newNotes.trim() || undefined,
         });
+        const effectiveWalletId = resolvePaymentWalletAccountId(paymentFinancialAccountId, mappedPaymentAccountId);
+        if (effectiveWalletId && createdPayment.financialAccountId !== effectiveWalletId) {
+          setPendingWalletOverride({ paymentId: createdPayment.id, accountId: effectiveWalletId });
+        }
         showToast(
           newPaymentAllocation.advanceCreditAmount > 0
             ? `Payment recorded. ${formatCurrency(newPaymentAllocation.allocatedAmount, newSale.currency)} allocated to the sale; ${formatCurrency(newPaymentAllocation.advanceCreditAmount, newSale.currency)} added as customer advance.`
@@ -1656,28 +1687,6 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         title={newPaymentMode === 'collect' ? (language === 'bn' ? 'পেমেন্ট সংগ্রহ করুন' : 'Collect payment') : newPaymentMode === 'advance' ? (language === 'bn' ? 'অগ্রিম পেমেন্ট রেকর্ড করুন' : 'Record advance payment') : newPaymentMode === 'apply-advance' ? (language === 'bn' ? 'অগ্রিম দিয়ে পেমেন্ট করুন' : 'Use advance payment') : (language === 'bn' ? 'পেমেন্ট রেকর্ড করুন' : 'Record payment')}
         subtitle={newPaymentMode === 'collect' ? (language === 'bn' ? 'কাস্টমার বেছে নিন, বিল বাছুন, পেমেন্ট রেকর্ড করুন।' : 'Choose a customer, select bills, and record the payment.') : newPaymentMode === 'advance' ? (language === 'bn' ? 'সেলের সাথে না জোড়া টাকা আগেই রেকর্ড করুন।' : 'Record money paid before it is linked to a sale.') : newPaymentMode === 'apply-advance' ? (language === 'bn' ? 'আগের অগ্রিম দিয়ে বাকি থাকা সেলের পেমেন্ট করুন।' : 'Use an earlier payment for a sale that is still due.') : (language === 'bn' ? 'বাকি থাকা সেলে পেমেন্ট যোগ করুন।' : 'Add a payment to an outstanding sale.')}
         maxWidth="lg"
-        footer={newPaymentMode === 'collect' && !collectionReceipt && collectionCustomer && collectionStep === 3 ? (
-          <div className="payment-collection-action-footer flex items-center justify-between gap-2 sm:justify-end sm:gap-3">
-            <button
-              form="customer-payment-collection-form"
-              type="button"
-              disabled={isSaving}
-              onClick={() => setCollectionStep(2)}
-              className="min-h-12 min-w-24 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              Back
-            </button>
-            <button
-              form="customer-payment-collection-form"
-              type="submit"
-              disabled={isSaving || !collectionCustomer || !collectionDestinationAccount || parsedNewAmountMinor === null || parsedNewAmountMinor <= 0 || !activePaymentMethods.length || Boolean(duplicateTransaction || (possibleDuplicate && !possibleDuplicateConfirmed))}
-              aria-busy={isSaving}
-              className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
-            >
-              {isSaving ? <><Clock3 className="h-4 w-4 animate-spin" /> Saving…</> : 'Record Payment'}
-            </button>
-          </div>
-        ) : undefined}
       >
         <form
           id={newPaymentMode === 'collect' ? 'customer-payment-collection-form' : 'payment-form'}
@@ -1714,9 +1723,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           {newPaymentMode !== 'collect' && <div className="space-y-2">
             <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">{language === 'bn' ? 'পেমেন্টের ধরন' : 'Payment type'}</p>
             <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800 sm:grid-cols-3" role="group" aria-label={language === 'bn' ? 'পেমেন্টের ধরন' : 'Payment type'}>
-              <button type="button" aria-pressed={newPaymentMode === 'sale'} onClick={() => { setNewPaymentMode('sale'); setNewSaleId(''); setNewAmount(''); setCollectionReceipt(null); setPossibleDuplicateConfirmed(false); setPaymentFormErrors({}); }} className={`min-h-11 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'sale' ? 'bg-white text-emerald-700 shadow-xs dark:bg-slate-700 dark:text-emerald-200' : 'text-slate-600 dark:text-slate-300'}`}>{language === 'bn' ? 'সেলের পেমেন্ট' : 'Payment for a sale'}</button>
-              <button type="button" aria-pressed={newPaymentMode === 'advance'} onClick={() => { setNewPaymentMode('advance'); setNewSaleId(''); setNewAmount(''); setCollectionReceipt(null); setPossibleDuplicateConfirmed(false); setPaymentFormErrors({}); }} className={`min-h-11 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'advance' ? 'bg-white text-emerald-700 shadow-xs dark:bg-slate-700 dark:text-emerald-200' : 'text-slate-600 dark:text-slate-300'}`}>{language === 'bn' ? 'অগ্রিম পেমেন্ট' : 'Add advance payment'}</button>
-              <button type="button" aria-pressed={newPaymentMode === 'apply-advance'} onClick={() => { setNewPaymentMode('apply-advance'); setNewSaleId(''); setNewAmount(''); setSaleSearch(''); setNewCustomerFilter(newSale?.customerId || preselectedCustomerId || 'all'); setNewAdvanceCurrency(newSale?.currency || currency); setCollectionReceipt(null); setPossibleDuplicateConfirmed(false); setPaymentFormErrors({}); }} className={`min-h-11 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'apply-advance' ? 'bg-white text-emerald-700 shadow-xs dark:bg-slate-700 dark:text-emerald-200' : 'text-slate-600 dark:text-slate-300'}`}>{language === 'bn' ? 'অগ্রিম দিয়ে পেমেন্ট' : 'Use advance payment'}</button>
+              <button type="button" aria-pressed={newPaymentMode === 'sale'} onClick={() => { setNewPaymentMode('sale'); setNewSaleId(''); setNewAmount(''); setPaymentFinancialAccountId(''); setCollectionReceipt(null); setPossibleDuplicateConfirmed(false); setPaymentFormErrors({}); }} className={`min-h-11 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'sale' ? 'bg-white text-emerald-700 shadow-xs dark:bg-slate-700 dark:text-emerald-200' : 'text-slate-600 dark:text-slate-300'}`}>{language === 'bn' ? 'সেলের পেমেন্ট' : 'Payment for a sale'}</button>
+              <button type="button" aria-pressed={newPaymentMode === 'advance'} onClick={() => { setNewPaymentMode('advance'); setNewSaleId(''); setNewAmount(''); setPaymentFinancialAccountId(''); setCollectionReceipt(null); setPossibleDuplicateConfirmed(false); setPaymentFormErrors({}); }} className={`min-h-11 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'advance' ? 'bg-white text-emerald-700 shadow-xs dark:bg-slate-700 dark:text-emerald-200' : 'text-slate-600 dark:text-slate-300'}`}>{language === 'bn' ? 'অগ্রিম পেমেন্ট' : 'Add advance payment'}</button>
+              <button type="button" aria-pressed={newPaymentMode === 'apply-advance'} onClick={() => { setNewPaymentMode('apply-advance'); setNewSaleId(''); setNewAmount(''); setPaymentFinancialAccountId(''); setSaleSearch(''); setNewCustomerFilter(newSale?.customerId || preselectedCustomerId || 'all'); setNewAdvanceCurrency(newSale?.currency || currency); setCollectionReceipt(null); setPossibleDuplicateConfirmed(false); setPaymentFormErrors({}); }} className={`min-h-11 rounded-lg px-3 text-xs font-semibold ${newPaymentMode === 'apply-advance' ? 'bg-white text-emerald-700 shadow-xs dark:bg-slate-700 dark:text-emerald-200' : 'text-slate-600 dark:text-slate-300'}`}>{language === 'bn' ? 'অগ্রিম দিয়ে পেমেন্ট' : 'Use advance payment'}</button>
             </div>
           </div>}
           {newPaymentMode === 'collect' ? collectionReceipt ? (
@@ -1761,26 +1770,42 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               </div>
             </section>
           ) : (
-            <div className="space-y-3">
-              <ol aria-label="Payment steps" className="grid grid-cols-3 gap-2">
-                {(['Customer', 'Bills', 'Payment'] as const).map((label, index) => {
-                  const step = (index + 1) as 1 | 2 | 3;
-                  const active = collectionStep === step;
-                  const complete = collectionStep > step;
-                  return <li key={label} aria-current={active ? 'step' : undefined} className={`rounded-lg px-2 py-2 text-center text-xs font-semibold ${active ? 'bg-violet-700 text-white' : complete ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-200' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}>
-                    {index + 1}. {label}
-                  </li>;
-                })}
-              </ol>
-              {collectionStep === 1 && <section className="space-y-3">
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">Choose a customer
+            <div className="space-y-5">
+              {/* লাইভ প্রিভিউ — কাস্টমার + বাছা বিলের বাকি + টাকার পরিমাণ */}
+              <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-3.5 dark:border-emerald-900 dark:bg-emerald-950/20">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white" aria-hidden="true">
+                  <HandCoins className="h-7 w-7" />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-base font-bold text-slate-900 dark:text-white">
+                    {parsedNewAmountMinor !== null && parsedNewAmountMinor > 0
+                      ? formatCurrency(minorUnitsToAmount(parsedNewAmountMinor), newAdvanceCurrency)
+                      : (language === 'bn' ? 'টাকার পরিমাণ' : 'Amount')}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                    {collectionCustomer
+                      ? `${getCustomerDisplayName(collectionCustomer)} · ${language === 'bn' ? 'বাছা বিলের বাকি' : 'Selected due'} ${formatCurrency(collectionSelectedDue, newAdvanceCurrency)}`
+                      : (language === 'bn' ? 'কাস্টমার বেছে নিন' : 'Choose a customer')}
+                  </p>
+                </div>
+              </div>
+              <p className="rounded-xl border border-violet-200 bg-violet-50/60 px-3.5 py-2.5 text-xs leading-6 text-violet-900 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-100">
+                {language === 'bn' ? 'বিল বাছলে সেই বিলের বাকিই মিটবে। টাকা যাবে নিচে বাছা ওয়ালেটে।' : 'Selected bills get paid from this money. The cash goes to the wallet you choose below.'}
+              </p>
+              {/* ১. কাস্টমার */}
+              <section aria-labelledby="collect-step-1-title" className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">1</span>
+                  <h3 id="collect-step-1-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'কাস্টমার' : 'Customer'}</h3>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{language === 'bn' ? 'টাকাটা কার কাছ থেকে নিচ্ছেন, তাকে বাছুন।' : 'Choose who is paying you.'}</p>
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">{language === 'bn' ? 'কাস্টমার খুঁজুন' : 'Choose a customer'}
                   <span className="relative mt-1.5 block"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input autoComplete="off" value={customerSearch} onChange={event => {
                     setCustomerSearch(event.target.value);
                     setNewCustomerFilter('all');
                     setSelectedCollectionLineIds({});
                     setApplyExistingCollectionAdvance(false);
-                    setCollectionStep(1);
-                  }} placeholder="Search name, phone, or ID" className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></span>
+                  }} placeholder={language === 'bn' ? 'নাম, ফোন নম্বর বা আইডি' : 'Search name, phone, or ID'} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white" /></span>
                 </label>
                 {newCustomerFilter === 'all' && customerSearch.trim().length >= 2 && <div role="listbox" aria-label="Customer search results" className="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-1 dark:border-slate-700">
                   {collectionCustomerMatches.slice(0, 10).map(customer => <button key={customer.id} type="button" role="option" aria-selected={false} onClick={() => {
@@ -1791,34 +1816,32 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                   }} className="flex min-h-11 w-full flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-violet-50 dark:hover:bg-violet-950/30">
                     <span className="font-semibold">{getCustomerOptionLabel(customer)}</span><span className="font-mono text-xs text-slate-500">{customer.id}</span>
                   </button>)}
-                  {collectionCustomerMatches.length === 0 && <p className="p-3 text-sm text-slate-500">No customer found.</p>}
+                  {collectionCustomerMatches.length === 0 && <p className="p-3 text-sm text-slate-500">{language === 'bn' ? 'এই নামে কোনো কাস্টমার পাওয়া যায়নি।' : 'No customer found.'}</p>}
                 </div>}
-              </section>}
-              {collectionCustomer && <>
-                {collectionStep === 1 && <>
+                {collectionCustomer && <>
                 <div className="grid min-w-0 gap-3">
                   <section aria-label="Customer financial summary" className="min-w-0 rounded-xl border border-violet-100 bg-violet-50/60 p-2.5 dark:border-violet-900 dark:bg-violet-950/20">
                     <header className="mb-2 flex min-w-0 flex-wrap items-baseline gap-x-2">
-                      <span className="text-[11px] text-slate-500">Customer</span>
+                      <span className="text-[11px] text-slate-500">{language === 'bn' ? 'কাস্টমার' : 'Customer'}</span>
                       <strong className="min-w-0 break-words text-xs">{getCustomerDisplayName(collectionCustomer)}</strong>
-                      <span className="min-w-0 break-all text-[11px] text-slate-500">{collectionCustomer.phone || collectionCustomer.whatsapp || 'No phone number'}</span>
+                      <span className="min-w-0 break-all text-[11px] text-slate-500">{collectionCustomer.phone || collectionCustomer.whatsapp || (language === 'bn' ? 'ফোন নম্বর নেই' : 'No phone number')}</span>
                     </header>
                     <div className="grid min-w-0 grid-cols-2 gap-2 min-[480px]:grid-cols-3">
                       <div className="min-w-0">
-                        <p className="text-[11px] text-slate-500">Money due</p>
+                        <p className="text-[11px] text-slate-500">{language === 'bn' ? 'বাকি আছে' : 'Money due'}</p>
                         <p className="break-words font-mono text-xs font-bold text-amber-800 dark:text-amber-300">{formatCurrency(collectionOutstandingTotal, newAdvanceCurrency)}</p>
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[11px] text-slate-500">Advance payment</p>
+                        <p className="text-[11px] text-slate-500">{language === 'bn' ? 'অগ্রিম আছে' : 'Advance payment'}</p>
                         <p className="break-words font-mono text-xs font-bold text-violet-800 dark:text-violet-300">{formatCurrency(collectionAdvanceAvailable, newAdvanceCurrency)}</p>
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[11px] text-slate-500">Paid before</p>
+                        <p className="text-[11px] text-slate-500">{language === 'bn' ? 'আগে দেওয়া হয়েছে' : 'Paid before'}</p>
                         <p className="break-words font-mono text-xs font-bold text-emerald-800 dark:text-emerald-300">{formatCurrency(collectionHistoricalPayments, newAdvanceCurrency)}</p>
                       </div>
                     </div>
                   </section>
-                  <label className="flex min-h-9 min-w-0 items-center justify-between gap-3 text-xs font-semibold text-slate-700 dark:text-slate-200">Currency
+                  <label className="flex min-h-9 min-w-0 items-center justify-between gap-3 text-xs font-semibold text-slate-700 dark:text-slate-200">{language === 'bn' ? 'মুদ্রা' : 'Currency'}
                     <select value={newAdvanceCurrency} onChange={event => {
                       setNewAdvanceCurrency(event.target.value as AppCurrency);
                       setSelectedCollectionLineIds({});
@@ -1829,13 +1852,19 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     </select>
                   </label>
                 </div>
-                <div className="flex justify-end border-t border-slate-100 pt-3 dark:border-slate-800">
-                  <button type="button" disabled={!collectionCustomer} onClick={() => setCollectionStep(collectionOutstandingLines.length ? 2 : 3)} className="min-h-10 rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-600 disabled:opacity-50">{collectionOutstandingLines.length ? 'Next: bills' : 'Next: payment'}</button>
-                </div>
                 </>}
-                {collectionStep === 2 && <section aria-label="Outstanding invoice lines" className="space-y-2">
+              </section>
+              {/* ২. বিল বাছুন */}
+              <section aria-labelledby="collect-step-2-title" className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">2</span>
+                  <h3 id="collect-step-2-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'বিল বাছুন' : 'Choose bills'}</h3>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{language === 'bn' ? 'যে বিলগুলোর টাকা নিচ্ছেন, সেগুলোতে টিক দিন — শুধু টিক দেওয়া বিলের বাকিই মিটবে।' : 'Tick the bills being paid — only ticked bills will be settled.'}</p>
+                {collectionCustomer ? <>
+                <section aria-label="Outstanding invoice lines" className="space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div><h3 className="text-sm font-bold text-slate-900 dark:text-white">Choose bills to pay</h3><p className="text-xs text-slate-500">Only selected bills will be paid.</p></div>
+                    <div><h3 className="text-sm font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'বাকি বিলগুলো' : 'Choose bills to pay'}</h3><p className="text-xs text-slate-500">{language === 'bn' ? 'শুধু টিক দেওয়া বিলের টাকাই জমা হবে।' : 'Only selected bills will be paid.'}</p></div>
                     {collectionOutstandingLines.length > 0 && <label className="flex min-h-9 items-center gap-2 text-xs font-semibold text-violet-700 dark:text-violet-300">
                       <input type="checkbox" checked={collectionOutstandingLines.every(item => selectedCollectionLineIds[item.sale.id]?.includes(item.line.id))} onChange={event => {
                         if (!event.target.checked) {
@@ -1847,7 +1876,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                           next[item.sale.id] = [...(next[item.sale.id] || []), item.line.id];
                         });
                         setSelectedCollectionLineIds(next);
-                      }} className="h-4 w-4 accent-violet-600" />Select all
+                      }} className="h-4 w-4 accent-violet-600" />{language === 'bn' ? 'সবগুলো বাছুন' : 'Select all'}
                     </label>}
                   </div>
                   {collectionOutstandingLines.length ? <div className="max-h-64 space-y-2 overflow-y-auto overscroll-contain pr-1">
@@ -1875,37 +1904,40 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                         </div>
                       </label>;
                     })}
-                  </div> : <p role="status" className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">No bills are due. You can still add an advance payment.</p>}
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Selected due: {formatCurrency(collectionSelectedDue, newAdvanceCurrency)}</p>
-                </section>}
-                {collectionStep === 2 && collectionSelectedDue > 0 && <label className="flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50/50 p-3 text-xs text-violet-950 dark:border-violet-900 dark:bg-violet-950/20 dark:text-violet-100">
+                  </div> : <p role="status" className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">{language === 'bn' ? 'এই কাস্টমারের কোনো বাকি বিল নেই। টাকা দিলে সেটা অগ্রিম হিসেবে জমা হবে।' : 'No bills are due. You can still add an advance payment.'}</p>}
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{language === 'bn' ? 'বাছা বিলের মোট বাকি:' : 'Selected due:'} {formatCurrency(collectionSelectedDue, newAdvanceCurrency)}</p>
+                </section>
+                {collectionSelectedDue > 0 && <label className="flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50/50 p-3 text-xs text-violet-950 dark:border-violet-900 dark:bg-violet-950/20 dark:text-violet-100">
                   <input type="checkbox" checked={applyExistingCollectionAdvance} disabled={collectionAdvanceAvailable <= 0} onChange={event => setApplyExistingCollectionAdvance(event.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-violet-600" />
-                  <span>Use saved credit for these bills (up to {formatCurrency(Math.min(collectionAdvanceAvailable, collectionSelectedDue), newAdvanceCurrency)}). This is not new money.</span>
+                  <span>{language === 'bn' ? `আগের অগ্রিম থেকে মেটান (সর্বোচ্চ ${formatCurrency(Math.min(collectionAdvanceAvailable, collectionSelectedDue), newAdvanceCurrency)}) — এটা নতুন টাকা নয়।` : `Use saved credit for these bills (up to ${formatCurrency(Math.min(collectionAdvanceAvailable, collectionSelectedDue), newAdvanceCurrency)}). This is not new money.`}</span>
                 </label>}
-                {collectionStep === 2 && <div className="flex justify-between gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-                  <button type="button" onClick={() => setCollectionStep(1)} className="min-h-10 rounded-xl border border-slate-200 px-4 text-sm font-semibold dark:border-slate-700">Back</button>
-                  <button type="button" onClick={() => setCollectionStep(3)} className="min-h-10 rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-600">Next: payment</button>
-                </div>}
-                {collectionStep === 3 && <>
+                </> : <p role="status" className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">{language === 'bn' ? 'আগে একজন কাস্টমার বাছুন, তারপর তার বাকি বিলগুলো এখানে দেখা যাবে।' : 'Choose a customer first — their outstanding bills will show here.'}</p>}
+              </section>
+              {/* ৩. টাকার বিবরণ */}
+              <section aria-labelledby="collect-step-3-title" className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">3</span>
+                  <h3 id="collect-step-3-title" className="text-base font-bold text-slate-900 dark:text-white">{language === 'bn' ? 'টাকার বিবরণ' : 'Payment details'}</h3>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{language === 'bn' ? 'কত টাকা পেলেন, কীভাবে পেলেন, আর টাকাটা কোন ওয়ালেটে যাবে।' : 'How much you received, how it was paid, and which wallet it goes to.'}</p>
+                {collectionCustomer ? <>
                 <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800">
                   <span className="font-semibold">{getCustomerDisplayName(collectionCustomer)}</span>
-                  <span className="text-slate-500"> · Selected due: {formatCurrency(collectionSelectedDue, newAdvanceCurrency)}</span>
+                  <span className="text-slate-500"> · {language === 'bn' ? 'বাছা বিলের বাকি' : 'Selected due'} {formatCurrency(collectionSelectedDue, newAdvanceCurrency)}</span>
                 </div>
-                {selectedCollectionItems.length === 0 && <p role="status" className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-900 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-100">No bills selected. The money will be saved as an advance payment.</p>}
+                {selectedCollectionItems.length === 0 && <p role="status" className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-900 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-100">{language === 'bn' ? 'কোনো বিল বাছা হয়নি। টাকাটা অগ্রিম হিসেবে জমা হবে।' : 'No bills selected. The money will be saved as an advance payment.'}</p>}
                 <div className="payment-collection-fields grid min-w-0 gap-4 sm:grid-cols-2">
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Money received *
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">{language === 'bn' ? 'কত টাকা পেলেন *' : 'Money received *'}
                     <input required type="number" min="0.01" step="0.01" inputMode="decimal" value={newAmount} onChange={event => { setNewAmount(event.target.value); setPossibleDuplicateConfirmed(false); }} className="mt-1.5 min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
                   </label>
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Date received *
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">{language === 'bn' ? 'কবে পেলেন *' : 'Date received *'}
                     <input required type="date" max={today} value={newPaymentDate} onChange={event => setNewPaymentDate(event.target.value)} className="mt-1.5 min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
                   </label>
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">How was it paid? *
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">{language === 'bn' ? 'কীভাবে পেলেন? *' : 'How was it paid? *'}
                     <select required value={newMethod} onChange={event => {
                       const methodName = event.target.value as PaymentMethod;
                       setNewMethod(methodName);
-                      setCollectionFinancialAccountId(paymentMethods.find(method => method.name === methodName)?.financialAccountId
-                        || financialAccounts.find(account => account.name.toLocaleLowerCase() === methodName.toLocaleLowerCase())?.id
-                        || '');
+                      setCollectionFinancialAccountId(resolveMappedWalletAccountId(methodName, paymentMethods, financialAccounts));
                       setPossibleDuplicateConfirmed(false);
                     }} className="mt-1.5 min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
                       {activePaymentMethods.map(method => <option key={method} value={method}>{methodLabel(method)}</option>)}
@@ -1927,22 +1959,19 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                     />
                     {collectionAccounts.length > 0 && !collectionDestinationAccount && (
                       <p role="alert" className="mt-1 text-[11px] font-normal text-rose-700 dark:text-rose-300">
-                        Choose an active receiving account before recording the payment.
+                        {language === 'bn' ? 'টাকা জমা দেওয়ার আগে একটি চালু ওয়ালেট বাছুন।' : 'Choose an active receiving account before recording the payment.'}
                       </p>
                     )}
                   </div>
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">Reference number {paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId) ? '*' : '(optional)'}
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">{language === 'bn' ? 'রেফারেন্স নম্বর' : 'Reference number'} {paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId) ? '*' : (language === 'bn' ? '(ঐচ্ছিক)' : '(optional)')}
                     <input required={paymentMethodRequiresTransactionId(newMethod, paymentMethods, settings.paymentPreferences?.requireTransactionId)} value={newTransactionId} onChange={event => { setNewTransactionId(event.target.value); setPossibleDuplicateConfirmed(false); }} className="mt-1.5 min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 font-mono dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
-                  </label>
-                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-200 sm:col-span-2">Note (optional)
-                    <input value={newNotes} onChange={event => setNewNotes(event.target.value)} className="mt-1.5 min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
                   </label>
                 </div>
                 {parsedNewAmountMinor !== null && <section aria-label="Payment allocation preview" className="payment-allocation-preview space-y-3 rounded-2xl border border-violet-200 bg-violet-50/60 p-3 text-sm dark:border-violet-900 dark:bg-violet-950/20 sm:p-4">
                   <header className="space-y-2">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
-                        <h3 className="text-base font-bold text-slate-950 dark:text-white">Check payment</h3>
+                        <h3 className="text-base font-bold text-slate-950 dark:text-white">{language === 'bn' ? 'হিসাব মিলিয়ে নিন' : 'Check payment'}</h3>
                         <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
                           For <strong className="text-slate-900 dark:text-white">{getCustomerDisplayName(collectionCustomer)}</strong>
                           {collectionCustomer.phone ? ` · ${collectionCustomer.phone}` : ''}
@@ -1950,8 +1979,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                       </div>
                       <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-violet-800 dark:bg-slate-900 dark:text-violet-200">
                         {selectedCollectionItems.length
-                          ? `${selectedCollectionItems.length} selected bill${selectedCollectionItems.length === 1 ? '' : 's'}`
-                          : 'Advance payment'}
+                          ? (language === 'bn' ? `${selectedCollectionItems.length}টি বিল বাছা হয়েছে` : `${selectedCollectionItems.length} selected bill${selectedCollectionItems.length === 1 ? '' : 's'}`)
+                          : (language === 'bn' ? 'অগ্রিম পেমেন্ট' : 'Advance payment')}
                       </span>
                     </div>
                     {selectedCollectionItems.length > 0 && <div className="space-y-1.5" aria-label="Selected invoice details">
@@ -1969,28 +1998,28 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                       })}
                     </div>}
                     {selectedCollectionItems.length === 0 && <p className="rounded-xl border border-violet-100 bg-white/80 px-3 py-2 text-xs leading-5 text-slate-600 dark:border-violet-900/70 dark:bg-slate-900/70 dark:text-slate-300">
-                      No bills selected. This payment will be saved as an advance for {getCustomerDisplayName(collectionCustomer)}.
+                      {language === 'bn' ? `কোনো বিল বাছা হয়নি। টাকাটা ${getCustomerDisplayName(collectionCustomer)}-এর অগ্রিম হিসেবে জমা হবে।` : `No bills selected. This payment will be saved as an advance for ${getCustomerDisplayName(collectionCustomer)}.`}
                     </p>}
                   </header>
                   <dl className="payment-allocation-summary grid min-w-0 grid-cols-2 gap-2 min-[480px]:grid-cols-3">
                     <div className="payment-allocation-metric payment-allocation-metric--received min-w-0 rounded-xl border border-violet-200 bg-white p-2.5 dark:border-violet-800 dark:bg-slate-900">
-                      <dt className="text-[11px] font-semibold text-violet-800 dark:text-violet-200">Money received</dt>
+                      <dt className="text-[11px] font-semibold text-violet-800 dark:text-violet-200">{language === 'bn' ? 'টাকা পেলেন' : 'Money received'}</dt>
                       <dd className="mt-1 break-words font-mono text-base font-bold text-violet-950 dark:text-white">{formatCurrency(minorUnitsToAmount(parsedNewAmountMinor), newAdvanceCurrency)}</dd>
                     </div>
                     <div className="payment-allocation-metric min-w-0 rounded-xl border border-slate-200 bg-white/80 p-2.5 dark:border-slate-700 dark:bg-slate-900/80">
-                      <dt className="text-[11px] font-medium leading-4 text-slate-600 dark:text-slate-300">Advance payment used</dt>
+                      <dt className="text-[11px] font-medium leading-4 text-slate-600 dark:text-slate-300">{language === 'bn' ? 'অগ্রিম থেকে মেটানো হলো' : 'Advance payment used'}</dt>
                       <dd className="mt-1 break-words font-mono text-sm font-bold text-slate-900 dark:text-white">{formatCurrency(collectionAllocationPlan.advanceApplied, newAdvanceCurrency)}</dd>
                     </div>
                     <div className="payment-allocation-metric min-w-0 rounded-xl border border-slate-200 bg-white/80 p-2.5 dark:border-slate-700 dark:bg-slate-900/80">
-                      <dt className="text-[11px] font-medium leading-4 text-slate-600 dark:text-slate-300">Paid toward selected bills</dt>
+                      <dt className="text-[11px] font-medium leading-4 text-slate-600 dark:text-slate-300">{language === 'bn' ? 'বাছা বিলে জমা হলো' : 'Paid toward selected bills'}</dt>
                       <dd className="mt-1 break-words font-mono text-sm font-bold text-slate-900 dark:text-white">{formatCurrency(collectionAllocationPlan.cashAllocated, newAdvanceCurrency)}</dd>
                     </div>
                     <div className="payment-allocation-metric min-w-0 rounded-xl border border-slate-200 bg-white/80 p-2.5 dark:border-slate-700 dark:bg-slate-900/80">
-                      <dt className="text-[11px] font-medium leading-4 text-slate-600 dark:text-slate-300">Advance payment added</dt>
+                      <dt className="text-[11px] font-medium leading-4 text-slate-600 dark:text-slate-300">{language === 'bn' ? 'অগ্রিম হিসেবে জমা হলো' : 'Advance payment added'}</dt>
                       <dd className="mt-1 break-words font-mono text-sm font-bold text-slate-900 dark:text-white">{formatCurrency(collectionAllocationPlan.advanceCreditCreated, newAdvanceCurrency)}</dd>
                     </div>
                     <div className="payment-allocation-metric payment-allocation-metric--due col-span-2 min-w-0 rounded-xl border border-amber-300 bg-amber-50 p-2.5 dark:border-amber-800 dark:bg-amber-950/30 min-[480px]:col-span-1">
-                      <dt className="text-[11px] font-bold leading-4 text-amber-900 dark:text-amber-200">Selected due left</dt>
+                      <dt className="text-[11px] font-bold leading-4 text-amber-900 dark:text-amber-200">{language === 'bn' ? 'বাছা বিলের বাকি রইল' : 'Selected due left'}</dt>
                       <dd className="mt-1 break-words font-mono text-base font-bold text-amber-950 dark:text-amber-100">{formatCurrency(collectionAllocationPlan.remainingSelectedDue, newAdvanceCurrency)}</dd>
                     </div>
                   </dl>
@@ -1999,11 +2028,29 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 {!duplicateTransaction && possibleDuplicate && <DuplicateWarning payment={possibleDuplicate} onReview={() => { setIsAddPaymentOpen(false); openPaymentDetails(possibleDuplicate); }} />}
                 {possibleDuplicate && <label className="flex min-h-11 items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
                   <input type="checkbox" checked={possibleDuplicateConfirmed} onChange={event => setPossibleDuplicateConfirmed(event.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-violet-600" />
-                  <span>This is a different payment. I checked the similar receipt.</span>
+                  <span>{language === 'bn' ? 'এটা আলাদা পেমেন্ট — একই রকম রসিদটা দেখে নিয়েছি।' : 'This is a different payment. I checked the similar receipt.'}</span>
                 </label>}
-                <p className="text-[11px] text-slate-500">The receipt also saves when it was recorded.</p>
-                </>}
-              </>}
+                <p className="text-[11px] text-slate-500">{language === 'bn' ? 'কখন টাকাটা নিলেন, রসিদে সেটা লেখা থাকবে।' : 'The receipt also saves when it was recorded.'}</p>
+                </> : <p role="status" className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">{language === 'bn' ? 'কাস্টমার বাছলে এখানে টাকার ঘরগুলো আসবে।' : 'The payment fields will appear once a customer is chosen.'}</p>}
+              </section>
+              {/* আরও সেটিংস (ঐচ্ছিক) — নোট */}
+              <section aria-labelledby="collect-advanced-title" className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+                <button type="button" onClick={() => setPaymentAdvancedOpen(previous => !previous)} aria-expanded={paymentAdvancedOpen} className="flex min-h-12 w-full items-center justify-between gap-3 bg-slate-50 px-4 py-3 text-left dark:bg-slate-800/60">
+                  <span id="collect-advanced-title" className="text-sm font-bold text-slate-800 dark:text-slate-100">{language === 'bn' ? 'আরও সেটিংস (ঐচ্ছিক)' : 'More settings (optional)'}</span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${paymentAdvancedOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {paymentAdvancedOpen && (
+                  <div className="space-y-4 border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">{language === 'bn' ? 'নোট' : 'Note'} <span className="font-normal text-slate-500">{language === 'bn' ? '(ঐচ্ছিক)' : '(optional)'}</span>
+                      <input value={newNotes} onChange={event => setNewNotes(event.target.value)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white" />
+                    </label>
+                  </div>
+                )}
+              </section>
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                <button type="button" disabled={isSaving} onClick={() => setIsAddPaymentOpen(false)} className="min-h-11 rounded-xl px-4 text-sm font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800">{language === 'bn' ? 'বাতিল' : 'Cancel'}</button>
+                <button type="submit" disabled={isSaving || !collectionCustomer || !collectionDestinationAccount || parsedNewAmountMinor === null || parsedNewAmountMinor <= 0 || !activePaymentMethods.length || Boolean(duplicateTransaction || (possibleDuplicate && !possibleDuplicateConfirmed))} aria-busy={isSaving} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">{isSaving ? <><Clock3 className="h-4 w-4 animate-spin" /> {language === 'bn' ? 'জমা হচ্ছে…' : 'Saving…'} </> : (language === 'bn' ? 'পেমেন্ট রেকর্ড করুন' : 'Record Payment')}</button>
+              </div>
             </div>
           ) : <>
           {/* ১. কাস্টমার ও সেল */}
@@ -2020,7 +2067,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               {paymentFormErrors.customer && <span role="alert" className="mt-1 block text-xs text-rose-600">{paymentFormErrors.customer}</span>}
             </label>
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">{language === 'bn' ? 'মুদ্রা' : 'Currency'} *
-              <select value={newAdvanceCurrency} onChange={event => { setNewAdvanceCurrency(event.target.value as AppCurrency); setNewSaleId(''); setNewAmount(''); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="BDT">BDT — ৳</option><option value="USD">USD — $</option></select>
+              <select value={newAdvanceCurrency} onChange={event => { setNewAdvanceCurrency(event.target.value as AppCurrency); setNewSaleId(''); setNewAmount(''); setPaymentFinancialAccountId(''); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="BDT">BDT — ৳</option><option value="USD">USD — $</option></select>
             </label>
             {newCustomerFilter !== 'all' && <p className="rounded-lg bg-violet-50 p-3 text-sm text-violet-900 dark:bg-violet-950/30 dark:text-violet-200 sm:col-span-2">
               Available advance payment: <strong className="font-mono">{formatCurrency(availableAdvance, newAdvanceCurrency)}</strong>
@@ -2047,7 +2094,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
               {paymentFormErrors.customer && <span role="alert" className="mt-1 block text-xs text-rose-600">{paymentFormErrors.customer}</span>}
             </label>
             <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">{language === 'bn' ? 'মুদ্রা' : 'Currency'} *
-              <select value={newAdvanceCurrency} onChange={event => setNewAdvanceCurrency(event.target.value as AppCurrency)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="BDT">BDT — ৳</option><option value="USD">USD — $</option></select>
+              <select value={newAdvanceCurrency} onChange={event => { setNewAdvanceCurrency(event.target.value as AppCurrency); setPaymentFinancialAccountId(''); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white"><option value="BDT">BDT — ৳</option><option value="USD">USD — $</option></select>
             </label>
             {newCustomerFilter !== 'all' && <p className="text-xs text-slate-500 sm:col-span-2">Current advance payment: {formatCurrency(getCustomerAdvanceCredit(payments, newCustomerFilter, newAdvanceCurrency))} · This receipt adds to the customer’s advance payment, not sales.</p>}
           </div>}
@@ -2084,6 +2131,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                           if (paymentFormErrors.sale) setPaymentFormErrors(previous => ({ ...previous, sale: '' }));
                           setNewSaleId(sale.id);
                           setNewAmount('');
+                          setPaymentFinancialAccountId('');
                           setNewTransactionId('');
                           setPossibleDuplicateConfirmed(false);
                         }}
@@ -2150,12 +2198,37 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
                 {paymentFormErrors.date && <span role="alert" className="mt-1 block text-xs text-rose-600">{paymentFormErrors.date}</span>}
               </label>
               <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">{language === 'bn' ? 'পেমেন্ট মাধ্যম' : 'Payment method'} *
-                <select ref={paymentMethodSelectRef} required value={newMethod} aria-invalid={Boolean(paymentFormErrors.method)} onChange={event => { setNewMethod(event.target.value as PaymentMethod); setPossibleDuplicateConfirmed(false); if (paymentFormErrors.method) setPaymentFormErrors(previous => ({ ...previous, method: '' })); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+                <select ref={paymentMethodSelectRef} required value={newMethod} aria-invalid={Boolean(paymentFormErrors.method)} onChange={event => { setNewMethod(event.target.value as PaymentMethod); setPaymentFinancialAccountId(''); setPossibleDuplicateConfirmed(false); if (paymentFormErrors.method) setPaymentFormErrors(previous => ({ ...previous, method: '' })); }} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
                   {activePaymentMethods.map(method => <option key={method} value={method}>{methodLabel(method)}</option>)}
                 </select>
                 {paymentFormErrors.method && <span role="alert" className="mt-1 block text-xs text-rose-600">{paymentFormErrors.method}</span>}
               </label>
             </>}
+            {newPaymentMode !== 'apply-advance' && paymentAccounts.length > 0 && (
+              <div className="min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                <span className="mb-1.5 block">{language === 'bn' ? 'টাকার অ্যাকাউন্ট (ওয়ালেট)' : 'Receiving account (wallet)'}</span>
+                <ReceivingAccountSelector
+                  accounts={paymentAccounts}
+                  selectedAccountId={paymentDestinationAccount?.id || ''}
+                  currency={paymentCurrency}
+                  paymentMethods={paymentMethods}
+                  onSelect={setPaymentFinancialAccountId}
+                  onCreateAccount={() => {
+                    setIsAddPaymentOpen(false);
+                    onCreateRequestHandled?.();
+                    onNavigateSection?.('cashbook', `action:account:${paymentCurrency}`);
+                  }}
+                />
+                <p className="mt-1 text-[11px] font-normal leading-5 text-slate-500 dark:text-slate-400">
+                  {language === 'bn' ? 'টাকাটা এই ওয়ালেটে জমা হবে। না বাছলে পেমেন্ট মাধ্যমের ওয়ালেটেই যাবে।' : 'The money will go to this wallet. If you don’t choose, it goes to the payment method’s wallet.'}
+                </p>
+              </div>
+            )}
+            {newPaymentMode === 'apply-advance' && (
+              <p className="rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600 dark:bg-slate-800 dark:text-slate-300 sm:col-span-2">
+                {language === 'bn' ? 'নতুন টাকা আসছে না — আগের অগ্রিম দিয়েই সেলের বাকি মেটানো হচ্ছে, তাই ওয়ালেট বাছতে হবে না।' : 'No new cash arrives — the earlier advance pays the sale, so no wallet is needed.'}
+              </p>
+            )}
             {newPaymentMode === 'sale' && <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">{language === 'bn' ? 'পেমেন্টের অবস্থা' : 'Payment status'} *
               <select required value={newStatus} onChange={event => setNewStatus(event.target.value as Extract<PaymentStatus, 'paid' | 'pending' | 'failed'>)} className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
                 <option value="paid">{language === 'bn' ? 'পাওয়া গেছে' : 'Received'}</option><option value="pending">{language === 'bn' ? 'বাকি' : 'Pending'}</option><option value="failed">{language === 'bn' ? 'ব্যর্থ' : 'Failed'}</option>

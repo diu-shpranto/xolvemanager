@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   getFirstPaymentFormErrorTarget,
+  resolveMappedWalletAccountId,
+  resolvePaymentWalletAccountId,
   type PaymentFormErrorTargetInput,
 } from './paymentFormHelpers.ts';
 
@@ -148,4 +150,36 @@ test('getFirstPaymentFormErrorTarget checks sale before amount', () => {
     getFirstPaymentFormErrorTarget({ ...validSaleInput, saleId: '', amountMinor: null }),
     'sale',
   );
+});
+
+const walletMethods = [
+  { name: 'bKash', financialAccountId: 'acc-bkash' },
+  { name: 'Nagad' },
+  { name: 'Cash', financialAccountId: 'acc-cash' },
+];
+const walletAccounts = [
+  { id: 'acc-bkash', name: 'bKash Personal' },
+  { id: 'acc-nagad', name: 'Nagad' },
+  { id: 'acc-cash', name: 'Cash Drawer' },
+];
+
+test('resolveMappedWalletAccountId prefers the account configured on the method', () => {
+  assert.equal(resolveMappedWalletAccountId('bKash', walletMethods, walletAccounts), 'acc-bkash');
+  assert.equal(resolveMappedWalletAccountId('Cash', walletMethods, walletAccounts), 'acc-cash');
+});
+
+test('resolveMappedWalletAccountId falls back to an account with the method name', () => {
+  assert.equal(resolveMappedWalletAccountId('Nagad', walletMethods, walletAccounts), 'acc-nagad');
+  assert.equal(resolveMappedWalletAccountId('nagad', walletMethods, walletAccounts), 'acc-nagad');
+});
+
+test('resolveMappedWalletAccountId returns empty when nothing maps', () => {
+  assert.equal(resolveMappedWalletAccountId('Rocket', walletMethods, walletAccounts), '');
+  assert.equal(resolveMappedWalletAccountId('bKash', [], []), '');
+});
+
+test('resolvePaymentWalletAccountId prefers the seller pick over the mapped wallet', () => {
+  assert.equal(resolvePaymentWalletAccountId('acc-cash', 'acc-bkash'), 'acc-cash');
+  assert.equal(resolvePaymentWalletAccountId('', 'acc-bkash'), 'acc-bkash');
+  assert.equal(resolvePaymentWalletAccountId('', ''), '');
 });

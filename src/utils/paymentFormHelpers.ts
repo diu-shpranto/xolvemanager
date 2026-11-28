@@ -1,3 +1,39 @@
+export interface WalletMappingMethod {
+  name: string;
+  financialAccountId?: string;
+}
+
+export interface WalletMappingAccount {
+  id: string;
+  name: string;
+}
+
+/**
+ * The wallet a payment method points to: the account configured on the
+ * method, or an account whose name matches the method (bKash → the bKash
+ * account). Pure — mirrors the mapping PaymentsView used inline.
+ */
+export function resolveMappedWalletAccountId(
+  methodName: string,
+  methods: WalletMappingMethod[],
+  accounts: WalletMappingAccount[],
+): string {
+  return methods.find(method => method.name === methodName)?.financialAccountId
+    || accounts.find(account => account.name.toLocaleLowerCase() === methodName.toLocaleLowerCase())?.id
+    || '';
+}
+
+/**
+ * The wallet a payment actually goes to: the seller's explicit pick wins,
+ * otherwise the method's mapped wallet. Pure.
+ */
+export function resolvePaymentWalletAccountId(
+  overrideAccountId: string,
+  mappedAccountId: string,
+): string {
+  return overrideAccountId || mappedAccountId || '';
+}
+
 export type PaymentFormErrorTarget =
   | 'sale'
   | 'customer'
