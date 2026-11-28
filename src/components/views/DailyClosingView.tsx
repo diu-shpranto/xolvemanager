@@ -6,6 +6,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
+import { StatCard } from '../common/StatCard';
 import { formatAppDate, formatCurrency, getDateInTimeZone } from '../../utils/dateUtils';
 import { getDailyFinancialSummary, getFinancialLedger } from '../../utils/financialLedger';
 import { normalizePaymentMethods } from '../../utils/paymentMethods';
@@ -130,36 +131,49 @@ export const DailyClosingView: React.FC<{ onNavigate: (section: 'cashbook') => v
       ) : (
         <>
           <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5" aria-label="Day summary">
-            <div className="dc-kpi">
-              <span className="dc-kpi-icon dc-kpi-icon--violet"><Wallet className="h-4 w-4" /></span>
-              <p className="dc-kpi-label">Opening balance</p>
-              <p className="dc-kpi-value dc-kpi-value--count">{formatCurrency(summary.openingBalance, currency)}</p>
-              <p className="dc-kpi-hint">All accounts at day start</p>
-            </div>
-            <div className="dc-kpi">
-              <span className="dc-kpi-icon dc-kpi-icon--emerald"><ArrowDownLeft className="h-4 w-4" /></span>
-              <p className="dc-kpi-label">Money in</p>
-              <p className="dc-kpi-value dc-kpi-value--in">{formatCurrency(summary.totalMoneyIn, currency)}</p>
-              <p className="dc-kpi-hint">Received on {formatAppDate(date)}</p>
-            </div>
-            <div className="dc-kpi">
-              <span className="dc-kpi-icon dc-kpi-icon--rose"><ArrowUpRight className="h-4 w-4" /></span>
-              <p className="dc-kpi-label">Money out</p>
-              <p className="dc-kpi-value dc-kpi-value--out">{formatCurrency(summary.totalMoneyOut, currency)}</p>
-              <p className="dc-kpi-hint">Paid on {formatAppDate(date)}</p>
-            </div>
-            <div className="dc-kpi">
-              <span className="dc-kpi-icon dc-kpi-icon--violet"><Scale className="h-4 w-4" /></span>
-              <p className="dc-kpi-label">Expected closing</p>
-              <p className="dc-kpi-value dc-kpi-value--count">{formatCurrency(summary.expectedClosingBalance, currency)}</p>
-              <p className="dc-kpi-hint">Opening + in − out</p>
-            </div>
-            <div className="dc-kpi">
-              <span className={`dc-kpi-icon ${dayMatched ? 'dc-kpi-icon--emerald' : 'dc-kpi-icon--amber'}`}><CheckCircle2 className="h-4 w-4" /></span>
-              <p className="dc-kpi-label">Day difference</p>
-              <p className={`dc-kpi-value ${dayMatched ? 'dc-kpi-value--in' : 'dc-kpi-value--diff'}`}>{dayMatched ? formatCurrency(0, currency) : formatCurrency(totalDifference, currency)}</p>
-              <p className="dc-kpi-hint">{dayMatched ? 'Counts match expected' : 'Counts differ from expected'}</p>
-            </div>
+            <StatCard
+              icon={<Wallet className="h-5 w-5" />}
+              label="Opening balance"
+              value={formatCurrency(summary.openingBalance, currency)}
+              hint="All accounts at day start"
+              tone="violet"
+              valueClassName="text-xl sm:text-2xl"
+            />
+            <StatCard
+              icon={<ArrowDownLeft className="h-5 w-5" />}
+              label="Money in"
+              value={formatCurrency(summary.totalMoneyIn, currency)}
+              hint={`Received on ${formatAppDate(date)}`}
+              tone="emerald"
+              valueTone="emerald"
+              valueClassName="text-xl sm:text-2xl"
+            />
+            <StatCard
+              icon={<ArrowUpRight className="h-5 w-5" />}
+              label="Money out"
+              value={formatCurrency(summary.totalMoneyOut, currency)}
+              hint={`Paid on ${formatAppDate(date)}`}
+              tone="rose"
+              valueTone="rose"
+              valueClassName="text-xl sm:text-2xl"
+            />
+            <StatCard
+              icon={<Scale className="h-5 w-5" />}
+              label="Expected closing"
+              value={formatCurrency(summary.expectedClosingBalance, currency)}
+              hint="Opening + in − out"
+              tone="violet"
+              valueClassName="text-xl sm:text-2xl"
+            />
+            <StatCard
+              icon={<CheckCircle2 className="h-5 w-5" />}
+              label="Day difference"
+              value={dayMatched ? formatCurrency(0, currency) : formatCurrency(totalDifference, currency)}
+              hint={dayMatched ? 'Counts match expected' : 'Counts differ from expected'}
+              tone={dayMatched ? 'emerald' : 'amber'}
+              valueTone={dayMatched ? 'emerald' : 'amber'}
+              valueClassName="text-xl sm:text-2xl"
+            />
           </section>
 
           <form onSubmit={submitClosing} className="space-y-3">

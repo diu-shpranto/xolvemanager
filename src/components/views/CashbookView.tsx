@@ -3,6 +3,7 @@ import { ArrowDownLeft, ArrowDownRight, ArrowLeftRight, Download, Plus, Wallet }
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
+import { StatCard } from '../common/StatCard';
 import { Modal } from '../common/Modal';
 import { convertReportCurrency } from '../../utils/reportMetrics';
 import { formatAppDate, formatCurrency, getTodayDateString } from '../../utils/dateUtils';
@@ -248,14 +249,42 @@ export const CashbookView: React.FC<CashbookViewProps> = ({ focusAccountId, init
       )}
 
       <section className="cashbook-summary-grid grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4" aria-label="Cashbook summary">
-        <div className="cashbook-summary-card cashbook-summary-card--primary cashbook-kpi cashbook-kpi--balance min-w-0 rounded-xl border border-violet-200 bg-violet-50/70 p-3 dark:border-violet-900/60 dark:bg-violet-950/25 sm:p-4">
-          <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300"><span className="cashbook-kpi-icon cashbook-kpi-icon--violet"><Wallet size={15} /></span> Total balance</div>
-          <div className="mt-2 text-xl font-bold tabular-nums tracking-tight text-slate-950 dark:text-white sm:text-2xl">{formatCurrency(totalBalance, currency)}</div>
-          <div className="mt-0.5 text-[10px] text-slate-500">Shown in {currency}</div>
-        </div>
-        <div className={`${cardClass} cashbook-summary-card cashbook-kpi cashbook-kpi--in`}><div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300"><span className="cashbook-kpi-icon cashbook-kpi-icon--emerald"><ArrowDownLeft size={15} /></span> Money in</div><div className="mt-2 text-xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300 sm:text-2xl">{formatCurrency(flow.moneyIn, currency)}</div><div className="mt-0.5 text-[10px] text-slate-500">{periodHint}</div></div>
-        <div className={`${cardClass} cashbook-summary-card cashbook-kpi cashbook-kpi--out`}><div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300"><span className="cashbook-kpi-icon cashbook-kpi-icon--rose"><ArrowDownRight size={15} /></span> Money out</div><div className="mt-2 text-xl font-bold tabular-nums text-rose-700 dark:text-rose-300 sm:text-2xl">{formatCurrency(flow.moneyOut, currency)}</div><div className="mt-0.5 text-[10px] text-slate-500">{periodHint}</div></div>
-        <div className={`${cardClass} cashbook-summary-card cashbook-kpi cashbook-kpi--net`}><div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300"><span className="cashbook-kpi-icon cashbook-kpi-icon--violet"><ArrowLeftRight size={15} /></span> Money in minus out</div><div className={`mt-2 text-xl font-bold tabular-nums sm:text-2xl ${flow.netCashFlow >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>{formatCurrency(flow.netCashFlow, currency)}</div><div className="mt-0.5 text-[10px] text-slate-500">{periodHint}</div></div>
+        <StatCard
+          icon={<Wallet className="h-5 w-5" />}
+          label="Total balance"
+          value={formatCurrency(totalBalance, currency)}
+          hint={`Shown in ${currency}`}
+          tone="violet"
+          valueTone="violet"
+          valueClassName="text-xl sm:text-2xl"
+        />
+        <StatCard
+          icon={<ArrowDownLeft className="h-5 w-5" />}
+          label="Money in"
+          value={formatCurrency(flow.moneyIn, currency)}
+          hint={periodHint}
+          tone="emerald"
+          valueTone="emerald"
+          valueClassName="text-xl sm:text-2xl"
+        />
+        <StatCard
+          icon={<ArrowDownRight className="h-5 w-5" />}
+          label="Money out"
+          value={formatCurrency(flow.moneyOut, currency)}
+          hint={periodHint}
+          tone="rose"
+          valueTone="rose"
+          valueClassName="text-xl sm:text-2xl"
+        />
+        <StatCard
+          icon={<ArrowLeftRight className="h-5 w-5" />}
+          label="Money in minus out"
+          value={formatCurrency(flow.netCashFlow, currency)}
+          hint={periodHint}
+          tone="violet"
+          valueTone={flow.netCashFlow >= 0 ? 'emerald' : 'rose'}
+          valueClassName="text-xl sm:text-2xl"
+        />
       </section>
 
       <section className="cashbook-account-grid grid gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-4" aria-label="Financial accounts">

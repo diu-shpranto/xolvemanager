@@ -3,6 +3,7 @@ import { ArrowDownLeft, ArrowDownRight, CalendarClock, CheckCircle2, CircleAlert
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
+import { StatCard } from '../common/StatCard';
 import { formatAppDate, formatCurrency, getDateInTimeZone } from '../../utils/dateUtils';
 import {
   getCashFlowSummary,
@@ -29,15 +30,25 @@ const csvCell = (value: string | number) => {
 };
 
 function Metric({ label, value, icon: Icon, tone = 'default', compact = false, hint }: { label: string; value: string | number; icon: LucideIcon; tone?: 'default' | 'good' | 'warn' | 'bad'; compact?: boolean; hint?: string }) {
-  const toneClass = tone === 'good' ? 'text-emerald-700 dark:text-emerald-300' : tone === 'warn' ? 'text-amber-700 dark:text-amber-300' : tone === 'bad' ? 'text-rose-700 dark:text-rose-300' : 'text-slate-950 dark:text-white';
-  return <div className={`financial-control-metric fc-kpi fc-kpi--${tone} ${compact ? 'fc-kpi--compact' : ''} min-w-0 rounded-xl border border-slate-200 bg-white ${compact ? 'p-3' : 'p-3.5 sm:p-4'} dark:border-slate-700 dark:bg-slate-900`}>
-    <div className="flex min-w-0 items-center gap-2">
-      <span className={`fc-kpi-icon fc-kpi-icon--${tone}`}><Icon aria-hidden="true" className="h-4 w-4 shrink-0" /></span>
-      <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-slate-300">{label}</p>
-    </div>
-    <p className={`fc-kpi-value mt-2 truncate font-mono font-bold tabular-nums tracking-tight ${compact ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'} ${toneClass}`}>{value}</p>
-    {hint && <p className="fc-kpi-hint mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400">{hint}</p>}
-  </div>;
+  const statTone = tone === 'good' ? 'emerald' : tone === 'warn' ? 'amber' : tone === 'bad' ? 'rose' : 'violet';
+  // NOTE: the old compact variant used size="compact" here, but StatCard compact
+  // truncates even short values (e.g. "৳0.00", "OPEN") in the 3-up row at 390px
+  // (117px cards, 36px icon beside the value). size="mini" is the primitive's
+  // dense-grid size and fits the seeded values; desktop rendering is unchanged
+  // in spirit (same tones, labels, values, hints).
+  return (
+    <StatCard
+      icon={<Icon aria-hidden="true" className="h-5 w-5" />}
+      label={label}
+      value={value}
+      hint={hint}
+      tone={statTone}
+      valueTone={tone === 'default' ? undefined : statTone}
+      valueClassName={compact ? undefined : 'text-xl sm:text-2xl'}
+      size={compact ? 'mini' : 'default'}
+      hideIcon={compact}
+    />
+  );
 }
 
 export const FinancialControlView: React.FC = () => {

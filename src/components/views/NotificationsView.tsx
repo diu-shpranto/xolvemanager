@@ -7,6 +7,7 @@ import type { NotificationCategory, NotificationPriority } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { NavSection } from '../navigation/Sidebar';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
+import { StatCard } from '../common/StatCard';
 
 interface NotificationsViewProps {
   onNavigateToNotification: (section: NavSection, entityId?: string) => void;
@@ -125,10 +126,10 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onNavigate
     </header>
 
     <section aria-label="Notification summary" className="sv-kpi-grid--v2 grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <Kpi label="Total" hint="All notifications" tone="violet" count={notifications.length} icon={<Bell className="h-4 w-4" />} />
-      <Kpi label="Unread" hint="Still to review" tone="blue" count={unreadCount} icon={<CircleAlert className="h-4 w-4" />} />
-      <Kpi label="Critical" hint="Needs attention now" tone="rose" count={criticalCount} icon={<AlertTriangle className="h-4 w-4" />} />
-      <Kpi label="Warnings" hint="Review soon" tone="amber" count={warningCount} icon={<Info className="h-4 w-4" />} />
+      <Kpi label="Total" hint="All notifications" tone="violet" count={notifications.length} icon={<Bell className="h-5 w-5" />} />
+      <Kpi label="Unread" hint="Still to review" tone="blue" count={unreadCount} icon={<CircleAlert className="h-5 w-5" />} />
+      <Kpi label="Critical" hint="Needs attention now" tone="rose" count={criticalCount} icon={<AlertTriangle className="h-5 w-5" />} />
+      <Kpi label="Warnings" hint="Review soon" tone="amber" count={warningCount} icon={<Info className="h-5 w-5" />} />
     </section>
 
     <section className="sv-panel--v2 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">
@@ -193,4 +194,4 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onNavigate
   </main>;
 };
 
-const Kpi: React.FC<{ label: string; hint: string; tone: 'violet' | 'blue' | 'rose' | 'amber'; count: number; icon: React.ReactNode }> = ({ label, hint, tone, count, icon }) => <div className={`sv-kpi--v2 sv-kpi-tone--${tone} flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900`}><span className="sv-kpi-icon--v2 flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{icon}</span><div><div className="sv-kpi-value text-xl font-bold text-slate-900 dark:text-white">{count}</div><div className="text-xs font-semibold text-slate-700 dark:text-slate-200">{label}</div><div className="text-[11px] text-slate-500 dark:text-slate-400">{hint}</div></div></div>;
+const Kpi: React.FC<{ label: string; hint: string; tone: 'violet' | 'blue' | 'rose' | 'amber'; count: number; icon: React.ReactNode }> = ({ label, hint, tone, count, icon }) => <StatCard label={label} value={String(count)} hint={hint} tone={tone} icon={icon} />;

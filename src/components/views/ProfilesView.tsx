@@ -30,6 +30,7 @@ import { useApp } from '../../context/AppContext';
 import { getCustomerOptionLabel } from '../../utils/relationships';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
+import { StatCard } from '../common/StatCard';
 import { AccountProfile, ServiceCategory } from '../../types';
 import { normalizeSearchText } from '../../services/globalSearch';
 import { getAccountCapacity, getProfileStatus, isAccountOperational } from '../../utils/resourceManagement';
@@ -476,85 +477,37 @@ export const ProfilesView: React.FC<ProfilesViewProps> = ({ serviceFilterId, onC
 
       {/* 2. REFINED KPI CARDS */}
       <div className="profile-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
-        {/* Total Profiles */}
-        <div className="profile-kpi profile-kpi--total">
-          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider">
-              {language === 'bn' ? 'মোট প্রোফাইল' : 'Total Profiles'}
-            </span>
-            <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center">
-              <Users className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
-              {totalProfilesCount}
-            </span>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">
-              {language === 'bn' ? 'সব অ্যাকাউন্ট' : 'all accounts'}
-            </span>
-          </div>
-        </div>
-
-        {/* Assigned Profiles */}
-        <div className="profile-kpi profile-kpi--assigned">
-          <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider">
-              {language === 'bn' ? 'বরাদ্দকৃত প্রোফাইল' : 'Assigned Profiles'}
-            </span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <UserCheck className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-              {assignedProfilesCount}
-            </span>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">
-              {assignedProfilesCount} {language === 'bn' ? 'বরাদ্দ' : 'assigned'}
-            </span>
-          </div>
-        </div>
-
-        {/* Available Slots */}
-        <div className="profile-kpi profile-kpi--available">
-          <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 mb-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider">
-              {language === 'bn' ? 'উপলব্ধ প্রোফাইল' : 'Available Profiles'}
-            </span>
-            <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-              <ShieldCheck className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 font-mono">
-              {availableSlotsCount}
-            </span>
-            <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">
-              {language === 'bn' ? 'বরাদ্দের জন্য খালি' : 'available'}
-            </span>
-          </div>
-        </div>
-
-        {/* PIN Protected */}
-        <div className="profile-kpi profile-kpi--protected">
-          <div className="flex items-center justify-between text-amber-600 dark:text-amber-400 mb-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider">
-              {language === 'bn' ? 'পিন সুরক্ষিত' : 'PIN Protected'}
-            </span>
-            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-              <Lock className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 font-mono">
-              {pinProtectedCount}
-            </span>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">
-              {pinProtectedCount} of {totalProfilesCount} protected
-            </span>
-          </div>
-        </div>
+        <StatCard
+          icon={<Users className="h-5 w-5" aria-hidden="true" />}
+          label={language === 'bn' ? 'মোট প্রোফাইল' : 'Total Profiles'}
+          value={totalProfilesCount}
+          hint={language === 'bn' ? 'সব অ্যাকাউন্ট' : 'all accounts'}
+          tone="slate"
+        />
+        <StatCard
+          icon={<UserCheck className="h-5 w-5" aria-hidden="true" />}
+          label={language === 'bn' ? 'বরাদ্দকৃত প্রোফাইল' : 'Assigned Profiles'}
+          value={assignedProfilesCount}
+          hint={`${assignedProfilesCount} ${language === 'bn' ? 'বরাদ্দ' : 'assigned'}`}
+          tone="emerald"
+          valueTone="emerald"
+        />
+        <StatCard
+          icon={<ShieldCheck className="h-5 w-5" aria-hidden="true" />}
+          label={language === 'bn' ? 'উপলব্ধ প্রোফাইল' : 'Available Profiles'}
+          value={availableSlotsCount}
+          hint={language === 'bn' ? 'বরাদ্দের জন্য খালি' : 'available'}
+          tone="blue"
+          valueTone="blue"
+        />
+        <StatCard
+          icon={<Lock className="h-5 w-5" aria-hidden="true" />}
+          label={language === 'bn' ? 'পিন সুরক্ষিত' : 'PIN Protected'}
+          value={pinProtectedCount}
+          hint={`${pinProtectedCount} of ${totalProfilesCount} protected`}
+          tone="amber"
+          valueTone="amber"
+        />
       </div>
 
       {/* 3. SEARCH + FILTER TOOLBAR */}

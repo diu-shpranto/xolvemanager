@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { getCustomerOptionLabel } from '../../utils/relationships';
 import { useToast } from '../common/Toast';
+import { StatCard, type StatCardTone } from '../common/StatCard';
 import { Modal } from '../common/Modal';
 import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import { InvoicePreviewModal } from '../modals/InvoicePreviewModal';
@@ -406,20 +407,23 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
         </div>
       </header>
 
-      <section className="invoice-summary--v2 grid min-w-0 grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5" aria-label="Invoice summary">
-        {[
-          { label: 'Invoices', icon: FileText, tone: 'bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300', value: String(validInvoices.length), hint: language === 'bn' ? `${summary.paidCount}টি সম্পূর্ণ পরিশোধিত` : `${summary.paidCount} paid in full` },
-          { label: 'Outstanding', icon: Clock3, tone: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300', value: String(summary.outstandingCount), hint: language === 'bn' ? 'পরিশোধের অপেক্ষায়' : 'awaiting payment' },
-          { label: 'Billed', icon: Receipt, tone: 'bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300', value: formatCurrency(summary.billed, currency), hint: language === 'bn' ? `${validInvoices.length}টি ইনভয়েস` : `${validInvoices.length} invoices` },
-          { label: 'Collected', icon: Banknote, tone: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300', value: formatCurrency(summary.paid, currency), hint: language === 'bn' ? 'এ পর্যন্ত প্রাপ্ত' : 'received so far' },
-          { label: 'Balance due', icon: AlertTriangle, tone: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300', value: formatCurrency(summary.due, currency), hint: language === 'bn' ? `${summary.outstandingCount}টি বাকি` : `${summary.outstandingCount} outstanding` },
-        ].map(({ label, icon: Icon, tone, value, hint }) => (
-          <div key={label} className={`invoice-metric min-w-0 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 sm:p-4 ${label === 'Balance due' ? 'invoice-metric--due' : ''}`}>
-            <div className={`invoice-metric-icon flex h-8 w-8 items-center justify-center rounded-lg ${tone}`}><Icon className="h-4 w-4" /></div>
-            <div className="invoice-metric-label mt-2 truncate text-xs font-semibold text-slate-600 dark:text-slate-400">{label}</div>
-            <div className="invoice-metric-value mt-0.5 truncate font-mono text-lg font-bold tabular-nums tracking-tight text-slate-950 dark:text-white sm:text-xl">{value}</div>
-            <div className="invoice-metric-hint mt-0.5 truncate text-[11px] font-medium text-slate-400 dark:text-slate-500">{hint}</div>
-          </div>
+      <section className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5" aria-label="Invoice summary">
+        {([
+          { label: 'Invoices', icon: FileText, tone: 'violet', value: String(validInvoices.length), hint: language === 'bn' ? `${summary.paidCount}টি সম্পূর্ণ পরিশোধিত` : `${summary.paidCount} paid in full` },
+          { label: 'Outstanding', icon: Clock3, tone: 'amber', value: String(summary.outstandingCount), hint: language === 'bn' ? 'পরিশোধের অপেক্ষায়' : 'awaiting payment' },
+          { label: 'Billed', icon: Receipt, tone: 'violet', value: formatCurrency(summary.billed, currency), hint: language === 'bn' ? `${validInvoices.length}টি ইনভয়েস` : `${validInvoices.length} invoices` },
+          { label: 'Collected', icon: Banknote, tone: 'emerald', value: formatCurrency(summary.paid, currency), hint: language === 'bn' ? 'এ পর্যন্ত প্রাপ্ত' : 'received so far' },
+          { label: 'Balance due', icon: AlertTriangle, tone: 'rose', value: formatCurrency(summary.due, currency), hint: language === 'bn' ? `${summary.outstandingCount}টি বাকি` : `${summary.outstandingCount} outstanding` },
+        ] as { label: string; icon: React.ComponentType<{ className?: string }>; tone: StatCardTone; value: string; hint: string }[]).map(({ label, icon: Icon, tone, value, hint }) => (
+          <StatCard
+            key={label}
+            icon={<Icon className="h-5 w-5" />}
+            label={label}
+            value={value}
+            hint={hint}
+            tone={tone}
+            valueClassName={label === 'Invoices' || label === 'Outstanding' ? undefined : 'text-xl sm:text-2xl'}
+          />
         ))}
       </section>
 

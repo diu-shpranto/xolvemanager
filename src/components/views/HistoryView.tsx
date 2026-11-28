@@ -10,6 +10,7 @@ import { addDaysToDateString, formatAppNumber, getDateInTimeZone, getDateStringI
 import { getCustomerDisplayName, resolveActivityCustomerName } from '../../utils/relationships';
 import { filterActivities, getActivityAction, getActivityCategory, getActivityEntityType, sanitizeActivityDescription, searchActivities, sortActivities } from '../../services/activityService';
 import { Modal } from '../common/Modal';
+import { StatCard, type StatCardTone } from '../common/StatCard';
 
 interface HistoryViewProps {
   onViewRelated: (activity: ActivityLog) => void;
@@ -134,15 +135,15 @@ function actionTone(action: ActivityAction): HistoryTone {
 }
 
 function ActivityMetric({ label, value, hint, tone, icon: Icon, language }: { label: string; value: number; hint: string; tone: HistoryTone; icon: React.ElementType; language: Language }) {
+  const statTone: StatCardTone = tone === 'positive' ? 'emerald' : tone === 'warning' ? 'amber' : tone === 'danger' ? 'rose' : 'slate';
   return (
-    <div className={`history-kpi--v2 history-kpi--${tone} rounded-2xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-900`}>
-      <div className="history-kpi-top flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-        <span className="history-kpi-label">{label}</span>
-        <span className="history-kpi-icon"><Icon className="h-4 w-4" aria-hidden="true" /></span>
-      </div>
-      <div className="history-kpi-value mt-2 font-mono text-2xl font-bold text-slate-900 dark:text-white">{formatAppNumber(value, language)}</div>
-      <div className="history-kpi-hint">{hint}</div>
-    </div>
+    <StatCard
+      label={label}
+      value={formatAppNumber(value, language)}
+      hint={hint}
+      tone={statTone}
+      icon={<Icon className="h-5 w-5" aria-hidden="true" />}
+    />
   );
 }
 

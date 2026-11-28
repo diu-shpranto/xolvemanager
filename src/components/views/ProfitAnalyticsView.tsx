@@ -20,6 +20,7 @@ import {
   YAxis,
 } from 'recharts';
 import { useApp } from '../../context/AppContext';
+import { StatCard } from '../common/StatCard';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { getDateInTimeZone } from '../../utils/dateUtils';
 import { getLocalDateString } from '../../utils/reportMetrics';
@@ -64,29 +65,23 @@ function Metric({
   icon: React.ComponentType<{ className?: string }>;
   tone?: 'slate' | 'violet' | 'amber' | 'emerald' | 'rose';
 }) {
-  const toneClasses = {
-    slate: 'text-slate-900 dark:text-white',
-    violet: 'text-violet-700 dark:text-violet-300',
-    amber: 'text-amber-700 dark:text-amber-300',
-    emerald: 'text-emerald-700 dark:text-emerald-300',
-    rose: 'text-rose-700 dark:text-rose-300',
-  };
-  const toneChipClasses = {
-    slate: 'profit-kpi-icon--slate',
-    violet: 'profit-kpi-icon--violet',
-    amber: 'profit-kpi-icon--amber',
-    emerald: 'profit-kpi-icon--green',
-    rose: 'profit-kpi-icon--rose',
-  };
+  // Old Metric coloured the VALUE by tone; StatCard does that via
+  // valueTone. Slate keeps the default near-black value, matching the old
+  // slate value colour. The grid is 2 columns at 390px, so the dense mini
+  // treatment (no icon badge, full-width value) is what lets the word
+  // "Unavailable" read in full instead of truncating.
   return (
-    <article className={`${cardClass} profit-kpi--v2`}>
-      <div className="profit-kpi-head">
-        <span className={`profit-kpi-icon ${toneChipClasses[tone]}`}><Icon className="h-4 w-4 shrink-0" aria-hidden="true" /></span>
-        <p className="profit-kpi-label">{label}</p>
-      </div>
-      <p className={`profit-kpi-value mt-2 break-words font-mono text-xl font-bold tabular-nums ${toneClasses[tone]}`}>{value}</p>
-      <p className="profit-kpi-hint mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400">{detail}</p>
-    </article>
+    <StatCard
+      icon={<Icon className="h-5 w-5" aria-hidden="true" />}
+      label={label}
+      value={value}
+      hint={detail}
+      tone={tone}
+      valueTone={tone === 'slate' ? undefined : tone}
+      size="mini"
+      hideIcon
+      valueClassName="text-lg sm:text-2xl"
+    />
   );
 }
 
@@ -233,7 +228,7 @@ export const ProfitAnalyticsView: React.FC<ProfitAnalyticsViewProps> = ({ onView
       </section>
 
       {analytics && <>
-        <section aria-label="Profit summary" className="profit-kpi-grid--v2 grid grid-cols-2 gap-3 xl:grid-cols-3">
+        <section aria-label="Profit summary" className="grid grid-cols-2 gap-3 xl:grid-cols-3">
           <Metric label="Gross Sales" value={formatCurrency(analytics.grossSales, currency)} detail="Eligible sale totals for the selected sale dates; not payment receipts." icon={Coins} tone="violet" />
           <Metric label="Actual Allocated Cost" value={formatCurrency(analytics.actualAllocatedCost, currency)} detail={`Account snapshots and sale-linked actual costs; ${analytics.unknownCostSales} unknown-cost sale(s) excluded.`} icon={ArrowDownRight} tone="amber" />
           <Metric label="Gross Profit" value={analytics.grossProfit === null ? 'Unavailable' : formatCurrency(analytics.grossProfit, currency)} detail={analytics.unknownCostSales ? `${analytics.unknownCostSales} sale(s) have unknown cost; total gross profit is withheld.` : 'Gross sales less actual allocated costs, before refunds and adjustments.'} icon={Activity} tone={analytics.grossProfit === null ? 'amber' : 'emerald'} />

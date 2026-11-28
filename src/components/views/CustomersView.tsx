@@ -43,6 +43,7 @@ import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
+import { StatCard } from '../common/StatCard';
 import type { Customer, CustomerType, Subscription } from '../../types';
 import { CustomerNameWithType } from '../common/CustomerNameWithType';
 import { getCustomerType } from '../../utils/relationships';
@@ -1168,29 +1169,25 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             label: language === 'bn' ? 'মোট গ্রাহক' : 'Total Customers',
             value: customerSummary.total,
             icon: Users,
-            color: 'text-slate-600 dark:text-slate-300',
-            isCurrency: false,
+            tone: 'violet' as const,
           },
           {
             label: language === 'bn' ? 'সক্রিয় গ্রাহক' : 'Active Customers',
             value: customerSummary.activeCount,
             icon: CheckCircle2,
-            color: 'text-emerald-600 dark:text-emerald-400',
-            isCurrency: false,
+            tone: 'emerald' as const,
           },
           {
             label: language === 'bn' ? 'ঝুঁকিতে' : 'At Risk',
             value: customerSummary.atRiskCount,
             icon: AlertTriangle,
-            color: 'text-rose-600 dark:text-rose-400',
-            isCurrency: false,
+            tone: 'rose' as const,
           },
           {
             label: language === 'bn' ? 'নবায়ন বাকি' : 'Renewals Due',
             value: customerSummary.renewalsDue,
             icon: CalendarDays,
-            color: 'text-amber-600 dark:text-amber-400',
-            isCurrency: false,
+            tone: 'amber' as const,
           },
         ].map((metric, index) => {
           const filterKey = (['all', 'active', 'at_risk', 'renewals'] as const)[index];
@@ -1200,27 +1197,22 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             : filterKey === 'at_risk' ? filterCrmStatus === 'at_risk'
             : filterRenewal === 'due';
           return (
-          <button
-            type="button"
-            key={metric.label}
-            onClick={() => applyKpiFilter(filterKey)}
-            aria-pressed={pressed}
-            title={language === 'bn' ? 'এই তালিকা দেখতে ট্যাপ করুন' : 'Tap to show this list'}
-            className={`customer-kpi customer-kpi--${index} ${pressed ? 'customer-kpi--active' : ''} flex min-h-[100px] w-full min-w-0 cursor-pointer flex-col justify-between p-3 text-left transition-colors sm:min-h-[100px] sm:p-4`}>
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span className={`customer-kpi-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-lg customer-kpi-icon--${index}`}>
-                <metric.icon className={`h-4 w-4 ${metric.color}`} />
-              </span>
-              <span className="min-w-0 text-sm font-semibold leading-5 text-slate-700 dark:text-slate-200">{metric.label}</span>
-            </div>
-            <div className="customer-kpi-value mt-2 pl-10 text-[26px] font-bold tracking-tight tabular-nums text-slate-950 dark:text-white sm:text-[30px]">
-              {customersError && customers.length === 0
-                ? '—'
-                : customersLoading && customers.length === 0
-                ? <span className="block h-6 w-14 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
-                : metric.isCurrency ? formatCurrency(metric.value, currency) : metric.value}
-            </div>
-          </button>
+            <StatCard
+              key={metric.label}
+              icon={<metric.icon className="h-5 w-5" aria-hidden="true" />}
+              label={metric.label}
+              value={
+                customersError && customers.length === 0
+                  ? '—'
+                  : customersLoading && customers.length === 0
+                  ? <span className="block h-6 w-14 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
+                  : metric.value
+              }
+              tone={metric.tone}
+              onClick={() => applyKpiFilter(filterKey)}
+              ariaLabel={`${metric.label}${pressed ? ` (${language === 'bn' ? 'সক্রিয় ফিল্টার' : 'active filter'})` : ''}`}
+              className={pressed ? 'border-violet-500 shadow-[0_0_0_3px_rgba(124,58,237,0.14)] dark:border-violet-400' : undefined}
+            />
           );
         })}
       </div>
@@ -1931,19 +1923,26 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </nav>
 
             <section id="customer-overview" aria-label="Customer overview" className="customer-overview-grid grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-              <div className="customer-overview-metric">
-                <span><CheckCircle2 className="customer-overview-label-icon h-3.5 w-3.5 text-violet-600 dark:text-violet-300" aria-hidden="true" />{language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Active plans'}</span>
-                <strong>{currentActiveSubsForDetailed.length}</strong>
-                <small>{language === 'bn'
+              <StatCard
+                icon={<CheckCircle2 className="h-5 w-5" aria-hidden="true" />}
+                label={language === 'bn' ? 'সক্রিয় সাবস্ক্রিপশন' : 'Active plans'}
+                value={currentActiveSubsForDetailed.length}
+                hint={language === 'bn'
                   ? `${formatNumber(detailedSubs.length)}টি মোট সাবস্ক্রিপশন`
-                  : `${detailedSubs.length} plans total`}</small>
-              </div>
-              <div className={`customer-overview-metric ${detailedTotalDue > 0 ? 'customer-overview-metric--due' : ''}`}>
-                <span><AlertTriangle className="customer-overview-label-icon h-3.5 w-3.5 text-amber-600 dark:text-amber-300" aria-hidden="true" />{language === 'bn' ? `মোট বকেয়া · ${currency}` : `Amount due · ${currency}`}</span>
-                <strong>{formatCurrency(detailedTotalDue, currency)}</strong>
-                <small>{language === 'bn' ? 'গ্রাহকের মোট বকেয়া' : 'Money the customer still owes'}</small>
-                {detailedTotalDue > 0 && (
-                  <small className="customer-expected-payment-date inline-flex w-fit flex-wrap items-center gap-x-1 rounded-md px-2 py-1">
+                  : `${detailedSubs.length} plans total`}
+                tone="violet"
+                valueTone="violet"
+              />
+              <StatCard
+                icon={<AlertTriangle className="h-5 w-5" aria-hidden="true" />}
+                label={language === 'bn' ? `মোট বকেয়া · ${currency}` : `Amount due · ${currency}`}
+                value={formatCurrency(detailedTotalDue, currency)}
+                hint={language === 'bn' ? 'গ্রাহকের মোট বকেয়া' : 'Money the customer still owes'}
+                tone="amber"
+                valueTone={detailedTotalDue > 0 ? 'amber' : undefined}
+                valueClassName="text-xl! sm:text-2xl!"
+                extra={detailedTotalDue > 0 ? (
+                  <small className="mt-2 inline-flex w-fit flex-wrap items-center gap-x-1 rounded-md border border-orange-300 bg-orange-100 px-2 py-1 font-semibold text-orange-900 dark:border-yellow-800 dark:bg-yellow-950/60 dark:text-amber-300">
                     {language === 'bn' ? 'প্রত্যাশিত পেমেন্টের তারিখ' : 'Expected payment date'}:{' '}
                     {detailedExpectedPaymentDates.length > 0
                       ? <>
@@ -1952,43 +1951,63 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       </>
                       : (language === 'bn' ? 'সেট করা হয়নি' : 'Not set')}
                   </small>
-                )}
-              </div>
-              <div className="customer-overview-metric customer-overview-metric--paid">
-                <span><CreditCard className="customer-overview-label-icon h-3.5 w-3.5 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />{`Payments received · ${currency}`}</span>
-                <strong>{formatCurrency(customerStatement?.summary.amountReceived || 0, currency)}</strong>
-                <small>Total payments received</small>
-              </div>
-              <div className="customer-overview-metric">
-                <span><Wallet className="customer-overview-label-icon h-3.5 w-3.5 text-violet-600 dark:text-violet-300" aria-hidden="true" />{language === 'bn' ? `অগ্রিম পেমেন্ট · ${currency}` : `Advance payment · ${currency}`}</span>
-                <strong>{formatCurrency(customerStatement?.summary.availableAdvance || detailedAdvanceBalances[currency], currency)}</strong>
-                <small>{language === 'bn' ? 'পরের কেনাকাটায় ব্যবহার করা যাবে' : 'Available for the next sale'}</small>
-              </div>
-              <div className="customer-overview-metric">
-                <span><Receipt className="customer-overview-label-icon h-3.5 w-3.5 text-violet-600 dark:text-violet-300" aria-hidden="true" />{`Total sales · ${currency}`}</span>
-                <strong>{formatCurrency(detailedTotalSales, currency)}</strong>
-                <small>{language === 'bn'
+                ) : undefined}
+              />
+              <StatCard
+                icon={<CreditCard className="h-5 w-5" aria-hidden="true" />}
+                label={`Payments received · ${currency}`}
+                value={formatCurrency(customerStatement?.summary.amountReceived || 0, currency)}
+                hint="Total payments received"
+                tone="emerald"
+                valueTone="emerald"
+                valueClassName="text-xl! sm:text-2xl!"
+              />
+              <StatCard
+                icon={<Wallet className="h-5 w-5" aria-hidden="true" />}
+                label={language === 'bn' ? `অগ্রিম পেমেন্ট · ${currency}` : `Advance payment · ${currency}`}
+                value={formatCurrency(customerStatement?.summary.availableAdvance || detailedAdvanceBalances[currency], currency)}
+                hint={language === 'bn' ? 'পরের কেনাকাটায় ব্যবহার করা যাবে' : 'Available for the next sale'}
+                tone="violet"
+                valueClassName="text-xl! sm:text-2xl!"
+              />
+              <StatCard
+                icon={<Receipt className="h-5 w-5" aria-hidden="true" />}
+                label={`Total sales · ${currency}`}
+                value={formatCurrency(detailedTotalSales, currency)}
+                hint={language === 'bn'
                   ? `${formatNumber(detailedCrmMetrics?.salesCount || 0)}টি বিক্রয়`
-                  : `${detailedCrmMetrics?.salesCount || 0} sales`}</small>
-              </div>
-              <div className="customer-overview-metric">
-                <span><DollarSign className="customer-overview-label-icon h-3.5 w-3.5 text-slate-500 dark:text-slate-300" aria-hidden="true" />{`Discounts · ${currency}`}</span>
-                <strong>{formatCurrency(customerStatement?.summary.totalDiscounts || 0, currency)}</strong>
-                <small>Total discount given</small>
-              </div>
-              <div className={`customer-overview-metric ${(customerStatement?.summary.overdueInvoices || 0) > 0 ? 'customer-overview-metric--due' : ''}`}>
-                <span><Clock className="customer-overview-label-icon h-3.5 w-3.5 text-rose-600 dark:text-rose-300" aria-hidden="true" />Late invoices</span>
-                <strong>{customerStatement?.summary.overdueInvoices || 0}</strong>
-                <small>Unpaid invoices past their due date</small>
-              </div>
-              <div className="customer-overview-metric">
-                <span><CalendarDays className="customer-overview-label-icon h-3.5 w-3.5 text-amber-600 dark:text-amber-300" aria-hidden="true" />{language === 'bn' ? 'পরবর্তী সাবস্ক্রিপশনের মেয়াদ' : 'Next plan ends'}</span>
-                <strong>
-                  {customerMetrics.get(detailedCustomer.id)?.nextRenewal
+                  : `${detailedCrmMetrics?.salesCount || 0} sales`}
+                tone="violet"
+                valueClassName="text-xl! sm:text-2xl!"
+              />
+              <StatCard
+                icon={<DollarSign className="h-5 w-5" aria-hidden="true" />}
+                label={`Discounts · ${currency}`}
+                value={formatCurrency(customerStatement?.summary.totalDiscounts || 0, currency)}
+                hint="Total discount given"
+                tone="slate"
+                valueClassName="text-xl! sm:text-2xl!"
+              />
+              <StatCard
+                icon={<Clock className="h-5 w-5" aria-hidden="true" />}
+                label="Late invoices"
+                value={customerStatement?.summary.overdueInvoices || 0}
+                hint="Unpaid invoices past their due date"
+                tone="rose"
+                valueTone={(customerStatement?.summary.overdueInvoices || 0) > 0 ? 'amber' : undefined}
+              />
+              <StatCard
+                icon={<CalendarDays className="h-5 w-5" aria-hidden="true" />}
+                label={language === 'bn' ? 'পরবর্তী সাবস্ক্রিপশনের মেয়াদ' : 'Next plan ends'}
+                value={
+                  customerMetrics.get(detailedCustomer.id)?.nextRenewal
                     ? formatAppDate(customerMetrics.get(detailedCustomer.id)?.nextRenewal || '', language)
-                    : (language === 'bn' ? 'আসন্ন মেয়াদ শেষ হওয়ার তারিখ নেই' : 'No plan ending soon')}
-                </strong>
-              </div>
+                    : (language === 'bn' ? 'আসন্ন মেয়াদ শেষ হওয়ার তারিখ নেই' : 'No plan ending soon')
+                }
+                tone="amber"
+                valueClassName="text-lg!"
+                className="col-span-2 md:col-span-2 xl:col-span-1"
+              />
             </section>
 
             <section id="customer-financial-statement" aria-label="Customer financial statement" className="customer-statement-panel min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40">
@@ -2023,18 +2042,27 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       ['Balance at end', statementPeriod.closingBalance],
                       ['Amount still due', customerStatement.summary.totalDue],
                       ['Advance payment', customerStatement.summary.availableAdvance],
-                    ].map(([label, value]) => (
-                      <div key={label} className="customer-statement-chip min-w-0 rounded-xl border border-slate-100 bg-white p-3 dark:border-slate-800 dark:bg-slate-800/60">
-                        <span className="block truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">{label}</span>
-                        <strong className={`mt-1 block truncate text-xs tabular-nums ${
-                          label === 'Amount still due' && Number(value) > 0
-                            ? 'text-amber-700 dark:text-amber-300'
-                            : label === 'Advance payment' && Number(value) > 0
-                              ? 'text-emerald-700 dark:text-emerald-300'
-                              : 'text-slate-900 dark:text-white'
-                        }`}>{formatCurrency(Number(value), currency)}</strong>
-                      </div>
-                    ))}
+                    ].map(([label, value]) => {
+                      const numericValue = Number(value);
+                      const valueTone =
+                        label === 'Amount still due' && numericValue > 0
+                          ? 'amber' as const
+                          : label === 'Advance payment' && numericValue > 0
+                            ? 'emerald' as const
+                            : undefined;
+                      return (
+                        <StatCard
+                          key={label}
+                          icon={<></>}
+                          hideIcon
+                          size="mini"
+                          label={label}
+                          value={formatCurrency(numericValue, currency)}
+                          tone={valueTone ?? 'violet'}
+                          valueTone={valueTone}
+                        />
+                      );
+                    })}
                   </div>
 
                   <div className="grid min-w-0 gap-2 border-b border-slate-100 p-3 dark:border-slate-800 sm:grid-cols-2 xl:grid-cols-4">

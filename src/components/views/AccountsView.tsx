@@ -38,6 +38,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
+import { StatCard, type StatCardTone } from '../common/StatCard';
 import { Modal } from '../common/Modal';
 import { Account, AccountProfile, AccountStatus, AppCurrency, ServiceCategory } from '../../types';
 import { formatAppDate, formatCurrency, getDaysDifferenceForTimeZone, getSubscriptionStatusForTimeZone } from '../../utils/dateUtils';
@@ -798,16 +799,14 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
       </div>
 
       {/* 2. ACCOUNT SUMMARY */}
-      <div className="account-kpi-grid grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
         {[
           {
             label: language === 'bn' ? 'মোট অ্যাকাউন্ট' : 'Total Accounts',
             value: totalAccountsCount,
             hint: language === 'bn' ? `${totalProfileCapacity}টি প্রোফাইল স্লট` : `${totalProfileCapacity} profile slots`,
             icon: KeyRound,
-            color: 'text-violet-700 dark:text-violet-300',
-            iconSurface: 'bg-violet-100 dark:bg-violet-900/50',
-            accent: 'account-kpi--total',
+            tone: 'violet',
             action: clearAccountFilters,
             actionLabel: 'Clear account filters',
           },
@@ -816,9 +815,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
             value: activeAccountCount,
             hint: language === 'bn' ? `${totalAccountsCount}টির মধ্যে` : `of ${totalAccountsCount} total`,
             icon: Users,
-            color: 'text-emerald-600 dark:text-emerald-400',
-            iconSurface: 'bg-emerald-50 dark:bg-emerald-950/50',
-            accent: 'account-kpi--active',
+            tone: 'emerald',
             action: () => {
               setSelectedStatus('active');
               setSelectedCapacity('all');
@@ -833,9 +830,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
             value: totalAssignedSlots,
             hint: language === 'bn' ? `${totalProfileCapacity}টি স্লটের মধ্যে` : `of ${totalProfileCapacity} slots`,
             icon: UserCheck,
-            color: 'text-blue-600 dark:text-blue-400',
-            iconSurface: 'bg-blue-50 dark:bg-blue-950/50',
-            accent: 'account-kpi--used',
+            tone: 'blue',
             action: () => setSelectedAssignment(selectedAssignment === 'assigned' ? 'all' : 'assigned'),
             actionLabel: 'Toggle accounts with assigned profiles',
             active: selectedAssignment === 'assigned',
@@ -845,36 +840,23 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ selectedAccountId, s
             value: totalAvailableSlots,
             hint: language === 'bn' ? `${accountsWithCapacityCount}টি অ্যাকাউন্টে` : `in ${accountsWithCapacityCount} accounts`,
             icon: ShieldCheck,
-            color: 'text-emerald-600 dark:text-emerald-400',
-            iconSurface: 'bg-emerald-50 dark:bg-emerald-950/50',
-            accent: 'account-kpi--available',
+            tone: 'emerald',
             action: () => setSelectedAssignment(selectedAssignment === 'available' ? 'all' : 'available'),
             actionLabel: 'Toggle accounts with profiles ready to assign',
             active: selectedAssignment === 'available',
           },
         ].map(metric => (
-          <div key={metric.label} className={`account-kpi ${metric.accent} flex min-h-[100px] min-w-0 flex-col justify-between rounded-xl border p-3 transition-colors sm:min-h-[100px] sm:p-4`}>
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span className={`account-kpi-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${metric.iconSurface}`}>
-                <metric.icon className={`h-4 w-4 ${metric.color}`} />
-              </span>
-              <span className="min-w-0 text-sm font-semibold leading-5 text-slate-700 dark:text-slate-200">{metric.label}</span>
-            </div>
-            <button
-              type="button"
-              className="account-kpi-action"
-              onClick={metric.action}
-              aria-label={metric.actionLabel}
-              aria-pressed={metric.active}
-              title={metric.actionLabel}
-            />
-            <div className="account-kpi-value mt-2 pl-10 text-[26px] font-bold tracking-tight tabular-nums text-slate-950 dark:text-white sm:text-[30px]">
-              {metric.value}
-            </div>
-            <p className="account-kpi-hint mt-0.5 pl-10 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
-              {metric.hint}
-            </p>
-          </div>
+          <StatCard
+            key={metric.label}
+            icon={<metric.icon className="h-5 w-5" aria-hidden="true" />}
+            label={metric.label}
+            value={metric.value}
+            hint={metric.hint}
+            tone={metric.tone as StatCardTone}
+            onClick={metric.action}
+            ariaLabel={metric.active ? `${metric.actionLabel} (active filter)` : metric.actionLabel}
+            className={metric.active ? 'border-violet-500 shadow-[0_0_0_3px_rgba(124,58,237,0.14)] dark:border-violet-400' : undefined}
+          />
         ))}
       </div>
 

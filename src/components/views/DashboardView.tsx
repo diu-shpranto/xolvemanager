@@ -58,6 +58,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { useApp } from '../../context/AppContext';
+import { StatCard, StatCardSkeleton } from '../common/StatCard';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useReducedMotionPreference } from '../../hooks/useReducedMotionPreference';
 import { useToast } from '../common/Toast';
@@ -2057,91 +2058,125 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </button>
     ),
     customers: order => (
-      <button type="button" style={{ order }} onClick={() => onNavigate('customers')} className="dashboard-kpi dashboard-kpi--customers">
-        <span className="dashboard-kpi-label"><Users aria-hidden="true" /> {dashboardCopy.customers}</span>
-        <strong><DashboardCountUp
+      <StatCard
+        icon={<Users aria-hidden="true" />}
+        label={dashboardCopy.customers}
+        value={<DashboardCountUp
           value={scopedCustomers.filter(customer => !customer.isArchived && customer.status !== 'archived').length}
           formatValue={amount => formatNumber(Math.round(amount))}
           prefersReducedMotion={prefersReducedMotion}
-        /></strong>
-        <span className="dashboard-kpi-hint">{language === 'bn' ? `${formatNumber(activeCustomerCount)} সক্রিয়` : `${formatNumber(activeCustomerCount)} active`}</span>
-      </button>
+        />}
+        hint={language === 'bn' ? `${formatNumber(activeCustomerCount)} সক্রিয়` : `${formatNumber(activeCustomerCount)} active`}
+        tone="violet"
+        onClick={() => onNavigate('customers')}
+        style={{ order }}
+      />
     ),
     activeSubscriptions: order => (
-      <button type="button" style={{ order }} onClick={() => onNavigate('subscriptions')} className="dashboard-kpi dashboard-kpi--subscriptions">
-        <span className="dashboard-kpi-label"><CreditCard aria-hidden="true" /> {dashboardCopy.activeSubscriptions}</span>
-        <strong><DashboardCountUp
+      <StatCard
+        icon={<CreditCard aria-hidden="true" />}
+        label={dashboardCopy.activeSubscriptions}
+        value={<DashboardCountUp
           value={activeBusinessSubscriptions.length}
           formatValue={amount => formatNumber(Math.round(amount))}
           prefersReducedMotion={prefersReducedMotion}
-        /></strong>
-        <span className="dashboard-kpi-hint">MRR {formatCurrency(currentTotalMRR, currency)}</span>
-      </button>
+        />}
+        hint={`MRR ${formatCurrency(currentTotalMRR, currency)}`}
+        tone="emerald"
+        onClick={() => onNavigate('subscriptions')}
+        style={{ order }}
+      />
     ),
     expiringSubscriptions7: order => (
-      <button type="button" style={{ order }} onClick={() => onNavigate('subscriptions')} className={`dashboard-kpi dashboard-kpi--ending${expiringWithin7Days ? ' is-attention' : ''}`}>
-        <span className="dashboard-kpi-label"><Calendar aria-hidden="true" /> {summaryWidgetNames.expiringSubscriptions7}</span>
-        <strong><DashboardCountUp
+      <StatCard
+        icon={<Calendar aria-hidden="true" />}
+        label={summaryWidgetNames.expiringSubscriptions7}
+        value={<DashboardCountUp
           value={expiringWithin7Days}
           formatValue={amount => formatNumber(Math.round(amount))}
           prefersReducedMotion={prefersReducedMotion}
-        /></strong>
-      </button>
+        />}
+        tone="amber"
+        attention={expiringWithin7Days > 0}
+        onClick={() => onNavigate('subscriptions')}
+        style={{ order }}
+      />
     ),
     expiringSubscriptions30: order => (
-      <button type="button" style={{ order }} onClick={() => onNavigate('subscriptions')} className={`dashboard-kpi dashboard-kpi--ending${expiringWithin30Days ? ' is-attention' : ''}`}>
-        <span className="dashboard-kpi-label"><Calendar aria-hidden="true" /> {summaryWidgetNames.expiringSubscriptions30}</span>
-        <strong><DashboardCountUp
+      <StatCard
+        icon={<Calendar aria-hidden="true" />}
+        label={summaryWidgetNames.expiringSubscriptions30}
+        value={<DashboardCountUp
           value={expiringWithin30Days}
           formatValue={amount => formatNumber(Math.round(amount))}
           prefersReducedMotion={prefersReducedMotion}
-        /></strong>
-      </button>
+        />}
+        tone="amber"
+        attention={expiringWithin30Days > 0}
+        onClick={() => onNavigate('subscriptions')}
+        style={{ order }}
+      />
     ),
     outstandingPayments: order => (
-      <button type="button" style={{ order }} onClick={() => onNavigate('payments')} className={`dashboard-kpi dashboard-kpi--outstanding${currentSalesSummary.due > 0 ? ' is-attention' : ''}`}>
-        <span className="dashboard-kpi-label"><Wallet aria-hidden="true" /> {dashboardCopy.outstanding}</span>
-        <span className="dashboard-kpi-currencies">
-          <span><strong><DashboardCountUp
-            value={currentSalesSummary.due}
-            formatValue={amount => formatCurrency(amount, currency)}
-            prefersReducedMotion={prefersReducedMotion}
-          /></strong></span>
-        </span>
-        <span className="dashboard-kpi-hint">{language === 'bn' ? `${formatNumber(allDashboardAttentionSales.length)}টি বিক্রয়ে বকেয়া` : `${formatNumber(allDashboardAttentionSales.length)} sale${allDashboardAttentionSales.length === 1 ? '' : 's'} with due`}</span>
-      </button>
+      <StatCard
+        icon={<Wallet aria-hidden="true" />}
+        label={dashboardCopy.outstanding}
+        value={<DashboardCountUp
+          value={currentSalesSummary.due}
+          formatValue={amount => formatCurrency(amount, currency)}
+          prefersReducedMotion={prefersReducedMotion}
+        />}
+        hint={language === 'bn' ? `${formatNumber(allDashboardAttentionSales.length)}টি বিক্রয়ে বকেয়া` : `${formatNumber(allDashboardAttentionSales.length)} sale${allDashboardAttentionSales.length === 1 ? '' : 's'} with due`}
+        tone="violet"
+        attention={currentSalesSummary.due > 0}
+        onClick={() => onNavigate('payments')}
+        style={{ order }}
+      />
     ),
     availableAdvanceCredit: order => (
-      <button type="button" style={{ order }} onClick={() => onNavigate('customers')} className="dashboard-kpi dashboard-kpi--customers">
-        <span className="dashboard-kpi-label"><Wallet aria-hidden="true" /> {summaryWidgetNames.availableAdvanceCredit}</span>
-        <strong><DashboardCountUp
+      <StatCard
+        icon={<Wallet aria-hidden="true" />}
+        label={summaryWidgetNames.availableAdvanceCredit}
+        value={<DashboardCountUp
           value={availableAdvanceCredit}
           formatValue={amount => formatCurrency(amount, currency)}
           prefersReducedMotion={prefersReducedMotion}
-        /></strong>
-        <span className="dashboard-kpi-hint">{language === 'bn' ? `${formatNumber(advanceCreditByCustomer.size)} জন গ্রাহক` : `${formatNumber(advanceCreditByCustomer.size)} customer${advanceCreditByCustomer.size === 1 ? '' : 's'}`}</span>
-      </button>
+        />}
+        hint={language === 'bn' ? `${formatNumber(advanceCreditByCustomer.size)} জন গ্রাহক` : `${formatNumber(advanceCreditByCustomer.size)} customer${advanceCreditByCustomer.size === 1 ? '' : 's'}`}
+        tone="teal"
+        onClick={() => onNavigate('customers')}
+        style={{ order }}
+      />
     ),
     overdueInvoices: order => (
-      <button type="button" style={{ order }} onClick={() => onNavigate('invoices')} className={`dashboard-kpi dashboard-kpi--ending${overdueInvoiceCount ? ' is-attention' : ''}`}>
-        <span className="dashboard-kpi-label"><AlertTriangle aria-hidden="true" /> {summaryWidgetNames.overdueInvoices}</span>
-        <strong><DashboardCountUp
+      <StatCard
+        icon={<AlertTriangle aria-hidden="true" />}
+        label={summaryWidgetNames.overdueInvoices}
+        value={<DashboardCountUp
           value={overdueInvoiceCount}
           formatValue={amount => formatNumber(Math.round(amount))}
           prefersReducedMotion={prefersReducedMotion}
-        /></strong>
-      </button>
+        />}
+        tone="rose"
+        attention={overdueInvoiceCount > 0}
+        onClick={() => onNavigate('invoices')}
+        style={{ order }}
+      />
     ),
     totalSales: order => (
-      <button type="button" style={{ order }} onClick={() => onNavigate('sales')} className="dashboard-kpi dashboard-kpi--sales">
-        <span className="dashboard-kpi-label"><Receipt aria-hidden="true" /> {summaryWidgetNames.totalSales}</span>
-        <strong><DashboardCountUp
+      <StatCard
+        icon={<Receipt aria-hidden="true" />}
+        label={summaryWidgetNames.totalSales}
+        value={<DashboardCountUp
           value={financialSummary.salesCount}
           formatValue={amount => formatNumber(Math.round(amount))}
           prefersReducedMotion={prefersReducedMotion}
-        /></strong>
-        <span className="dashboard-kpi-hint">{language === 'bn' ? `মোট ${formatCurrency(financialSummary.revenue, currency)}` : `Total ${formatCurrency(financialSummary.revenue, currency)}`}</span>
-      </button>
+        />}
+        hint={language === 'bn' ? `মোট ${formatCurrency(financialSummary.revenue, currency)}` : `Total ${formatCurrency(financialSummary.revenue, currency)}`}
+        tone="violet"
+        onClick={() => onNavigate('sales')}
+        style={{ order }}
+      />
     ),
   };
 
@@ -2419,11 +2454,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {dashboardDataLoading ? <div role="status" aria-live="polite" aria-busy="true" aria-label="Loading dashboard metrics" className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         {activeDashboardLayout.summaryOrder.filter(id => !activeDashboardLayout.hidden.includes(id))
           .map((id, index) => (
-            <div key={id} style={{ order: index }} aria-hidden="true" className="dashboard-kpi-skeleton">
-              <span className="dashboard-kpi-skeleton-line dashboard-kpi-skeleton-line--label" />
-              <span className="dashboard-kpi-skeleton-line dashboard-kpi-skeleton-line--value" />
-              <span className="dashboard-kpi-skeleton-line dashboard-kpi-skeleton-line--note" />
-            </div>
+            <StatCardSkeleton key={id} style={{ order: index }} />
           ))}
       </div> : activeDashboardLayout.summaryOrder.some(id => !activeDashboardLayout.hidden.includes(id)) && (
         <section aria-label="Business performance" className="dashboard-kpi-grid">

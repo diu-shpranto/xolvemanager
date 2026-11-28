@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { StatCard, type StatCardTone } from '../common/StatCard';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
 import { Modal } from '../common/Modal';
@@ -107,6 +108,18 @@ const followUpLabels: Record<CustomerDueFollowUpStatus, string> = {
 };
 
 const pageSize = 20;
+
+const methodTone = (methodName: string): StatCardTone => {
+  switch (methodName.trim().toLocaleLowerCase()) {
+    case 'bkash': return 'rose';
+    case 'nagad': return 'amber';
+    case 'rocket': return 'violet';
+    case 'bank': return 'blue';
+    case 'cash': return 'emerald';
+    case 'card': return 'teal';
+    default: return 'slate';
+  }
+};
 
 function isValidDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -1149,12 +1162,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
       {activeTab === 'due-collection' ? (
         <>
-          <section aria-label="Payment summary" className="payment-summary-grid payment-summary--v2 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-5">
-            <Metric label={`Total Money Due · ${currency}`} value={formatCurrency(dueCollectionSummary.totalOutstanding, currency)} tone="amber" icon={AlertCircle} hint={`${dueCollectionSummary.customers.length} ${dueCollectionSummary.customers.length === 1 ? 'customer' : 'customers'}`} />
-            <Metric label={`Past-Due Amount · ${currency}`} value={formatCurrency(dueCollectionSummary.overdueAmount, currency)} tone="rose" icon={CalendarDays} hint={`${dueCollectionSummary.customers.filter(customer => customer.overdue > 0).length} past due`} />
-            <Metric label="Partly Paid Sales" value={String(dueCollectionSummary.partiallyPaidTransactions)} tone="amber" icon={CreditCard} hint={`${dueCollectionSummary.partiallyPaidTransactions + dueCollectionSummary.fullyPaidTransactions} sales in period`} />
-            <Metric label="Paid Sales" value={String(dueCollectionSummary.fullyPaidTransactions)} tone="emerald" icon={CheckCircle2} hint={`${dueCollectionSummary.partiallyPaidTransactions + dueCollectionSummary.fullyPaidTransactions} sales in period`} />
-            <Metric label={`Payments Received · ${currency}`} value={formatCurrency(dueCollectionSummary.paymentsCollected, currency)} tone="emerald" icon={HandCoins} hint={collectionPeriod === 'month' ? 'This month' : collectionPeriod === 'last_month' ? 'Last month' : 'All time'} />
+          <section aria-label="Payment summary" className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-5">
+            <StatCard label={`Total Money Due · ${currency}`} value={formatCurrency(dueCollectionSummary.totalOutstanding, currency)} tone="amber" icon={<AlertCircle className="h-5 w-5" />} hint={`${dueCollectionSummary.customers.length} ${dueCollectionSummary.customers.length === 1 ? 'customer' : 'customers'}`} valueClassName="text-xl sm:text-2xl" />
+            <StatCard label={`Past-Due Amount · ${currency}`} value={formatCurrency(dueCollectionSummary.overdueAmount, currency)} tone="rose" icon={<CalendarDays className="h-5 w-5" />} hint={`${dueCollectionSummary.customers.filter(customer => customer.overdue > 0).length} past due`} valueClassName="text-xl sm:text-2xl" />
+            <StatCard label="Partly Paid Sales" value={String(dueCollectionSummary.partiallyPaidTransactions)} tone="amber" icon={<CreditCard className="h-5 w-5" />} hint={`${dueCollectionSummary.partiallyPaidTransactions + dueCollectionSummary.fullyPaidTransactions} sales in period`} />
+            <StatCard label="Paid Sales" value={String(dueCollectionSummary.fullyPaidTransactions)} tone="emerald" icon={<CheckCircle2 className="h-5 w-5" />} hint={`${dueCollectionSummary.partiallyPaidTransactions + dueCollectionSummary.fullyPaidTransactions} sales in period`} />
+            <StatCard label={`Payments Received · ${currency}`} value={formatCurrency(dueCollectionSummary.paymentsCollected, currency)} tone="emerald" icon={<HandCoins className="h-5 w-5" />} hint={collectionPeriod === 'month' ? 'This month' : collectionPeriod === 'last_month' ? 'Last month' : 'All time'} valueClassName="text-xl sm:text-2xl" />
           </section>
           <section className="dashboard-panel flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between sm:p-4">
             <div className="min-w-0">
@@ -1346,13 +1359,13 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
         </>
       ) : (
         <>
-      <section aria-label="Payment summary" className="payment-summary-grid payment-summary--v2 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Metric label="Received" value={<CurrencyAmounts amounts={currencyTotals} field="received" />} tone="emerald" icon={Wallet} hint={`${receivedCount} ${receivedCount === 1 ? 'payment' : 'payments'}`} />
-        <Metric label="Outstanding Due" value={<CurrencyAmounts amounts={currencyTotals} field="due" />} tone="amber" icon={AlertCircle} hint={`${visibleOutstanding.length} ${visibleOutstanding.length === 1 ? 'invoice' : 'invoices'}`} />
-        <Metric label="Partial" value={String(partialCount)} tone="amber" icon={CreditCard} hint={`of ${visiblePayments.length} listed`} />
-        <Metric label="Pending" value={String(pendingCount)} tone="slate" icon={Clock3} hint={`of ${visiblePayments.length} listed`} />
-        <Metric label="Refunds" value={<CurrencyAmounts amounts={currencyTotals} field="refunded" />} tone="rose" icon={ArrowDownToLine} hint={`${refundedCount} ${refundedCount === 1 ? 'refund' : 'refunds'}`} />
-        <Metric label="Failed" value={String(failedCount)} tone="rose" icon={AlertCircle} hint={`of ${visiblePayments.length} listed`} />
+      <section aria-label="Payment summary" className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <StatCard label="Received" value={<CurrencyAmounts amounts={currencyTotals} field="received" />} tone="emerald" icon={<Wallet className="h-5 w-5" />} hint={`${receivedCount} ${receivedCount === 1 ? 'payment' : 'payments'}`} valueClassName="text-xl sm:text-2xl" />
+        <StatCard label="Outstanding Due" value={<CurrencyAmounts amounts={currencyTotals} field="due" />} tone="amber" icon={<AlertCircle className="h-5 w-5" />} hint={`${visibleOutstanding.length} ${visibleOutstanding.length === 1 ? 'invoice' : 'invoices'}`} valueClassName="text-xl sm:text-2xl" />
+        <StatCard label="Partial" value={String(partialCount)} tone="amber" icon={<CreditCard className="h-5 w-5" />} hint={`of ${visiblePayments.length} listed`} />
+        <StatCard label="Pending" value={String(pendingCount)} tone="slate" icon={<Clock3 className="h-5 w-5" />} hint={`of ${visiblePayments.length} listed`} />
+        <StatCard label="Refunds" value={<CurrencyAmounts amounts={currencyTotals} field="refunded" />} tone="rose" icon={<ArrowDownToLine className="h-5 w-5" />} hint={`${refundedCount} ${refundedCount === 1 ? 'refund' : 'refunds'}`} valueClassName="text-xl sm:text-2xl" />
+        <StatCard label="Failed" value={String(failedCount)} tone="rose" icon={<AlertCircle className="h-5 w-5" />} hint={`of ${visiblePayments.length} listed`} />
       </section>
 
       <section className="payment-followup payment-followup--v2 dashboard-panel rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
@@ -1398,12 +1411,16 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           {paymentMethodSummaries.map(group => <div key={group.currency}>
             <h3 className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{group.currency}</h3>
             <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
-              {group.methods.map(item => <div key={`${group.currency}-${item.methodId}`} className="payment-method-tile--v2 min-w-0 rounded-lg border border-slate-100 bg-slate-50 p-2.5 dark:border-slate-800 dark:bg-slate-800/50 sm:p-3">
-                <div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold">{item.methodName}</span><span className="text-[10px] capitalize text-slate-500">{item.category.replace('_', ' ')}</span></div>
-                <p className="mt-1 font-mono text-base font-bold">{formatCurrency(item.received, group.currency)}</p>
-                <p className="mt-1 text-[11px] text-slate-500">{item.transactionCount} payments · Avg {formatCurrency(item.average, group.currency)}</p>
-                <p className="mt-1 text-[10px] text-slate-500">Today {formatCurrency(item.today, group.currency)} · Month {formatCurrency(item.thisMonth, group.currency)}</p>
-              </div>)}
+              {group.methods.map(item => <StatCard
+                key={`${group.currency}-${item.methodId}`}
+                size="mini"
+                tone={methodTone(item.methodName)}
+                icon={<Wallet className="h-5 w-5" />}
+                label={<span className="flex items-center justify-between gap-2"><span className="min-w-0 truncate">{item.methodName}</span><span className="shrink-0 text-[10px] font-medium capitalize text-slate-500 dark:text-slate-400">{item.category.replace('_', ' ')}</span></span>}
+                value={formatCurrency(item.received, group.currency)}
+                hint={`${item.transactionCount} payments · Avg ${formatCurrency(item.average, group.currency)}`}
+                extra={<span className="mt-1.5 block text-[10px] leading-3.5 text-slate-500 dark:text-slate-400">Today {formatCurrency(item.today, group.currency)} · Month {formatCurrency(item.thisMonth, group.currency)}</span>}
+              />)}
             </div>
           </div>)}
         </div> : <p className="payment-method-empty rounded-lg border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-slate-700">No received payments match the current filters.</p>}
@@ -2232,31 +2249,15 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
   );
 };
 
-function Metric({ label, value, tone = 'slate', icon: Icon, hint }: {
-  label: string;
-  value: React.ReactNode;
-  tone?: 'slate' | 'emerald' | 'amber' | 'rose';
-  icon: React.ComponentType<{ className?: string }>;
-  hint?: string;
-}) {
-  const tones = {
-    slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-    emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
-    amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
-    rose: 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
-  };
-  return <article className="payment-metric min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-2xs dark:border-slate-800 dark:bg-slate-900 sm:p-3.5"><span className={`payment-metric-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}><Icon className="h-3.5 w-3.5" /></span><p className="payment-metric-label min-w-0 text-[11px] font-semibold leading-tight text-slate-600 dark:text-slate-300">{label}</p><div className="payment-metric-value mt-2 min-w-0 break-words font-mono text-lg font-bold tabular-nums text-slate-950 dark:text-white sm:text-xl">{value}</div>{hint ? <p className="payment-metric-hint mt-0.5 text-[11px] font-medium leading-4 text-slate-400 dark:text-slate-500">{hint}</p> : null}</article>;
-}
-
 function CurrencyAmounts({ amounts, field }: {
   amounts: Record<AppCurrency, { received: number; due: number; refunded: number }>;
   field: 'received' | 'due' | 'refunded';
 }) {
   return <span className="block space-y-0.5">
     {(['BDT', 'USD'] as const).map(currency => (
-      <span key={currency} className="flex items-center justify-between gap-1 text-xs">
-        <span className="text-[10px] font-semibold text-slate-400">{currency}</span>
-        <span className="truncate">{formatCurrency(amounts[currency][field], currency)}</span>
+      <span key={currency} className="flex items-center justify-between gap-1 text-xs leading-4">
+        <span className="text-[10px] font-semibold leading-4 text-slate-400">{currency}</span>
+        <span className="truncate leading-4">{formatCurrency(amounts[currency][field], currency)}</span>
       </span>
     ))}
   </span>;

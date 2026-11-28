@@ -3,6 +3,7 @@ import { CalendarDays, CalendarRange, Download, Eye, Hash, Pencil, Plus, Receipt
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { useToast } from '../common/Toast';
+import { StatCard, type StatCardTone } from '../common/StatCard';
 import { Modal } from '../common/Modal';
 import type { Expense } from '../../types';
 import { formatAppDate, formatCurrency, getTodayDateString } from '../../utils/dateUtils';
@@ -331,11 +332,18 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onNavigate, createRe
           { label: 'Number of Expenses', value: String(totals.count), icon: Hash, tint: 'violet', hint: 'Recorded entries', money: false },
           { label: 'Largest Expense', value: formatCurrency(totals.largest, currency), icon: TrendingDown, tint: 'rose', hint: 'Biggest single expense', money: true },
           { label: 'Average Expense', value: formatCurrency(totals.average, currency), icon: Scale, tint: 'rose', hint: 'Per recorded expense', money: true },
-        ]).map(({ label, value, icon: Icon, tint, hint, money }) => <div key={label} className={`${cardClass} exp-kpi min-w-0 transition-colors hover:border-violet-200 dark:hover:border-violet-900`}>
-          <p className="exp-kpi-label flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-400"><span className={`exp-kpi-icon exp-kpi-icon--${tint}`}><Icon className="h-4 w-4" /></span>{label}</p>
-          <p className={`exp-kpi-value mt-1.5 truncate font-mono text-lg font-bold tabular-nums tracking-tight ${money ? 'exp-kpi-value--money' : 'exp-kpi-value--count'}`}>{value}</p>
-          <p className="exp-kpi-hint mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">{hint}</p>
-        </div>)}
+        ]).map(({ label, value, icon: Icon, tint, hint, money }) => (
+          <StatCard
+            key={label}
+            icon={<Icon className="h-5 w-5" />}
+            label={label}
+            value={value}
+            hint={hint}
+            tone={tint as StatCardTone}
+            valueTone={money ? (tint as StatCardTone) : undefined}
+            valueClassName="text-xl sm:text-2xl"
+          />
+        ))}
       </section>
 
       <section className={`${cardClass} exp-filters--v2 cashbook-ledger-filters`}>

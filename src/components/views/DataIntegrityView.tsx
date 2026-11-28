@@ -6,6 +6,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { useAppFormatting } from '../../hooks/useAppFormatting';
 import { formatCurrency } from '../../utils/dateUtils';
+import { StatCard } from '../common/StatCard';
 import {
   getLastDataIntegrityResult,
   runDataIntegrityCheck,
@@ -268,12 +269,11 @@ const SummaryMetric: React.FC<{
   icon: React.ComponentType<{ className?: string }>;
   formatNumber: (value: number) => string;
 }> = ({ label, value, hint, tone, icon: Icon, formatNumber }) => (
-  <div className={`di-kpi--v2 di-kpi--${tone}`}>
-    <div className="di-kpi-top">
-      <span className="di-kpi-label">{label}</span>
-      <span className={`di-kpi-icon di-kpi-icon--${tone}`} aria-hidden="true"><Icon className="h-4 w-4" /></span>
-    </div>
-    <span className="di-kpi-value">{formatNumber(value)}</span>
-    <span className="di-kpi-hint">{hint}</span>
-  </div>
+  <StatCard
+    label={label}
+    value={formatNumber(value)}
+    hint={hint}
+    tone={tone}
+    icon={<Icon className="h-5 w-5" />}
+  />
 );
