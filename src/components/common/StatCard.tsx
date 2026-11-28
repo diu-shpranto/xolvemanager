@@ -167,13 +167,13 @@ export const StatCard: React.FC<StatCardProps> = ({
       style={style}
       aria-label={ariaLabel}
       className={[
-        'relative min-w-0 overflow-hidden rounded-2xl border border-violet-100',
-        'bg-linear-to-b from-white to-violet-50/60',
-        'shadow-[0_1px_2px_rgba(76,29,149,0.06),0_10px_28px_-14px_rgba(76,29,149,0.25)]',
-        'dark:border-violet-500/20 dark:from-slate-900 dark:to-violet-950/30 dark:shadow-none',
+        'relative min-w-0 overflow-hidden rounded-2xl border border-violet-200',
+        'bg-linear-to-b from-white to-violet-100/70',
+        'shadow-[0_1px_3px_rgba(76,29,149,0.10),0_12px_24px_-10px_rgba(76,29,149,0.30)]',
+        'dark:border-violet-400/30 dark:from-[#1b1830] dark:to-violet-950/40 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45),0_12px_24px_-12px_rgba(0,0,0,0.7)]',
         s.card,
         clickable
-          ? 'flex cursor-pointer flex-col text-left transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_2px_4px_rgba(76,29,149,0.08),0_16px_32px_-14px_rgba(76,29,149,0.35)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:hover:border-violet-500/40'
+          ? 'flex cursor-pointer flex-col text-left transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-[0_2px_5px_rgba(76,29,149,0.12),0_18px_30px_-12px_rgba(76,29,149,0.38)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 dark:hover:border-violet-400/50'
           : 'flex flex-col text-left',
         className,
       ].join(' ')}
@@ -216,7 +216,7 @@ export const StatCardSkeleton: React.FC<{ size?: StatCardSize; className?: strin
     <div
       aria-hidden="true"
       style={style}
-      className={`relative min-w-0 animate-pulse overflow-hidden rounded-2xl border border-violet-100 bg-linear-to-b from-white to-violet-50/60 dark:border-violet-500/20 dark:from-slate-900 dark:to-violet-950/30 ${s.card} ${className}`}
+      className={`relative min-w-0 animate-pulse overflow-hidden rounded-2xl border border-violet-200 bg-linear-to-b from-white to-violet-100/70 shadow-[0_1px_3px_rgba(76,29,149,0.10),0_12px_24px_-10px_rgba(76,29,149,0.30)] dark:border-violet-400/30 dark:from-[#1b1830] dark:to-violet-950/40 dark:shadow-[0_1px_3px_rgba(0,0,0,0.45),0_12px_24px_-12px_rgba(0,0,0,0.7)] ${s.card} ${className}`}
     >
       <span aria-hidden="true" className="absolute inset-x-0 top-0 h-[3px] bg-violet-200 dark:bg-violet-500/30" />
       <span className="flex items-start justify-between gap-2">
